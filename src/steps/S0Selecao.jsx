@@ -12,8 +12,8 @@ export default function S0Selecao({ form, upd, next }) {
         {Object.entries(CHECKLISTS).map(([key, val]) => (
           <button
             key={key}
-            className={`type-card ${form.tipoServico === key ? 'selected-blue' : ''}`}
-            onClick={() => upd('tipoServico', key)}
+            className={`type-card ${form.tipoServico === key ? 'selected-blue' : ''}`}            
+            onClick={() => { upd('tipoServico', key); upd('respostas', {}); }}
           >
             <div className="type-emoji">{val.emoji}</div>
             <div className="type-label" style={{ color: form.tipoServico === key ? '#1d4ed8' : '#374151' }}>
@@ -26,8 +26,8 @@ export default function S0Selecao({ form, upd, next }) {
       <SectionTitle>Status do Serviço</SectionTitle>
       <div className="type-grid">
         <button
-          className={`type-card ${form.produtivo === true ? 'selected-green' : ''}`}
-          onClick={() => upd('produtivo', true)}
+          className={`type-card ${form.produtivo === true ? 'selected-green' : ''}`}          
+          onClick={() => { upd('produtivo', true); upd('respostas', {}); }}
         >
           <div className="type-emoji">✅</div>
           <div className="type-label" style={{ color: form.produtivo === true ? '#15803d' : '#374151' }}>
@@ -36,8 +36,8 @@ export default function S0Selecao({ form, upd, next }) {
           <div className="type-sub">Serviço executado</div>
         </button>
         <button
-          className={`type-card ${form.produtivo === false ? 'selected-red' : ''}`}
-          onClick={() => upd('produtivo', false)}
+          className={`type-card ${form.produtivo === false ? 'selected-red' : ''}`}        
+          onClick={() => { upd('produtivo', false); upd('respostas', {}); }}
         >
           <div className="type-emoji">❌</div>
           <div className="type-label" style={{ color: form.produtivo === false ? '#b91c1c' : '#374151' }}>
