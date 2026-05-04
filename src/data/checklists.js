@@ -118,6 +118,7 @@ export const FORM_INICIAL = () => {
     fiscal: '', matricula: '', prefixo: '', os: '', uc: '', endereco: '',
     lat: null, lng: null, gpsStatus: 'idle',
     respostas: {}, fotos: [], observacoes: '', feedback: '',
-    nomeEletricista: '', assinatura: null,
+    nomeEletricista: '', assinatura: null,    
+    tipoAuditoria: '',
   }
 }
