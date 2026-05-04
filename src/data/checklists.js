@@ -1,14 +1,10 @@
-// ================================================================
-// DADOS DOS CHECKLISTS — v2
-// ================================================================
-
 export const CHECKLISTS = {
   CORTE: {
     label: 'Corte / Recorte',
     emoji: '✂️',
     PRODUTIVO: {
       label: 'Produtivo',
-      peso: 7.7,
+      peso: 7.7, // 13 itens × 7.7 = 100.1
       items: [
         { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
         { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
@@ -27,7 +23,7 @@ export const CHECKLISTS = {
     },
     IMPRODUTIVO: {
       label: 'Improdutivo',
-      peso: 10.0,
+      peso: 10.0, // 10 itens × 10 = 100
       items: [
         { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
         { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
@@ -82,14 +78,14 @@ export const CHECKLISTS = {
 }
 
 export const CAT_META = {
-  COMPORTAMENTO: { label: 'Comportamento', cls: 'badge-comp' },
+  COMPORTAMENTO: { label: 'Comportamento', cls: 'badge-comp'  },
   QUALIDADE:     { label: 'Qualidade',     cls: 'badge-qual'  },
   DESEMPENHO:    { label: 'Desempenho',    cls: 'badge-desemp'},
 }
 
 export function isDisqualified(form) {
   if (!form.tipoServico || form.produtivo === null) return false
-  const tipo = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
+  const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
   const items = CHECKLISTS[form.tipoServico][tipo].items
   return items.some(i => i.disqualify && form.respostas[i.id] === false)
 }
@@ -97,9 +93,9 @@ export function isDisqualified(form) {
 export function calcNota(form) {
   if (!form.tipoServico || form.produtivo === null) return 0
   if (isDisqualified(form)) return 0
-  const tipo = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
+  const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
   const items = CHECKLISTS[form.tipoServico][tipo].items
-  const sim = items.filter(i => form.respostas[i.id] === true).length
+  const sim   = items.filter(i => form.respostas[i.id] === true).length
   return Math.round((sim / items.length) * 1000) / 10
 }
 
