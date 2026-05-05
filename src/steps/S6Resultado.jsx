@@ -14,7 +14,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
   const ncItems  = items.filter(i => form.respostas[i.id] === false)
   const eliminado = isDisqualified(form)
 
-  const [saveStatus, setSaveStatus] = useState('idle') // idle | saving | saved | error
+  const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError,  setSaveError]  = useState('')
   const [savedId,    setSavedId]    = useState(null)
 
@@ -35,20 +35,26 @@ export default function S6Resultado({ form, setForm, setStep }) {
     try {
       const auditId = `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
 
-      // 1. Upload das fotos (base64 → Supabase Storage)
+      // 1. Upload das fotos
       const fotosUrls = []
       for (let i = 0; i < form.fotos.length; i++) {
         const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_${i + 1}.jpg`)
         fotosUrls.push(url)
       }
 
-      // 2. Upload da assinatura
+      // 2. Upload assinatura Eletricista 1
       let assinaturaUrl = null
       if (form.assinatura) {
-        assinaturaUrl = await uploadBase64(form.assinatura, `${auditId}/assinatura.png`)
+        assinaturaUrl = await uploadBase64(form.assinatura, `${auditId}/assinatura_1.png`)
       }
 
-      // 3. Salva registro na tabela auditorias
+      // 3. Upload assinatura Eletricista 2 (se assinou)
+      let assinatura2Url = null
+      if (form.assinatura2) {
+        assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
+      }
+
+      // 4. Salva no banco
       const saved = await salvarAuditoriaBD({
         fiscal: form.fiscal, matricula: form.matricula,
         prefixo: form.prefixo, os: form.os, uc: form.uc,
@@ -57,8 +63,12 @@ export default function S6Resultado({ form, setForm, setStep }) {
         tipo_servico: form.tipoServico, produtivo: form.produtivo,
         nota, status: st.label,
         respostas: form.respostas, feedback: form.feedback,
-        observacoes: form.observacoes, nome_eletricista: form.nomeEletricista,
-        assinatura_url: assinaturaUrl, fotos_urls: fotosUrls,
+        observacoes: form.observacoes,
+        nome_eletricista: form.nomeEletricista,
+        assinatura_url: assinaturaUrl,
+        nome_eletricista2: form.nomeEletricista2 || null,
+        assinatura2_url: assinatura2Url,
+        fotos_urls: fotosUrls,
       })
 
       setSavedId(saved.id)
@@ -91,8 +101,8 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
       {/* CONTADORES */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
-        <StatCard label="Conformes"   value={sim}         color="#16a34a" />
-        <StatCard label="Não conf."   value={nao}         color="#dc2626" />
+        <StatCard label="Conformes"   value={sim}          color="#16a34a" />
+        <StatCard label="Não conf."   value={nao}          color="#dc2626" />
         <StatCard label="Total itens" value={items.length} color="#2563eb" />
       </div>
 
@@ -123,7 +133,8 @@ export default function S6Resultado({ form, setForm, setStep }) {
         <InfoRow label="Endereço"    value={form.endereco} />
         <InfoRow label="Data / Hora" value={`${form.data} às ${form.hora}`} />
         {form.lat && <InfoRow label="GPS" value={`${form.lat}, ${form.lng}`} />}
-        {form.nomeEletricista && <InfoRow label="Eletricista" value={form.nomeEletricista} />}
+        {form.nomeEletricista  && <InfoRow label="Eletricista 1" value={form.nomeEletricista} />}
+        {form.nomeEletricista2 && <InfoRow label="Eletricista 2" value={form.nomeEletricista2} />}
       </div>
 
       {/* NÃO CONFORMIDADES */}
@@ -173,13 +184,28 @@ export default function S6Resultado({ form, setForm, setStep }) {
         </div>
       )}
 
-      {/* ASSINATURA */}
+      {/* ASSINATURA ELETRICISTA 1 */}
       {form.assinatura && (
         <div className="card">
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-            Assinatura — {form.nomeEletricista || 'Eletricista'}
+            Assinatura — {form.nomeEletricista || 'Eletricista 1'}
           </p>
-          <img src={form.assinatura} alt="Assinatura" style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
+          <img src={form.assinatura} alt="Assinatura 1"
+            style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
+          <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', marginTop: 6 }}>
+            Registrado em {form.data} às {form.hora}
+          </p>
+        </div>
+      )}
+
+      {/* ASSINATURA ELETRICISTA 2 — só mostra se assinou */}
+      {form.assinatura2 && (
+        <div className="card">
+          <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+            Assinatura — {form.nomeEletricista2 || 'Eletricista 2'}
+          </p>
+          <img src={form.assinatura2} alt="Assinatura 2"
+            style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
           <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', marginTop: 6 }}>
             Registrado em {form.data} às {form.hora}
           </p>
@@ -194,10 +220,9 @@ export default function S6Resultado({ form, setForm, setStep }) {
         </p>
       </div>
 
-      {/* ======= AÇÕES ======= */}
+      {/* AÇÕES */}
       <div className="no-print" style={{ marginBottom: 40 }}>
 
-        {/* SALVAR — aparece enquanto não salvou */}
         {saveStatus !== 'saved' && (
           <button className="btn-primary" onClick={salvar} disabled={saveStatus === 'saving'}
             style={{ background: saveStatus === 'saving' ? '#64748b' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
@@ -205,14 +230,10 @@ export default function S6Resultado({ form, setForm, setStep }) {
           </button>
         )}
 
-        {/* ERRO */}
         {saveStatus === 'error' && (
-          <div className="alert alert-danger" style={{ marginBottom: 10 }}>
-            ❌ {saveError}
-          </div>
+          <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {saveError}</div>
         )}
 
-        {/* SUCESSO */}
         {saveStatus === 'saved' && (
           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '14px 16px', marginBottom: 12, textAlign: 'center' }}>
             <p style={{ color: '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>✅ Auditoria salva no banco!</p>
@@ -220,7 +241,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
           </div>
         )}
 
-        {/* GERAR PDF — só aparece após salvar */}
         {saveStatus === 'saved' && (
           <button className="btn-primary" onClick={() => window.print()}
             style={{ background: '#7c3aed', marginBottom: 10 }}>
@@ -228,7 +248,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
           </button>
         )}
 
-        {/* NOVA AUDITORIA + VOLTAR */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button className="btn-secondary" onClick={() => setStep(2)}>← Checklist</button>
           <button className="btn-primary" onClick={nova} style={{ background: '#15803d' }}>+ Nova Auditoria</button>
