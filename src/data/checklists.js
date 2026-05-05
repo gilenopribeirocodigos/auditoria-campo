@@ -32,7 +32,7 @@ export const CHECKLISTS = {
         { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
         { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o padrão (montagem/rejeição/poste) conforme diretriz?' },
         { id: 7,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
-        { id: 8,  cat: 'DESEMPENHO',    p: 'Embora havendo padrão inadequado, havia algo proativo que a equipe poderia ter feito para resolver?' },
+        { id: 8,  cat: 'DESEMPENHO',    p: 'Embora tendo sido improdutivo, havia algo proativo que a equipe poderia ter feito para resolver?' },
         { id: 9,  cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
         { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado?' },
       ],
