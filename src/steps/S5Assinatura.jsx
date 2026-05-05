@@ -23,8 +23,17 @@ function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrig
 
   const getPos = (e, c) => {
     const rect = c.getBoundingClientRect()
-    if (e.touches) return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top }
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    // Fator de escala entre tamanho real do canvas e tamanho visual
+    const scaleX = c.width / rect.width
+    const scaleY = c.height / rect.height
+    if (e.touches) return {
+      x: (e.touches[0].clientX - rect.left) * scaleX,
+      y: (e.touches[0].clientY - rect.top) * scaleY,
+    }
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    }
   }
 
   const startDraw = e => {
