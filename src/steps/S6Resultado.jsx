@@ -4,14 +4,14 @@ import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD } from '../lib/supabase.js'
 
 export default function S6Resultado({ form, setForm, setStep }) {
-  const nota     = calcNota(form)
-  const st       = getStatus(nota)
-  const tipo     = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
-  const cl       = CHECKLISTS[form.tipoServico]?.[tipo]
-  const items    = cl?.items || []
-  const sim      = items.filter(i => form.respostas[i.id] === true).length
-  const nao      = items.filter(i => form.respostas[i.id] === false).length
-  const ncItems  = items.filter(i => form.respostas[i.id] === false)
+  const nota      = calcNota(form)
+  const st        = getStatus(nota)
+  const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
+  const cl        = CHECKLISTS[form.tipoServico]?.[tipo]
+  const items     = cl?.items || []
+  const sim       = items.filter(i => form.respostas[i.id] === true).length
+  const nao       = items.filter(i => form.respostas[i.id] === false).length
+  const ncItems   = items.filter(i => form.respostas[i.id] === false)
   const eliminado = isDisqualified(form)
 
   const [saveStatus, setSaveStatus] = useState('idle')
@@ -28,6 +28,12 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
   const catBarColor = pct => pct >= 90 ? '#16a34a' : pct >= 80 ? '#d97706' : '#dc2626'
   const nova = () => { setForm(FORM_INICIAL()); setStep(0) }
+
+  const labelTipoAuditoria = form.tipoAuditoria === 'DESEMPENHO'
+    ? '📊 Desempenho Operacional'
+    : form.tipoAuditoria === 'POS_SERVICO'
+      ? '✅ Pós Serviço'
+      : '—'
 
   const salvar = async () => {
     setSaveStatus('saving')
@@ -56,19 +62,29 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
       // 4. Salva no banco
       const saved = await salvarAuditoriaBD({
-        fiscal: form.fiscal, matricula: form.matricula,
-        prefixo: form.prefixo, os: form.os, uc: form.uc,
-        endereco: form.endereco, lat: form.lat, lng: form.lng,
-        data_auditoria: form.data, hora_auditoria: form.hora,
-        tipo_servico: form.tipoServico, produtivo: form.produtivo,
-        nota, status: st.label,
-        respostas: form.respostas, feedback: form.feedback,
-        observacoes: form.observacoes,
-        nome_eletricista: form.nomeEletricista,
-        assinatura_url: assinaturaUrl,
+        fiscal:            form.fiscal,
+        matricula:         form.matricula,
+        prefixo:           form.prefixo,
+        os:                form.os,
+        uc:                form.uc,
+        endereco:          form.endereco,
+        lat:               form.lat,
+        lng:               form.lng,
+        data_auditoria:    form.data,
+        hora_auditoria:    form.hora,
+        tipo_auditoria:    form.tipoAuditoria,       // ← NOVO
+        tipo_servico:      form.tipoServico,
+        produtivo:         form.produtivo,
+        nota,
+        status:            st.label,
+        respostas:         form.respostas,
+        feedback:          form.feedback,
+        observacoes:       form.observacoes,
+        nome_eletricista:  form.nomeEletricista,
+        assinatura_url:    assinaturaUrl,
         nome_eletricista2: form.nomeEletricista2 || null,
-        assinatura2_url: assinatura2Url,
-        fotos_urls: fotosUrls,
+        assinatura2_url:   assinatura2Url,
+        fotos_urls:        fotosUrls,
       })
 
       setSavedId(saved.id)
@@ -95,7 +111,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
         <div style={{ fontSize: 13, color: st.color, fontWeight: 500 }}>pontos</div>
         <div className="result-label" style={{ color: st.color }}>{st.label}</div>
         <div style={{ fontSize: 12, color: st.color, marginTop: 6, opacity: 0.8 }}>
-          {CHECKLISTS[form.tipoServico]?.label} — {form.produtivo ? 'Produtivo' : 'Improdutivo'}
+          {labelTipoAuditoria} — {CHECKLISTS[form.tipoServico]?.label} — {form.produtivo ? 'Produtivo' : 'Improdutivo'}
         </div>
       </div>
 
@@ -125,14 +141,15 @@ export default function S6Resultado({ form, setForm, setStep }) {
       {/* DADOS */}
       <div className="card">
         <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
-        <InfoRow label="Fiscal"      value={form.fiscal} />
-        <InfoRow label="Matrícula"   value={form.matricula} />
-        <InfoRow label="Equipe"      value={form.prefixo} />
-        <InfoRow label="OS"          value={form.os} />
-        <InfoRow label="UC"          value={form.uc} />
-        <InfoRow label="Endereço"    value={form.endereco} />
-        <InfoRow label="Data / Hora" value={`${form.data} às ${form.hora}`} />
-        {form.lat && <InfoRow label="GPS" value={`${form.lat}, ${form.lng}`} />}
+        <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
+        <InfoRow label="Fiscal"         value={form.fiscal} />
+        <InfoRow label="Matrícula"      value={form.matricula} />
+        <InfoRow label="Equipe"         value={form.prefixo} />
+        <InfoRow label="OS"             value={form.os} />
+        <InfoRow label="UC"             value={form.uc} />
+        <InfoRow label="Endereço"       value={form.endereco} />
+        <InfoRow label="Data / Hora"    value={`${form.data} às ${form.hora}`} />
+        {form.lat             && <InfoRow label="GPS"          value={`${form.lat}, ${form.lng}`} />}
         {form.nomeEletricista  && <InfoRow label="Eletricista 1" value={form.nomeEletricista} />}
         {form.nomeEletricista2 && <InfoRow label="Eletricista 2" value={form.nomeEletricista2} />}
       </div>
