@@ -50,10 +50,10 @@ export const CHECKLISTS = {
         { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, bom relacionamento, brincadeira, discursões)' },
         { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou a atividade que deveria fazer?', disqualify: true },
         { id: 4,  cat: 'QUALIDADE',     p: 'O padrão de medição do cliente foi montado conforme especifica a atividade (aterramento, altura, material, etc)?' },
-        { id: 5,  cat: 'DESEMPENHO',    p: 'Houve instalação de medidor?',               marriedGroup: 'medidor', marriedRole: 'pai' },
-        { id: 6,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do medidor na OS?',  marriedGroup: 'medidor', marriedRole: 'filho' },
-        { id: 7,  cat: 'DESEMPENHO',    p: 'Houve instalação de ramal?',                  marriedGroup: 'ramal',   marriedRole: 'pai' },
-        { id: 8,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do ramal na OS?',    marriedGroup: 'ramal',   marriedRole: 'filho' },
+        { id: 5,  cat: 'DESEMPENHO',    p: 'Houve instalação de medidor?',              marriedGroup: 'medidor', marriedRole: 'pai' },
+        { id: 6,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do medidor na OS?', marriedGroup: 'medidor', marriedRole: 'filho' },
+        { id: 7,  cat: 'DESEMPENHO',    p: 'Houve instalação de ramal?',                 marriedGroup: 'ramal',   marriedRole: 'pai' },
+        { id: 8,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do ramal na OS?',   marriedGroup: 'ramal',   marriedRole: 'filho' },
         { id: 9,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor instalado; medidores vizinhos; leitura; poste; placa trafo, etc)?' },
         { id: 10, cat: 'QUALIDADE',     p: 'Registrado com foto o padrão (montado/rejeição/poste) conforme diretriz?' },
         { id: 11, cat: 'QUALIDADE',     p: 'Foi testado a instalação com leitura de grandezas elétricas (tensão, corrente, etc)?' },
@@ -76,6 +76,43 @@ export const CHECKLISTS = {
         { id: 9,  cat: 'DESEMPENHO',    p: 'Embora havendo padrão inadequado havia algo proativo que a equipe poderia fazer para resolver?', inverted: true },
         { id: 10, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
         { id: 11, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (10 min)?' },
+      ],
+    },
+  },
+
+  RELIGA: {
+    label: 'Religação',
+    emoji: '⚡',
+    PRODUTIVO: {
+      label: 'Produtivo',
+      peso: 10.0,
+      items: [
+        { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
+        { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, bom relacionamento, brincadeira, discursões)' },
+        { id: 3,  cat: 'QUALIDADE',     p: 'Foi confirmada a unidade consumidora?' },
+        { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou a religa?', disqualify: true },
+        { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor instalado; medidores vizinhos; leitura; poste; placa trafo, etc)?' },
+        { id: 6,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, faxada, mini toi, ect)?' },
+        { id: 7,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
+        { id: 8,  cat: 'QUALIDADE',     p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?' },
+        { id: 9,  cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
+        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado?' },
+      ],
+    },
+    IMPRODUTIVO: {
+      label: 'Improdutivo',
+      peso: 10.0,
+      items: [
+        { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
+        { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, bom relacionamento, brincadeira, discursões)' },
+        { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+        { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
+        { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor instalado; medidores vizinhos; leitura; poste; placa trafo, etc)?' },
+        { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o padrão (montado/rejeição/poste) conforme diretriz?' },
+        { id: 7,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
+        { id: 8,  cat: 'DESEMPENHO',    p: 'Embora sendo improdutivo havia algo proativo que a equipe poderia fazer para resolver?' },
+        { id: 9,  cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
+        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado?' },
       ],
     },
   },
@@ -102,17 +139,13 @@ export function calcNota(form) {
 
   const sim = items.filter(i => {
     const r = form.respostas[i.id]
-    // Item pai de grupo casado: sempre conforme (é pergunta factual)
     if (i.marriedGroup && i.marriedRole === 'pai') return true
-    // Item filho de grupo casado: conforme só se resposta igual ao pai
     if (i.marriedGroup && i.marriedRole === 'filho') {
       const pai  = items.find(p => p.marriedGroup === i.marriedGroup && p.marriedRole === 'pai')
       const rPai = pai ? form.respostas[pai.id] : undefined
       return rPai !== undefined && r !== undefined && rPai === r
     }
-    // Invertido: NÃO = conforme
     if (i.inverted) return r === false
-    // Normal
     return r === true
   }).length
 
