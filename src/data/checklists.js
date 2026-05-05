@@ -99,10 +99,23 @@ export function calcNota(form) {
   if (isDisqualified(form)) return 0
   const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
   const items = CHECKLISTS[form.tipoServico][tipo].items
-  // Invertido: NÃO = conforme, SIM = não conforme
-  const sim = items.filter(i =>
-    i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true
-  ).length
+
+  const sim = items.filter(i => {
+    const r = form.respostas[i.id]
+    // Item pai de grupo casado: sempre conforme (é pergunta factual)
+    if (i.marriedGroup && i.marriedRole === 'pai') return true
+    // Item filho de grupo casado: conforme só se resposta igual ao pai
+    if (i.marriedGroup && i.marriedRole === 'filho') {
+      const pai  = items.find(p => p.marriedGroup === i.marriedGroup && p.marriedRole === 'pai')
+      const rPai = pai ? form.respostas[pai.id] : undefined
+      return rPai !== undefined && r !== undefined && rPai === r
+    }
+    // Invertido: NÃO = conforme
+    if (i.inverted) return r === false
+    // Normal
+    return r === true
+  }).length
+
   return Math.round((sim / items.length) * 1000) / 10
 }
 
