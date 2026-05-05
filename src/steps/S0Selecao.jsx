@@ -2,8 +2,8 @@ import { CHECKLISTS } from '../data/checklists.js'
 import { NavBar, Alert } from '../components/Shared.jsx'
 
 const TIPOS_AUDITORIA = [
-  { id: 'DESEMPENHO', label: 'Desempenho Operacional', emoji: '📊', sub: 'Acompanhamento em tempo real' },
-  { id: 'POS_SERVICO', label: 'Pós Serviço', emoji: '✅', sub: 'Após execução da atividade' },
+  { id: 'DESEMPENHO',  label: 'Desempenho Operacional', emoji: '📊', sub: 'Acompanhamento em tempo real' },
+  { id: 'POS_SERVICO', label: 'Pós Serviço',            emoji: '✅', sub: 'Após execução da atividade'  },
 ]
 
 export default function S0Selecao({ form, upd, next }) {
@@ -28,17 +28,23 @@ export default function S0Selecao({ form, upd, next }) {
         ))}
       </div>
 
-      {/* TIPO DE SERVIÇO — só aparece após escolher tipo de auditoria */}
+      {/* TIPO DE SERVIÇO — 3 botões */}
       {form.tipoAuditoria && (
         <>
           <p className="section-title">Tipo de Serviço</p>
-          <div className="type-grid">
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 18 }}>
             {Object.entries(CHECKLISTS).map(([key, val]) => (
               <button key={key}
                 className={`type-card ${form.tipoServico === key ? 'selected-blue' : ''}`}
-                onClick={() => { upd('tipoServico', key); upd('produtivo', null); upd('respostas', {}); }}>
-                <div className="type-emoji">{val.emoji}</div>
-                <div className="type-label" style={{ color: form.tipoServico === key ? '#1d4ed8' : '#374151' }}>
+                onClick={() => { upd('tipoServico', key); upd('produtivo', null); upd('respostas', {}); }}
+                style={{ padding: '14px 6px' }}>
+                <div className="type-emoji" style={{ fontSize: 24 }}>{val.emoji}</div>
+                <div className="type-label" style={{
+                  fontSize: 11,
+                  color: form.tipoServico === key ? '#1d4ed8' : '#374151',
+                  lineHeight: 1.3,
+                  marginTop: 4,
+                }}>
                   {val.label}
                 </div>
               </button>
@@ -47,7 +53,7 @@ export default function S0Selecao({ form, upd, next }) {
         </>
       )}
 
-      {/* STATUS DO SERVIÇO — só aparece após escolher tipo de serviço */}
+      {/* STATUS DO SERVIÇO */}
       {form.tipoServico && (
         <>
           <p className="section-title">Status do Serviço</p>
