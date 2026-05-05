@@ -11,7 +11,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
   const items     = cl?.items || []
   const eliminado = isDisqualified(form)
 
-  // Contagem correta considerando itens invertidos
   const sim     = items.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
   const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
   const ncItems = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false)
@@ -37,7 +36,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
       ? '✅ Pós Serviço'
       : '—'
 
-  // Banner de eliminação dinâmico por tipo de serviço
   const msgEliminado = form.tipoServico === 'CORTE'
     ? '🚫 EQUIPE NÃO EXECUTOU O CORTE'
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
@@ -243,35 +241,68 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
       {/* AÇÕES */}
       <div className="no-print" style={{ marginBottom: 40 }}>
-        {saveStatus !== 'saved' && (
-          <button className="btn-primary" onClick={salvar} disabled={saveStatus === 'saving'}
-            style={{ background: saveStatus === 'saving' ? '#64748b' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
-            {saveStatus === 'saving' ? '⏳ Salvando no banco de dados...' : '💾 Salvar Auditoria'}
+
+        {/* ANTES DE SALVAR */}
+        {saveStatus === 'idle' && (
+          <button className="btn-primary" onClick={salvar}
+            style={{ background: '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
+            💾 Salvar Auditoria
           </button>
         )}
 
+        {/* SALVANDO */}
+        {saveStatus === 'saving' && (
+          <button className="btn-primary" disabled
+            style={{ background: '#64748b', marginBottom: 10, fontSize: 16 }}>
+            ⏳ Salvando no banco de dados...
+          </button>
+        )}
+
+        {/* ERRO — mostra botão de tentar novamente */}
         {saveStatus === 'error' && (
-          <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {saveError}</div>
+          <>
+            <div className="alert alert-danger" style={{ marginBottom: 10 }}>
+              ❌ {saveError}
+            </div>
+            <button className="btn-primary" onClick={salvar}
+              style={{ background: '#dc2626', marginBottom: 10 }}>
+              🔄 Tentar novamente
+            </button>
+            {/* Permite voltar ao checklist só em caso de erro */}
+            <button className="btn-secondary" onClick={() => setStep(2)}
+              style={{ marginBottom: 10 }}>
+              ← Voltar ao Checklist
+            </button>
+          </>
         )}
 
+        {/* SUCESSO — bloqueado, só PDF e Nova Auditoria */}
         {saveStatus === 'saved' && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '14px 16px', marginBottom: 12, textAlign: 'center' }}>
-            <p style={{ color: '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>✅ Auditoria salva no banco!</p>
-            <p style={{ color: '#64748b', fontSize: 11 }}>Fotos e dados enviados ao Supabase</p>
-          </div>
+          <>
+            <div style={{
+              background: '#f0fdf4', border: '1px solid #86efac',
+              borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center',
+            }}>
+              <p style={{ color: '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+                ✅ Auditoria salva com sucesso!
+              </p>
+              <p style={{ color: '#64748b', fontSize: 11 }}>
+                Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.
+              </p>
+            </div>
+
+            <button className="btn-primary" onClick={() => window.print()}
+              style={{ background: '#7c3aed', marginBottom: 10 }}>
+              🖨️ Gerar PDF / Imprimir
+            </button>
+
+            <button className="btn-primary" onClick={nova}
+              style={{ background: '#15803d' }}>
+              + Iniciar Nova Auditoria
+            </button>
+          </>
         )}
 
-        {saveStatus === 'saved' && (
-          <button className="btn-primary" onClick={() => window.print()}
-            style={{ background: '#7c3aed', marginBottom: 10 }}>
-            🖨️ Gerar PDF / Imprimir
-          </button>
-        )}
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-          <button className="btn-secondary" onClick={() => setStep(2)}>← Checklist</button>
-          <button className="btn-primary" onClick={nova} style={{ background: '#15803d' }}>+ Nova Auditoria</button>
-        </div>
       </div>
 
     </div>
