@@ -9,10 +9,12 @@ export default function S6Resultado({ form, setForm, setStep }) {
   const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
   const cl        = CHECKLISTS[form.tipoServico]?.[tipo]
   const items     = cl?.items || []
-  const sim       = items.filter(i => form.respostas[i.id] === true).length
-  const nao       = items.filter(i => form.respostas[i.id] === false).length
-  const ncItems   = items.filter(i => form.respostas[i.id] === false)
   const eliminado = isDisqualified(form)
+
+  // Contagem correta considerando itens invertidos
+  const sim     = items.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
+  const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
+  const ncItems = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false)
 
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError,  setSaveError]  = useState('')
@@ -21,7 +23,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
     const catItems = items.filter(i => i.cat === cat)
-    const catSim   = catItems.filter(i => form.respostas[i.id] === true).length
+    const catSim   = catItems.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
     const pct      = catItems.length > 0 ? Math.round(catSim / catItems.length * 100) : 0
     return { cat, total: catItems.length, sim: catSim, pct }
   }).filter(c => c.total > 0)
@@ -35,32 +37,33 @@ export default function S6Resultado({ form, setForm, setStep }) {
       ? '✅ Pós Serviço'
       : '—'
 
+  // Banner de eliminação dinâmico por tipo de serviço
+  const msgEliminado = form.tipoServico === 'CORTE'
+    ? '🚫 EQUIPE NÃO EXECUTOU O CORTE'
+    : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
+
   const salvar = async () => {
     setSaveStatus('saving')
     setSaveError('')
     try {
       const auditId = `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
 
-      // 1. Upload das fotos
       const fotosUrls = []
       for (let i = 0; i < form.fotos.length; i++) {
         const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_${i + 1}.jpg`)
         fotosUrls.push(url)
       }
 
-      // 2. Upload assinatura Eletricista 1
       let assinaturaUrl = null
       if (form.assinatura) {
         assinaturaUrl = await uploadBase64(form.assinatura, `${auditId}/assinatura_1.png`)
       }
 
-      // 3. Upload assinatura Eletricista 2 (se assinou)
       let assinatura2Url = null
       if (form.assinatura2) {
         assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
       }
 
-      // 4. Salva no banco
       const saved = await salvarAuditoriaBD({
         fiscal:            form.fiscal,
         matricula:         form.matricula,
@@ -72,7 +75,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
         lng:               form.lng,
         data_auditoria:    form.data,
         hora_auditoria:    form.hora,
-        tipo_auditoria:    form.tipoAuditoria,       // ← NOVO
+        tipo_auditoria:    form.tipoAuditoria,
         tipo_servico:      form.tipoServico,
         produtivo:         form.produtivo,
         nota,
@@ -103,7 +106,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
       <div className="result-card" style={{ background: st.bg, borderColor: st.border }}>
         {eliminado && (
           <div style={{ fontSize: 11, background: '#dc2626', color: '#fff', padding: '3px 12px', borderRadius: 8, marginBottom: 10, display: 'inline-block', fontWeight: 700 }}>
-            🚫 EQUIPE NÃO EXECUTOU O CORTE
+            {msgEliminado}
           </div>
         )}
         <div style={{ fontSize: 50, marginBottom: 8 }}>{st.icon}</div>
@@ -149,7 +152,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
         <InfoRow label="UC"             value={form.uc} />
         <InfoRow label="Endereço"       value={form.endereco} />
         <InfoRow label="Data / Hora"    value={`${form.data} às ${form.hora}`} />
-        {form.lat             && <InfoRow label="GPS"          value={`${form.lat}, ${form.lng}`} />}
+        {form.lat              && <InfoRow label="GPS"           value={`${form.lat}, ${form.lng}`} />}
         {form.nomeEletricista  && <InfoRow label="Eletricista 1" value={form.nomeEletricista} />}
         {form.nomeEletricista2 && <InfoRow label="Eletricista 2" value={form.nomeEletricista2} />}
       </div>
@@ -163,6 +166,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
           {ncItems.map((item, i) => (
             <div key={item.id} style={{ fontSize: 12, color: '#991b1b', padding: '5px 0', borderBottom: i < ncItems.length - 1 ? '1px solid #fecaca' : 'none', lineHeight: 1.5 }}>
               <strong>{i + 1}.</strong> {item.p}
+              {item.inverted && <span style={{ fontSize: 10, color: '#7c3aed', marginLeft: 6 }}>(invertida)</span>}
             </div>
           ))}
         </div>
@@ -215,7 +219,7 @@ export default function S6Resultado({ form, setForm, setStep }) {
         </div>
       )}
 
-      {/* ASSINATURA ELETRICISTA 2 — só mostra se assinou */}
+      {/* ASSINATURA ELETRICISTA 2 */}
       {form.assinatura2 && (
         <div className="card">
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
@@ -239,7 +243,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
       {/* AÇÕES */}
       <div className="no-print" style={{ marginBottom: 40 }}>
-
         {saveStatus !== 'saved' && (
           <button className="btn-primary" onClick={salvar} disabled={saveStatus === 'saving'}
             style={{ background: saveStatus === 'saving' ? '#64748b' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
