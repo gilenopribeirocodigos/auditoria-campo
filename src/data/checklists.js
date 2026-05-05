@@ -120,5 +120,7 @@ export const FORM_INICIAL = () => {
     respostas: {}, fotos: [], observacoes: '', feedback: '',
     nomeEletricista: '', assinatura: null,    
     tipoAuditoria: '',
+    nomeEletricista2: '',
+    assinatura2: null,
   }
 }
