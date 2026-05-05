@@ -96,7 +96,7 @@ export const CHECKLISTS = {
         { id: 7,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
         { id: 8,  cat: 'QUALIDADE',     p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?' },
         { id: 9,  cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
-        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado?' },
+        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (23 min)?' },
       ],
     },
     IMPRODUTIVO: {
@@ -112,7 +112,7 @@ export const CHECKLISTS = {
         { id: 7,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
         { id: 8,  cat: 'DESEMPENHO',    p: 'Embora sendo improdutivo havia algo proativo que a equipe poderia fazer para resolver?' },
         { id: 9,  cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
-        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado?' },
+        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (12 min)?' },
       ],
     },
   },
