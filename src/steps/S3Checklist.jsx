@@ -76,18 +76,33 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
         const meta        = CAT_META[item.cat]
         const isElim      = item.disqualify
         const isInverted  = item.inverted
-
-        // Conformidade considerando lógica invertida
-        const isConforme    = isInverted ? r === false : r === true
-        const isNaoConforme = isInverted ? r === true  : r === false
-
-        // Alerta de inconsistência entre itens casados (married)
-        let marriedWarning = ''
-        if (item.marriedGroup && item.marriedRole === 'filho') {
+        
+        // Item filho casado: conforme só se resposta igual ao pai
+        // Invertido: NÃO = conforme
+        let isConforme, isNaoConforme, marriedWarning = ''
+        
+        if (item.marriedGroup && item.marriedRole === 'pai') {
+          // Pai é sempre conforme — só registra um fato
+          isConforme    = r !== undefined
+          isNaoConforme = false
+        
+        } else if (item.marriedGroup && item.marriedRole === 'filho') {
           const pai  = items.find(i => i.marriedGroup === item.marriedGroup && i.marriedRole === 'pai')
           const rPai = pai ? form.respostas[pai.id] : undefined
+          // Conforme: ambos SIM ou ambos NÃO
+          isConforme    = rPai !== undefined && r !== undefined && rPai === r
+          isNaoConforme = rPai !== undefined && r !== undefined && rPai !== r
+          // Alerta só quando há inconsistência
           if (rPai === true  && r === false) marriedWarning = '⚠️ Inconsistência: houve instalação mas não foi lançada na OS!'
           if (rPai === false && r === true)  marriedWarning = '⚠️ Inconsistência: não houve instalação mas foi lançada na OS!'
+        
+        } else if (isInverted) {
+          isConforme    = r === false
+          isNaoConforme = r === true
+        
+        } else {
+          isConforme    = r === true
+          isNaoConforme = r === false
         }
 
         return (
