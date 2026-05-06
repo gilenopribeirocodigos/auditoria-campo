@@ -2,6 +2,19 @@ import { useState, useEffect, useRef } from 'react'
 import { Field, NavBar, Alert } from '../components/Shared.jsx'
 import { supabase } from '../lib/supabase.js'
 
+// Busca fiscais na tabela usuarios por nome
+async function buscarFiscais(texto) {
+  if (!texto || texto.length < 2) return []
+  const { data } = await supabase
+    .from('usuarios')
+    .select('nome, matricula')
+    .ilike('nome', `%${texto}%`)
+    .in('status', ['ATIVO', 'RESERVA'])
+    .order('nome')
+    .limit(10)
+  return data || []
+}
+
 // Busca prefixos que contenham o texto digitado
 async function buscarPrefixos(texto) {
   if (!texto || texto.length < 2) return []
@@ -27,7 +40,7 @@ async function buscarEletricistas(prefixo) {
   return data || []
 }
 
-// Busca colaboradores por nome em TODA a tabela (digitação livre)
+// Busca colaboradores por nome em TODA a tabela
 async function buscarPorNome(texto) {
   if (!texto || texto.length < 2) return []
   const { data } = await supabase
@@ -102,10 +115,11 @@ function AutocompleteInput({ label, value, onChange, onSelect, suggestions, plac
 export default function S1Identificacao({ form, upd, setForm, next, prev }) {
   const [gpsLoading,   setGpsLoading]   = useState(false)
   const [gpsErro,      setGpsErro]      = useState('')
+  const [fiscalSugs,   setFiscalSugs]   = useState([])
   const [prefixoSugs,  setPrefixoSugs]  = useState([])
   const [elet1Sugs,    setElet1Sugs]    = useState([])
   const [elet2Sugs,    setElet2Sugs]    = useState([])
-  const [eletricistas, setEletricistas] = useState([]) // só para exibir contagem
+  const [eletricistas, setEletricistas] = useState([])
 
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat
 
@@ -118,6 +132,24 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
     }
   }, [form.prefixo])
 
+  // Autocomplete fiscal
+  const onFiscalChange = async v => {
+    upd('fiscal', v)
+    if (v.length < 2) { setFiscalSugs([]); return }
+    const res = await buscarFiscais(v)
+    setFiscalSugs(res.map(u => u.matricula ? `${u.nome} (${u.matricula})` : u.nome))
+  }
+  const onFiscalSelect = v => {
+    const match = v.match(/^(.+)\s\((\w+)\)$/)
+    if (match) {
+      upd('fiscal', match[1])
+      upd('matricula', match[2])
+    } else {
+      upd('fiscal', v)
+    }
+    setFiscalSugs([])
+  }
+
   // Autocomplete prefixo
   const onPrefixoChange = async v => {
     upd('prefixo', v)
@@ -129,7 +161,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
     setPrefixoSugs([])
   }
 
-  // Autocomplete eletricista 1 — busca em TODA a tabela por nome
+  // Autocomplete eletricista 1
   const onElet1Change = async v => {
     upd('nomeEletricista', v)
     if (v.length < 2) { setElet1Sugs([]); return }
@@ -138,16 +170,12 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
   }
   const onElet1Select = v => {
     const match = v.match(/^(.+)\s\((\d+)\)$/)
-    if (match) {
-      upd('nomeEletricista', match[1])
-      upd('matriculaEletricista1', match[2])
-    } else {
-      upd('nomeEletricista', v)
-    }
+    if (match) { upd('nomeEletricista', match[1]); upd('matriculaEletricista1', match[2]) }
+    else        { upd('nomeEletricista', v) }
     setElet1Sugs([])
   }
 
-  // Autocomplete eletricista 2 — busca em TODA a tabela por nome
+  // Autocomplete eletricista 2
   const onElet2Change = async v => {
     upd('nomeEletricista2', v)
     if (v.length < 2) { setElet2Sugs([]); return }
@@ -156,16 +184,11 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
   }
   const onElet2Select = v => {
     const match = v.match(/^(.+)\s\((\d+)\)$/)
-    if (match) {
-      upd('nomeEletricista2', match[1])
-      upd('matriculaEletricista2', match[2])
-    } else {
-      upd('nomeEletricista2', v)
-    }
+    if (match) { upd('nomeEletricista2', match[1]); upd('matriculaEletricista2', match[2]) }
+    else        { upd('nomeEletricista2', v) }
     setElet2Sugs([])
   }
 
-  // Captura GPS + endereço automático
   const capturarGPS = () => {
     if (!navigator.geolocation) { setGpsErro('GPS não disponível.'); return }
     setGpsLoading(true); setGpsErro('')
@@ -177,10 +200,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
         setForm(f => ({ ...f, lat, lng, gpsStatus: 'ok', endereco: endAuto || f.endereco }))
         setGpsLoading(false)
       },
-      () => {
-        setGpsErro('Não foi possível obter GPS. Verifique as permissões.')
-        setGpsLoading(false)
-      },
+      () => { setGpsErro('Não foi possível obter GPS. Verifique as permissões.'); setGpsLoading(false) },
       { timeout: 12000, enableHighAccuracy: true }
     )
   }
@@ -193,10 +213,24 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
         <Field label="Data" value={form.data} onChange={v => upd('data', v)} type="date" />
         <Field label="Hora" value={form.hora} onChange={v => upd('hora', v)} type="time" />
       </div>
-      <Field label="Nome do Fiscal" value={form.fiscal}
-        onChange={v => upd('fiscal', v)} placeholder="Nome completo" required />
-      <Field label="Matrícula" value={form.matricula}
-        onChange={v => upd('matricula', v)} placeholder="Ex: 12345" required />
+
+      <AutocompleteInput
+        label="Nome do Fiscal"
+        value={form.fiscal}
+        onChange={onFiscalChange}
+        onSelect={onFiscalSelect}
+        suggestions={fiscalSugs}
+        placeholder="Digite o nome para buscar"
+        required
+      />
+
+      <Field
+        label="Matrícula"
+        value={form.matricula}
+        onChange={v => upd('matricula', v)}
+        placeholder="Preenchida automaticamente ou manualmente"
+        required
+      />
 
       {/* DADOS DO SERVIÇO */}
       <p className="section-title" style={{ marginTop: 18 }}>Dados do Serviço</p>
@@ -213,13 +247,11 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Field label="Nº da OS" value={form.os}
-          onChange={v => upd('os', v)} placeholder="Ordem de Serviço" required />
-        <Field label="Nº da UC" value={form.uc}
-          onChange={v => upd('uc', v)} placeholder="Unidade Consumidora" required />
+        <Field label="Nº da OS" value={form.os} onChange={v => upd('os', v)} placeholder="Ordem de Serviço" required />
+        <Field label="Nº da UC" value={form.uc} onChange={v => upd('uc', v)} placeholder="Unidade Consumidora" required />
       </div>
 
-      {/* ELETRICISTAS — busca livre em toda a tabela */}
+      {/* ELETRICISTAS */}
       <p className="section-title" style={{ marginTop: 18 }}>Eletricistas da Equipe</p>
 
       <AutocompleteInput
@@ -251,51 +283,32 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
         color: form.lat ? '#15803d' : '#1d4ed8',
         fontWeight: 700, fontSize: 14, cursor: 'pointer',
       }}>
-        {gpsLoading
-          ? '📡 Capturando GPS...'
-          : form.lat
-            ? `📍 GPS capturado — ${form.lat}, ${form.lng}`
-            : '📍 Capturar GPS e Endereço Automático'}
+        {gpsLoading ? '📡 Capturando GPS...'
+          : form.lat ? `📍 GPS capturado — ${form.lat}, ${form.lng}`
+          : '📍 Capturar GPS e Endereço Automático'}
       </button>
 
-      {gpsErro && (
-        <div className="alert alert-danger" style={{ marginBottom: 10 }}>{gpsErro}</div>
-      )}
+      {gpsErro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>{gpsErro}</div>}
 
       <div className="form-group">
         <label className="form-label">
           Endereço {form.lat && <span style={{ color: '#16a34a', fontSize: 10 }}>✓ preenchido pelo GPS</span>}
         </label>
-        <input
-          type="text"
-          value={form.endereco}
-          onChange={e => upd('endereco', e.target.value)}
-          placeholder="Clique em Capturar GPS ou preencha manualmente"
-          className="form-input"
-        />
+        <input type="text" value={form.endereco} onChange={e => upd('endereco', e.target.value)}
+          placeholder="Clique em Capturar GPS ou preencha manualmente" className="form-input" />
       </div>
 
       {form.lat && (
-        <div style={{
-          background: '#f0fdf4', border: '1px solid #86efac',
-          borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12,
-        }}>
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12 }}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-            <div>
-              <span style={{ color: '#64748b' }}>Latitude:</span><br />
-              <strong style={{ color: '#15803d' }}>{form.lat}</strong>
-            </div>
-            <div>
-              <span style={{ color: '#64748b' }}>Longitude:</span><br />
-              <strong style={{ color: '#15803d' }}>{form.lng}</strong>
-            </div>
+            <div><span style={{ color: '#64748b' }}>Latitude:</span><br /><strong style={{ color: '#15803d' }}>{form.lat}</strong></div>
+            <div><span style={{ color: '#64748b' }}>Longitude:</span><br /><strong style={{ color: '#15803d' }}>{form.lng}</strong></div>
           </div>
         </div>
       )}
 
       <Alert type={form.lat ? 'info' : 'warning'}>
-        {form.lat
-          ? '✅ GPS capturado e registrado como evidência.'
+        {form.lat ? '✅ GPS capturado e registrado como evidência.'
           : '⚠️ GPS obrigatório! Clique em "Capturar GPS" para continuar.'}
       </Alert>
 
