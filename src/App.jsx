@@ -2,11 +2,11 @@ import { useState } from 'react'
 import { FORM_INICIAL } from './data/checklists.js'
 import { getUsuarioLogado, fazerLogout, isAdmin } from './lib/auth.js'
 
-import Login          from './pages/Login.jsx'
-import GestaoUsuarios from './pages/GestaoUsuarios.jsx'
+import Login           from './pages/Login.jsx'
+import GestaoUsuarios  from './pages/GestaoUsuarios.jsx'
+import ImportarEquipes from './pages/ImportarEquipes.jsx'
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
-import S2GPS           from './steps/S2GPS.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
 import S4Fotos         from './steps/S4Fotos.jsx'
 import S5Assinatura    from './steps/S5Assinatura.jsx'
@@ -15,10 +15,10 @@ import S6Resultado     from './steps/S6Resultado.jsx'
 const STEPS = ['Serviço', 'Identificação', 'Checklist', 'Evidências', 'Assinatura', 'Resultado']
 
 export default function App() {
-  const [usuario,  setUsuario]  = useState(getUsuarioLogado)
-  const [tela,     setTela]     = useState('home') // home | auditoria | gestao
-  const [step,     setStep]     = useState(0)
-  const [form,     setForm]     = useState(FORM_INICIAL())
+  const [usuario, setUsuario] = useState(getUsuarioLogado)
+  const [tela,    setTela]    = useState('home') // home | auditoria | gestao | importar
+  const [step,    setStep]    = useState(0)
+  const [form,    setForm]    = useState(FORM_INICIAL())
 
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
@@ -27,12 +27,17 @@ export default function App() {
   const logout = () => { fazerLogout(); setUsuario(null) }
   const iniciarAuditoria = () => { setForm(FORM_INICIAL()); setStep(0); setTela('auditoria') }
 
-  // Não logado → tela de login
+  // Não logado → login
   if (!usuario) return <Login onLogin={u => setUsuario(u)} />
 
-  // Gestão de usuários (só ADMIN)
+  // Gestão de usuários
   if (tela === 'gestao') {
     return <GestaoUsuarios usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  }
+
+  // Importar equipes
+  if (tela === 'importar') {
+    return <ImportarEquipes onVoltar={() => setTela('home')} />
   }
 
   // Home
@@ -44,6 +49,8 @@ export default function App() {
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', padding: 24,
       }}>
+
+        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 40 }}>
           <div style={{ fontSize: 56, marginBottom: 12 }}>⚡</div>
           <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>
@@ -57,7 +64,8 @@ export default function App() {
         {/* Card do usuário */}
         <div style={{
           background: 'rgba(255,255,255,0.1)', borderRadius: 14,
-          padding: '14px 20px', marginBottom: 32, width: '100%', maxWidth: 380,
+          padding: '14px 20px', marginBottom: 32,
+          width: '100%', maxWidth: 380,
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         }}>
           <div>
@@ -74,8 +82,10 @@ export default function App() {
           </button>
         </div>
 
-        {/* Botões principais */}
+        {/* Botões */}
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Todos os perfis */}
           <button onClick={iniciarAuditoria} style={{
             background: '#2563eb', color: '#fff', border: 'none',
             padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
@@ -84,14 +94,25 @@ export default function App() {
             📋 Iniciar Auditoria
           </button>
 
+          {/* Só ADMIN */}
           {isAdmin(usuario) && (
-            <button onClick={() => setTela('gestao')} style={{
-              background: 'rgba(124,58,237,0.9)', color: '#fff', border: 'none',
-              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            }}>
-              👥 Gestão de Usuários
-            </button>
+            <>
+              <button onClick={() => setTela('gestao')} style={{
+                background: 'rgba(124,58,237,0.9)', color: '#fff', border: 'none',
+                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              }}>
+                👥 Gestão de Usuários
+              </button>
+
+              <button onClick={() => setTela('importar')} style={{
+                background: 'rgba(15,118,110,0.9)', color: '#fff', border: 'none',
+                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              }}>
+                📥 Importar Equipes (CSV)
+              </button>
+            </>
           )}
         </div>
 
@@ -118,9 +139,11 @@ export default function App() {
             🏠 Home
           </button>
         </div>
+
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>
           Auditoria Operacional de Campo
         </div>
+
         <div style={{ display: 'flex', gap: 3, marginBottom: 6 }}>
           {STEPS.map((_, i) => (
             <div key={i} style={{
@@ -130,6 +153,7 @@ export default function App() {
             }} />
           ))}
         </div>
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontSize: 12, opacity: 0.75 }}>
             {STEPS[step]} — {step + 1}/{STEPS.length}
