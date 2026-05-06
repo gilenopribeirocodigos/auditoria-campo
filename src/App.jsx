@@ -9,6 +9,7 @@ import ImportarEquipes      from './pages/ImportarEquipes.jsx'
 import GestaoPauta          from './pages/GestaoPauta.jsx'
 import HistoricoAuditorias  from './pages/HistoricoAuditorias.jsx'
 import Metas                from './pages/Metas.jsx'
+import FeedbacksPDF         from './pages/FeedbacksPDF.jsx'
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -60,11 +61,12 @@ export default function App() {
   }
 
   if (!usuario) return <Login onLogin={u => setUsuario(u)} />
-  if (tela === 'gestao')    return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar')  return <ImportarEquipes     onVoltar={() => setTela('home')} />
-  if (tela === 'pauta')     return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'historico') return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'metas')     return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'gestao')     return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'importar')   return <ImportarEquipes     onVoltar={() => setTela('home')} />
+  if (tela === 'pauta')      return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'historico')  return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'metas')      return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'feedbacks')  return <FeedbacksPDF        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -122,6 +124,15 @@ export default function App() {
               }}>
                 🎯 Metas por Fiscal
               </button>
+
+              <button onClick={() => setTela('feedbacks')} style={{
+                background: 'rgba(124,58,237,0.85)', color: '#fff', border: 'none',
+                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              }}>
+                💬 Feedbacks em PDF
+              </button>
+
               <button onClick={() => setTela('pauta')} style={{
                 background: 'rgba(217,119,6,0.9)', color: '#fff', border: 'none',
                 padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
@@ -129,6 +140,7 @@ export default function App() {
               }}>
                 📋 Pauta de Fiscalização
               </button>
+
               <button onClick={() => setTela('gestao')} style={{
                 background: 'rgba(124,58,237,0.9)', color: '#fff', border: 'none',
                 padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
@@ -136,6 +148,7 @@ export default function App() {
               }}>
                 👥 Gestão de Usuários
               </button>
+
               <button onClick={() => setTela('importar')} style={{
                 background: 'rgba(15,118,110,0.9)', color: '#fff', border: 'none',
                 padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
