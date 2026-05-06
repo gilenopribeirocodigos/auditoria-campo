@@ -19,8 +19,8 @@ async function reverseGeocode(lat, lng) {
 export default function S1Identificacao({ form, upd, setForm, next, prev }) {
   const [gpsLoading, setGpsLoading] = useState(false)
   const [gpsErro, setGpsErro] = useState('')
-
-  const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc
+  
+  const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat
 
   const capturarGPS = () => {
     if (!navigator.geolocation) { setGpsErro('GPS não disponível neste dispositivo.'); return }
@@ -118,10 +118,12 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
             <div><span style={{ color: '#64748b' }}>Longitude:</span><br /><strong style={{ color: '#15803d' }}>{form.lng}</strong></div>
           </div>
         </div>
-      )}
+      )}    
 
-      <Alert type="warning">
-        ⚠️ O GPS captura latitude, longitude e endereço automaticamente como evidência. Clique antes de prosseguir.
+      <Alert type={form.lat ? 'info' : 'warning'}>
+        {form.lat
+          ? `✅ GPS capturado — ${form.lat}, ${form.lng}`
+          : '⚠️ GPS obrigatório! Clique em "Capturar GPS" para continuar.'}
       </Alert>
 
       <div style={{ height: 80 }} />
