@@ -3,7 +3,7 @@ import { SectionTitle, NavBar, Textarea } from '../components/Shared.jsx'
 const MIN_FOTOS = 2
 
 // Aplica timestamp + GPS diretamente na imagem via Canvas
-function processarFoto(file, lat, lng) {
+function processarFoto(file, lat, lng, prefixo, fiscal) {
   return new Promise(resolve => {
     const reader = new FileReader()
     reader.onloadend = () => {
@@ -24,8 +24,11 @@ function processarFoto(file, lat, lng) {
         const fontSize = Math.max(18, Math.round(img.width * 0.032))
         const pad = 10
         const lineH = fontSize + 8
+        
         const linhas = [ts]
         if (lat && lng) linhas.push(`GPS: ${lat}, ${lng}`)
+        if (prefixo)   linhas.push(`Equipe: ${prefixo}`)
+        if (fiscal)    linhas.push(`Fiscal: ${fiscal}`)
 
         const boxH = linhas.length * lineH + pad * 2
         const boxY = img.height - boxH - 10
@@ -56,8 +59,8 @@ export default function S4Fotos({ form, upd, setForm, next, prev }) {
 
   const addFoto = async e => {
     const files = Array.from(e.target.files)
-    for (const file of files) {
-      const foto = await processarFoto(file, form.lat, form.lng)
+    for (const file of files) {      
+      const foto = await processarFoto(file, form.lat, form.lng, form.prefixo, form.fiscal)
       setForm(f => ({ ...f, fotos: [...f.fotos, foto] }))
     }
     e.target.value = ''
