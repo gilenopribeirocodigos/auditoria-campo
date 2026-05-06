@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 function calcMesAtual() {
@@ -16,22 +16,44 @@ const STATUS_COR = {
 
 export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
   const [filtros,    setFiltros]    = useState({
-    dataIni:   calcMesAtual().ini,
-    dataFim:   calcMesAtual().fim,
-    agruparPor: 'equipe', // 'equipe' | 'fiscal'
+    dataIni:    calcMesAtual().ini,
+    dataFim:    calcMesAtual().fim,
+    agruparPor: 'equipe',
+    fiscal:     '',
   })
   const [auditorias, setAuditorias] = useState([])
   const [loading,    setLoading]    = useState(false)
   const [gerado,     setGerado]     = useState(false)
-  const printRef = useRef(null)
+  const [fiscalSugs, setFiscalSugs] = useState([])
+
+  const printRef  = useRef(null)
+  const fiscalRef = useRef(null)
+
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    const handler = e => {
+      if (fiscalRef.current && !fiscalRef.current.contains(e.target)) setFiscalSugs([])
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
+
+  const onFiscalChange = async v => {
+    upd('fiscal', v)
+    if (v.length < 2) { setFiscalSugs([]); return }
+    const { data } = await supabase
+      .from('auditorias').select('fiscal')
+      .ilike('fiscal', `%${v}%`).limit(8)
+    if (data) setFiscalSugs([...new Set(data.map(r => r.fiscal).filter(Boolean))])
+  }
 
   const buscar = async () => {
     setLoading(true)
     setGerado(false)
     try {
-      const { data, error } = await supabase
+      let q = supabase
         .from('auditorias')
         .select('*')
         .gte('data_auditoria', filtros.dataIni)
@@ -41,6 +63,9 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
         .order('prefixo')
         .order('data_auditoria')
 
+      if (filtros.fiscal) q = q.ilike('fiscal', `%${filtros.fiscal}%`)
+
+      const { data, error } = await q
       if (error) throw error
       setAuditorias(data || [])
       setGerado(true)
@@ -54,11 +79,9 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
 
   const imprimirPDF = () => window.print()
 
-  const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
-  const formatPeriodo = () =>
-    `${formatData(filtros.dataIni)} a ${formatData(filtros.dataFim)}`
+  const formatData    = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+  const formatPeriodo = () => `${formatData(filtros.dataIni)} a ${formatData(filtros.dataFim)}`
 
-  // Agrupa por equipe ou fiscal
   const grupos = (() => {
     if (!auditorias.length) return []
     const chave = filtros.agruparPor === 'equipe' ? 'prefixo' : 'fiscal'
@@ -74,7 +97,6 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* PRINT STYLE */}
       <style>{`
         @media print {
           .no-print { display: none !important; }
@@ -108,16 +130,19 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
             Filtros
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
               <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)}
                 className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
             </div>
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
               <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)}
                 className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
             </div>
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Agrupar por</label>
               <select value={filtros.agruparPor} onChange={e => upd('agruparPor', e.target.value)}
@@ -126,7 +151,62 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                 <option value="fiscal">Fiscal</option>
               </select>
             </div>
+
+            {/* FISCAL COM AUTOCOMPLETE */}
+            <div ref={fiscalRef} style={{ position: 'relative' }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
+                Fiscal <span style={{ fontWeight: 400, opacity: 0.7 }}>(opcional)</span>
+              </label>
+              <input
+                type="text"
+                value={filtros.fiscal}
+                onChange={e => onFiscalChange(e.target.value)}
+                onFocus={() => fiscalSugs.length > 0 && true}
+                placeholder="Todos os fiscais..."
+                className="form-input"
+                style={{ fontSize: 13, padding: '8px 10px' }}
+              />
+              {filtros.fiscal && (
+                <button onClick={() => { upd('fiscal', ''); setFiscalSugs([]) }} style={{
+                  position: 'absolute', right: 8, top: 30, background: 'none', border: 'none',
+                  color: '#94a3b8', cursor: 'pointer', fontSize: 16, lineHeight: 1,
+                }}>×</button>
+              )}
+              {fiscalSugs.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                  background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
+                }}>
+                  {fiscalSugs.map((s, i) => (
+                    <button key={i} onClick={() => { upd('fiscal', s); setFiscalSugs([]) }} style={{
+                      display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
+                      background: 'none', border: 'none',
+                      borderBottom: i < fiscalSugs.length - 1 ? '1px solid #f1f5f9' : 'none',
+                      fontSize: 13, color: '#1e293b', cursor: 'pointer',
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >{s}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
           </div>
+
+          {/* Badge do fiscal selecionado */}
+          {filtros.fiscal && (
+            <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 12, color: '#64748b' }}>Filtrando por fiscal:</span>
+              <span style={{
+                background: '#dbeafe', color: '#1d4ed8', padding: '3px 12px',
+                borderRadius: 20, fontSize: 12, fontWeight: 700,
+              }}>
+                👤 {filtros.fiscal}
+              </span>
+            </div>
+          )}
 
           <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
             <button onClick={buscar} disabled={loading} style={{
@@ -147,7 +227,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
 
           {gerado && auditorias.length === 0 && (
             <div style={{ marginTop: 14, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#15803d', fontWeight: 600 }}>
-              ✅ Nenhum feedback encontrado no período selecionado.
+              ✅ Nenhum feedback encontrado para os filtros selecionados.
             </div>
           )}
         </div>
@@ -157,7 +237,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
       {gerado && auditorias.length > 0 && (
         <div ref={printRef} className="print-area" style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px 60px' }}>
 
-          {/* Cabeçalho do relatório — aparece no PDF */}
+          {/* Cabeçalho do relatório */}
           <div style={{
             background: '#1e3a5f', color: '#fff', borderRadius: 12,
             padding: '20px 24px', marginBottom: 24,
@@ -171,6 +251,11 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                 <p style={{ fontSize: 13, marginTop: 8, fontWeight: 600 }}>
                   Período: {formatPeriodo()}
                 </p>
+                {filtros.fiscal && (
+                  <p style={{ fontSize: 12, marginTop: 4, fontWeight: 600, opacity: 0.9 }}>
+                    Fiscal: {filtros.fiscal}
+                  </p>
+                )}
                 <p style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>
                   Agrupado por: {filtros.agruparPor === 'equipe' ? 'Equipe (Prefixo)' : 'Fiscal'}
                 </p>
@@ -189,18 +274,15 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
           {grupos.map(([grupo, items], gi) => (
             <div key={grupo} style={{ marginBottom: 28 }} className={gi > 0 && gi % 3 === 0 ? 'page-break' : ''}>
 
-              {/* Cabeçalho do grupo */}
               <div style={{
                 background: '#1e3a5f', color: '#fff',
                 borderRadius: '10px 10px 0 0', padding: '12px 18px',
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
-                <div>
-                  <span style={{ fontSize: 14, fontWeight: 800 }}>
-                    {filtros.agruparPor === 'equipe' ? '🚗 ' : '👤 '}
-                    {grupo}
-                  </span>
-                </div>
+                <span style={{ fontSize: 14, fontWeight: 800 }}>
+                  {filtros.agruparPor === 'equipe' ? '🚗 ' : '👤 '}
+                  {grupo}
+                </span>
                 <div style={{ display: 'flex', gap: 12, fontSize: 12 }}>
                   <span style={{ background: 'rgba(255,255,255,0.15)', padding: '3px 10px', borderRadius: 20 }}>
                     {items.length} feedback{items.length > 1 ? 's' : ''}
@@ -211,7 +293,6 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                 </div>
               </div>
 
-              {/* Itens do grupo */}
               <div style={{ border: '1.5px solid #e2e8f0', borderTop: 'none', borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
                 {items.map((a, idx) => {
                   const sc = STATUS_COR[a.status] || { bg: '#f1f5f9', color: '#374151', border: '#e2e8f0' }
@@ -221,7 +302,6 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                       borderBottom: idx < items.length - 1 ? '1px solid #f1f5f9' : 'none',
                       padding: '14px 18px',
                     }}>
-                      {/* Linha 1: info da auditoria */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, flexWrap: 'wrap', gap: 8 }}>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                           <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
@@ -242,16 +322,14 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                           <span>📅 {formatData(a.data_auditoria)}</span>
                           <span>OS: {a.os}</span>
                           <span style={{
-                            fontSize: 13, fontWeight: 800,
-                            color: sc.color, background: sc.bg,
-                            padding: '1px 8px', borderRadius: 6,
+                            fontSize: 13, fontWeight: 800, color: sc.color,
+                            background: sc.bg, padding: '1px 8px', borderRadius: 6,
                           }}>
                             {Number(a.nota).toFixed(0)} pts
                           </span>
                         </div>
                       </div>
 
-                      {/* Feedback */}
                       <div style={{
                         background: '#fffbeb', border: '1px solid #fcd34d',
                         borderRadius: 8, padding: '10px 14px',
@@ -265,7 +343,6 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                         </p>
                       </div>
 
-                      {/* Observações (se houver) */}
                       {a.observacoes && (
                         <div style={{
                           background: '#f0f9ff', border: '1px solid #bae6fd',
@@ -280,10 +357,9 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                         </div>
                       )}
 
-                      {/* Eletricistas */}
                       {(a.nome_eletricista || a.nome_eletricista2) && (
                         <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8' }}>
-                          {a.nome_eletricista && <span>👷 {a.nome_eletricista}</span>}
+                          {a.nome_eletricista  && <span>👷 {a.nome_eletricista}</span>}
                           {a.nome_eletricista2 && <span style={{ marginLeft: 12 }}>👷 {a.nome_eletricista2}</span>}
                         </div>
                       )}
@@ -294,7 +370,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
             </div>
           ))}
 
-          {/* Rodapé do relatório */}
+          {/* Rodapé */}
           <div style={{
             borderTop: '2px solid #e2e8f0', paddingTop: 16, marginTop: 8,
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
