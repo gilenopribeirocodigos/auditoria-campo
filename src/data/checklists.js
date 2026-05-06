@@ -175,5 +175,7 @@ export const FORM_INICIAL = () => {
     tipoAuditoria: '',
     nomeEletricista2: '',
     assinatura2: null,
+    matriculaEletricista1: '',
+    matriculaEletricista2: '',
   }
 }
