@@ -3,7 +3,7 @@ import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, FORM_INICIAL
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD } from '../lib/supabase.js'
 
-export default function S6Resultado({ form, setForm, setStep }) {
+export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
@@ -15,10 +15,10 @@ export default function S6Resultado({ form, setForm, setStep }) {
   const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
   const ncItems = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false)
 
-  const [saveStatus,    setSaveStatus]    = useState('idle')
-  const [saveError,     setSaveError]     = useState('')
-  const [savedId,       setSavedId]       = useState(null)
-  const [capturando,    setCapturando]    = useState(false)
+  const [saveStatus, setSaveStatus] = useState('idle')
+  const [saveError,  setSaveError]  = useState('')
+  const [savedId,    setSavedId]    = useState(null)
+  const [capturando, setCapturando] = useState(false)
 
   const printAreaRef = useRef(null)
 
@@ -43,31 +43,17 @@ export default function S6Resultado({ form, setForm, setStep }) {
     ? '🚫 EQUIPE NÃO EXECUTOU O CORTE'
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
-  // ============================================================
-  // GERAR IMAGEM PARA WHATSAPP
-  // ============================================================
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
-      // Import dinâmico — só carrega quando o botão é clicado
       const html2canvas = (await import('html2canvas')).default
-
       const elemento = printAreaRef.current
       if (!elemento) return
-
       const canvas = await html2canvas(elemento, {
-        scale: 2,                    // Alta resolução
-        useCORS: true,               // Permite imagens externas (fotos do Supabase)
-        allowTaint: true,
-        backgroundColor: '#f0f4f8', // Fundo igual à tela
-        logging: false,
-        windowWidth: 480,            // Largura mobile
+        scale: 2, useCORS: true, allowTaint: true,
+        backgroundColor: '#f0f4f8', logging: false, windowWidth: 480,
       })
-
-      const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.png`
-        .replace(/\s+/g, '_')
-
-      // Tenta compartilhamento nativo (Android/iPhone)
+      const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.png`.replace(/\s+/g, '_')
       if (navigator.share && navigator.canShare) {
         canvas.toBlob(async blob => {
           const file = new File([blob], nomeArquivo, { type: 'image/png' })
@@ -78,12 +64,10 @@ export default function S6Resultado({ form, setForm, setStep }) {
               text: `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
             })
           } else {
-            // Fallback: download
             baixarImagem(canvas, nomeArquivo)
           }
         }, 'image/png')
       } else {
-        // Desktop ou browser sem share API: faz download
         baixarImagem(canvas, nomeArquivo)
       }
     } catch (err) {
@@ -101,9 +85,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
     link.click()
   }
 
-  // ============================================================
-  // SALVAR NO BANCO
-  // ============================================================
   const salvar = async () => {
     setSaveStatus('saving')
     setSaveError('')
@@ -154,6 +135,10 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
       setSavedId(saved.id)
       setSaveStatus('saved')
+
+      // ← NOVO: avisa o App que a auditoria foi salva (para concluir pauta)
+      if (onAuditoriaSalva) onAuditoriaSalva(saved.id)
+
     } catch (err) {
       console.error('Erro ao salvar:', err)
       setSaveError(err.message || 'Erro ao salvar. Verifique a conexão.')
@@ -163,7 +148,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
 
   return (
     <div>
-      {/* ============ ÁREA CAPTURADA PELA IMAGEM ============ */}
       <div ref={printAreaRef} className="print-area"
         style={{ background: '#f0f4f8', padding: 16, borderRadius: 12 }}>
 
@@ -307,7 +291,6 @@ export default function S6Resultado({ form, setForm, setStep }) {
         </div>
 
       </div>
-      {/* ============ FIM DA ÁREA CAPTURADA ============ */}
 
       {/* AÇÕES */}
       <div className="no-print" style={{ marginBottom: 40, marginTop: 16 }}>
@@ -353,17 +336,11 @@ export default function S6Resultado({ form, setForm, setStep }) {
               </p>
             </div>
 
-            {/* BOTÃO WHATSAPP */}
-            <button
-              className="btn-primary"
-              onClick={gerarImagemWhatsApp}
-              disabled={capturando}
-              style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}
-            >
+            <button className="btn-primary" onClick={gerarImagemWhatsApp} disabled={capturando}
+              style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}>
               {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
             </button>
 
-            {/* BOTÃO PDF */}
             <button className="btn-primary" onClick={() => window.print()}
               style={{ background: '#7c3aed', marginBottom: 10 }}>
               🖨️ Gerar PDF / Imprimir
