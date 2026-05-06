@@ -8,6 +8,7 @@ import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
 import ImportarEquipes      from './pages/ImportarEquipes.jsx'
 import GestaoPauta          from './pages/GestaoPauta.jsx'
 import HistoricoAuditorias  from './pages/HistoricoAuditorias.jsx'
+import Metas                from './pages/Metas.jsx'
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -29,7 +30,6 @@ export default function App() {
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
   const prev = () => setStep(s => s - 1)
-
   const logout = () => { fazerLogout(); setUsuario(null) }
 
   const iniciarAuditoria = async () => {
@@ -55,9 +55,7 @@ export default function App() {
         await criarProximaRecorrencia(pautaAtiva)
         setPautaAtiva(null)
         setPautasHoje(prev => prev.filter(p => p.id !== pautaAtiva.id))
-      } catch (e) {
-        console.error('Erro ao concluir pauta:', e)
-      }
+      } catch (e) { console.error('Erro ao concluir pauta:', e) }
     }
   }
 
@@ -66,8 +64,8 @@ export default function App() {
   if (tela === 'importar')  return <ImportarEquipes     onVoltar={() => setTela('home')} />
   if (tela === 'pauta')     return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'historico') return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'metas')     return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
-  // Home
   if (tela === 'home') {
     return (
       <div style={{
@@ -99,7 +97,6 @@ export default function App() {
 
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          {/* TODOS OS PERFIS */}
           <button onClick={iniciarAuditoria} disabled={loadingPauta} style={{
             background: loadingPauta ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
             padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
@@ -108,7 +105,6 @@ export default function App() {
             {loadingPauta ? '⏳ Verificando pautas...' : '📋 Iniciar Auditoria'}
           </button>
 
-          {/* HISTÓRICO — visível para todos */}
           <button onClick={() => setTela('historico')} style={{
             background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
@@ -117,9 +113,15 @@ export default function App() {
             📁 Histórico de Auditorias
           </button>
 
-          {/* ADMIN */}
           {isAdmin(usuario) && (
             <>
+              <button onClick={() => setTela('metas')} style={{
+                background: 'rgba(5,150,105,0.9)', color: '#fff', border: 'none',
+                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              }}>
+                🎯 Metas por Fiscal
+              </button>
               <button onClick={() => setTela('pauta')} style={{
                 background: 'rgba(217,119,6,0.9)', color: '#fff', border: 'none',
                 padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
@@ -150,7 +152,6 @@ export default function App() {
     )
   }
 
-  // Fluxo de auditoria
   const stepProps = { form, upd, setForm, next, prev, setStep }
   return (
     <div className="app-shell">
