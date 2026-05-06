@@ -1,10 +1,9 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
 
-const TIPOS_SERVICO   = ['CORTE', 'ANEXO', 'RELIGA']
-const TIPOS_AUDITORIA = ['DESEMPENHO', 'POS_SERVICO']
-const RECORRENCIAS    = ['UNICA', 'DIARIA', 'SEMANAL']
+const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA']
+const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
 
 const FORM_VAZIO = {
@@ -30,25 +29,29 @@ function calcStatus(p) {
 }
 
 export default function GestaoPauta({ usuarioLogado, onVoltar }) {
-  const [pautas,    setPautas]    = useState([])
-  const [fiscais,   setFiscais]   = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [modal,     setModal]     = useState(false)
-  const [editando,  setEditando]  = useState(null)
-  const [formData,  setFormData]  = useState(FORM_VAZIO)
-  const [salvando,  setSalvando]  = useState(false)
-  const [erro,      setErro]      = useState('')
-  const [filtro,    setFiltro]    = useState('TODOS')
-  const [csvModal,  setCsvModal]  = useState(false)
-  const [csvTexto,  setCsvTexto]  = useState('')
-  const [csvStatus, setCsvStatus] = useState('')
+  const [pautas,      setPautas]      = useState([])
+  const [fiscais,     setFiscais]     = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [modal,       setModal]       = useState(false)
+  const [editando,    setEditando]    = useState(null)
+  const [formData,    setFormData]    = useState(FORM_VAZIO)
+  const [salvando,    setSalvando]    = useState(false)
+  const [erro,        setErro]        = useState('')
+  const [filtro,      setFiltro]      = useState('TODOS')
+  const [csvModal,    setCsvModal]    = useState(false)
+  const [csvTexto,    setCsvTexto]    = useState('')
+  const [csvStatus,   setCsvStatus]   = useState('')
+  const [prefixoSugs, setPrefixoSugs] = useState([])
+  const prefixoRef = useRef(null)
 
   const carregar = async () => {
     setLoading(true)
     try {
       const todas = await listarPautas()
       setPautas(todas)
-      const { data } = await supabase.from('usuarios').select('nome, login').eq('status', 'ATIVO').order('nome')
+      const { data } = await supabase
+        .from('usuarios').select('nome, login')
+        .eq('status', 'ATIVO').order('nome')
       setFiscais(data || [])
     } catch (e) { setErro(e.message) }
     finally { setLoading(false) }
@@ -56,10 +59,32 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [])
 
-  const upd     = (k, v) => setFormData(f => ({ ...f, [k]: v }))
-  const abrirNovo    = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setModal(true) }
-  const abrirEditar  = p  => { setEditando(p); setFormData({ ...p }); setErro(''); setModal(true) }
-  const fechar       = () => { setModal(false); setErro('') }
+  // Fecha dropdown ao clicar fora
+  useEffect(() => {
+    const handler = e => {
+      if (prefixoRef.current && !prefixoRef.current.contains(e.target)) setPrefixoSugs([])
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
+  const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setPrefixoSugs([]); setModal(true) }
+  const abrirEditar = p  => { setEditando(p); setFormData({ ...p }); setErro(''); setPrefixoSugs([]); setModal(true) }
+  const fechar      = () => { setModal(false); setErro(''); setPrefixoSugs([]) }
+
+  // Autocomplete prefixo
+  const onPrefixoChange = async v => {
+    upd('prefixo', v)
+    if (v.length < 2) { setPrefixoSugs([]); return }
+    const { data } = await supabase
+      .from('estrutura_equipes')
+      .select('prefixo')
+      .ilike('prefixo', `%${v}%`)
+      .order('prefixo')
+      .limit(10)
+    if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
+  }
 
   const salvar = async () => {
     if (!formData.prefixo || !formData.fiscal_login || !formData.data_prevista) {
@@ -86,7 +111,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     catch (e) { alert(e.message) }
   }
 
-  // WhatsApp — monta mensagem para pautas vencidas
   const whatsappVencidas = () => {
     const vencidas = pautas.filter(p => calcStatus(p) === 'VENCIDA')
     if (vencidas.length === 0) { alert('Não há pautas vencidas!'); return }
@@ -99,7 +123,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
-  // Importar CSV
   const importarCsv = async () => {
     setCsvStatus('importando')
     try {
@@ -132,8 +155,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   const pautasFiltradas = pautas.filter(p => {
     const s = calcStatus(p)
-    if (filtro === 'TODOS')    return true
-    if (filtro === 'VENCIDA')  return s === 'VENCIDA'
+    if (filtro === 'TODOS')   return true
+    if (filtro === 'VENCIDA') return s === 'VENCIDA'
     return p.status === filtro
   })
 
@@ -160,15 +183,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Equipes obrigatórias para fiscalização</p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              {['PENDENTE','VENCIDA','CONCLUIDA'].map(s => {
-                const sc = statusCor(s)
-                return (
-                  <div key={s} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
-                    <div style={{ fontSize: 16, fontWeight: 800 }}>{counts[s]}</div>
-                    <div style={{ fontSize: 9, opacity: 0.8 }}>{s}</div>
-                  </div>
-                )
-              })}
+              {['PENDENTE','VENCIDA','CONCLUIDA'].map(s => (
+                <div key={s} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 16, fontWeight: 800 }}>{counts[s]}</div>
+                  <div style={{ fontSize: 9, opacity: 0.8 }}>{s}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -198,7 +218,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {['TODOS','PENDENTE','VENCIDA','CONCLUIDA','CANCELADA'].map(f => (
             <button key={f} onClick={() => setFiltro(f)} style={{
-              padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
+              padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
               background: filtro === f ? '#d97706' : '#e2e8f0',
               color: filtro === f ? '#fff' : '#374151',
             }}>{f}</button>
@@ -222,8 +243,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 <div key={p.id} style={{
                   background: '#fff', borderRadius: 14,
                   border: `1.5px solid ${s === 'VENCIDA' ? '#fca5a5' : s === 'CONCLUIDA' ? '#86efac' : '#e2e8f0'}`,
-                  padding: '14px 16px',
-                  opacity: p.status === 'CANCELADA' ? 0.6 : 1,
+                  padding: '14px 16px', opacity: p.status === 'CANCELADA' ? 0.6 : 1,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
@@ -243,9 +263,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         <span style={{ margin: '0 8px' }}>·</span>
                         <span>🔧 {p.tipo_servico} — {p.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho' : 'Pós Serviço'}</span>
                       </div>
-                      {p.observacao && (
-                        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>💬 {p.observacao}</p>
-                      )}
+                      {p.observacao && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>💬 {p.observacao}</p>}
                     </div>
                     {p.status === 'PENDENTE' && (
                       <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
@@ -282,9 +300,36 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <button onClick={fechar} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
-            <div className="form-group">
+            {/* PREFIXO COM AUTOCOMPLETE */}
+            <div className="form-group" style={{ position: 'relative' }} ref={prefixoRef}>
               <label className="form-label">Prefixo da Equipe *</label>
-              <input className="form-input" value={formData.prefixo} onChange={e => upd('prefixo', e.target.value)} placeholder="Ex: PI-THE-C001M" />
+              <input
+                className="form-input"
+                value={formData.prefixo}
+                onChange={e => onPrefixoChange(e.target.value)}
+                placeholder="Digite para buscar (ex: PI-THE)"
+              />
+              {prefixoSugs.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+                  background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
+                }}>
+                  {prefixoSugs.map((s, i) => (
+                    <button key={i} onClick={() => { upd('prefixo', s); setPrefixoSugs([]) }} style={{
+                      display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left',
+                      background: 'none', border: 'none',
+                      borderBottom: i < prefixoSugs.length - 1 ? '1px solid #f1f5f9' : 'none',
+                      fontSize: 13, color: '#1e293b', cursor: 'pointer',
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="form-group">
@@ -328,7 +373,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <input className="form-input" value={formData.observacao} onChange={e => upd('observacao', e.target.value)} placeholder="Opcional..." />
             </div>
 
-            {erro && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>❌ {erro}</div>}
+            {erro && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>
+                ❌ {erro}
+              </div>
+            )}
 
             <button className="btn-primary" onClick={salvar} disabled={salvando}
               style={{ background: salvando ? '#64748b' : '#d97706' }}>
@@ -344,7 +393,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
               <h3 style={{ fontSize: 17, fontWeight: 700 }}>📥 Importar Pautas via CSV</h3>
-              <button onClick={() => { setCsvModal(false); setCsvTexto(''); setCsvStatus('') }} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
+              <button onClick={() => { setCsvModal(false); setCsvTexto(''); setCsvStatus('') }}
+                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#15803d' }}>
@@ -360,7 +410,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 className="form-textarea"
                 value={csvTexto}
                 onChange={e => setCsvTexto(e.target.value)}
-                placeholder="prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao&#10;PI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;UNICA;"
+                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao\nPI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;UNICA;`}
                 rows={8}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
@@ -372,7 +422,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            <button className="btn-primary" onClick={importarCsv} disabled={!csvTexto.trim() || csvStatus === 'importando'}
+            <button className="btn-primary" onClick={importarCsv}
+              disabled={!csvTexto.trim() || csvStatus === 'importando'}
               style={{ background: '#0f766e' }}>
               {csvStatus === 'importando' ? '⏳ Importando...' : '📥 Importar Pautas'}
             </button>
