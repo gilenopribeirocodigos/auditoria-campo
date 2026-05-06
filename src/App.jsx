@@ -10,6 +10,7 @@ import GestaoPauta          from './pages/GestaoPauta.jsx'
 import HistoricoAuditorias  from './pages/HistoricoAuditorias.jsx'
 import Metas                from './pages/Metas.jsx'
 import FeedbacksPDF         from './pages/FeedbacksPDF.jsx'
+import RelatorioEquipe      from './pages/RelatorioEquipe.jsx'
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -61,12 +62,13 @@ export default function App() {
   }
 
   if (!usuario) return <Login onLogin={u => setUsuario(u)} />
-  if (tela === 'gestao')     return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar')   return <ImportarEquipes     onVoltar={() => setTela('home')} />
-  if (tela === 'pauta')      return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'historico')  return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'metas')      return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'feedbacks')  return <FeedbacksPDF        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'gestao')        return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'importar')      return <ImportarEquipes     onVoltar={() => setTela('home')} />
+  if (tela === 'pauta')         return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'historico')     return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'metas')         return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'feedbacks')     return <FeedbacksPDF        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'relat-equipe')  return <RelatorioEquipe     usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -131,6 +133,14 @@ export default function App() {
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
               }}>
                 💬 Feedbacks em PDF
+              </button>
+
+              <button onClick={() => setTela('relat-equipe')} style={{
+                background: 'rgba(194,65,12,0.9)', color: '#fff', border: 'none',
+                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              }}>
+                🚗 Relatório por Equipe
               </button>
 
               <button onClick={() => setTela('pauta')} style={{
