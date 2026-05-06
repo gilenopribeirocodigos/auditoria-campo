@@ -3,10 +3,11 @@ import { FORM_INICIAL } from './data/checklists.js'
 import { getUsuarioLogado, fazerLogout, isAdmin } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 
-import Login           from './pages/Login.jsx'
-import GestaoUsuarios  from './pages/GestaoUsuarios.jsx'
-import ImportarEquipes from './pages/ImportarEquipes.jsx'
-import GestaoPauta     from './pages/GestaoPauta.jsx'
+import Login                from './pages/Login.jsx'
+import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
+import ImportarEquipes      from './pages/ImportarEquipes.jsx'
+import GestaoPauta          from './pages/GestaoPauta.jsx'
+import HistoricoAuditorias  from './pages/HistoricoAuditorias.jsx'
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -47,7 +48,6 @@ export default function App() {
     setTela('auditoria')
   }
 
-  // Chamado pelo S6Resultado após salvar com sucesso
   const onAuditoriaSalva = async (auditoria_id) => {
     if (pautaAtiva) {
       try {
@@ -62,9 +62,10 @@ export default function App() {
   }
 
   if (!usuario) return <Login onLogin={u => setUsuario(u)} />
-  if (tela === 'gestao')   return <GestaoUsuarios  usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar') return <ImportarEquipes onVoltar={() => setTela('home')} />
-  if (tela === 'pauta')    return <GestaoPauta     usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'gestao')    return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'importar')  return <ImportarEquipes     onVoltar={() => setTela('home')} />
+  if (tela === 'pauta')     return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'historico') return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   // Home
   if (tela === 'home') {
@@ -97,6 +98,8 @@ export default function App() {
         </div>
 
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* TODOS OS PERFIS */}
           <button onClick={iniciarAuditoria} disabled={loadingPauta} style={{
             background: loadingPauta ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
             padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
@@ -105,6 +108,16 @@ export default function App() {
             {loadingPauta ? '⏳ Verificando pautas...' : '📋 Iniciar Auditoria'}
           </button>
 
+          {/* HISTÓRICO — visível para todos */}
+          <button onClick={() => setTela('historico')} style={{
+            background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
+            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          }}>
+            📁 Histórico de Auditorias
+          </button>
+
+          {/* ADMIN */}
           {isAdmin(usuario) && (
             <>
               <button onClick={() => setTela('pauta')} style={{
@@ -172,12 +185,7 @@ export default function App() {
       </header>
 
       <main className="app-content">
-        {step === 0 && <S0Selecao
-          {...stepProps}
-          pautasHoje={pautasHoje}
-          pautaAtiva={pautaAtiva}
-          setPautaAtiva={setPautaAtiva}
-        />}
+        {step === 0 && <S0Selecao {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
         {step === 1 && <S1Identificacao {...stepProps} />}
         {step === 2 && <S3Checklist     {...stepProps} />}
         {step === 3 && <S4Fotos         {...stepProps} />}
