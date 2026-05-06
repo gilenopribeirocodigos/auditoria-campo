@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import * as XLSX from 'xlsx'
 
 const STATUS_COR = {
   'ATENDE':         { bg: '#dcfce7', color: '#15803d' },
@@ -16,7 +17,7 @@ function calcMesAtual() {
   return { ini, fim }
 }
 
-function DropdownInput({ label, value, onChange, onSelect, suggestions, placeholder, style }) {
+function DropdownInput({ label, value, onChange, onSelect, suggestions, placeholder }) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef(null)
 
@@ -35,7 +36,7 @@ function DropdownInput({ label, value, onChange, onSelect, suggestions, placehol
         onFocus={() => suggestions.length > 0 && setAberto(true)}
         placeholder={placeholder}
         className="form-input"
-        style={{ fontSize: 13, padding: '8px 10px', ...style }}
+        style={{ fontSize: 13, padding: '8px 10px' }}
       />
       {aberto && suggestions.length > 0 && (
         <div style={{
@@ -63,6 +64,7 @@ function DropdownInput({ label, value, onChange, onSelect, suggestions, placehol
 export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [auditorias,   setAuditorias]   = useState([])
   const [loading,      setLoading]      = useState(true)
+  const [exportando,   setExportando]   = useState(false)
   const [detalhe,      setDetalhe]      = useState(null)
   const [filtros,      setFiltros]      = useState({
     dataIni:     calcMesAtual().ini,
@@ -118,7 +120,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
-  // Autocomplete fiscal — busca nomes já salvos nas auditorias
   const onFiscalChange = async v => {
     upd('fiscal', v)
     if (v.length < 2) { setFiscalSugs([]); return }
@@ -128,7 +129,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     if (data) setFiscalSugs([...new Set(data.map(r => r.fiscal).filter(Boolean))])
   }
 
-  // Autocomplete prefixo — busca na tabela estrutura_equipes
   const onPrefixoChange = async v => {
     upd('prefixo', v)
     if (v.length < 2) { setPrefixoSugs([]); return }
@@ -136,6 +136,88 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       .from('estrutura_equipes').select('prefixo')
       .ilike('prefixo', `%${v}%`).order('prefixo').limit(10)
     if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
+  }
+
+  // ============================================================
+  // EXPORTAR EXCEL
+  // ============================================================
+  const exportarExcel = async () => {
+    if (auditorias.length === 0) { alert('Nenhuma auditoria para exportar. Faça uma busca primeiro.'); return }
+    setExportando(true)
+    try {
+      // Monta as linhas do Excel
+      const linhas = auditorias.map(a => ({
+        'Data':              formatData(a.data_auditoria),
+        'Hora':              a.hora_auditoria || '',
+        'Fiscal':            a.fiscal || '',
+        'Matrícula':         a.matricula || '',
+        'Equipe (Prefixo)':  a.prefixo || '',
+        'OS':                a.os || '',
+        'UC':                a.uc || '',
+        'Tipo Auditoria':    a.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho Operacional' : 'Pós Serviço',
+        'Tipo Serviço':      a.tipo_servico || '',
+        'Produtivo':         a.produtivo ? 'SIM' : 'NÃO',
+        'Nota':              Number(a.nota).toFixed(1),
+        'Resultado':         a.status || '',
+        'Endereço':          a.endereco || '',
+        'Latitude':          a.lat || '',
+        'Longitude':         a.lng || '',
+        'Eletricista 1':     a.nome_eletricista || '',
+        'Eletricista 2':     a.nome_eletricista2 || '',
+        'Feedback Fiscal':   a.feedback || '',
+        'Observações':       a.observacoes || '',
+        'Qtd Fotos':         Array.isArray(a.fotos_urls) ? a.fotos_urls.length : 0,
+      }))
+
+      // Cria planilha
+      const ws = XLSX.utils.json_to_sheet(linhas)
+
+      // Largura das colunas
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 8  }, { wch: 30 }, { wch: 12 }, { wch: 16 },
+        { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 12 },
+        { wch: 8  }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 12 },
+        { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 40 }, { wch: 10 },
+      ]
+
+      // Cria workbook com aba principal + aba de totais
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Auditorias')
+
+      // Aba de resumo
+      const resumo = [
+        ['RELATÓRIO DE AUDITORIAS — DPL CONSTRUÇÕES'],
+        ['Contrato Equatorial Energia 1021/2024'],
+        [''],
+        ['Período', `${formatData(filtros.dataIni)} a ${formatData(filtros.dataFim)}`],
+        ['Gerado em', new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })],
+        [''],
+        ['TOTALIZADORES', ''],
+        ['Total de Auditorias', totais.total],
+        ['Atende (≥ 90)',       totais.atende],
+        ['Atende Parcial (80–89)', totais.parcial],
+        ['Não Atende (< 80)',   totais.naoAtende],
+        [''],
+        ['% Conformidade', totais.total > 0
+          ? `${((totais.atende / totais.total) * 100).toFixed(1)}%`
+          : '0%'],
+        ['Nota Média', auditorias.length > 0
+          ? (auditorias.reduce((acc, a) => acc + Number(a.nota), 0) / auditorias.length).toFixed(1)
+          : '0'],
+      ]
+      const wsResumo = XLSX.utils.aoa_to_sheet(resumo)
+      wsResumo['!cols'] = [{ wch: 28 }, { wch: 30 }]
+      XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo')
+
+      // Nome do arquivo
+      const nomeArquivo = `Auditorias_DPL_${filtros.dataIni}_${filtros.dataFim}.xlsx`
+      XLSX.writeFile(wb, nomeArquivo)
+    } catch (e) {
+      console.error('Erro ao exportar:', e)
+      alert('Erro ao gerar Excel. Tente novamente.')
+    } finally {
+      setExportando(false)
+    }
   }
 
   return (
@@ -180,19 +262,16 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             Filtros
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
-
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
               <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)}
                 className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
             </div>
-
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
               <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)}
                 className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
             </div>
-
             {isAdmin && (
               <DropdownInput
                 label="Fiscal"
@@ -203,7 +282,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 placeholder="Digite o nome..."
               />
             )}
-
             <DropdownInput
               label="Prefixo"
               value={filtros.prefixo}
@@ -212,7 +290,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               suggestions={prefixoSugs}
               placeholder="Ex: PI-THE"
             />
-
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tipo Serviço</label>
               <select value={filtros.tipoServico} onChange={e => upd('tipoServico', e.target.value)}
@@ -223,7 +300,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 <option value="RELIGA">Religa</option>
               </select>
             </div>
-
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Resultado</label>
               <select value={filtros.status} onChange={e => upd('status', e.target.value)}
@@ -234,14 +310,29 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 <option value="NÃO ATENDE">Não Atende</option>
               </select>
             </div>
-
           </div>
-          <button onClick={buscar} style={{
-            marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff',
-            border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-          }}>
-            🔍 Buscar
-          </button>
+
+          {/* Botões de ação */}
+          <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
+            <button onClick={buscar} style={{
+              padding: '10px 24px', background: '#1e3a5f', color: '#fff',
+              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            }}>
+              🔍 Buscar
+            </button>
+            <button
+              onClick={exportarExcel}
+              disabled={exportando || auditorias.length === 0}
+              style={{
+                padding: '10px 24px', border: 'none', borderRadius: 10,
+                fontSize: 14, fontWeight: 700, cursor: auditorias.length === 0 ? 'not-allowed' : 'pointer',
+                background: exportando || auditorias.length === 0 ? '#e2e8f0' : '#16a34a',
+                color: exportando || auditorias.length === 0 ? '#94a3b8' : '#fff',
+              }}
+            >
+              {exportando ? '⏳ Gerando...' : `📊 Exportar Excel (${auditorias.length})`}
+            </button>
+          </div>
         </div>
 
         {/* LISTA */}
