@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 const STATUS_COR = {
@@ -16,10 +16,54 @@ function calcMesAtual() {
   return { ini, fim }
 }
 
+function DropdownInput({ label, value, onChange, onSelect, suggestions, placeholder, style }) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>{label}</label>
+      <input
+        type="text" value={value}
+        onChange={e => { onChange(e.target.value); setAberto(true) }}
+        onFocus={() => suggestions.length > 0 && setAberto(true)}
+        placeholder={placeholder}
+        className="form-input"
+        style={{ fontSize: 13, padding: '8px 10px', ...style }}
+      />
+      {aberto && suggestions.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+          background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {suggestions.map((s, i) => (
+            <button key={i} onClick={() => { onSelect(s); setAberto(false) }} style={{
+              display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
+              background: 'none', border: 'none',
+              borderBottom: i < suggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
+              fontSize: 13, color: '#1e293b', cursor: 'pointer',
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [auditorias,   setAuditorias]   = useState([])
   const [loading,      setLoading]      = useState(true)
-  const [detalhe,      setDetalhe]      = useState(null) // auditoria selecionada para ver detalhe
+  const [detalhe,      setDetalhe]      = useState(null)
   const [filtros,      setFiltros]      = useState({
     dataIni:     calcMesAtual().ini,
     dataFim:     calcMesAtual().fim,
@@ -28,7 +72,9 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     tipoServico: '',
     status:      '',
   })
-  const [totais, setTotais] = useState({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
+  const [totais,      setTotais]      = useState({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
+  const [fiscalSugs,  setFiscalSugs]  = useState([])
+  const [prefixoSugs, setPrefixoSugs] = useState([])
 
   const isAdmin = usuarioLogado?.perfil === 'ADMIN' ||
                   usuarioLogado?.perfil === 'SUPERV. OPERAÇÃO' ||
@@ -38,20 +84,17 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     setLoading(true)
     try {
       let q = supabase
-        .from('auditorias')
-        .select('*')
+        .from('auditorias').select('*')
         .gte('data_auditoria', filtros.dataIni)
         .lte('data_auditoria', filtros.dataFim)
         .order('data_auditoria', { ascending: false })
         .order('hora_auditoria', { ascending: false })
 
-      // Fiscal não-admin só vê as próprias auditorias
       if (!isAdmin) q = q.eq('matricula', usuarioLogado.matricula)
-
-      if (filtros.fiscal)      q = q.ilike('fiscal',       `%${filtros.fiscal}%`)
-      if (filtros.prefixo)     q = q.ilike('prefixo',      `%${filtros.prefixo}%`)
-      if (filtros.tipoServico) q = q.eq('tipo_servico',    filtros.tipoServico)
-      if (filtros.status)      q = q.eq('status',          filtros.status)
+      if (filtros.fiscal)      q = q.ilike('fiscal',      `%${filtros.fiscal}%`)
+      if (filtros.prefixo)     q = q.ilike('prefixo',     `%${filtros.prefixo}%`)
+      if (filtros.tipoServico) q = q.eq('tipo_servico',   filtros.tipoServico)
+      if (filtros.status)      q = q.eq('status',         filtros.status)
 
       const { data, error } = await q
       if (error) throw error
@@ -73,8 +116,27 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   useEffect(() => { buscar() }, [])
 
   const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
-
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+
+  // Autocomplete fiscal — busca nomes já salvos nas auditorias
+  const onFiscalChange = async v => {
+    upd('fiscal', v)
+    if (v.length < 2) { setFiscalSugs([]); return }
+    const { data } = await supabase
+      .from('auditorias').select('fiscal')
+      .ilike('fiscal', `%${v}%`).limit(8)
+    if (data) setFiscalSugs([...new Set(data.map(r => r.fiscal).filter(Boolean))])
+  }
+
+  // Autocomplete prefixo — busca na tabela estrutura_equipes
+  const onPrefixoChange = async v => {
+    upd('prefixo', v)
+    if (v.length < 2) { setPrefixoSugs([]); return }
+    const { data } = await supabase
+      .from('estrutura_equipes').select('prefixo')
+      .ilike('prefixo', `%${v}%`).order('prefixo').limit(10)
+    if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -93,7 +155,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 {isAdmin ? 'Todas as auditorias' : `Suas auditorias — ${usuarioLogado.nome}`}
               </p>
             </div>
-            {/* Totalizadores */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
                 { label: 'Total',      val: totais.total,     bg: 'rgba(255,255,255,0.15)' },
@@ -119,28 +180,39 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             Filtros
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
               <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)}
                 className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
             </div>
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
               <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)}
                 className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
             </div>
+
             {isAdmin && (
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Fiscal</label>
-                <input type="text" value={filtros.fiscal} onChange={e => upd('fiscal', e.target.value)}
-                  placeholder="Nome..." className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
-              </div>
+              <DropdownInput
+                label="Fiscal"
+                value={filtros.fiscal}
+                onChange={onFiscalChange}
+                onSelect={v => { upd('fiscal', v); setFiscalSugs([]) }}
+                suggestions={fiscalSugs}
+                placeholder="Digite o nome..."
+              />
             )}
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Prefixo</label>
-              <input type="text" value={filtros.prefixo} onChange={e => upd('prefixo', e.target.value)}
-                placeholder="Ex: PI-THE" className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
-            </div>
+
+            <DropdownInput
+              label="Prefixo"
+              value={filtros.prefixo}
+              onChange={onPrefixoChange}
+              onSelect={v => { upd('prefixo', v); setPrefixoSugs([]) }}
+              suggestions={prefixoSugs}
+              placeholder="Ex: PI-THE"
+            />
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tipo Serviço</label>
               <select value={filtros.tipoServico} onChange={e => upd('tipoServico', e.target.value)}
@@ -151,6 +223,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 <option value="RELIGA">Religa</option>
               </select>
             </div>
+
             <div>
               <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Resultado</label>
               <select value={filtros.status} onChange={e => upd('status', e.target.value)}
@@ -161,6 +234,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 <option value="NÃO ATENDE">Não Atende</option>
               </select>
             </div>
+
           </div>
           <button onClick={buscar} style={{
             marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff',
@@ -197,7 +271,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
-                      {/* Linha 1 */}
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                         <span style={{ fontSize: 18 }}>{TIPO_SERVICO_EMOJI[a.tipo_servico] || '📋'}</span>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{a.prefixo}</span>
@@ -208,7 +281,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                           {a.produtivo ? 'Produtivo' : 'Improdutivo'}
                         </span>
                       </div>
-                      {/* Linha 2 */}
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                         <span>👤 {a.fiscal}</span>
                         <span style={{ margin: '0 8px' }}>·</span>
@@ -219,7 +291,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                         <span>UC: <strong>{a.uc}</strong></span>
                       </div>
                     </div>
-                    {/* Nota */}
                     <div style={{
                       minWidth: 52, height: 52, borderRadius: 12,
                       background: sc.bg, display: 'flex', flexDirection: 'column',
@@ -251,7 +322,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto',
             padding: '24px 20px 40px',
           }}>
-            {/* Header do detalhe */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
               <h3 style={{ fontSize: 17, fontWeight: 800 }}>
                 {TIPO_SERVICO_EMOJI[detalhe.tipo_servico]} {detalhe.prefixo}
@@ -261,7 +331,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               }}>×</button>
             </div>
 
-            {/* Nota e status */}
             {(() => {
               const sc = STATUS_COR[detalhe.status] || { bg: '#f1f5f9', color: '#374151' }
               return (
@@ -278,7 +347,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               )
             })()}
 
-            {/* Dados */}
             <div style={{ background: '#f8fafc', borderRadius: 12, padding: '14px', marginBottom: 14 }}>
               {[
                 ['Tipo Auditoria', detalhe.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Op.' : '✅ Pós Serviço'],
@@ -301,25 +369,19 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               ))}
             </div>
 
-            {/* Feedbacks e observações */}
             {(detalhe.feedback || detalhe.observacoes) && (
               <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-                {detalhe.feedback && (
-                  <>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>FEEDBACK DO FISCAL:</p>
-                    <p style={{ fontSize: 13, color: '#78350f', lineHeight: 1.5, marginBottom: detalhe.observacoes ? 10 : 0 }}>{detalhe.feedback}</p>
-                  </>
-                )}
-                {detalhe.observacoes && (
-                  <>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>OBSERVAÇÕES:</p>
-                    <p style={{ fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>{detalhe.observacoes}</p>
-                  </>
-                )}
+                {detalhe.feedback && <>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>FEEDBACK DO FISCAL:</p>
+                  <p style={{ fontSize: 13, color: '#78350f', lineHeight: 1.5, marginBottom: detalhe.observacoes ? 10 : 0 }}>{detalhe.feedback}</p>
+                </>}
+                {detalhe.observacoes && <>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>OBSERVAÇÕES:</p>
+                  <p style={{ fontSize: 13, color: '#78350f', lineHeight: 1.5 }}>{detalhe.observacoes}</p>
+                </>}
               </div>
             )}
 
-            {/* Fotos */}
             {detalhe.fotos_urls?.length > 0 && (
               <div style={{ marginBottom: 14 }}>
                 <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
@@ -336,7 +398,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            {/* Assinaturas */}
             {detalhe.assinatura_url && (
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, marginBottom: 10 }}>
                 <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
