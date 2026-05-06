@@ -1,0 +1,70 @@
+import { supabase } from './supabase.js'
+
+export async function listarPautas(filtros = {}) {
+  let q = supabase.from('pautas').select('*').order('data_prevista')
+  if (filtros.status)       q = q.eq('status', filtros.status)
+  if (filtros.fiscal_login) q = q.eq('fiscal_login', filtros.fiscal_login)
+  if (filtros.data)         q = q.eq('data_prevista', filtros.data)
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
+}
+
+export async function pautasHojeFiscal(fiscal_login) {
+  const hoje = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('pautas')
+    .select('*')
+    .eq('fiscal_login', fiscal_login)
+    .eq('status', 'PENDENTE')
+    .lte('data_prevista', hoje)  // vencidas ou de hoje
+    .order('data_prevista')
+  if (error) throw error
+  return data || []
+}
+
+export async function criarPauta(payload) {
+  const { data, error } = await supabase
+    .from('pautas').insert(payload).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function atualizarPauta(id, payload) {
+  const { data, error } = await supabase
+    .from('pautas').update(payload).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deletarPauta(id) {
+  const { error } = await supabase.from('pautas').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function concluirPauta(id, auditoria_id) {
+  const { error } = await supabase
+    .from('pautas')
+    .update({ status: 'CONCLUIDA', auditoria_id })
+    .eq('id', id)
+  if (error) throw error
+  // Se for recorrente, cria próxima ocorrência
+}
+
+export async function criarProximaRecorrencia(pauta) {
+  if (pauta.recorrencia === 'UNICA') return
+  const dataAtual = new Date(pauta.data_prevista)
+  const proxData = new Date(dataAtual)
+  if (pauta.recorrencia === 'DIARIA')  proxData.setDate(dataAtual.getDate() + 1)
+  if (pauta.recorrencia === 'SEMANAL') proxData.setDate(dataAtual.getDate() + 7)
+  await criarPauta({
+    prefixo:        pauta.prefixo,
+    fiscal_login:   pauta.fiscal_login,
+    data_prevista:  proxData.toISOString().split('T')[0],
+    tipo_servico:   pauta.tipo_servico,
+    tipo_auditoria: pauta.tipo_auditoria,
+    recorrencia:    pauta.recorrencia,
+    observacao:     pauta.observacao,
+    status:         'PENDENTE',
+  })
+}
