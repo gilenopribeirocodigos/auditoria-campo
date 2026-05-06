@@ -20,6 +20,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
       ...f,
       tipoServico:   pauta.tipo_servico,
       tipoAuditoria: pauta.tipo_auditoria,
+      prefixo:       pauta.prefixo,        // ← linha nova
       produtivo:     null,
       respostas:     {},
     }))
