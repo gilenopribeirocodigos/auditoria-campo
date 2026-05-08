@@ -3,7 +3,14 @@ import { createClient } from '@supabase/supabase-js'
 const url = import.meta.env.VITE_SUPABASE_URL
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = (url && key) ? createClient(url, key) : null
+// ✅ DEV — schema isolado para desenvolvimento
+const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
+// 🚫 PRODUÇÃO — descomente e comente a linha acima quando for para produção
+// const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'public'
+
+export const supabase = (url && key)
+  ? createClient(url, key, { db: { schema } })
+  : null
 
 // Upload de imagem base64 para o Storage
 export async function uploadBase64(base64, path, bucket = 'fotos-auditoria') {
