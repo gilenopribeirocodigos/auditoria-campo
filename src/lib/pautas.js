@@ -24,7 +24,7 @@ export async function pautasHojeFiscal(fiscal_login) {
 }
 
 export async function criarPauta(payload) {
-  const { id, ...dados } = payload
+  const { id, ...dados } = payload  // remove id null se vier no payload
   const { data, error } = await supabase
     .from('pautas').insert(dados).select().single()
   if (error) throw error
@@ -32,8 +32,9 @@ export async function criarPauta(payload) {
 }
 
 export async function atualizarPauta(id, payload) {
+  const { id: _, ...dados } = payload  // remove id do payload antes de atualizar
   const { data, error } = await supabase
-    .from('pautas').update(payload).eq('id', id).select().single()
+    .from('pautas').update(dados).eq('id', id).select().single()
   if (error) throw error
   return data
 }
@@ -54,7 +55,7 @@ export async function concluirPauta(id, auditoria_id) {
 export async function criarProximaRecorrencia(pauta) {
   if (pauta.recorrencia === 'UNICA') return
   const dataAtual = new Date(pauta.data_prevista)
-  const proxData = new Date(dataAtual)
+  const proxData  = new Date(dataAtual)
   if (pauta.recorrencia === 'DIARIA')  proxData.setDate(dataAtual.getDate() + 1)
   if (pauta.recorrencia === 'SEMANAL') proxData.setDate(dataAtual.getDate() + 7)
   await criarPauta({
