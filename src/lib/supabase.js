@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const key = import.meta.env.VITE_SUPABASE_ANON_KEY
+const url    = import.meta.env.VITE_SUPABASE_URL
+const key    = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 // ✅ DEV — schema isolado para desenvolvimento
 const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
@@ -25,7 +25,7 @@ export async function uploadBase64(base64, path, bucket = 'fotos-auditoria') {
   return data.publicUrl
 }
 
-// Salva registro da auditoria na tabela
+// Salva nova auditoria
 export async function salvarAuditoriaBD(payload) {
   if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')
   const { data, error } = await supabase
@@ -35,4 +35,44 @@ export async function salvarAuditoriaBD(payload) {
     .single()
   if (error) throw error
   return data
+}
+
+// Atualiza auditoria existente (após reaberta)
+export async function atualizarAuditoriaBD(id, payload) {
+  if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')
+  const { data, error } = await supabase
+    .from('auditorias')
+    .update({ ...payload, reaberta: false, reaberta_para: null })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Reabrir auditoria (apenas ADMIN)
+export async function reabrirAuditoria(id, fiscal_login, admin_nome) {
+  if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')
+  const { error } = await supabase
+    .from('auditorias')
+    .update({
+      reaberta:      true,
+      reaberta_para: fiscal_login,
+      reaberta_por:  admin_nome,
+      reaberta_em:   new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) throw error
+}
+
+// Busca auditorias reabertas para um fiscal
+export async function buscarAuditoriasReabertas(fiscal_login) {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('auditorias')
+    .select('*')
+    .eq('reaberta', true)
+    .eq('reaberta_para', fiscal_login)
+  if (error) return []
+  return data || []
 }
