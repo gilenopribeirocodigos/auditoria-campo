@@ -17,22 +17,19 @@ export async function pautasHojeFiscal(fiscal_login) {
     .select('*')
     .eq('fiscal_login', fiscal_login)
     .eq('status', 'PENDENTE')
-    .lte('data_prevista', hoje)  // vencidas ou de hoje
+    .lte('data_prevista', hoje)
     .order('data_prevista')
   if (error) throw error
   return data || []
 }
 
-
 export async function criarPauta(payload) {
-  const { id, ...dados } = payload  // remove o id se vier no payload
+  const { id, ...dados } = payload
   const { data, error } = await supabase
     .from('pautas').insert(dados).select().single()
   if (error) throw error
   return data
 }
-
-
 
 export async function atualizarPauta(id, payload) {
   const { data, error } = await supabase
@@ -52,7 +49,6 @@ export async function concluirPauta(id, auditoria_id) {
     .update({ status: 'CONCLUIDA', auditoria_id })
     .eq('id', id)
   if (error) throw error
-  // Se for recorrente, cria próxima ocorrência
 }
 
 export async function criarProximaRecorrencia(pauta) {
