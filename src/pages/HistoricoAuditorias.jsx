@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { reabrirAuditoria } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
 
 const STATUS_COR = {
@@ -78,9 +79,15 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [fiscalSugs,  setFiscalSugs]  = useState([])
   const [prefixoSugs, setPrefixoSugs] = useState([])
 
-  const isAdmin = usuarioLogado?.perfil === 'ADMIN' ||
-                  usuarioLogado?.perfil === 'SUPERV. OPERAÇÃO' ||
-                  usuarioLogado?.perfil === 'SUPERV. CAMPO'
+  // Reabrir auditoria
+  const [modalReabrir,     setModalReabrir]     = useState(false)
+  const [fiscais,          setFiscais]          = useState([])
+  const [fiscalSelecionado, setFiscalSelecionado] = useState('')
+  const [reabrindo,        setReabrindo]        = useState(false)
+  const [reabrirErro,      setReabrirErro]      = useState('')
+  const [reabrirSucesso,   setReabrirSucesso]   = useState(false)
+
+  const isAdmin = usuarioLogado?.perfil === 'ADMIN'
 
   const buscar = async () => {
     setLoading(true)
@@ -92,7 +99,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         .order('data_auditoria', { ascending: false })
         .order('hora_auditoria', { ascending: false })
 
-      if (!isAdmin) q = q.eq('matricula', usuarioLogado.matricula)
+      const podeVerTodos = usuarioLogado?.perfil === 'ADMIN' ||
+                           usuarioLogado?.perfil === 'SUPERV. OPERAÇÃO' ||
+                           usuarioLogado?.perfil === 'SUPERV. CAMPO'
+
+      if (!podeVerTodos) q = q.eq('matricula', usuarioLogado.matricula)
       if (filtros.fiscal)      q = q.ilike('fiscal',      `%${filtros.fiscal}%`)
       if (filtros.prefixo)     q = q.ilike('prefixo',     `%${filtros.prefixo}%`)
       if (filtros.tipoServico) q = q.eq('tipo_servico',   filtros.tipoServico)
@@ -138,6 +149,38 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
   }
 
+  // Abre modal reabrir e carrega lista de fiscais
+  const abrirModalReabrir = async () => {
+    setFiscalSelecionado(detalhe.fiscal || '')
+    setReabrirErro('')
+    setReabrirSucesso(false)
+    const { data } = await supabase
+      .from('usuarios').select('nome, login')
+      .eq('status', 'ATIVO').order('nome')
+    setFiscais(data || [])
+    setModalReabrir(true)
+  }
+
+  const confirmarReabrir = async () => {
+    if (!fiscalSelecionado) { setReabrirErro('Selecione o fiscal.'); return }
+    setReabrindo(true)
+    setReabrirErro('')
+    try {
+      await reabrirAuditoria(detalhe.id, fiscalSelecionado, usuarioLogado.nome)
+      setReabrirSucesso(true)
+      setTimeout(() => {
+        setModalReabrir(false)
+        setDetalhe(null)
+        setReabrirSucesso(false)
+        buscar()
+      }, 1800)
+    } catch (e) {
+      setReabrirErro(e.message)
+    } finally {
+      setReabrindo(false)
+    }
+  }
+
   // ============================================================
   // EXPORTAR EXCEL
   // ============================================================
@@ -145,7 +188,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     if (auditorias.length === 0) { alert('Nenhuma auditoria para exportar. Faça uma busca primeiro.'); return }
     setExportando(true)
     try {
-      // Monta as linhas do Excel
       const linhas = auditorias.map(a => ({
         'Data':              formatData(a.data_auditoria),
         'Hora':              a.hora_auditoria || '',
@@ -169,10 +211,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         'Qtd Fotos':         Array.isArray(a.fotos_urls) ? a.fotos_urls.length : 0,
       }))
 
-      // Cria planilha
       const ws = XLSX.utils.json_to_sheet(linhas)
-
-      // Largura das colunas
       ws['!cols'] = [
         { wch: 12 }, { wch: 8  }, { wch: 30 }, { wch: 12 }, { wch: 16 },
         { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 12 },
@@ -180,11 +219,9 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 40 }, { wch: 10 },
       ]
 
-      // Cria workbook com aba principal + aba de totais
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Auditorias')
 
-      // Aba de resumo
       const resumo = [
         ['RELATÓRIO DE AUDITORIAS — DPL CONSTRUÇÕES'],
         ['Contrato Equatorial Energia 1021/2024'],
@@ -209,7 +246,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       wsResumo['!cols'] = [{ wch: 28 }, { wch: 30 }]
       XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo')
 
-      // Nome do arquivo
       const nomeArquivo = `Auditorias_DPL_${filtros.dataIni}_${filtros.dataFim}.xlsx`
       XLSX.writeFile(wb, nomeArquivo)
     } catch (e) {
@@ -312,7 +348,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             </div>
           </div>
 
-          {/* Botões de ação */}
           <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
             <button onClick={buscar} style={{
               padding: '10px 24px', background: '#1e3a5f', color: '#fff',
@@ -353,7 +388,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               return (
                 <div key={a.id} style={{
                   background: '#fff', borderRadius: 14,
-                  border: `1.5px solid ${a.status === 'ATENDE' ? '#86efac' : a.status === 'NÃO ATENDE' ? '#fca5a5' : '#fcd34d'}`,
+                  border: `1.5px solid ${a.reaberta ? '#f59e0b' : a.status === 'ATENDE' ? '#86efac' : a.status === 'NÃO ATENDE' ? '#fca5a5' : '#fcd34d'}`,
                   padding: '14px 16px', cursor: 'pointer', transition: 'box-shadow 0.15s',
                 }}
                   onClick={() => setDetalhe(a)}
@@ -368,6 +403,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
                           {a.status}
                         </span>
+                        {a.reaberta && (
+                          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef3c7', color: '#d97706' }}>
+                            🔓 Reaberta
+                          </span>
+                        )}
                         <span style={{ fontSize: 11, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>
                           {a.produtivo ? 'Produtivo' : 'Improdutivo'}
                         </span>
@@ -421,6 +461,13 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b',
               }}>×</button>
             </div>
+
+            {/* Badge reaberta */}
+            {detalhe.reaberta && (
+              <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e' }}>
+                🔓 <strong>Auditoria reaberta</strong> por {detalhe.reaberta_por} — aguardando correção do fiscal <strong>{detalhe.reaberta_para}</strong>
+              </div>
+            )}
 
             {(() => {
               const sc = STATUS_COR[detalhe.status] || { bg: '#f1f5f9', color: '#374151' }
@@ -508,12 +555,80 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
+            {/* BOTÃO REABRIR — só ADMIN e auditoria não reaberta ainda */}
+            {isAdmin && !detalhe.reaberta && (
+              <button onClick={abrirModalReabrir} style={{
+                width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10,
+                background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>
+                🔓 Reabrir para Correção
+              </button>
+            )}
+
             <button onClick={() => setDetalhe(null)} style={{
               width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0',
               background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 8,
             }}>
               Fechar
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL REABRIR */}
+      {modalReabrir && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20,
+        }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '24px 20px', width: '100%', maxWidth: 400 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>🔓 Reabrir Auditoria</h3>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 18 }}>
+              A auditoria <strong>{detalhe?.prefixo}</strong> será devolvida ao fiscal para correção.
+            </p>
+
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
+              Devolver para o fiscal:
+            </label>
+            <select
+              value={fiscalSelecionado}
+              onChange={e => setFiscalSelecionado(e.target.value)}
+              className="form-input"
+              style={{ marginBottom: 16, fontSize: 14 }}
+            >
+              <option value="">Selecione o fiscal...</option>
+              {fiscais.map(f => (
+                <option key={f.login} value={f.login}>{f.nome} ({f.login})</option>
+              ))}
+            </select>
+
+            {reabrirErro && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>
+                ❌ {reabrirErro}
+              </div>
+            )}
+
+            {reabrirSucesso && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#15803d', marginBottom: 14 }}>
+                ✅ Auditoria reaberta com sucesso!
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setModalReabrir(false)} style={{
+                flex: 1, padding: 12, borderRadius: 10, border: '1px solid #e2e8f0',
+                background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>
+                Cancelar
+              </button>
+              <button onClick={confirmarReabrir} disabled={reabrindo || reabrirSucesso} style={{
+                flex: 1, padding: 12, borderRadius: 10, border: 'none',
+                background: reabrindo ? '#94a3b8' : '#7c3aed', color: '#fff',
+                fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}>
+                {reabrindo ? '⏳ Reabrindo...' : '🔓 Confirmar'}
+              </button>
+            </div>
           </div>
         </div>
       )}
