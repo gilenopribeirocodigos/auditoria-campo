@@ -23,12 +23,16 @@ export async function pautasHojeFiscal(fiscal_login) {
   return data || []
 }
 
+
 export async function criarPauta(payload) {
+  const { id, ...dados } = payload  // remove o id se vier no payload
   const { data, error } = await supabase
-    .from('pautas').insert(payload).select().single()
+    .from('pautas').insert(dados).select().single()
   if (error) throw error
   return data
 }
+
+
 
 export async function atualizarPauta(id, payload) {
   const { data, error } = await supabase
