@@ -3,7 +3,7 @@ import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, FORM_INICIAL
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 
-export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId }) {
+export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
@@ -95,12 +95,15 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         ? auditoriaEditandoId
         : `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
 
-      // Upload novas fotos (se existirem)
-      const fotosUrls = []
+      // Upload novas fotos e mescla com antigas
+      const fotosNovas = []
       for (let i = 0; i < form.fotos.length; i++) {
-        const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_${i + 1}.jpg`)
-        fotosUrls.push(url)
+        const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_edit_${Date.now()}_${i + 1}.jpg`)
+        fotosNovas.push(url)
       }
+      const fotosUrls = modoEdicao
+        ? [...(fotosAntigas || []), ...fotosNovas]
+        : fotosNovas
 
       let assinaturaUrl = null
       if (form.assinatura) {
@@ -133,9 +136,9 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         observacoes:       form.observacoes,
         nome_eletricista:  form.nomeEletricista,
         nome_eletricista2: form.nomeEletricista2 || null,
+        fotos_urls:        fotosUrls,
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
-        ...(fotosUrls.length > 0 && { fotos_urls: fotosUrls }),
       }
 
       let saved
@@ -257,18 +260,39 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         )}
 
-        {/* FOTOS */}
+        {/* FOTOS ANTIGAS — modo edição */}
+        {modoEdicao && fotosAntigas?.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+              📁 Fotos anteriores ({fotosAntigas.length})
+            </p>
+            <div className="photo-grid">
+              {fotosAntigas.map((url, i) => (
+                <div key={i} className="photo-thumb">
+                  <a href={url} target="_blank" rel="noreferrer">
+                    <img src={url} alt={`Foto anterior ${i + 1}`} />
+                  </a>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(15,118,110,0.7)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center' }}>
+                    Anterior {i + 1}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* NOVAS FOTOS */}
         {form.fotos.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-              Registro Fotográfico ({form.fotos.length})
+              {modoEdicao ? `📷 Novas fotos (${form.fotos.length})` : `Registro Fotográfico (${form.fotos.length})`}
             </p>
             <div className="photo-grid">
               {form.fotos.map((foto, i) => (
                 <div key={i} className="photo-thumb">
                   <img src={foto.url} alt={`Foto ${i + 1}`} />
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center' }}>
-                    Foto {i + 1}
+                    {modoEdicao ? `Nova ${i + 1}` : `Foto ${i + 1}`}
                   </div>
                 </div>
               ))}
