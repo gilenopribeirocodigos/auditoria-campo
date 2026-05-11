@@ -305,12 +305,12 @@ export default function App() {
       </header>
 
       <main className="app-content">
-        {step === 0 && <S0Selecao    {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
-        {step === 1 && <S1Identificacao {...stepProps} />}
-        {step === 2 && <S3Checklist  {...stepProps} />}
-        {step === 3 && <S4Fotos      {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
-        {step === 4 && <S5Assinatura {...stepProps} />}
-        {step === 5 && <S6Resultado  {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} />}
+        {step === 0 && <S0Selecao      {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
+        {step === 1 && <S1Identificacao {...stepProps} pautaAtiva={pautaAtiva} />}
+        {step === 2 && <S3Checklist    {...stepProps} />}
+        {step === 3 && <S4Fotos        {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
+        {step === 4 && <S5Assinatura   {...stepProps} />}
+        {step === 5 && <S6Resultado    {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} />}
       </main>
     </div>
   )
