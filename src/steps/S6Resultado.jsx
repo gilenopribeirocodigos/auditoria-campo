@@ -95,7 +95,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         ? auditoriaEditandoId
         : `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
 
-      // Upload novas fotos e mescla com antigas
       const fotosNovas = []
       for (let i = 0; i < form.fotos.length; i++) {
         const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_edit_${Date.now()}_${i + 1}.jpg`)
@@ -342,10 +341,16 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       <div className="no-print" style={{ marginBottom: 40, marginTop: 16 }}>
 
         {saveStatus === 'idle' && (
-          <button className="btn-primary" onClick={salvar}
-            style={{ background: modoEdicao ? '#d97706' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
-            {modoEdicao ? '💾 Salvar Correção' : '💾 Salvar Auditoria'}
-          </button>
+          <>
+            <button className="btn-primary" onClick={salvar}
+              style={{ background: modoEdicao ? '#d97706' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
+              {modoEdicao ? '💾 Salvar Correção' : '💾 Salvar Auditoria'}
+            </button>
+            <button className="btn-secondary" onClick={() => setStep(4)}
+              style={{ marginBottom: 10 }}>
+              ← Voltar e editar
+            </button>
+          </>
         )}
 
         {saveStatus === 'saving' && (
@@ -362,8 +367,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
               style={{ background: '#dc2626', marginBottom: 10 }}>
               🔄 Tentar novamente
             </button>
-            <button className="btn-secondary" onClick={() => setStep(2)} style={{ marginBottom: 10 }}>
-              ← Voltar ao Checklist
+            <button className="btn-secondary" onClick={() => setStep(4)} style={{ marginBottom: 10 }}>
+              ← Voltar e editar
             </button>
           </>
         )}
