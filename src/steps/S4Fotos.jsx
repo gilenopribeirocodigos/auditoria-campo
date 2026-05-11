@@ -54,7 +54,6 @@ function processarFoto(file, lat, lng, prefixo, fiscal) {
 
 export default function S4Fotos({ form, upd, setForm, next, prev, modoEdicao, fotosAntigas }) {
   const faltam        = Math.max(0, MIN_FOTOS - form.fotos.length)
-  // Em modo edição não exige mínimo — fotos antigas já existem
   const podeContinuar = modoEdicao ? true : form.fotos.length >= MIN_FOTOS
 
   const addFoto = async e => {
@@ -95,27 +94,43 @@ export default function S4Fotos({ form, upd, setForm, next, prev, modoEdicao, fo
         </div>
       )}
 
-      {/* NOVAS FOTOS */}
-      <label style={{ cursor: 'pointer', display: 'block' }}>
-        <input type="file" accept="image/*" capture="environment" multiple onChange={addFoto} style={{ display: 'none' }} />
-        <div className="upload-zone">
-          <div style={{ fontSize: 36, marginBottom: 8 }}>📷</div>
-          <p style={{ color: '#1d4ed8', fontWeight: 700, fontSize: 14 }}>
-            {modoEdicao ? 'Adicionar novas fotos (opcional)' : 'Tirar foto / Selecionar da galeria'}
-          </p>
-          <p style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
-            {modoEdicao
-              ? form.fotos.length > 0
-                ? `✅ ${form.fotos.length} nova(s) foto(s) — serão somadas às anteriores`
-                : 'As fotos anteriores serão mantidas'
-              : form.fotos.length === 0
-                ? `Obrigatório: mínimo ${MIN_FOTOS} fotos`
-                : form.fotos.length < MIN_FOTOS
-                  ? `Falta ${faltam} foto(s) — mínimo ${MIN_FOTOS}`
-                  : `✅ ${form.fotos.length} foto(s) com timestamp gravado`}
-          </p>
-        </div>
-      </label>
+      {/* BOTÕES: câmera OU galeria */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+
+        <label style={{ flex: 1, cursor: 'pointer' }}>
+          <input type="file" accept="image/*" capture="environment" multiple onChange={addFoto} style={{ display: 'none' }} />
+          <div className="upload-zone" style={{ marginBottom: 0 }}>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+            <p style={{ color: '#1d4ed8', fontWeight: 700, fontSize: 13 }}>Tirar foto</p>
+            <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Câmera</p>
+          </div>
+        </label>
+
+        <label style={{ flex: 1, cursor: 'pointer' }}>
+          <input type="file" accept="image/*" multiple onChange={addFoto} style={{ display: 'none' }} />
+          <div className="upload-zone" style={{ marginBottom: 0 }}>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>🖼️</div>
+            <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 13 }}>Da galeria</p>
+            <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+              {modoEdicao ? 'Somada às anteriores' : 'Galeria'}
+            </p>
+          </div>
+        </label>
+
+      </div>
+
+      {/* Status */}
+      <p style={{ fontSize: 12, color: '#64748b', textAlign: 'center', marginBottom: 12 }}>
+        {modoEdicao
+          ? form.fotos.length > 0
+            ? `✅ ${form.fotos.length} nova(s) foto(s) — serão somadas às anteriores`
+            : 'As fotos anteriores serão mantidas'
+          : form.fotos.length === 0
+            ? `Obrigatório: mínimo ${MIN_FOTOS} fotos`
+            : form.fotos.length < MIN_FOTOS
+              ? `Falta ${faltam} foto(s) — mínimo ${MIN_FOTOS}`
+              : `✅ ${form.fotos.length} foto(s) adicionada(s)`}
+      </p>
 
       {!podeContinuar && (
         <div className="alert alert-warning">
@@ -134,7 +149,7 @@ export default function S4Fotos({ form, upd, setForm, next, prev, modoEdicao, fo
                 background: 'rgba(0,0,0,0.55)', color: '#fff', fontSize: 9,
                 padding: '2px 4px', textAlign: 'center',
               }}>
-                Nova {i + 1} ✓
+                {modoEdicao ? `Nova ${i + 1} ✓` : `Foto ${i + 1} ✓`}
               </div>
             </div>
           ))}
