@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react'
 import { Field, NavBar, Alert } from '../components/Shared.jsx'
 import { supabase } from '../lib/supabase.js'
 
-// Busca fiscais na tabela usuarios por nome
 async function buscarFiscais(texto) {
   if (!texto || texto.length < 2) return []
   const { data } = await supabase
@@ -15,7 +14,6 @@ async function buscarFiscais(texto) {
   return data || []
 }
 
-// Busca prefixos que contenham o texto digitado
 async function buscarPrefixos(texto) {
   if (!texto || texto.length < 2) return []
   const { data } = await supabase
@@ -28,7 +26,6 @@ async function buscarPrefixos(texto) {
   return [...new Set(data.map(r => r.prefixo))]
 }
 
-// Busca colaboradores pelo prefixo — só para exibir contagem
 async function buscarEletricistas(prefixo) {
   if (!prefixo) return []
   const { data } = await supabase
@@ -40,7 +37,6 @@ async function buscarEletricistas(prefixo) {
   return data || []
 }
 
-// Busca colaboradores por nome em TODA a tabela
 async function buscarPorNome(texto) {
   if (!texto || texto.length < 2) return []
   const { data } = await supabase
@@ -53,7 +49,6 @@ async function buscarPorNome(texto) {
   return data || []
 }
 
-// Reverse geocoding via Nominatim
 async function reverseGeocode(lat, lng) {
   try {
     const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&accept-language=pt-BR`
@@ -65,7 +60,6 @@ async function reverseGeocode(lat, lng) {
   } catch { return '' }
 }
 
-// Componente de autocomplete reutilizável
 function AutocompleteInput({ label, value, onChange, onSelect, suggestions, placeholder, required, info }) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef(null)
@@ -112,7 +106,7 @@ function AutocompleteInput({ label, value, onChange, onSelect, suggestions, plac
   )
 }
 
-export default function S1Identificacao({ form, upd, setForm, next, prev }) {
+export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
   const [gpsLoading,   setGpsLoading]   = useState(false)
   const [gpsErro,      setGpsErro]      = useState('')
   const [fiscalSugs,   setFiscalSugs]   = useState([])
@@ -123,7 +117,13 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
 
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat
 
-  // Quando prefixo muda, carrega contagem de eletricistas da equipe
+  // Pré-preenche OS e UC da pauta ativa se estiverem vazios no form
+  useEffect(() => {
+    if (!pautaAtiva) return
+    if (pautaAtiva.os  && !form.os)  upd('os',  pautaAtiva.os)
+    if (pautaAtiva.uc  && !form.uc)  upd('uc',  pautaAtiva.uc)
+  }, [pautaAtiva])
+
   useEffect(() => {
     if (form.prefixo && form.prefixo.length >= 5) {
       buscarEletricistas(form.prefixo).then(setEletricistas)
@@ -132,7 +132,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
     }
   }, [form.prefixo])
 
-  // Autocomplete fiscal
   const onFiscalChange = async v => {
     upd('fiscal', v)
     if (v.length < 2) { setFiscalSugs([]); return }
@@ -150,7 +149,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
     setFiscalSugs([])
   }
 
-  // Autocomplete prefixo
   const onPrefixoChange = async v => {
     upd('prefixo', v)
     const sugs = await buscarPrefixos(v)
@@ -161,7 +159,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
     setPrefixoSugs([])
   }
 
-  // Autocomplete eletricista 1
   const onElet1Change = async v => {
     upd('nomeEletricista', v)
     if (v.length < 2) { setElet1Sugs([]); return }
@@ -175,7 +172,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
     setElet1Sugs([])
   }
 
-  // Autocomplete eletricista 2
   const onElet2Change = async v => {
     upd('nomeEletricista2', v)
     if (v.length < 2) { setElet2Sugs([]); return }
@@ -207,7 +203,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
 
   return (
     <div>
-      {/* DADOS DO FISCAL */}
       <p className="section-title">Dados do Fiscal</p>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
         <Field label="Data" value={form.data} onChange={v => upd('data', v)} type="date" />
@@ -232,7 +227,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
         required
       />
 
-      {/* DADOS DO SERVIÇO */}
       <p className="section-title" style={{ marginTop: 18 }}>Dados do Serviço</p>
 
       <AutocompleteInput
@@ -247,11 +241,22 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        <Field label="Nº da OS" value={form.os} onChange={v => upd('os', v)} placeholder="Ordem de Serviço" required />
-        <Field label="Nº da UC" value={form.uc} onChange={v => upd('uc', v)} placeholder="Unidade Consumidora" required />
+        <div className="form-group">
+          <label className="form-label">
+            Nº da OS *
+            {pautaAtiva?.os && <span style={{ fontSize: 10, color: '#d97706', marginLeft: 6, fontWeight: 700 }}>📋 da pauta</span>}
+          </label>
+          <input className="form-input" value={form.os} onChange={e => upd('os', e.target.value)} placeholder="Ordem de Serviço" />
+        </div>
+        <div className="form-group">
+          <label className="form-label">
+            Nº da UC *
+            {pautaAtiva?.uc && <span style={{ fontSize: 10, color: '#d97706', marginLeft: 6, fontWeight: 700 }}>📋 da pauta</span>}
+          </label>
+          <input className="form-input" value={form.uc} onChange={e => upd('uc', e.target.value)} placeholder="Unidade Consumidora" />
+        </div>
       </div>
 
-      {/* ELETRICISTAS */}
       <p className="section-title" style={{ marginTop: 18 }}>Eletricistas da Equipe</p>
 
       <AutocompleteInput
@@ -273,7 +278,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev }) {
         placeholder="Digite o nome para buscar"
       />
 
-      {/* LOCALIZAÇÃO */}
       <p className="section-title" style={{ marginTop: 18 }}>Localização</p>
 
       <button onClick={capturarGPS} disabled={gpsLoading} style={{
