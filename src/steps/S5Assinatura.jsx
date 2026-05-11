@@ -23,7 +23,6 @@ function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrig
 
   const getPos = (e, c) => {
     const rect = c.getBoundingClientRect()
-    // Fator de escala entre tamanho real do canvas e tamanho visual
     const scaleX = c.width / rect.width
     const scaleY = c.height / rect.height
     if (e.touches) return {
@@ -63,7 +62,6 @@ function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrig
       border: `1.5px solid ${signed ? '#86efac' : obrigatorio ? '#fcd34d' : '#e2e8f0'}`,
       padding: 14, marginBottom: 14,
     }}>
-      {/* Badge */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{
           fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 20,
@@ -75,7 +73,6 @@ function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrig
         {signed && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Assinado</span>}
       </div>
 
-      {/* Nome */}
       <Field
         label={`Nome do ${label}`}
         value={nome}
@@ -83,7 +80,6 @@ function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrig
         placeholder="Nome completo"
       />
 
-      {/* Canvas */}
       <p style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>
         {signed ? 'Assinatura registrada — desenhe novamente para alterar:' : 'Assine abaixo:'}
       </p>
@@ -105,18 +101,30 @@ function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrig
 }
 
 export default function S5Assinatura({ form, upd, next, prev }) {
-  // Pelo menos o Eletricista 1 deve ter assinado
-  const ok = !!form.assinatura
+  // Pós Serviço: assinatura totalmente opcional (eletricista não está presente)
+  // Desempenho: assinatura do Eletricista 1 obrigatória
+  const isPosServico = form.tipoAuditoria === 'POS_SERVICO'
+  const ok = isPosServico ? true : !!form.assinatura
 
   return (
     <div>
+      {isPosServico && (
+        <div style={{
+          background: '#eff6ff', border: '1px solid #bfdbfe',
+          borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+          fontSize: 13, color: '#1e40af',
+        }}>
+          ℹ️ Auditoria Pós Serviço — assinatura <strong>opcional</strong> pois o eletricista pode não estar presente.
+        </div>
+      )}
+
       <PainelAssinatura
         label="Eletricista 1"
         nome={form.nomeEletricista}
         onNome={v => upd('nomeEletricista', v)}
         assinatura={form.assinatura}
         onAssinatura={v => upd('assinatura', v)}
-        obrigatorio={true}
+        obrigatorio={!isPosServico}
       />
 
       <PainelAssinatura

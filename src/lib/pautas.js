@@ -17,22 +17,24 @@ export async function pautasHojeFiscal(fiscal_login) {
     .select('*')
     .eq('fiscal_login', fiscal_login)
     .eq('status', 'PENDENTE')
-    .lte('data_prevista', hoje)  // vencidas ou de hoje
+    .lte('data_prevista', hoje)
     .order('data_prevista')
   if (error) throw error
   return data || []
 }
 
 export async function criarPauta(payload) {
+  const { id, ...dados } = payload  // remove id null se vier no payload
   const { data, error } = await supabase
-    .from('pautas').insert(payload).select().single()
+    .from('pautas').insert(dados).select().single()
   if (error) throw error
   return data
 }
 
 export async function atualizarPauta(id, payload) {
+  const { id: _, ...dados } = payload  // remove id do payload antes de atualizar
   const { data, error } = await supabase
-    .from('pautas').update(payload).eq('id', id).select().single()
+    .from('pautas').update(dados).eq('id', id).select().single()
   if (error) throw error
   return data
 }
@@ -48,13 +50,12 @@ export async function concluirPauta(id, auditoria_id) {
     .update({ status: 'CONCLUIDA', auditoria_id })
     .eq('id', id)
   if (error) throw error
-  // Se for recorrente, cria próxima ocorrência
 }
 
 export async function criarProximaRecorrencia(pauta) {
   if (pauta.recorrencia === 'UNICA') return
   const dataAtual = new Date(pauta.data_prevista)
-  const proxData = new Date(dataAtual)
+  const proxData  = new Date(dataAtual)
   if (pauta.recorrencia === 'DIARIA')  proxData.setDate(dataAtual.getDate() + 1)
   if (pauta.recorrencia === 'SEMANAL') proxData.setDate(dataAtual.getDate() + 7)
   await criarPauta({

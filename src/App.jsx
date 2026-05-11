@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FORM_INICIAL } from './data/checklists.js'
 import { getUsuarioLogado, fazerLogout, isAdmin } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
+import { buscarAuditoriasReabertas } from './lib/supabase.js'
 
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
@@ -22,18 +23,33 @@ import S6Resultado     from './steps/S6Resultado.jsx'
 const STEPS = ['Serviço', 'Identificação', 'Checklist', 'Evidências', 'Assinatura', 'Resultado']
 
 export default function App() {
-  const [usuario,      setUsuario]      = useState(getUsuarioLogado)
-  const [tela,         setTela]         = useState('home')
-  const [step,         setStep]         = useState(0)
-  const [form,         setForm]         = useState(FORM_INICIAL())
-  const [pautasHoje,   setPautasHoje]   = useState([])
-  const [pautaAtiva,   setPautaAtiva]   = useState(null)
-  const [loadingPauta, setLoadingPauta] = useState(false)
+  const [usuario,             setUsuario]             = useState(getUsuarioLogado)
+  const [tela,                setTela]                = useState('home')
+  const [step,                setStep]                = useState(0)
+  const [form,                setForm]                = useState(FORM_INICIAL())
+  const [pautasHoje,          setPautasHoje]          = useState([])
+  const [pautaAtiva,          setPautaAtiva]          = useState(null)
+  const [loadingPauta,        setLoadingPauta]        = useState(false)
+  const [auditoriasReabertas, setAuditoriasReabertas] = useState([])
+  const [auditoriaEditando,   setAuditoriaEditando]   = useState(null)
+  const [fotosAntigas,        setFotosAntigas]        = useState([])
 
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
   const prev = () => setStep(s => s - 1)
   const logout = () => { fazerLogout(); setUsuario(null) }
+
+  const carregarReabertas = async (user) => {
+    if (!user) return
+    try {
+      const reabertas = await buscarAuditoriasReabertas(user.login)
+      setAuditoriasReabertas(reabertas)
+    } catch (e) { setAuditoriasReabertas([]) }
+  }
+
+  useEffect(() => {
+    if (usuario && tela === 'home') carregarReabertas(usuario)
+  }, [usuario, tela])
 
   const iniciarAuditoria = async () => {
     setLoadingPauta(true)
@@ -43,12 +59,53 @@ export default function App() {
       setPautaAtiva(null)
     } catch (e) { setPautasHoje([]) }
     finally { setLoadingPauta(false) }
+    setAuditoriaEditando(null)
+    setFotosAntigas([])
     setForm(FORM_INICIAL())
     setStep(0)
     setTela('auditoria')
   }
 
+  const editarAuditoriaReaberta = (auditoria) => {
+    setAuditoriaEditando(auditoria.id)
+    setFotosAntigas(auditoria.fotos_urls || [])
+    setForm({
+      ...FORM_INICIAL(),
+      fiscal:           auditoria.fiscal           || '',
+      matricula:        auditoria.matricula         || '',
+      prefixo:          auditoria.prefixo           || '',
+      os:               auditoria.os               || '',
+      uc:               auditoria.uc               || '',
+      endereco:         auditoria.endereco          || '',
+      lat:              auditoria.lat               || '',
+      lng:              auditoria.lng               || '',
+      data:             auditoria.data_auditoria    || '',
+      hora:             auditoria.hora_auditoria    || '',
+      tipoAuditoria:    auditoria.tipo_auditoria    || 'DESEMPENHO',
+      tipoServico:      auditoria.tipo_servico      || 'CORTE',
+      produtivo:        auditoria.produtivo         ?? true,
+      respostas:        auditoria.respostas         || {},
+      feedback:         auditoria.feedback          || '',
+      observacoes:      auditoria.observacoes       || '',
+      nomeEletricista:  auditoria.nome_eletricista  || '',
+      nomeEletricista2: auditoria.nome_eletricista2 || '',
+      fotos:            [],
+      assinatura:       null,
+      assinatura2:      null,
+    })
+    setPautasHoje([])
+    setPautaAtiva(null)
+    setStep(0)
+    setTela('auditoria')
+  }
+
   const onAuditoriaSalva = async (auditoria_id) => {
+    if (auditoriaEditando) {
+      setAuditoriaEditando(null)
+      setFotosAntigas([])
+      setAuditoriasReabertas(prev => prev.filter(a => a.id !== auditoriaEditando))
+      return
+    }
     if (pautaAtiva) {
       try {
         await concluirPauta(pautaAtiva.id, auditoria_id)
@@ -97,6 +154,33 @@ export default function App() {
             padding: '7px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
           }}>Sair</button>
         </div>
+
+        {/* BANNER AUDITORIAS REABERTAS */}
+        {auditoriasReabertas.length > 0 && (
+          <div style={{ width: '100%', maxWidth: 380, marginBottom: 20 }}>
+            {auditoriasReabertas.map(a => (
+              <div key={a.id} style={{
+                background: '#fef3c7', border: '2px solid #f59e0b',
+                borderRadius: 14, padding: '14px 16px', marginBottom: 10,
+              }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 4 }}>
+                  🔓 Auditoria devolvida para correção
+                </p>
+                <p style={{ fontSize: 12, color: '#78350f', marginBottom: 10 }}>
+                  <strong>{a.prefixo}</strong> · OS {a.os} · {a.data_auditoria}<br />
+                  Devolvida por: {a.reaberta_por}
+                </p>
+                <button onClick={() => editarAuditoriaReaberta(a)} style={{
+                  width: '100%', padding: '10px', borderRadius: 10, border: 'none',
+                  background: '#d97706', color: '#fff', fontSize: 13,
+                  fontWeight: 700, cursor: 'pointer',
+                }}>
+                  ✏️ Corrigir Auditoria
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
@@ -195,6 +279,11 @@ export default function App() {
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
           }}>🏠 Home</button>
         </div>
+        {auditoriaEditando && (
+          <div style={{ background: '#fef3c7', borderRadius: 8, padding: '6px 10px', marginBottom: 6, fontSize: 12, color: '#92400e', fontWeight: 700 }}>
+            ✏️ Modo edição — auditoria reaberta
+          </div>
+        )}
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 12 }}>Auditoria Operacional de Campo</div>
         <div style={{ display: 'flex', gap: 3, marginBottom: 6 }}>
           {STEPS.map((_, i) => (
@@ -216,12 +305,12 @@ export default function App() {
       </header>
 
       <main className="app-content">
-        {step === 0 && <S0Selecao {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
-        {step === 1 && <S1Identificacao {...stepProps} />}
-        {step === 2 && <S3Checklist     {...stepProps} />}
-        {step === 3 && <S4Fotos         {...stepProps} />}
-        {step === 4 && <S5Assinatura    {...stepProps} />}
-        {step === 5 && <S6Resultado     {...stepProps} onAuditoriaSalva={onAuditoriaSalva} />}
+        {step === 0 && <S0Selecao      {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
+        {step === 1 && <S1Identificacao {...stepProps} pautaAtiva={pautaAtiva} />}
+        {step === 2 && <S3Checklist    {...stepProps} />}
+        {step === 3 && <S4Fotos        {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
+        {step === 4 && <S5Assinatura   {...stepProps} />}
+        {step === 5 && <S6Resultado    {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} />}
       </main>
     </div>
   )

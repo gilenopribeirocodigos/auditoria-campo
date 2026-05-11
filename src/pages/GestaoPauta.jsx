@@ -9,7 +9,7 @@ const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semana
 const FORM_VAZIO = {
   prefixo: '', fiscal_login: '', data_prevista: new Date().toISOString().split('T')[0],
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
-  recorrencia: 'UNICA', observacao: '',
+  recorrencia: 'UNICA', observacao: '', os: '', uc: '',
 }
 
 function statusCor(s) {
@@ -59,7 +59,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [])
 
-  // Fecha dropdown ao clicar fora
   useEffect(() => {
     const handler = e => {
       if (prefixoRef.current && !prefixoRef.current.contains(e.target)) setPrefixoSugs([])
@@ -70,10 +69,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
   const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setPrefixoSugs([]); setModal(true) }
-  const abrirEditar = p  => { setEditando(p); setFormData({ ...p }); setErro(''); setPrefixoSugs([]); setModal(true) }
+  const abrirEditar = p  => { setEditando(p); setFormData({ ...p, os: p.os || '', uc: p.uc || '' }); setErro(''); setPrefixoSugs([]); setModal(true) }
   const fechar      = () => { setModal(false); setErro(''); setPrefixoSugs([]) }
 
-  // Autocomplete prefixo
   const onPrefixoChange = async v => {
     upd('prefixo', v)
     if (v.length < 2) { setPrefixoSugs([]); return }
@@ -115,7 +113,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     const vencidas = pautas.filter(p => calcStatus(p) === 'VENCIDA')
     if (vencidas.length === 0) { alert('Não há pautas vencidas!'); return }
     const linhas = vencidas.map(p =>
-      `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}`
+      `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}`
     ).join('\n')
     const msg = encodeURIComponent(
       `🚨 *PAUTAS DE FISCALIZAÇÃO VENCIDAS — DPL CONSTRUÇÕES*\n\n${linhas}\n\nFavor regularizar!`
@@ -140,6 +138,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           tipo_auditoria: obj.tipo_auditoria || 'DESEMPENHO',
           recorrencia:    obj.recorrencia    || 'UNICA',
           observacao:     obj.observacao     || '',
+          os:             obj.os             || '',
+          uc:             obj.uc             || '',
           status: 'PENDENTE',
         }
       }).filter(p => p.prefixo && p.fiscal_login)
@@ -263,6 +263,13 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         <span style={{ margin: '0 8px' }}>·</span>
                         <span>🔧 {p.tipo_servico} — {p.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho' : 'Pós Serviço'}</span>
                       </div>
+                      {(p.os || p.uc) && (
+                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6, marginTop: 2 }}>
+                          {p.os && <span>📄 OS: <strong>{p.os}</strong></span>}
+                          {p.os && p.uc && <span style={{ margin: '0 8px' }}>·</span>}
+                          {p.uc && <span>🏠 UC: <strong>{p.uc}</strong></span>}
+                        </div>
+                      )}
                       {p.observacao && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>💬 {p.observacao}</p>}
                     </div>
                     {p.status === 'PENDENTE' && (
@@ -345,6 +352,18 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <input className="form-input" type="date" value={formData.data_prevista} onChange={e => upd('data_prevista', e.target.value)} />
             </div>
 
+            {/* OS e UC — opcionais */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="form-group">
+                <label className="form-label">Nº da OS</label>
+                <input className="form-input" value={formData.os} onChange={e => upd('os', e.target.value)} placeholder="Ordem de Serviço" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Nº da UC</label>
+                <input className="form-input" value={formData.uc} onChange={e => upd('uc', e.target.value)} placeholder="Unidade Consumidora" />
+              </div>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Tipo de Serviço</label>
@@ -399,9 +418,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#15803d' }}>
               <strong>Formato do CSV (separado por ;):</strong><br />
-              <code>prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao</code><br /><br />
+              <code>prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc</code><br /><br />
               <strong>Exemplo:</strong><br />
-              <code>PI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;SEMANAL;Prioridade alta</code>
+              <code>PI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;SEMANAL;Prioridade alta;12345;67890</code>
             </div>
 
             <div className="form-group">
@@ -410,7 +429,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 className="form-textarea"
                 value={csvTexto}
                 onChange={e => setCsvTexto(e.target.value)}
-                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao\nPI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;UNICA;`}
+                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;UNICA;;;`}
                 rows={8}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />

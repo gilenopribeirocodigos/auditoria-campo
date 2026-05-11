@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
 import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
-import { uploadBase64, salvarAuditoriaBD } from '../lib/supabase.js'
+import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 
-export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }) {
+export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
@@ -21,6 +21,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
   const [capturando, setCapturando] = useState(false)
 
   const printAreaRef = useRef(null)
+
+  const modoEdicao = !!auditoriaEditandoId
 
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
@@ -89,13 +91,18 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
     setSaveStatus('saving')
     setSaveError('')
     try {
-      const auditId = `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
+      const auditId = modoEdicao
+        ? auditoriaEditandoId
+        : `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
 
-      const fotosUrls = []
+      const fotosNovas = []
       for (let i = 0; i < form.fotos.length; i++) {
-        const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_${i + 1}.jpg`)
-        fotosUrls.push(url)
+        const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_edit_${Date.now()}_${i + 1}.jpg`)
+        fotosNovas.push(url)
       }
+      const fotosUrls = modoEdicao
+        ? [...(fotosAntigas || []), ...fotosNovas]
+        : fotosNovas
 
       let assinaturaUrl = null
       if (form.assinatura) {
@@ -107,7 +114,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
         assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
       }
 
-      const saved = await salvarAuditoriaBD({
+      const payload = {
         fiscal:            form.fiscal,
         matricula:         form.matricula,
         prefixo:           form.prefixo,
@@ -127,16 +134,22 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
         feedback:          form.feedback,
         observacoes:       form.observacoes,
         nome_eletricista:  form.nomeEletricista,
-        assinatura_url:    assinaturaUrl,
         nome_eletricista2: form.nomeEletricista2 || null,
-        assinatura2_url:   assinatura2Url,
         fotos_urls:        fotosUrls,
-      })
+        ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
+        ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
+      }
+
+      let saved
+      if (modoEdicao) {
+        saved = await atualizarAuditoriaBD(auditoriaEditandoId, payload)
+      } else {
+        saved = await salvarAuditoriaBD(payload)
+      }
 
       setSavedId(saved.id)
       setSaveStatus('saved')
 
-      // ← NOVO: avisa o App que a auditoria foi salva (para concluir pauta)
       if (onAuditoriaSalva) onAuditoriaSalva(saved.id)
 
     } catch (err) {
@@ -150,6 +163,17 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
     <div>
       <div ref={printAreaRef} className="print-area"
         style={{ background: '#f0f4f8', padding: 16, borderRadius: 12 }}>
+
+        {/* BANNER MODO EDIÇÃO */}
+        {modoEdicao && (
+          <div style={{
+            background: '#fef3c7', border: '1.5px solid #f59e0b',
+            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+            fontSize: 13, color: '#92400e', fontWeight: 700,
+          }}>
+            ✏️ Modo edição — auditoria reaberta para correção
+          </div>
+        )}
 
         {/* STATUS PRINCIPAL */}
         <div className="result-card" style={{ background: st.bg, borderColor: st.border }}>
@@ -235,18 +259,39 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
           </div>
         )}
 
-        {/* FOTOS */}
+        {/* FOTOS ANTIGAS — modo edição */}
+        {modoEdicao && fotosAntigas?.length > 0 && (
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+              📁 Fotos anteriores ({fotosAntigas.length})
+            </p>
+            <div className="photo-grid">
+              {fotosAntigas.map((url, i) => (
+                <div key={i} className="photo-thumb">
+                  <a href={url} target="_blank" rel="noreferrer">
+                    <img src={url} alt={`Foto anterior ${i + 1}`} />
+                  </a>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(15,118,110,0.7)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center' }}>
+                    Anterior {i + 1}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* NOVAS FOTOS */}
         {form.fotos.length > 0 && (
           <div style={{ marginBottom: 14 }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-              Registro Fotográfico ({form.fotos.length})
+              {modoEdicao ? `📷 Novas fotos (${form.fotos.length})` : `Registro Fotográfico (${form.fotos.length})`}
             </p>
             <div className="photo-grid">
               {form.fotos.map((foto, i) => (
                 <div key={i} className="photo-thumb">
                   <img src={foto.url} alt={`Foto ${i + 1}`} />
                   <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center' }}>
-                    Foto {i + 1}
+                    {modoEdicao ? `Nova ${i + 1}` : `Foto ${i + 1}`}
                   </div>
                 </div>
               ))}
@@ -296,10 +341,16 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
       <div className="no-print" style={{ marginBottom: 40, marginTop: 16 }}>
 
         {saveStatus === 'idle' && (
-          <button className="btn-primary" onClick={salvar}
-            style={{ background: '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
-            💾 Salvar Auditoria
-          </button>
+          <>
+            <button className="btn-primary" onClick={salvar}
+              style={{ background: modoEdicao ? '#d97706' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
+              {modoEdicao ? '💾 Salvar Correção' : '💾 Salvar Auditoria'}
+            </button>
+            <button className="btn-secondary" onClick={() => setStep(4)}
+              style={{ marginBottom: 10 }}>
+              ← Voltar e editar
+            </button>
+          </>
         )}
 
         {saveStatus === 'saving' && (
@@ -316,8 +367,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
               style={{ background: '#dc2626', marginBottom: 10 }}>
               🔄 Tentar novamente
             </button>
-            <button className="btn-secondary" onClick={() => setStep(2)} style={{ marginBottom: 10 }}>
-              ← Voltar ao Checklist
+            <button className="btn-secondary" onClick={() => setStep(4)} style={{ marginBottom: 10 }}>
+              ← Voltar e editar
             </button>
           </>
         )}
@@ -329,10 +380,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva }
               borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center',
             }}>
               <p style={{ color: '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-                ✅ Auditoria salva com sucesso!
+                ✅ {modoEdicao ? 'Correção salva com sucesso!' : 'Auditoria salva com sucesso!'}
               </p>
               <p style={{ color: '#64748b', fontSize: 11 }}>
-                Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.
+                {modoEdicao
+                  ? 'Auditoria corrigida e fechada novamente.'
+                  : 'Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.'}
               </p>
             </div>
 
