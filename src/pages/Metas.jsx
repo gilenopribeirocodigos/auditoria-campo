@@ -27,7 +27,6 @@ function conceito(notaMedia) {
   return             { label: 'Crítico',    emoji: '❌', bg: '#fee2e2', color: '#dc2626' }
 }
 
-// Calcula dias úteis (seg-sex) em um mês
 function diasUteisMes(mesAno) {
   const [ano, mes] = mesAno.split('-').map(Number)
   const diasNoMes = new Date(ano, mes, 0).getDate()
@@ -39,24 +38,23 @@ function diasUteisMes(mesAno) {
   return uteis
 }
 
-// Hoje no formato YYYY-MM-DD
 function hoje() {
   return new Date().toISOString().split('T')[0]
 }
 
 export default function Metas({ usuarioLogado, onVoltar }) {
-  const [mesAno,        setMesAno]        = useState(mesAtual())
-  const [fiscais,       setFiscais]       = useState([])
-  const [metas,         setMetas]         = useState([])
-  const [realizadas,    setRealizadas]    = useState([])
-  const [realizadasHoje,setRealizadasHoje]= useState([])
-  const [loading,       setLoading]       = useState(true)
-  const [salvando,      setSalvando]      = useState(false)
-  const [editMetas,     setEditMetas]     = useState({})
-  const [modoEditar,    setModoEditar]    = useState(false)
-  const [msgSalvo,      setMsgSalvo]      = useState('')
-  const [erroSalvo,     setErroSalvo]     = useState('')
-  const [abaAtiva,      setAbaAtiva]      = useState('hoje') // 'hoje' | 'mes'
+  const [mesAno,         setMesAno]         = useState(mesAtual())
+  const [fiscais,        setFiscais]        = useState([])
+  const [metas,          setMetas]          = useState([])
+  const [realizadas,     setRealizadas]     = useState([])
+  const [realizadasHoje, setRealizadasHoje] = useState([])
+  const [loading,        setLoading]        = useState(true)
+  const [salvando,       setSalvando]       = useState(false)
+  const [editMetas,      setEditMetas]      = useState({})
+  const [modoEditar,     setModoEditar]     = useState(false)
+  const [msgSalvo,       setMsgSalvo]       = useState('')
+  const [erroSalvo,      setErroSalvo]      = useState('')
+  const [abaAtiva,       setAbaAtiva]       = useState('hoje')
 
   const carregar = async () => {
     setLoading(true)
@@ -80,7 +78,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
         .gte('data_auditoria', ini).lte('data_auditoria', fim)
       setRealizadas(aData || [])
 
-      // Auditorias de hoje
       const { data: hData } = await supabase
         .from('auditorias').select('fiscal, status, nota, data_auditoria')
         .eq('data_auditoria', hoje())
@@ -132,7 +129,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
   }
 
   const diasUteis   = diasUteisMes(mesAno)
-  const diaAtual    = hoje()
+  const dataHojeFormatada = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
 
   const dadosFiscais = fiscais.map(f => {
     const metaObj    = metas.find(m => m.fiscal_login === f.login)
@@ -145,7 +142,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     const atende     = auds.filter(a => a.status === 'ATENDE').length
     const parcial    = auds.filter(a => a.status === 'ATENDE PARCIAL').length
     const nao        = auds.filter(a => a.status === 'NÃO ATENDE').length
-    const atendeHoje = audsHoje.filter(a => a.status === 'ATENDE').length
     const notaMedia  = auds.length > 0
       ? (auds.reduce((acc, a) => acc + Number(a.nota), 0) / auds.length).toFixed(1)
       : '—'
@@ -156,7 +152,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     const pctHoje    = metaDia > 0 ? Math.round((totalHoje / metaDia) * 100) : 0
     const faltam     = Math.max(0, meta - total)
     const faltamHoje = Math.max(0, metaDia - totalHoje)
-    return { ...f, meta, metaDia, total, totalHoje, atende, parcial, nao, atendeHoje, notaMedia, notaHoje, pct, pctHoje, faltam, faltamHoje }
+    return { ...f, meta, metaDia, total, totalHoje, atende, parcial, nao, notaMedia, notaHoje, pct, pctHoje, faltam, faltamHoje }
   }).filter(f => f.meta > 0 || f.total > 0 || f.totalHoje > 0)
 
   const totalMeta      = dadosFiscais.reduce((a, f) => a + f.meta, 0)
@@ -173,7 +169,20 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
 
-  const dataHojeFormatada = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+  const kpisHoje = [
+    { label: 'Meta Hoje',   val: totalMetaHoje,  bg: 'rgba(255,255,255,0.15)' },
+    { label: 'Feitas Hoje', val: totalFeitoHoje, bg: 'rgba(255,255,255,0.25)' },
+    { label: `${pctGeralHoje}%`, val: '✓', bg: pctGeralHoje >= 100 ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.4)' },
+  ]
+
+  const kpisMes = [
+    { label: 'Meta Total', val: totalMeta,   bg: 'rgba(255,255,255,0.15)' },
+    { label: 'Realizadas', val: totalFeito,  bg: 'rgba(255,255,255,0.25)' },
+    { label: 'Faltam',     val: totalFaltam, bg: 'rgba(220,38,38,0.4)'   },
+    { label: `${pctGeral}%`, val: '✓', bg: pctGeral >= 100 ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.4)' },
+  ]
+
+  const kpis = abaAtiva === 'hoje' ? kpisHoje : kpisMes
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -191,16 +200,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Cadastro e acompanhamento de metas</p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {abaAtiva === 'hoje' ? [
-                { label: 'Meta Hoje',  val: totalMetaHoje,  bg: 'rgba(255,255,255,0.15)' },
-                { label: 'Feitas Hoje',val: totalFeitoHoje, bg: 'rgba(255,255,255,0.25)' },
-                { label: `${pctGeralHoje}%`, val: '✓', bg: pctGeralHoje >= 100 ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.4)' },
-              ] : [
-                { label: 'Meta Total', val: totalMeta,   bg: 'rgba(255,255,255,0.15)' },
-                { label: 'Realizadas', val: totalFeito,  bg: 'rgba(255,255,255,0.25)' },
-                { label: 'Faltam',     val: totalFaltam, bg: 'rgba(220,38,38,0.4)'   },
-                { label: `${pctGeral}%`, val: '✓',       bg: pctGeral >= 100 ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.4)' },
-              ].map(t => (
+              {kpis.map(t => (
                 <div key={t.label} style={{ background: t.bg, borderRadius: 10, padding: '6px 12px', textAlign: 'center', minWidth: 56 }}>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>{t.val}</div>
                   <div style={{ fontSize: 9, opacity: 0.85 }}>{t.label}</div>
@@ -214,7 +214,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
         {/* ABAS */}
-        <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+        <div style={{ display: 'flex', marginBottom: 16, background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
           {[
             { id: 'hoje', label: '📅 Meta do Dia' },
             { id: 'mes',  label: '📊 Meta do Mês' },
@@ -229,7 +229,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
           ))}
         </div>
 
-        {/* ===================== ABA: HOJE ===================== */}
+        {/* ===== ABA HOJE ===== */}
         {abaAtiva === 'hoje' && (
           <>
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '14px 16px', marginBottom: 16 }}>
@@ -281,9 +281,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                         <div style={{ fontSize: 22, fontWeight: 900, color: barColor(f.pctHoje), lineHeight: 1 }}>
                           {f.pctHoje}%
                         </div>
-                        <div style={{ fontSize: 11, color: '#64748b' }}>
-                          {f.totalHoje}/{f.metaDia} hoje
-                        </div>
+                        <div style={{ fontSize: 11, color: '#64748b' }}>{f.totalHoje}/{f.metaDia} hoje</div>
                       </div>
                     </div>
 
@@ -311,10 +309,9 @@ export default function Metas({ usuarioLogado, onVoltar }) {
           </>
         )}
 
-        {/* ===================== ABA: MÊS ===================== */}
+        {/* ===== ABA MÊS ===== */}
         {abaAtiva === 'mes' && (
           <>
-            {/* Seletor de mês + botões */}
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'center', flexWrap: 'wrap' }}>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>
@@ -352,7 +349,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               {erroSalvo && <p style={{ marginTop: 20, fontSize: 13, fontWeight: 700, color: '#dc2626' }}>{erroSalvo}</p>}
             </div>
 
-            {/* Barra geral */}
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Progresso Geral — {mesLabel(mesAno)}</span>
@@ -385,7 +381,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               </div>
             ) : (
               <>
-                {/* Modo editar */}
                 {modoEditar && (
                   <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #059669', padding: '16px', marginBottom: 16 }}>
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#065f46', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.8 }}>
@@ -418,7 +413,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                   </div>
                 )}
 
-                {/* Cards mensais */}
                 {dadosFiscais.length === 0 && !modoEditar ? (
                   <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
@@ -457,9 +451,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                               <div style={{ fontSize: 22, fontWeight: 900, color: barColor(f.pct), lineHeight: 1 }}>
                                 {f.pct}%
                               </div>
-                              <div style={{ fontSize: 10, color: '#64748b' }}>
-                                {f.total}/{f.meta} auditorias
-                              </div>
+                              <div style={{ fontSize: 10, color: '#64748b' }}>{f.total}/{f.meta} auditorias</div>
                             </div>
                           </div>
 
