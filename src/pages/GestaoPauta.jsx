@@ -42,7 +42,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [csvTexto,    setCsvTexto]    = useState('')
   const [csvStatus,   setCsvStatus]   = useState('')
   const [prefixoSugs, setPrefixoSugs] = useState([])
-  const prefixoRef = useRef(null)
+  const prefixoRef  = useRef(null)
+  const intervalRef = useRef(null)
 
   const carregar = async () => {
     setLoading(true)
@@ -58,6 +59,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   }
 
   useEffect(() => { carregar() }, [])
+
+  // Autosincronização a cada 20 segundos
+  useEffect(() => {
+    intervalRef.current = setInterval(() => { carregar() }, 20000)
+    return () => clearInterval(intervalRef.current)
+  }, [])
 
   useEffect(() => {
     const handler = e => {
@@ -307,7 +314,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <button onClick={fechar} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
-            {/* PREFIXO COM AUTOCOMPLETE */}
             <div className="form-group" style={{ position: 'relative' }} ref={prefixoRef}>
               <label className="form-label">Prefixo da Equipe *</label>
               <input
@@ -331,9 +337,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                     }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    >
-                      {s}
-                    </button>
+                    >{s}</button>
                   ))}
                 </div>
               )}
@@ -352,7 +356,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <input className="form-input" type="date" value={formData.data_prevista} onChange={e => upd('data_prevista', e.target.value)} />
             </div>
 
-            {/* OS e UC — opcionais */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Nº da OS</label>
