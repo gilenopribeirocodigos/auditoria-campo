@@ -4,7 +4,6 @@ const DB_NAME    = 'auditoria-dpl'
 const DB_VERSION = 1
 const STORE      = 'fila_offline'
 
-// Abre o banco IndexedDB
 function abrirDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
@@ -20,7 +19,6 @@ function abrirDB() {
   })
 }
 
-// Salva auditoria na fila offline (com fotos em base64)
 export async function salvarAuditoriaOffline(payload, fotosBase64, assinaturaBase64, assinatura2Base64) {
   const db = await abrirDB()
   return new Promise((resolve, reject) => {
@@ -31,7 +29,7 @@ export async function salvarAuditoriaOffline(payload, fotosBase64, assinaturaBas
       fotosBase64:       fotosBase64       || [],
       assinaturaBase64:  assinaturaBase64  || null,
       assinatura2Base64: assinatura2Base64 || null,
-      sincronizado: false,
+      sincronizado: 0,  // FIX: era false, IndexedDB não aceita boolean como chave
       criadoEm: new Date().toISOString(),
     }
     const req = store.add(item)
@@ -40,26 +38,23 @@ export async function salvarAuditoriaOffline(payload, fotosBase64, assinaturaBas
   })
 }
 
-// Busca todas pendentes de sincronização
 export async function buscarPendentes() {
   const db = await abrirDB()
   return new Promise((resolve, reject) => {
     const tx    = db.transaction(STORE, 'readonly')
     const store = tx.objectStore(STORE)
     const index = store.index('sincronizado')
-    const req   = index.getAll(false)
+    const req   = index.getAll(0)  // FIX: era false
     req.onsuccess = () => resolve(req.result || [])
     req.onerror   = () => reject(req.error)
   })
 }
 
-// Conta pendentes
 export async function contarPendentes() {
   const pendentes = await buscarPendentes()
   return pendentes.length
 }
 
-// Marca como sincronizada
 async function marcarSincronizado(id) {
   const db = await abrirDB()
   return new Promise((resolve, reject) => {
@@ -69,7 +64,7 @@ async function marcarSincronizado(id) {
     req.onsuccess = () => {
       const item = req.result
       if (item) {
-        item.sincronizado = true
+        item.sincronizado = 1  // FIX: era true
         store.put(item)
       }
       resolve()
@@ -78,7 +73,6 @@ async function marcarSincronizado(id) {
   })
 }
 
-// Sincroniza todas as pendentes com o banco
 export async function sincronizarPendentes(onProgresso) {
   const pendentes = await buscarPendentes()
   if (pendentes.length === 0) return 0
@@ -89,14 +83,12 @@ export async function sincronizarPendentes(onProgresso) {
     try {
       const auditId = `${Date.now()}_OS${item.payload.os}_${item.payload.prefixo}`.replace(/\s+/g, '_')
 
-      // Upload das fotos
       const fotosUrls = []
       for (let i = 0; i < item.fotosBase64.length; i++) {
         const url = await uploadBase64(item.fotosBase64[i], `${auditId}/foto_${Date.now()}_${i + 1}.jpg`)
         fotosUrls.push(url)
       }
 
-      // Upload das assinaturas
       let assinaturaUrl  = null
       let assinatura2Url = null
       if (item.assinaturaBase64) {
@@ -106,7 +98,6 @@ export async function sincronizarPendentes(onProgresso) {
         assinatura2Url = await uploadBase64(item.assinatura2Base64, `${auditId}/assinatura_2.png`)
       }
 
-      // Monta payload final
       const payload = {
         ...item.payload,
         fotos_urls: fotosUrls,
