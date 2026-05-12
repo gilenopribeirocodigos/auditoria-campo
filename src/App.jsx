@@ -4,6 +4,7 @@ import { getUsuarioLogado, fazerLogout, isAdmin } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
+import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
 
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
@@ -36,6 +37,12 @@ export default function App() {
   const [auditoriaEditando,   setAuditoriaEditando]   = useState(null)
   const [fotosAntigas,        setFotosAntigas]        = useState([])
 
+  // Offline
+  const [online,           setOnline]           = useState(navigator.onLine)
+  const [pendentesOffline, setPendentesOffline] = useState(0)
+  const [sincronizando,    setSincronizando]    = useState(false)
+  const [msgSync,          setMsgSync]          = useState('')
+
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
   const prev = () => setStep(s => s - 1)
@@ -46,14 +53,74 @@ export default function App() {
     setUsuario(null)
   }
 
+  // FIX 1: Sincroniza pendentes ao carregar o app (caso já esteja online)
+  useEffect(() => {
+    const syncInicial = async () => {
+      if (navigator.onLine) {
+        const qtd = await contarPendentes()
+        setPendentesOffline(qtd)
+        if (qtd > 0) {
+          setSincronizando(true)
+          setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) pendente(s)...`)
+          try {
+            const ok = await sincronizarPendentes((feito, total) => {
+              setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
+            })
+            setPendentesOffline(0)
+            setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+            setTimeout(() => setMsgSync(''), 4000)
+          } catch (e) {
+            setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
+            setTimeout(() => setMsgSync(''), 4000)
+          } finally {
+            setSincronizando(false)
+          }
+        }
+      } else {
+        const qtd = await contarPendentes()
+        setPendentesOffline(qtd)
+      }
+    }
+    syncInicial()
+  }, [])
+
+  // Detecta transição online/offline
+  useEffect(() => {
+    const handleOnline = async () => {
+      setOnline(true)
+      const qtd = await contarPendentes()
+      if (qtd > 0) {
+        setSincronizando(true)
+        setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) salva(s) offline...`)
+        try {
+          const ok = await sincronizarPendentes((feito, total) => {
+            setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
+          })
+          setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+          setPendentesOffline(0)
+          setTimeout(() => setMsgSync(''), 4000)
+        } catch (e) {
+          setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
+          setTimeout(() => setMsgSync(''), 4000)
+        } finally {
+          setSincronizando(false)
+        }
+      }
+    }
+    const handleOffline = () => setOnline(false)
+
+    window.addEventListener('online',  handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online',  handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
+
   // Inicia rastreio automaticamente ao logar
   useEffect(() => {
-    if (usuario) {
-      iniciarRastreio(usuario)
-    }
-    return () => {
-      if (!usuario) pararRastreio()
-    }
+    if (usuario) iniciarRastreio(usuario)
+    return () => { if (!usuario) pararRastreio() }
   }, [usuario])
 
   const carregarReabertas = async (user) => {
@@ -78,7 +145,12 @@ export default function App() {
     finally { setLoadingPauta(false) }
     setAuditoriaEditando(null)
     setFotosAntigas([])
-    setForm(FORM_INICIAL())
+    // FIX 2: Pré-preenche fiscal e matrícula do usuário logado (funciona offline)
+    setForm({
+      ...FORM_INICIAL(),
+      fiscal:    usuario.nome      || '',
+      matricula: usuario.matricula || '',
+    })
     setStep(0)
     setTela('auditoria')
   }
@@ -117,6 +189,7 @@ export default function App() {
   }
 
   const onAuditoriaSalva = async (auditoria_id) => {
+    contarPendentes().then(setPendentesOffline)
     if (auditoriaEditando) {
       setAuditoriaEditando(null)
       setFotosAntigas([])
@@ -152,7 +225,30 @@ export default function App() {
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', padding: 24,
       }}>
-        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+
+        {/* BANNER OFFLINE */}
+        {!online && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            background: '#dc2626', color: '#fff', padding: '10px 16px',
+            textAlign: 'center', fontSize: 13, fontWeight: 700,
+          }}>
+            📵 Sem internet — auditorias serão salvas localmente e sincronizadas ao reconectar
+          </div>
+        )}
+
+        {/* BANNER SINCRONIZAÇÃO */}
+        {msgSync && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            background: msgSync.startsWith('✅') ? '#16a34a' : msgSync.startsWith('❌') ? '#dc2626' : '#2563eb',
+            color: '#fff', padding: '10px 16px', textAlign: 'center', fontSize: 13, fontWeight: 700,
+          }}>
+            {msgSync}
+          </div>
+        )}
+
+        <div style={{ textAlign: 'center', marginBottom: 40, marginTop: (!online || msgSync) ? 40 : 0 }}>
           <div style={{ fontSize: 56, marginBottom: 12 }}>⚡</div>
           <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Auditoria Operacional</h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>DPL Construções — Equatorial Energia</p>
@@ -165,13 +261,45 @@ export default function App() {
         }}>
           <div>
             <p style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>{usuario.nome}</p>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>{usuario.perfil} · {usuario.base_regiao}</p>
+            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>
+              {usuario.perfil} · {usuario.base_regiao}
+              {!online && <span style={{ color: '#fca5a5', marginLeft: 8 }}>● offline</span>}
+              {online  && <span style={{ color: '#86efac', marginLeft: 8 }}>● online</span>}
+            </p>
           </div>
           <button onClick={logout} style={{
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
             padding: '7px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
           }}>Sair</button>
         </div>
+
+        {/* BANNER PENDENTES OFFLINE */}
+        {pendentesOffline > 0 && online && (
+          <div style={{
+            width: '100%', maxWidth: 380, marginBottom: 16,
+            background: '#fef3c7', border: '2px solid #f59e0b',
+            borderRadius: 14, padding: '12px 16px',
+          }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 8 }}>
+              📤 {pendentesOffline} auditoria(s) aguardando sincronização
+            </p>
+            <button onClick={async () => {
+              setSincronizando(true)
+              setMsgSync(`🔄 Sincronizando ${pendentesOffline} auditoria(s)...`)
+              const ok = await sincronizarPendentes()
+              setPendentesOffline(0)
+              setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s)!`)
+              setSincronizando(false)
+              setTimeout(() => setMsgSync(''), 4000)
+            }} disabled={sincronizando} style={{
+              width: '100%', padding: '9px', borderRadius: 10, border: 'none',
+              background: sincronizando ? '#64748b' : '#d97706',
+              color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>
+              {sincronizando ? '⏳ Sincronizando...' : '🔄 Sincronizar agora'}
+            </button>
+          </div>
+        )}
 
         {/* BANNER AUDITORIAS REABERTAS */}
         {auditoriasReabertas.length > 0 && (
@@ -296,6 +424,17 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header no-print">
+
+        {/* BANNER OFFLINE dentro da auditoria */}
+        {!online && (
+          <div style={{
+            background: '#dc2626', color: '#fff', borderRadius: 8,
+            padding: '6px 10px', marginBottom: 6, fontSize: 12, fontWeight: 700, textAlign: 'center',
+          }}>
+            📵 Offline — auditoria será salva localmente
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>
             DPL Construções — Equatorial Energia
@@ -336,7 +475,7 @@ export default function App() {
         {step === 2 && <S3Checklist    {...stepProps} />}
         {step === 3 && <S4Fotos        {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
         {step === 4 && <S5Assinatura   {...stepProps} />}
-        {step === 5 && <S6Resultado    {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} />}
+        {step === 5 && <S6Resultado    {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} isOnline={online} />}
       </main>
     </div>
   )

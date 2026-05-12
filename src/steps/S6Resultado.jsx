@@ -2,8 +2,9 @@ import { useState, useRef } from 'react'
 import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
+import { salvarAuditoriaOffline } from '../lib/offline.js'
 
-export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas }) {
+export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
@@ -17,12 +18,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError,  setSaveError]  = useState('')
-  const [savedId,    setSavedId]    = useState(null)
   const [capturando, setCapturando] = useState(false)
+  const [salvoOffline, setSalvoOffline] = useState(false)
 
   const printAreaRef = useRef(null)
-
-  const modoEdicao = !!auditoriaEditandoId
+  const modoEdicao   = !!auditoriaEditandoId
+  const online       = isOnline !== undefined ? isOnline : navigator.onLine
 
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
@@ -60,24 +61,13 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         canvas.toBlob(async blob => {
           const file = new File([blob], nomeArquivo, { type: 'image/png' })
           if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: `Auditoria ${form.prefixo}`,
-              text: `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
-            })
-          } else {
-            baixarImagem(canvas, nomeArquivo)
-          }
+            await navigator.share({ files: [file], title: `Auditoria ${form.prefixo}`, text: `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}` })
+          } else { baixarImagem(canvas, nomeArquivo) }
         }, 'image/png')
-      } else {
-        baixarImagem(canvas, nomeArquivo)
-      }
+      } else { baixarImagem(canvas, nomeArquivo) }
     } catch (err) {
-      console.error('Erro ao gerar imagem:', err)
       alert('Não foi possível gerar a imagem. Tente novamente.')
-    } finally {
-      setCapturando(false)
-    }
+    } finally { setCapturando(false) }
   }
 
   const baixarImagem = (canvas, nomeArquivo) => {
@@ -87,9 +77,55 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     link.click()
   }
 
+  // Monta payload base (sem fotos — fotos tratadas separado)
+  const montarPayload = () => ({
+    fiscal:            form.fiscal,
+    matricula:         form.matricula,
+    prefixo:           form.prefixo,
+    os:                form.os,
+    uc:                form.uc,
+    endereco:          form.endereco,
+    lat:               form.lat,
+    lng:               form.lng,
+    data_auditoria:    form.data,
+    hora_auditoria:    form.hora,
+    tipo_auditoria:    form.tipoAuditoria,
+    tipo_servico:      form.tipoServico,
+    produtivo:         form.produtivo,
+    nota,
+    status:            st.label,
+    respostas:         form.respostas,
+    feedback:          form.feedback,
+    observacoes:       form.observacoes,
+    nome_eletricista:  form.nomeEletricista,
+    nome_eletricista2: form.nomeEletricista2 || null,
+  })
+
   const salvar = async () => {
     setSaveStatus('saving')
     setSaveError('')
+
+    // ========== MODO OFFLINE ==========
+    if (!online && !modoEdicao) {
+      try {
+        const payload      = montarPayload()
+        const fotosBase64  = form.fotos.map(f => f.url)
+        const assinBase64  = form.assinatura  || null
+        const assin2Base64 = form.assinatura2 || null
+
+        await salvarAuditoriaOffline(payload, fotosBase64, assinBase64, assin2Base64)
+
+        setSalvoOffline(true)
+        setSaveStatus('saved')
+        if (onAuditoriaSalva) onAuditoriaSalva(null)
+      } catch (err) {
+        setSaveError('Erro ao salvar offline: ' + err.message)
+        setSaveStatus('error')
+      }
+      return
+    }
+
+    // ========== MODO ONLINE (fluxo normal) ==========
     try {
       const auditId = modoEdicao
         ? auditoriaEditandoId
@@ -97,45 +133,21 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
       const fotosNovas = []
       for (let i = 0; i < form.fotos.length; i++) {
-        const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_edit_${Date.now()}_${i + 1}.jpg`)
+        const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_${Date.now()}_${i + 1}.jpg`)
         fotosNovas.push(url)
       }
       const fotosUrls = modoEdicao
         ? [...(fotosAntigas || []), ...fotosNovas]
         : fotosNovas
 
-      let assinaturaUrl = null
-      if (form.assinatura) {
-        assinaturaUrl = await uploadBase64(form.assinatura, `${auditId}/assinatura_1.png`)
-      }
-
+      let assinaturaUrl  = null
       let assinatura2Url = null
-      if (form.assinatura2) {
-        assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
-      }
+      if (form.assinatura)  assinaturaUrl  = await uploadBase64(form.assinatura,  `${auditId}/assinatura_1.png`)
+      if (form.assinatura2) assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
 
       const payload = {
-        fiscal:            form.fiscal,
-        matricula:         form.matricula,
-        prefixo:           form.prefixo,
-        os:                form.os,
-        uc:                form.uc,
-        endereco:          form.endereco,
-        lat:               form.lat,
-        lng:               form.lng,
-        data_auditoria:    form.data,
-        hora_auditoria:    form.hora,
-        tipo_auditoria:    form.tipoAuditoria,
-        tipo_servico:      form.tipoServico,
-        produtivo:         form.produtivo,
-        nota,
-        status:            st.label,
-        respostas:         form.respostas,
-        feedback:          form.feedback,
-        observacoes:       form.observacoes,
-        nome_eletricista:  form.nomeEletricista,
-        nome_eletricista2: form.nomeEletricista2 || null,
-        fotos_urls:        fotosUrls,
+        ...montarPayload(),
+        fotos_urls: fotosUrls,
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
       }
@@ -147,9 +159,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         saved = await salvarAuditoriaBD(payload)
       }
 
-      setSavedId(saved.id)
       setSaveStatus('saved')
-
       if (onAuditoriaSalva) onAuditoriaSalva(saved.id)
 
     } catch (err) {
@@ -161,17 +171,19 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
   return (
     <div>
-      <div ref={printAreaRef} className="print-area"
-        style={{ background: '#f0f4f8', padding: 16, borderRadius: 12 }}>
+      <div ref={printAreaRef} className="print-area" style={{ background: '#f0f4f8', padding: 16, borderRadius: 12 }}>
 
         {/* BANNER MODO EDIÇÃO */}
         {modoEdicao && (
-          <div style={{
-            background: '#fef3c7', border: '1.5px solid #f59e0b',
-            borderRadius: 10, padding: '10px 14px', marginBottom: 14,
-            fontSize: 13, color: '#92400e', fontWeight: 700,
-          }}>
+          <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e', fontWeight: 700 }}>
             ✏️ Modo edição — auditoria reaberta para correção
+          </div>
+        )}
+
+        {/* BANNER OFFLINE */}
+        {!online && !modoEdicao && (
+          <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e', fontWeight: 700 }}>
+            📵 Sem internet — auditoria e fotos serão salvas localmente e enviadas ao banco quando a conexão voltar
           </div>
         )}
 
@@ -233,9 +245,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         {/* NÃO CONFORMIDADES */}
         {ncItems.length > 0 && (
           <div className="card" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 10 }}>
-              ❌ Itens Não Conformes ({ncItems.length})
-            </p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 10 }}>❌ Itens Não Conformes ({ncItems.length})</p>
             {ncItems.map((item, i) => (
               <div key={item.id} style={{ fontSize: 12, color: '#991b1b', padding: '5px 0', borderBottom: i < ncItems.length - 1 ? '1px solid #fecaca' : 'none', lineHeight: 1.5 }}>
                 <strong>{i + 1}.</strong> {item.p}
@@ -262,9 +272,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         {/* FOTOS ANTIGAS — modo edição */}
         {modoEdicao && fotosAntigas?.length > 0 && (
           <div style={{ marginBottom: 14 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-              📁 Fotos anteriores ({fotosAntigas.length})
-            </p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📁 Fotos anteriores ({fotosAntigas.length})</p>
             <div className="photo-grid">
               {fotosAntigas.map((url, i) => (
                 <div key={i} className="photo-thumb">
@@ -302,39 +310,26 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         {/* ASSINATURA 1 */}
         {form.assinatura && (
           <div className="card">
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-              Assinatura — {form.nomeEletricista || 'Eletricista 1'}
-            </p>
-            <img src={form.assinatura} alt="Assinatura 1"
-              style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
-            <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', marginTop: 6 }}>
-              Registrado em {form.data} às {form.hora}
-            </p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Assinatura — {form.nomeEletricista || 'Eletricista 1'}</p>
+            <img src={form.assinatura} alt="Assinatura 1" style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
+            <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', marginTop: 6 }}>Registrado em {form.data} às {form.hora}</p>
           </div>
         )}
 
         {/* ASSINATURA 2 */}
         {form.assinatura2 && (
           <div className="card">
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-              Assinatura — {form.nomeEletricista2 || 'Eletricista 2'}
-            </p>
-            <img src={form.assinatura2} alt="Assinatura 2"
-              style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
-            <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', marginTop: 6 }}>
-              Registrado em {form.data} às {form.hora}
-            </p>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Assinatura — {form.nomeEletricista2 || 'Eletricista 2'}</p>
+            <img src={form.assinatura2} alt="Assinatura 2" style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
+            <p style={{ fontSize: 10, color: '#94a3b8', textAlign: 'center', marginTop: 6 }}>Registrado em {form.data} às {form.hora}</p>
           </div>
         )}
 
         {/* RODAPÉ */}
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginBottom: 8, textAlign: 'center' }}>
           <p style={{ fontSize: 11, color: '#94a3b8' }}>DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-          <p style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>
-            Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}
-          </p>
+          <p style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
         </div>
-
       </div>
 
       {/* AÇÕES */}
@@ -343,29 +338,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         {saveStatus === 'idle' && (
           <>
             <button className="btn-primary" onClick={salvar}
-              style={{ background: modoEdicao ? '#d97706' : '#1e3a5f', marginBottom: 10, fontSize: 16 }}>
-              {modoEdicao ? '💾 Salvar Correção' : '💾 Salvar Auditoria'}
-            </button>
-            <button className="btn-secondary" onClick={() => setStep(4)}
-              style={{ marginBottom: 10 }}>
-              ← Voltar e editar
-            </button>
-          </>
-        )}
-
-        {saveStatus === 'saving' && (
-          <button className="btn-primary" disabled
-            style={{ background: '#64748b', marginBottom: 10, fontSize: 16 }}>
-            ⏳ Salvando no banco de dados...
-          </button>
-        )}
-
-        {saveStatus === 'error' && (
-          <>
-            <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {saveError}</div>
-            <button className="btn-primary" onClick={salvar}
-              style={{ background: '#dc2626', marginBottom: 10 }}>
-              🔄 Tentar novamente
+              style={{ background: modoEdicao ? '#d97706' : online ? '#1e3a5f' : '#dc2626', marginBottom: 10, fontSize: 16 }}>
+              {modoEdicao ? '💾 Salvar Correção' : online ? '💾 Salvar Auditoria' : '📵 Salvar Offline'}
             </button>
             <button className="btn-secondary" onClick={() => setStep(4)} style={{ marginBottom: 10 }}>
               ← Voltar e editar
@@ -373,38 +347,54 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </>
         )}
 
+        {saveStatus === 'saving' && (
+          <button className="btn-primary" disabled style={{ background: '#64748b', marginBottom: 10, fontSize: 16 }}>
+            {online ? '⏳ Salvando no banco de dados...' : '⏳ Salvando localmente...'}
+          </button>
+        )}
+
+        {saveStatus === 'error' && (
+          <>
+            <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {saveError}</div>
+            <button className="btn-primary" onClick={salvar} style={{ background: '#dc2626', marginBottom: 10 }}>🔄 Tentar novamente</button>
+            <button className="btn-secondary" onClick={() => setStep(4)} style={{ marginBottom: 10 }}>← Voltar e editar</button>
+          </>
+        )}
+
         {saveStatus === 'saved' && (
           <>
-            <div style={{
-              background: '#f0fdf4', border: '1px solid #86efac',
-              borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center',
-            }}>
-              <p style={{ color: '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-                ✅ {modoEdicao ? 'Correção salva com sucesso!' : 'Auditoria salva com sucesso!'}
+            <div style={{ background: salvoOffline ? '#fef3c7' : '#f0fdf4', border: `1px solid ${salvoOffline ? '#fcd34d' : '#86efac'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center' }}>
+              <p style={{ color: salvoOffline ? '#92400e' : '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
+                {salvoOffline
+                  ? '📵 Auditoria salva localmente!'
+                  : modoEdicao ? '✅ Correção salva com sucesso!' : '✅ Auditoria salva com sucesso!'}
               </p>
               <p style={{ color: '#64748b', fontSize: 11 }}>
-                {modoEdicao
-                  ? 'Auditoria corrigida e fechada novamente.'
-                  : 'Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.'}
+                {salvoOffline
+                  ? 'Quando a internet voltar, será enviada automaticamente ao banco de dados com todas as fotos.'
+                  : modoEdicao
+                    ? 'Auditoria corrigida e fechada novamente.'
+                    : 'Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.'}
               </p>
             </div>
 
-            <button className="btn-primary" onClick={gerarImagemWhatsApp} disabled={capturando}
-              style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}>
-              {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
-            </button>
-
-            <button className="btn-primary" onClick={() => window.print()}
-              style={{ background: '#7c3aed', marginBottom: 10 }}>
-              🖨️ Gerar PDF / Imprimir
-            </button>
+            {!salvoOffline && (
+              <>
+                <button className="btn-primary" onClick={gerarImagemWhatsApp} disabled={capturando}
+                  style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}>
+                  {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
+                </button>
+                <button className="btn-primary" onClick={() => window.print()} style={{ background: '#7c3aed', marginBottom: 10 }}>
+                  🖨️ Gerar PDF / Imprimir
+                </button>
+              </>
+            )}
 
             <button className="btn-primary" onClick={nova} style={{ background: '#15803d' }}>
               + Iniciar Nova Auditoria
             </button>
           </>
         )}
-
       </div>
     </div>
   )
