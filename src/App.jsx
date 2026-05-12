@@ -53,11 +53,41 @@ export default function App() {
     setUsuario(null)
   }
 
-  // Detecta online/offline
+  // FIX 1: Sincroniza pendentes ao carregar o app (caso já esteja online)
+  useEffect(() => {
+    const syncInicial = async () => {
+      if (navigator.onLine) {
+        const qtd = await contarPendentes()
+        setPendentesOffline(qtd)
+        if (qtd > 0) {
+          setSincronizando(true)
+          setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) pendente(s)...`)
+          try {
+            const ok = await sincronizarPendentes((feito, total) => {
+              setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
+            })
+            setPendentesOffline(0)
+            setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+            setTimeout(() => setMsgSync(''), 4000)
+          } catch (e) {
+            setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
+            setTimeout(() => setMsgSync(''), 4000)
+          } finally {
+            setSincronizando(false)
+          }
+        }
+      } else {
+        const qtd = await contarPendentes()
+        setPendentesOffline(qtd)
+      }
+    }
+    syncInicial()
+  }, [])
+
+  // Detecta transição online/offline
   useEffect(() => {
     const handleOnline = async () => {
       setOnline(true)
-      // Ao voltar online, sincroniza automaticamente
       const qtd = await contarPendentes()
       if (qtd > 0) {
         setSincronizando(true)
@@ -85,11 +115,6 @@ export default function App() {
       window.removeEventListener('online',  handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [])
-
-  // Conta pendentes ao carregar
-  useEffect(() => {
-    contarPendentes().then(setPendentesOffline)
   }, [])
 
   // Inicia rastreio automaticamente ao logar
@@ -120,7 +145,12 @@ export default function App() {
     finally { setLoadingPauta(false) }
     setAuditoriaEditando(null)
     setFotosAntigas([])
-    setForm(FORM_INICIAL())
+    // FIX 2: Pré-preenche fiscal e matrícula do usuário logado (funciona offline)
+    setForm({
+      ...FORM_INICIAL(),
+      fiscal:    usuario.nome      || '',
+      matricula: usuario.matricula || '',
+    })
     setStep(0)
     setTela('auditoria')
   }
@@ -159,9 +189,7 @@ export default function App() {
   }
 
   const onAuditoriaSalva = async (auditoria_id) => {
-    // Atualiza contagem de pendentes
     contarPendentes().then(setPendentesOffline)
-
     if (auditoriaEditando) {
       setAuditoriaEditando(null)
       setFotosAntigas([])
