@@ -79,14 +79,14 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [fiscalSugs,  setFiscalSugs]  = useState([])
   const [prefixoSugs, setPrefixoSugs] = useState([])
 
-  // Reabrir auditoria
-  const [modalReabrir,     setModalReabrir]     = useState(false)
-  const [fiscais,          setFiscais]          = useState([])
+  const [modalReabrir,      setModalReabrir]      = useState(false)
+  const [fiscais,           setFiscais]           = useState([])
   const [fiscalSelecionado, setFiscalSelecionado] = useState('')
-  const [reabrindo,        setReabrindo]        = useState(false)
-  const [reabrirErro,      setReabrirErro]      = useState('')
-  const [reabrirSucesso,   setReabrirSucesso]   = useState(false)
+  const [reabrindo,         setReabrindo]         = useState(false)
+  const [reabrirErro,       setReabrirErro]       = useState('')
+  const [reabrirSucesso,    setReabrirSucesso]    = useState(false)
 
+  const intervalRef = useRef(null)
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
 
   const buscar = async () => {
@@ -128,6 +128,12 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { buscar() }, [])
 
+  // Autosincronização a cada 20 segundos
+  useEffect(() => {
+    intervalRef.current = setInterval(() => { buscar() }, 20000)
+    return () => clearInterval(intervalRef.current)
+  }, [])
+
   const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
@@ -149,7 +155,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
   }
 
-  // Abre modal reabrir e carrega lista de fiscais
   const abrirModalReabrir = async () => {
     setFiscalSelecionado(detalhe.fiscal || '')
     setReabrirErro('')
@@ -181,9 +186,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     }
   }
 
-  // ============================================================
-  // EXPORTAR EXCEL
-  // ============================================================
   const exportarExcel = async () => {
     if (auditorias.length === 0) { alert('Nenhuma auditoria para exportar. Faça uma busca primeiro.'); return }
     setExportando(true)
@@ -259,7 +261,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #0f172a, #1e3a5f)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
@@ -292,7 +293,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* FILTROS */}
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>
             Filtros
@@ -352,25 +352,18 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             <button onClick={buscar} style={{
               padding: '10px 24px', background: '#1e3a5f', color: '#fff',
               border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            }}>🔍 Buscar</button>
+            <button onClick={exportarExcel} disabled={exportando || auditorias.length === 0} style={{
+              padding: '10px 24px', border: 'none', borderRadius: 10,
+              fontSize: 14, fontWeight: 700, cursor: auditorias.length === 0 ? 'not-allowed' : 'pointer',
+              background: exportando || auditorias.length === 0 ? '#e2e8f0' : '#16a34a',
+              color: exportando || auditorias.length === 0 ? '#94a3b8' : '#fff',
             }}>
-              🔍 Buscar
-            </button>
-            <button
-              onClick={exportarExcel}
-              disabled={exportando || auditorias.length === 0}
-              style={{
-                padding: '10px 24px', border: 'none', borderRadius: 10,
-                fontSize: 14, fontWeight: 700, cursor: auditorias.length === 0 ? 'not-allowed' : 'pointer',
-                background: exportando || auditorias.length === 0 ? '#e2e8f0' : '#16a34a',
-                color: exportando || auditorias.length === 0 ? '#94a3b8' : '#fff',
-              }}
-            >
               {exportando ? '⏳ Gerando...' : `📊 Exportar Excel (${auditorias.length})`}
             </button>
           </div>
         </div>
 
-        {/* LISTA */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
             <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
@@ -440,7 +433,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         )}
       </div>
 
-      {/* MODAL DETALHE */}
       {detalhe && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
@@ -462,7 +454,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               }}>×</button>
             </div>
 
-            {/* Badge reaberta */}
             {detalhe.reaberta && (
               <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e' }}>
                 🔓 <strong>Auditoria reaberta</strong> por {detalhe.reaberta_por} — aguardando correção do fiscal <strong>{detalhe.reaberta_para}</strong>
@@ -472,13 +463,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             {(() => {
               const sc = STATUS_COR[detalhe.status] || { bg: '#f1f5f9', color: '#374151' }
               return (
-                <div style={{
-                  background: sc.bg, border: `2px solid ${sc.color}22`,
-                  borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16,
-                }}>
-                  <div style={{ fontSize: 44, fontWeight: 900, color: sc.color, lineHeight: 1 }}>
-                    {Number(detalhe.nota).toFixed(0)}
-                  </div>
+                <div style={{ background: sc.bg, border: `2px solid ${sc.color}22`, borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
+                  <div style={{ fontSize: 44, fontWeight: 900, color: sc.color, lineHeight: 1 }}>{Number(detalhe.nota).toFixed(0)}</div>
                   <div style={{ fontSize: 11, color: sc.color }}>pontos</div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: sc.color, marginTop: 4 }}>{detalhe.status}</div>
                 </div>
@@ -522,14 +508,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
             {detalhe.fotos_urls?.length > 0 && (
               <div style={{ marginBottom: 14 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-                  Fotos ({detalhe.fotos_urls.length})
-                </p>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Fotos ({detalhe.fotos_urls.length})</p>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                   {detalhe.fotos_urls.map((url, i) => (
                     <a key={i} href={url} target="_blank" rel="noreferrer">
-                      <img src={url} alt={`Foto ${i + 1}`}
-                        style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                      <img src={url} alt={`Foto ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block' }} />
                     </a>
                   ))}
                 </div>
@@ -538,94 +521,49 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
             {detalhe.assinatura_url && (
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-                  Assinatura — {detalhe.nome_eletricista || 'Eletricista 1'}
-                </p>
-                <img src={detalhe.assinatura_url} alt="Assinatura 1"
-                  style={{ width: '100%', borderRadius: 8, background: '#fafafa', border: '1px solid #f1f5f9' }} />
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Assinatura — {detalhe.nome_eletricista || 'Eletricista 1'}</p>
+                <img src={detalhe.assinatura_url} alt="Assinatura 1" style={{ width: '100%', borderRadius: 8, background: '#fafafa', border: '1px solid #f1f5f9' }} />
               </div>
             )}
             {detalhe.assinatura2_url && (
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 14, marginBottom: 10 }}>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-                  Assinatura — {detalhe.nome_eletricista2 || 'Eletricista 2'}
-                </p>
-                <img src={detalhe.assinatura2_url} alt="Assinatura 2"
-                  style={{ width: '100%', borderRadius: 8, background: '#fafafa', border: '1px solid #f1f5f9' }} />
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Assinatura — {detalhe.nome_eletricista2 || 'Eletricista 2'}</p>
+                <img src={detalhe.assinatura2_url} alt="Assinatura 2" style={{ width: '100%', borderRadius: 8, background: '#fafafa', border: '1px solid #f1f5f9' }} />
               </div>
             )}
 
-            {/* BOTÃO REABRIR — só ADMIN e auditoria não reaberta ainda */}
             {isAdmin && !detalhe.reaberta && (
               <button onClick={abrirModalReabrir} style={{
                 width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10,
                 background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}>
-                🔓 Reabrir para Correção
-              </button>
+              }}>🔓 Reabrir para Correção</button>
             )}
 
             <button onClick={() => setDetalhe(null)} style={{
               width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0',
               background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 8,
-            }}>
-              Fechar
-            </button>
+            }}>Fechar</button>
           </div>
         </div>
       )}
 
-      {/* MODAL REABRIR */}
       {modalReabrir && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20,
-        }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: '24px 20px', width: '100%', maxWidth: 400 }}>
             <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 6 }}>🔓 Reabrir Auditoria</h3>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 18 }}>
               A auditoria <strong>{detalhe?.prefixo}</strong> será devolvida ao fiscal para correção.
             </p>
-
-            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>
-              Devolver para o fiscal:
-            </label>
-            <select
-              value={fiscalSelecionado}
-              onChange={e => setFiscalSelecionado(e.target.value)}
-              className="form-input"
-              style={{ marginBottom: 16, fontSize: 14 }}
-            >
+            <label style={{ fontSize: 12, fontWeight: 600, color: '#374151', display: 'block', marginBottom: 6 }}>Devolver para o fiscal:</label>
+            <select value={fiscalSelecionado} onChange={e => setFiscalSelecionado(e.target.value)} className="form-input" style={{ marginBottom: 16, fontSize: 14 }}>
               <option value="">Selecione o fiscal...</option>
-              {fiscais.map(f => (
-                <option key={f.login} value={f.login}>{f.nome} ({f.login})</option>
-              ))}
+              {fiscais.map(f => <option key={f.login} value={f.login}>{f.nome} ({f.login})</option>)}
             </select>
-
-            {reabrirErro && (
-              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>
-                ❌ {reabrirErro}
-              </div>
-            )}
-
-            {reabrirSucesso && (
-              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#15803d', marginBottom: 14 }}>
-                ✅ Auditoria reaberta com sucesso!
-              </div>
-            )}
-
+            {reabrirErro && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>❌ {reabrirErro}</div>}
+            {reabrirSucesso && <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '10px 12px', fontSize: 13, color: '#15803d', marginBottom: 14 }}>✅ Auditoria reaberta com sucesso!</div>}
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => setModalReabrir(false)} style={{
-                flex: 1, padding: 12, borderRadius: 10, border: '1px solid #e2e8f0',
-                background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              }}>
-                Cancelar
-              </button>
-              <button onClick={confirmarReabrir} disabled={reabrindo || reabrirSucesso} style={{
-                flex: 1, padding: 12, borderRadius: 10, border: 'none',
-                background: reabrindo ? '#94a3b8' : '#7c3aed', color: '#fff',
-                fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}>
+              <button onClick={() => setModalReabrir(false)} style={{ flex: 1, padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>
+              <button onClick={confirmarReabrir} disabled={reabrindo || reabrirSucesso} style={{ flex: 1, padding: 12, borderRadius: 10, border: 'none', background: reabrindo ? '#94a3b8' : '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                 {reabrindo ? '⏳ Reabrindo...' : '🔓 Confirmar'}
               </button>
             </div>

@@ -3,6 +3,7 @@ import { FORM_INICIAL } from './data/checklists.js'
 import { getUsuarioLogado, fazerLogout, isAdmin } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
+import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
@@ -13,6 +14,7 @@ import Metas                from './pages/Metas.jsx'
 import FeedbacksPDF         from './pages/FeedbacksPDF.jsx'
 import RelatorioEquipe      from './pages/RelatorioEquipe.jsx'
 import Dashboard            from './pages/Dashboard.jsx'
+import MapaFiscais          from './pages/MapaFiscais.jsx'
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -37,7 +39,22 @@ export default function App() {
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
   const prev = () => setStep(s => s - 1)
-  const logout = () => { fazerLogout(); setUsuario(null) }
+
+  const logout = () => {
+    pararRastreio()
+    fazerLogout()
+    setUsuario(null)
+  }
+
+  // Inicia rastreio automaticamente ao logar
+  useEffect(() => {
+    if (usuario) {
+      iniciarRastreio(usuario)
+    }
+    return () => {
+      if (!usuario) pararRastreio()
+    }
+  }, [usuario])
 
   const carregarReabertas = async (user) => {
     if (!user) return
@@ -125,6 +142,7 @@ export default function App() {
   if (tela === 'feedbacks')    return <FeedbacksPDF        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'relat-equipe') return <RelatorioEquipe     usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'dashboard')    return <Dashboard           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'mapa-fiscais') return <MapaFiscais         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -208,6 +226,14 @@ export default function App() {
                 cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
               }}>
                 📊 Dashboard / Ranking
+              </button>
+
+              <button onClick={() => setTela('mapa-fiscais')} style={{
+                background: 'linear-gradient(135deg, rgba(5,150,105,0.9), rgba(6,95,70,0.9))', color: '#fff', border: 'none',
+                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+              }}>
+                📍 Fiscais em Campo
               </button>
 
               <button onClick={() => setTela('metas')} style={{
