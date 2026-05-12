@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { FORM_INICIAL } from './data/checklists.js'
-import { getUsuarioLogado, fazerLogout, isAdmin } from './lib/auth.js'
+import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
@@ -53,7 +53,7 @@ export default function App() {
     setUsuario(null)
   }
 
-  // FIX 1: Sincroniza pendentes ao carregar o app (caso já esteja online)
+  // Sincroniza pendentes ao carregar o app (caso já esteja online)
   useEffect(() => {
     const syncInicial = async () => {
       if (navigator.onLine) {
@@ -145,7 +145,6 @@ export default function App() {
     finally { setLoadingPauta(false) }
     setAuditoriaEditando(null)
     setFotosAntigas([])
-    // FIX 2: Pré-preenche fiscal e matrícula do usuário logado (funciona offline)
     setForm({
       ...FORM_INICIAL(),
       fiscal:    usuario.nome      || '',
@@ -346,73 +345,70 @@ export default function App() {
             📁 Histórico de Auditorias
           </button>
 
-          {isAdmin(usuario) && (
-            <>
-              <button onClick={() => setTela('dashboard')} style={{
-                background: 'linear-gradient(135deg, rgba(37,99,235,0.9), rgba(124,58,237,0.9))', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                📊 Dashboard / Ranking
-              </button>
-
-              <button onClick={() => setTela('mapa-fiscais')} style={{
-                background: 'linear-gradient(135deg, rgba(5,150,105,0.9), rgba(6,95,70,0.9))', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                📍 Fiscais em Campo
-              </button>
-
-              <button onClick={() => setTela('metas')} style={{
-                background: 'rgba(5,150,105,0.9)', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                🎯 Metas por Fiscal
-              </button>
-
-              <button onClick={() => setTela('feedbacks')} style={{
-                background: 'rgba(124,58,237,0.85)', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                💬 Feedbacks em PDF
-              </button>
-
-              <button onClick={() => setTela('relat-equipe')} style={{
-                background: 'rgba(194,65,12,0.9)', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                🚗 Relatório por Equipe
-              </button>
-
-              <button onClick={() => setTela('pauta')} style={{
-                background: 'rgba(217,119,6,0.9)', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                📋 Pauta de Fiscalização
-              </button>
-
-              <button onClick={() => setTela('gestao')} style={{
-                background: 'rgba(124,58,237,0.9)', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                👥 Gestão de Usuários
-              </button>
-
-              <button onClick={() => setTela('importar')} style={{
-                background: 'rgba(15,118,110,0.9)', color: '#fff', border: 'none',
-                padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-                cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-              }}>
-                📥 Importar Equipes (CSV)
-              </button>
-            </>
+          {temPermissao(usuario, 'dashboard') && (
+            <button onClick={() => setTela('dashboard')} style={{
+              background: 'linear-gradient(135deg, rgba(37,99,235,0.9), rgba(124,58,237,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📊 Dashboard / Ranking</button>
           )}
+
+          {temPermissao(usuario, 'fiscais_campo') && (
+            <button onClick={() => setTela('mapa-fiscais')} style={{
+              background: 'linear-gradient(135deg, rgba(5,150,105,0.9), rgba(6,95,70,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📍 Fiscais em Campo</button>
+          )}
+
+          {temPermissao(usuario, 'metas') && (
+            <button onClick={() => setTela('metas')} style={{
+              background: 'rgba(5,150,105,0.9)', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🎯 Metas por Fiscal</button>
+          )}
+
+          {temPermissao(usuario, 'feedbacks') && (
+            <button onClick={() => setTela('feedbacks')} style={{
+              background: 'rgba(124,58,237,0.85)', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>💬 Feedbacks em PDF</button>
+          )}
+
+          {temPermissao(usuario, 'relat_equipe') && (
+            <button onClick={() => setTela('relat-equipe')} style={{
+              background: 'rgba(194,65,12,0.9)', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🚗 Relatório por Equipe</button>
+          )}
+
+          {temPermissao(usuario, 'pauta') && (
+            <button onClick={() => setTela('pauta')} style={{
+              background: 'rgba(217,119,6,0.9)', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📋 Pauta de Fiscalização</button>
+          )}
+
+          {temPermissao(usuario, 'gestao_usuarios') && (
+            <button onClick={() => setTela('gestao')} style={{
+              background: 'rgba(124,58,237,0.9)', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>👥 Gestão de Usuários</button>
+          )}
+
+          {temPermissao(usuario, 'importar_equipes') && (
+            <button onClick={() => setTela('importar')} style={{
+              background: 'rgba(15,118,110,0.9)', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📥 Importar Equipes (CSV)</button>
+          )}
+
         </div>
 
         <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>Contrato 1021/2024 — v2.0</p>
