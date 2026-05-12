@@ -14,12 +14,15 @@ export async function fazerLogin(login, senha) {
   const usuario = data[0]
   if (usuario.senha !== senha) throw new Error('Senha incorreta.')
 
-  // Carrega permissões do perfil
-  const { data: perms } = await supabase
+
+  // Carrega permissões do perfil — usa schema explícito
+  const schemaAtual = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
+  const { data: perms, error: permsError } = await supabase
     .from('perfis_permissoes')
     .select('permissao')
     .eq('perfil', usuario.perfil)
-  const permissoes = (perms || []).map(p => p.permissao)
+  
+  console.log('Permissões carregadas:', perms, 'Erro:', permsError)
 
   localStorage.setItem(SESSION_KEY, JSON.stringify({
     id:          usuario.id,
