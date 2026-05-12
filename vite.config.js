@@ -23,12 +23,34 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/api/],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
-            options: { cacheName: 'google-fonts-cache' }
+            options: {
+              cacheName: 'google-fonts-cache',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            }
+          },
+          {
+            urlPattern: /^https:\/\/unpkg\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'unpkg-cache',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            }
+          },
+          {
+            urlPattern: /^https:\/\/.*\.supabase\.co\/rest\/.*/i,
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'supabase-api-cache',
+              networkTimeoutSeconds: 10,
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
+            }
           }
         ]
       }
