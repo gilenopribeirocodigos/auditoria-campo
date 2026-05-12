@@ -1,13 +1,27 @@
 import { useState, useEffect } from 'react'
 import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario } from '../lib/auth.js'
+import { supabase } from '../lib/supabase.js'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
   'SUPERV. OPERAÇÃO': { bg: '#d1fae5', color: '#065f46' },
   'SUPERV. CAMPO':    { bg: '#dbeafe', color: '#1e40af' },
+  'ANALISTA':         { bg: '#fef3c7', color: '#92400e' },
+  'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
 }
+
+const TODAS_PERMISSOES = [
+  { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
+  { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
+  { id: 'metas',            label: '🎯 Metas por Fiscal'       },
+  { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
+  { id: 'relat_equipe',     label: '🚗 Relatório por Equipe'   },
+  { id: 'pauta',            label: '📋 Pauta de Fiscalização'  },
+  { id: 'gestao_usuarios',  label: '👥 Gestão de Usuários'     },
+  { id: 'importar_equipes', label: '📥 Importar Equipes (CSV)' },
+]
 
 const FORM_VAZIO = {
   nome: '', login: '', senha: '', matricula: '',
@@ -15,13 +29,21 @@ const FORM_VAZIO = {
 }
 
 export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
-  const [usuarios, setUsuarios] = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [modal,    setModal]    = useState(false)
-  const [editando, setEditando] = useState(null)
-  const [formData, setFormData] = useState(FORM_VAZIO)
-  const [salvando, setSalvando] = useState(false)
-  const [erro,     setErro]     = useState('')
+  const [usuarios,    setUsuarios]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [modal,       setModal]       = useState(false)
+  const [editando,    setEditando]    = useState(null)
+  const [formData,    setFormData]    = useState(FORM_VAZIO)
+  const [salvando,    setSalvando]    = useState(false)
+  const [erro,        setErro]        = useState('')
+  const [abaAtiva,    setAbaAtiva]    = useState('usuarios')
+
+  // Permissões
+  const [permissoes,       setPermissoes]       = useState({}) // { perfil: [permissao,...] }
+  const [loadingPerms,     setLoadingPerms]     = useState(false)
+  const [salvandoPerms,    setSalvandoPerms]    = useState(false)
+  const [msgPerms,         setMsgPerms]         = useState('')
+  const [perfilSelecionado, setPerfilSelecionado] = useState('SUPERV. CAMPO')
 
   const carregar = async () => {
     setLoading(true)
@@ -30,7 +52,24 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     finally { setLoading(false) }
   }
 
+  const carregarPermissoes = async () => {
+    setLoadingPerms(true)
+    try {
+      const { data } = await supabase.from('perfis_permissoes').select('*')
+      const mapa = {}
+      PERFIS.forEach(p => { mapa[p] = [] })
+      ;(data || []).forEach(r => {
+        if (!mapa[r.perfil]) mapa[r.perfil] = []
+        mapa[r.perfil].push(r.permissao)
+      })
+      setPermissoes(mapa)
+    } finally {
+      setLoadingPerms(false)
+    }
+  }
+
   useEffect(() => { carregar() }, [])
+  useEffect(() => { if (abaAtiva === 'permissoes') carregarPermissoes() }, [abaAtiva])
 
   const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setModal(true) }
   const abrirEditar = u  => { setEditando(u); setFormData({ ...u, senha: '' }); setErro(''); setModal(true) }
@@ -52,7 +91,6 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   }
 
   const alternarStatus = async u => {
-    // Ciclo: ATIVO → RESERVA → INATIVO → ATIVO
     const ciclo = { 'ATIVO': 'RESERVA', 'RESERVA': 'INATIVO', 'INATIVO': 'ATIVO' }
     const novoStatus = ciclo[u.status] || 'ATIVO'
     try { await atualizarUsuario(u.id, { status: novoStatus }); await carregar() }
@@ -66,10 +104,44 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     catch (e) { alert(e.message) }
   }
 
+  const togglePermissao = (perfil, permissao) => {
+    setPermissoes(prev => {
+      const atual = prev[perfil] || []
+      const nova  = atual.includes(permissao)
+        ? atual.filter(p => p !== permissao)
+        : [...atual, permissao]
+      return { ...prev, [perfil]: nova }
+    })
+  }
+
+  const salvarPermissoes = async () => {
+    setSalvandoPerms(true)
+    setMsgPerms('')
+    try {
+      // Deleta todas as permissões do perfil selecionado
+      await supabase.from('perfis_permissoes').delete().eq('perfil', perfilSelecionado)
+
+      // Reinsere as selecionadas
+      const perms = (permissoes[perfilSelecionado] || [])
+      if (perms.length > 0) {
+        await supabase.from('perfis_permissoes').insert(
+          perms.map(p => ({ perfil: perfilSelecionado, permissao: p }))
+        )
+      }
+
+      setMsgPerms('✅ Permissões salvas!')
+      setTimeout(() => setMsgPerms(''), 3000)
+    } catch (e) {
+      setMsgPerms('❌ Erro: ' + e.message)
+    } finally {
+      setSalvandoPerms(false)
+    }
+  }
+
   const statusCor = s => ({
-    'ATIVO':   { bg: '#dcfce7', color: '#15803d', label: '✅ ATIVO' },
-    'RESERVA': { bg: '#fef3c7', color: '#92400e', label: '🟡 RESERVA' },
-    'INATIVO': { bg: '#fee2e2', color: '#dc2626', label: '⭕ INATIVO' },
+    'ATIVO':   { bg: '#dcfce7', color: '#15803d', label: '✅ ATIVO'    },
+    'RESERVA': { bg: '#fef3c7', color: '#92400e', label: '🟡 RESERVA'  },
+    'INATIVO': { bg: '#fee2e2', color: '#dc2626', label: '⭕ INATIVO'  },
   }[s] || { bg: '#f1f5f9', color: '#374151', label: s })
 
   const ativos   = usuarios.filter(u => u.status === 'ATIVO').length
@@ -84,144 +156,225 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
             padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
-          }}>
-            ← Voltar para Home
-          </button>
+          }}>← Voltar para Home</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>👥 Gestão de Usuários</h1>
               <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>Administrador: {usuarioLogado.nome}</p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{usuarios.length}</div>
-                <div style={{ fontSize: 10, opacity: 0.8 }}>Total</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{ativos}</div>
-                <div style={{ fontSize: 10, opacity: 0.8 }}>Ativos</div>
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{reservas}</div>
-                <div style={{ fontSize: 10, opacity: 0.8 }}>Reserva</div>
-              </div>
+              {[
+                { label: 'Total',   val: usuarios.length },
+                { label: 'Ativos',  val: ativos          },
+                { label: 'Reserva', val: reservas         },
+              ].map(t => (
+                <div key={t.label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '8px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 18, fontWeight: 800 }}>{t.val}</div>
+                  <div style={{ fontSize: 10, opacity: 0.8 }}>{t.label}</div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '20px 16px' }}>
-        <button onClick={abrirNovo} style={{
-          display: 'flex', alignItems: 'center', gap: 8,
-          background: '#7c3aed', color: '#fff', border: 'none',
-          padding: '12px 20px', borderRadius: 12, fontSize: 14, fontWeight: 700,
-          cursor: 'pointer', marginBottom: 18,
-        }}>
-          + Novo Usuário
-        </button>
+      <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {usuarios.map(u => {
-              const pc = PERFIL_CORES[u.perfil] || { bg: '#f1f5f9', color: '#374151' }
-              const sc = statusCor(u.status)
-              return (
-                <div key={u.id} style={{
-                  background: '#fff', borderRadius: 14,
-                  border: `1.5px solid ${u.status === 'ATIVO' ? '#e2e8f0' : u.status === 'RESERVA' ? '#fcd34d' : '#fecaca'}`,
-                  padding: '14px 16px',
-                  opacity: u.status === 'INATIVO' ? 0.6 : 1,
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{u.nome}</span>
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: pc.bg, color: pc.color }}>
-                          {u.perfil}
-                        </span>
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
-                          {sc.label}
-                        </span>
-                      </div>
-                      <div style={{ fontSize: 12, color: '#64748b' }}>
-                        Login: <strong>{u.login}</strong>
-                        {u.matricula && <> · Matrícula: <strong>{u.matricula}</strong></>}
-                        {' '}· Base: {u.base_regiao}
+        {/* ABAS */}
+        <div style={{ display: 'flex', marginBottom: 16, background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          {[
+            { id: 'usuarios',    label: '👥 Usuários'           },
+            { id: 'permissoes',  label: '🔐 Permissões por Perfil' },
+          ].map(a => (
+            <button key={a.id} onClick={() => setAbaAtiva(a.id)} style={{
+              flex: 1, padding: '13px', border: 'none', cursor: 'pointer',
+              fontSize: 13, fontWeight: 700,
+              background: abaAtiva === a.id ? '#7c3aed' : '#fff',
+              color:      abaAtiva === a.id ? '#fff'    : '#64748b',
+              transition: 'all 0.2s',
+            }}>{a.label}</button>
+          ))}
+        </div>
+
+        {/* ===== ABA USUÁRIOS ===== */}
+        {abaAtiva === 'usuarios' && (
+          <>
+            <button onClick={abrirNovo} style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              background: '#7c3aed', color: '#fff', border: 'none',
+              padding: '12px 20px', borderRadius: 12, fontSize: 14, fontWeight: 700,
+              cursor: 'pointer', marginBottom: 18,
+            }}>+ Novo Usuário</button>
+
+            {loading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {usuarios.map(u => {
+                  const pc = PERFIL_CORES[u.perfil] || { bg: '#f1f5f9', color: '#374151' }
+                  const sc = statusCor(u.status)
+                  return (
+                    <div key={u.id} style={{
+                      background: '#fff', borderRadius: 14,
+                      border: `1.5px solid ${u.status === 'ATIVO' ? '#e2e8f0' : u.status === 'RESERVA' ? '#fcd34d' : '#fecaca'}`,
+                      padding: '14px 16px',
+                      opacity: u.status === 'INATIVO' ? 0.6 : 1,
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{u.nome}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: pc.bg, color: pc.color }}>
+                              {u.perfil}
+                            </span>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
+                              {sc.label}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b' }}>
+                            Login: <strong>{u.login}</strong>
+                            {u.matricula && <> · Matrícula: <strong>{u.matricula}</strong></>}
+                            {' '}· Base: {u.base_regiao}
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
+                          <button onClick={() => abrirEditar(u)} style={{
+                            width: 34, height: 34, borderRadius: 8, border: 'none',
+                            background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 15,
+                          }}>✏️</button>
+                          <button onClick={() => alternarStatus(u)} style={{
+                            width: 34, height: 34, borderRadius: 8, border: 'none',
+                            background: u.status === 'ATIVO' ? '#fef3c7' : u.status === 'RESERVA' ? '#fee2e2' : '#dcfce7',
+                            cursor: 'pointer', fontSize: 15,
+                          }}>
+                            {u.status === 'ATIVO' ? '🟡' : u.status === 'RESERVA' ? '🔴' : '🟢'}
+                          </button>
+                          {u.id !== usuarioLogado.id && (
+                            <button onClick={() => excluir(u)} style={{
+                              width: 34, height: 34, borderRadius: 8, border: 'none',
+                              background: '#f1f5f9', color: '#7c3aed', cursor: 'pointer', fontSize: 15,
+                            }}>🗑️</button>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
-                      <button onClick={() => abrirEditar(u)} style={{
-                        width: 34, height: 34, borderRadius: 8, border: 'none',
-                        background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 15,
-                      }}>✏️</button>
-                      <button onClick={() => alternarStatus(u)}
-                        title={`Status atual: ${u.status}. Clique para alternar`}
-                        style={{
-                          width: 34, height: 34, borderRadius: 8, border: 'none',
-                          background: u.status === 'ATIVO' ? '#fef3c7' : u.status === 'RESERVA' ? '#fee2e2' : '#dcfce7',
-                          cursor: 'pointer', fontSize: 15,
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ===== ABA PERMISSÕES ===== */}
+        {abaAtiva === 'permissoes' && (
+          <>
+            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Selecione o perfil para editar
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {PERFIS.filter(p => p !== 'ADMIN').map(p => {
+                  const cor = PERFIL_CORES[p] || { bg: '#f1f5f9', color: '#374151' }
+                  return (
+                    <button key={p} onClick={() => setPerfilSelecionado(p)} style={{
+                      padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700,
+                      background: perfilSelecionado === p ? cor.color : cor.bg,
+                      color:      perfilSelecionado === p ? '#fff'     : cor.color,
+                      transition: 'all 0.2s',
+                    }}>{p}</button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {loadingPerms ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
+            ) : (
+              <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #7c3aed', padding: '16px', marginBottom: 16 }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: '#4c1d95', marginBottom: 16 }}>
+                  🔐 Permissões — <span style={{ color: '#7c3aed' }}>{perfilSelecionado}</span>
+                </p>
+                <p style={{ fontSize: 11, color: '#64748b', marginBottom: 14 }}>
+                  ⚠️ ADMIN sempre tem acesso total e não aparece aqui.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {TODAS_PERMISSOES.map(p => {
+                    const ativo = (permissoes[perfilSelecionado] || []).includes(p.id)
+                    return (
+                      <div key={p.id} onClick={() => togglePermissao(perfilSelecionado, p.id)} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+                        background: ativo ? '#f5f3ff' : '#f8fafc',
+                        border: `1.5px solid ${ativo ? '#7c3aed' : '#e2e8f0'}`,
+                        transition: 'all 0.2s',
+                      }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, color: ativo ? '#4c1d95' : '#64748b' }}>
+                          {p.label}
+                        </span>
+                        <div style={{
+                          width: 44, height: 24, borderRadius: 12,
+                          background: ativo ? '#7c3aed' : '#cbd5e1',
+                          position: 'relative', transition: 'background 0.2s',
                         }}>
-                        {u.status === 'ATIVO' ? '🟡' : u.status === 'RESERVA' ? '🔴' : '🟢'}
-                      </button>
-                      {u.id !== usuarioLogado.id && (
-                        <button onClick={() => excluir(u)} style={{
-                          width: 34, height: 34, borderRadius: 8, border: 'none',
-                          background: '#f1f5f9', color: '#7c3aed', cursor: 'pointer', fontSize: 15,
-                        }}>🗑️</button>
-                      )}
-                    </div>
-                  </div>
+                          <div style={{
+                            position: 'absolute', top: 3,
+                            left: ativo ? 23 : 3,
+                            width: 18, height: 18, borderRadius: '50%',
+                            background: '#fff', transition: 'left 0.2s',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }} />
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
-          </div>
+
+                {msgPerms && (
+                  <p style={{ marginTop: 14, fontSize: 13, fontWeight: 700, color: msgPerms.startsWith('✅') ? '#15803d' : '#dc2626' }}>
+                    {msgPerms}
+                  </p>
+                )}
+
+                <button onClick={salvarPermissoes} disabled={salvandoPerms} style={{
+                  marginTop: 16, width: '100%', padding: '13px', borderRadius: 10, border: 'none',
+                  background: salvandoPerms ? '#64748b' : '#7c3aed',
+                  color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                }}>
+                  {salvandoPerms ? '⏳ Salvando...' : '💾 Salvar Permissões'}
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Modal */}
+      {/* Modal usuário */}
       {modal && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000,
-        }}>
-          <div style={{
-            background: '#fff', borderRadius: '20px 20px 0 0',
-            padding: '24px 20px 40px', width: '100%', maxWidth: 480,
-            maxHeight: '90vh', overflowY: 'auto',
-          }}>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h3 style={{ fontSize: 17, fontWeight: 700 }}>
-                {editando ? '✏️ Editar Usuário' : '+ Novo Usuário'}
-              </h3>
+              <h3 style={{ fontSize: 17, fontWeight: 700 }}>{editando ? '✏️ Editar Usuário' : '+ Novo Usuário'}</h3>
               <button onClick={fechar} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
             <div className="form-group">
               <label className="form-label">Nome completo *</label>
-              <input className="form-input" value={formData.nome}
-                onChange={e => upd('nome', e.target.value)} placeholder="Nome completo" />
+              <input className="form-input" value={formData.nome} onChange={e => upd('nome', e.target.value)} placeholder="Nome completo" />
             </div>
-
             <div className="form-group">
               <label className="form-label">Login *</label>
-              <input className="form-input" value={formData.login}
-                onChange={e => upd('login', e.target.value.toLowerCase())} placeholder="nome.sobrenome" />
+              <input className="form-input" value={formData.login} onChange={e => upd('login', e.target.value.toLowerCase())} placeholder="nome.sobrenome" />
             </div>
-
             <div className="form-group">
               <label className="form-label">Matrícula</label>
-              <input className="form-input" value={formData.matricula || ''}
-                onChange={e => upd('matricula', e.target.value)} placeholder="Ex: 12345" />
+              <input className="form-input" value={formData.matricula || ''} onChange={e => upd('matricula', e.target.value)} placeholder="Ex: 12345" />
             </div>
-
             <div className="form-group">
               <label className="form-label">Senha {editando ? '(deixe vazio para manter)' : '*'}</label>
-              <input className="form-input" type="password" value={formData.senha}
-                onChange={e => upd('senha', e.target.value)} placeholder="••••••••" />
+              <input className="form-input" type="password" value={formData.senha} onChange={e => upd('senha', e.target.value)} placeholder="••••••••" />
             </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Perfil</label>
@@ -238,11 +391,9 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                 </select>
               </div>
             </div>
-
             <div className="form-group">
               <label className="form-label">Base / Região</label>
-              <input className="form-input" value={formData.base_regiao}
-                onChange={e => upd('base_regiao', e.target.value)} placeholder="Ex: Teresina, Todas..." />
+              <input className="form-input" value={formData.base_regiao} onChange={e => upd('base_regiao', e.target.value)} placeholder="Ex: Teresina, Todas..." />
             </div>
 
             {erro && (
@@ -250,9 +401,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                 ❌ {erro}
               </div>
             )}
-
-            <button className="btn-primary" onClick={salvar} disabled={salvando}
-              style={{ background: salvando ? '#64748b' : '#7c3aed' }}>
+            <button className="btn-primary" onClick={salvar} disabled={salvando} style={{ background: salvando ? '#64748b' : '#7c3aed' }}>
               {salvando ? '⏳ Salvando...' : '💾 Salvar'}
             </button>
           </div>
