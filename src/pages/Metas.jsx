@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase.js'
 
 function mesAtual() {
   const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` 
 }
 
 function mesLabel(mesAno) {
@@ -52,7 +52,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
   const [metas,          setMetas]          = useState([])
   const [realizadas,     setRealizadas]     = useState([])
   const [realizadasHoje, setRealizadasHoje] = useState([])
-  const [feriados,       setFeriados]       = useState([]) // lista de strings 'YYYY-MM-DD'
+  const [feriados,       setFeriados]       = useState([])
   const [loading,        setLoading]        = useState(true)
   const [salvando,       setSalvando]       = useState(false)
   const [editMetas,      setEditMetas]      = useState({})
@@ -60,17 +60,16 @@ export default function Metas({ usuarioLogado, onVoltar }) {
   const [msgSalvo,       setMsgSalvo]       = useState('')
   const [erroSalvo,      setErroSalvo]      = useState('')
   const [abaAtiva,       setAbaAtiva]       = useState('hoje')
+  const [fiscaisSelecionados, setFiscaisSelecionados] = useState([])
 
-  // Feriados
-  const [feriadosLista,    setFeriadosLista]    = useState([])
-  const [novoFerData,      setNovoFerData]      = useState('')
-  const [novoFerDesc,      setNovoFerDesc]      = useState('')
-  const [salvandoFeriado,  setSalvandoFeriado]  = useState(false)
-  const [erroFeriado,      setErroFeriado]      = useState('')
+  const [feriadosLista,   setFeriadosLista]   = useState([])
+  const [novoFerData,     setNovoFerData]     = useState('')
+  const [novoFerDesc,     setNovoFerDesc]     = useState('')
+  const [salvandoFeriado, setSalvandoFeriado] = useState(false)
+  const [erroFeriado,     setErroFeriado]     = useState('')
 
   const carregarFeriados = async () => {
-    const { data } = await supabase
-      .from('feriados').select('*').order('data')
+    const { data } = await supabase.from('feriados').select('*').order('data')
     setFeriadosLista(data || [])
     setFeriados((data || []).map(f => f.data))
   }
@@ -115,10 +114,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     }
   }
 
-  useEffect(() => {
-    carregarFeriados()
-    carregar()
-  }, [mesAno])
+  useEffect(() => { carregarFeriados(); carregar() }, [mesAno])
 
   const salvarMetas = async () => {
     setSalvando(true); setMsgSalvo(''); setErroSalvo('')
@@ -151,13 +147,9 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     if (!novoFerData) { setErroFeriado('Informe a data.'); return }
     setSalvandoFeriado(true); setErroFeriado('')
     try {
-      const { error } = await supabase.from('feriados').insert({
-        data: novoFerData,
-        descricao: novoFerDesc || null,
-      })
+      const { error } = await supabase.from('feriados').insert({ data: novoFerData, descricao: novoFerDesc || null })
       if (error) throw error
-      setNovoFerData('')
-      setNovoFerDesc('')
+      setNovoFerData(''); setNovoFerDesc('')
       await carregarFeriados()
     } catch (e) {
       setErroFeriado(e.message.includes('unique') ? '❌ Esta data já está cadastrada.' : '❌ ' + e.message)
@@ -172,9 +164,15 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     await carregarFeriados()
   }
 
-  const diasUteis          = diasUteisMes(mesAno, feriados)
-  const dataHojeFormatada  = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
-  const feriadosDoMes      = feriadosLista.filter(f => f.data.startsWith(mesAno))
+  const toggleFiscal = (login) => {
+    setFiscaisSelecionados(prev =>
+      prev.includes(login) ? prev.filter(l => l !== login) : [...prev, login]
+    )
+  }
+
+  const diasUteis         = diasUteisMes(mesAno, feriados)
+  const dataHojeFormatada = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
+  const feriadosDoMes     = feriadosLista.filter(f => f.data.startsWith(mesAno))
 
   const dadosFiscais = fiscais.map(f => {
     const metaObj    = metas.find(m => m.fiscal_login === f.login)
@@ -187,10 +185,8 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     const atende     = auds.filter(a => a.status === 'ATENDE').length
     const parcial    = auds.filter(a => a.status === 'ATENDE PARCIAL').length
     const nao        = auds.filter(a => a.status === 'NÃO ATENDE').length
-    const notaMedia  = auds.length > 0
-      ? (auds.reduce((acc, a) => acc + Number(a.nota), 0) / auds.length).toFixed(1) : '—'
-    const notaHoje   = audsHoje.length > 0
-      ? (audsHoje.reduce((acc, a) => acc + Number(a.nota), 0) / audsHoje.length).toFixed(1) : '—'
+    const notaMedia  = auds.length > 0 ? (auds.reduce((acc, a) => acc + Number(a.nota), 0) / auds.length).toFixed(1) : '—'
+    const notaHoje   = audsHoje.length > 0 ? (audsHoje.reduce((acc, a) => acc + Number(a.nota), 0) / audsHoje.length).toFixed(1) : '—'
     const pct        = meta > 0 ? Math.round((total / meta) * 100) : 0
     const pctHoje    = metaDia > 0 ? Math.round((totalHoje / metaDia) * 100) : 0
     const faltam     = Math.max(0, meta - total)
@@ -198,12 +194,16 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     return { ...f, meta, metaDia, total, totalHoje, atende, parcial, nao, notaMedia, notaHoje, pct, pctHoje, faltam, faltamHoje }
   }).filter(f => f.meta > 0 || f.total > 0 || f.totalHoje > 0)
 
-  const totalMeta      = dadosFiscais.reduce((a, f) => a + f.meta, 0)
-  const totalFeito     = dadosFiscais.reduce((a, f) => a + f.total, 0)
-  const totalFaltam    = dadosFiscais.reduce((a, f) => a + f.faltam, 0)
+  const dadosFiltrados = fiscaisSelecionados.length > 0
+    ? dadosFiscais.filter(f => fiscaisSelecionados.includes(f.login))
+    : dadosFiscais
+
+  const totalMeta      = dadosFiltrados.reduce((a, f) => a + f.meta, 0)
+  const totalFeito     = dadosFiltrados.reduce((a, f) => a + f.total, 0)
+  const totalFaltam    = dadosFiltrados.reduce((a, f) => a + f.faltam, 0)
   const pctGeral       = totalMeta > 0 ? Math.round((totalFeito / totalMeta) * 100) : 0
-  const totalMetaHoje  = dadosFiscais.reduce((a, f) => a + f.metaDia, 0)
-  const totalFeitoHoje = dadosFiscais.reduce((a, f) => a + f.totalHoje, 0)
+  const totalMetaHoje  = dadosFiltrados.reduce((a, f) => a + f.metaDia, 0)
+  const totalFeitoHoje = dadosFiltrados.reduce((a, f) => a + f.totalHoje, 0)
   const pctGeralHoje   = totalMetaHoje > 0 ? Math.round((totalFeitoHoje / totalMetaHoje) * 100) : 0
 
   const mesesOpcoes = Array.from({ length: 7 }, (_, i) => {
@@ -222,14 +222,59 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     { label: 'Faltam',     val: totalFaltam, bg: 'rgba(220,38,38,0.4)'   },
     { label: `${pctGeral}%`, val: '✓', bg: pctGeral >= 100 ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.4)' },
   ] : [
-    { label: 'Feriados',   val: feriadosLista.length, bg: 'rgba(255,255,255,0.15)' },
-    { label: mesLabel(mesAno), val: feriadosDoMes.length, bg: 'rgba(255,255,255,0.25)' },
+    { label: 'Feriados',       val: feriadosLista.length,  bg: 'rgba(255,255,255,0.15)' },
+    { label: mesLabel(mesAno), val: feriadosDoMes.length,  bg: 'rgba(255,255,255,0.25)' },
   ]
+
+  // JSX do bloco de filtro reutilizado nas abas
+  const blocoFiltro = dadosFiscais.length > 0 ? (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          🔍 Filtrar Fiscais
+        </p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setFiscaisSelecionados([])} style={{
+            padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 11, fontWeight: 700,
+            background: fiscaisSelecionados.length === 0 ? '#059669' : '#f1f5f9',
+            color:      fiscaisSelecionados.length === 0 ? '#fff'    : '#64748b',
+          }}>Todos</button>
+          {fiscaisSelecionados.length > 0 && (
+            <button onClick={() => setFiscaisSelecionados([])} style={{
+              padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626',
+            }}>✕ Limpar</button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {dadosFiscais.map(f => {
+          const sel = fiscaisSelecionados.includes(f.login)
+          return (
+            <button key={f.login} onClick={() => toggleFiscal(f.login)} style={{
+              padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, transition: 'all 0.15s',
+              background: sel ? '#065f46' : '#f0fdf4',
+              color:      sel ? '#fff'    : '#065f46',
+              border:     `1.5px solid ${sel ? '#065f46' : '#86efac'}`,
+            }}>
+              {f.nome.split(' ').slice(0, 2).join(' ')}
+            </button>
+          )
+        })}
+      </div>
+      {fiscaisSelecionados.length > 0 && (
+        <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+          Exibindo <strong>{fiscaisSelecionados.length}</strong> de <strong>{dadosFiscais.length}</strong> fiscais
+        </p>
+      )}
+    </div>
+  ) : null
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #065f46, #059669)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
@@ -255,12 +300,11 @@ export default function Metas({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ABAS */}
         <div style={{ display: 'flex', marginBottom: 16, background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
           {[
-            { id: 'hoje',     label: '📅 Meta do Dia'  },
-            { id: 'mes',      label: '📊 Meta do Mês'  },
-            { id: 'feriados', label: '🗓️ Feriados'     },
+            { id: 'hoje',     label: '📅 Meta do Dia' },
+            { id: 'mes',      label: '📊 Meta do Mês' },
+            { id: 'feriados', label: '🗓️ Feriados'    },
           ].map(a => (
             <button key={a.id} onClick={() => { setAbaAtiva(a.id); setModoEditar(false) }} style={{
               flex: 1, padding: '13px', border: 'none', cursor: 'pointer',
@@ -294,6 +338,8 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               </p>
             </div>
 
+            {blocoFiltro}
+
             {loading ? (
               <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}><div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div><p>Carregando...</p></div>
             ) : dadosFiscais.filter(f => f.meta > 0).length === 0 ? (
@@ -304,7 +350,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {dadosFiscais.filter(f => f.meta > 0).sort((a, b) => b.pctHoje - a.pctHoje).map(f => (
+                {dadosFiltrados.filter(f => f.meta > 0).sort((a, b) => b.pctHoje - a.pctHoje).map(f => (
                   <div key={f.login} style={{
                     background: '#fff', borderRadius: 14,
                     border: `1.5px solid ${f.pctHoje >= 100 ? '#86efac' : f.totalHoje > 0 ? '#fcd34d' : '#fca5a5'}`,
@@ -419,6 +465,8 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                   </div>
                 )}
 
+                {!modoEditar && blocoFiltro}
+
                 {dadosFiscais.length === 0 && !modoEditar ? (
                   <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
                     <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
@@ -427,7 +475,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                   </div>
                 ) : !modoEditar && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    {dadosFiscais.sort((a, b) => b.pct - a.pct).map(f => {
+                    {dadosFiltrados.sort((a, b) => b.pct - a.pct).map(f => {
                       const c = conceito(f.notaMedia)
                       return (
                         <div key={f.login} style={{
@@ -475,7 +523,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
         {/* ===== ABA FERIADOS ===== */}
         {abaAtiva === 'feriados' && (
           <>
-            {/* Formulário de cadastro */}
             <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #059669', padding: '16px', marginBottom: 16 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#065f46', marginBottom: 14 }}>➕ Adicionar Feriado</p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 10, marginBottom: 10 }}>
@@ -494,14 +541,12 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               {erroFeriado && <p style={{ fontSize: 12, color: '#dc2626', marginBottom: 10 }}>{erroFeriado}</p>}
               <button onClick={adicionarFeriado} disabled={salvandoFeriado} style={{
                 padding: '10px 20px', background: salvandoFeriado ? '#64748b' : '#059669',
-                color: '#fff', border: 'none', borderRadius: 10,
-                fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
               }}>
                 {salvandoFeriado ? '⏳ Salvando...' : '💾 Adicionar Feriado'}
               </button>
             </div>
 
-            {/* Lista de feriados */}
             {feriadosLista.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🗓️</div>
