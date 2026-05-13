@@ -60,11 +60,8 @@ export default function Metas({ usuarioLogado, onVoltar }) {
   const [msgSalvo,       setMsgSalvo]       = useState('')
   const [erroSalvo,      setErroSalvo]      = useState('')
   const [abaAtiva,       setAbaAtiva]       = useState('hoje')
+  const [fiscaisSelecionados, setFiscaisSelecionados] = useState([])
 
-  // FILTRO DE FISCAIS
-  const [fiscaisSelecionados, setFiscaisSelecionados] = useState([]) // [] = todos
-
-  // Feriados
   const [feriadosLista,   setFeriadosLista]   = useState([])
   const [novoFerData,     setNovoFerData]     = useState('')
   const [novoFerDesc,     setNovoFerDesc]     = useState('')
@@ -169,9 +166,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
 
   const toggleFiscal = (login) => {
     setFiscaisSelecionados(prev =>
-      prev.includes(login)
-        ? prev.filter(l => l !== login)
-        : [...prev, login]
+      prev.includes(login) ? prev.filter(l => l !== login) : [...prev, login]
     )
   }
 
@@ -199,7 +194,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     return { ...f, meta, metaDia, total, totalHoje, atende, parcial, nao, notaMedia, notaHoje, pct, pctHoje, faltam, faltamHoje }
   }).filter(f => f.meta > 0 || f.total > 0 || f.totalHoje > 0)
 
-  // Aplica filtro de fiscais selecionados
   const dadosFiltrados = fiscaisSelecionados.length > 0
     ? dadosFiscais.filter(f => fiscaisSelecionados.includes(f.login))
     : dadosFiscais
@@ -228,63 +222,59 @@ export default function Metas({ usuarioLogado, onVoltar }) {
     { label: 'Faltam',     val: totalFaltam, bg: 'rgba(220,38,38,0.4)'   },
     { label: `${pctGeral}%`, val: '✓', bg: pctGeral >= 100 ? 'rgba(22,163,74,0.5)' : 'rgba(217,119,6,0.4)' },
   ] : [
-    { label: 'Feriados',   val: feriadosLista.length,  bg: 'rgba(255,255,255,0.15)' },
-    { label: mesLabel(mesAno), val: feriadosDoMes.length, bg: 'rgba(255,255,255,0.25)' },
+    { label: 'Feriados',       val: feriadosLista.length,  bg: 'rgba(255,255,255,0.15)' },
+    { label: mesLabel(mesAno), val: feriadosDoMes.length,  bg: 'rgba(255,255,255,0.25)' },
   ]
 
-  // Componente de filtro de fiscais (reutilizado nas duas abas)
-  const FiltroFiscais = () => (
-    dadosFiscais.length > 0 && (
-      <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8 }}>
-            🔍 Filtrar Fiscais
-          </p>
-          <div style={{ display: 'flex', gap: 6 }}>
+  // JSX do bloco de filtro reutilizado nas abas
+  const blocoFiltro = dadosFiscais.length > 0 ? (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          🔍 Filtrar Fiscais
+        </p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setFiscaisSelecionados([])} style={{
+            padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 11, fontWeight: 700,
+            background: fiscaisSelecionados.length === 0 ? '#059669' : '#f1f5f9',
+            color:      fiscaisSelecionados.length === 0 ? '#fff'    : '#64748b',
+          }}>Todos</button>
+          {fiscaisSelecionados.length > 0 && (
             <button onClick={() => setFiscaisSelecionados([])} style={{
               padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-              fontSize: 11, fontWeight: 700,
-              background: fiscaisSelecionados.length === 0 ? '#059669' : '#f1f5f9',
-              color:      fiscaisSelecionados.length === 0 ? '#fff'    : '#64748b',
-            }}>Todos</button>
-            {fiscaisSelecionados.length > 0 && (
-              <button onClick={() => setFiscaisSelecionados([])} style={{
-                padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626',
-              }}>✕ Limpar</button>
-            )}
-          </div>
+              fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626',
+            }}>✕ Limpar</button>
+          )}
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-          {dadosFiscais.map(f => {
-            const selecionado = fiscaisSelecionados.includes(f.login)
-            return (
-              <button key={f.login} onClick={() => toggleFiscal(f.login)} style={{
-                padding: '5px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
-                fontSize: 12, fontWeight: 700, transition: 'all 0.15s',
-                background: selecionado ? '#065f46' : '#f0fdf4',
-                color:      selecionado ? '#fff'    : '#065f46',
-                border:     `1.5px solid ${selecionado ? '#065f46' : '#86efac'}`,
-              }}>
-                {f.nome.split(' ')[0]}
-                {f.nome.split(' ')[1] ? ` ${f.nome.split(' ')[1]}` : ''}
-              </button>
-            )
-          })}
-        </div>
-        {fiscaisSelecionados.length > 0 && (
-          <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
-            Exibindo <strong>{fiscaisSelecionados.length}</strong> de <strong>{dadosFiscais.length}</strong> fiscais
-          </p>
-        )}
       </div>
-    )
-  )
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {dadosFiscais.map(f => {
+          const sel = fiscaisSelecionados.includes(f.login)
+          return (
+            <button key={f.login} onClick={() => toggleFiscal(f.login)} style={{
+              padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, transition: 'all 0.15s',
+              background: sel ? '#065f46' : '#f0fdf4',
+              color:      sel ? '#fff'    : '#065f46',
+              border:     `1.5px solid ${sel ? '#065f46' : '#86efac'}`,
+            }}>
+              {f.nome.split(' ').slice(0, 2).join(' ')}
+            </button>
+          )
+        })}
+      </div>
+      {fiscaisSelecionados.length > 0 && (
+        <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+          Exibindo <strong>{fiscaisSelecionados.length}</strong> de <strong>{dadosFiscais.length}</strong> fiscais
+        </p>
+      )}
+    </div>
+  ) : null
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #065f46, #059669)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
@@ -310,12 +300,11 @@ export default function Metas({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ABAS */}
         <div style={{ display: 'flex', marginBottom: 16, background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
           {[
-            { id: 'hoje',     label: '📅 Meta do Dia'  },
-            { id: 'mes',      label: '📊 Meta do Mês'  },
-            { id: 'feriados', label: '🗓️ Feriados'     },
+            { id: 'hoje',     label: '📅 Meta do Dia' },
+            { id: 'mes',      label: '📊 Meta do Mês' },
+            { id: 'feriados', label: '🗓️ Feriados'    },
           ].map(a => (
             <button key={a.id} onClick={() => { setAbaAtiva(a.id); setModoEditar(false) }} style={{
               flex: 1, padding: '13px', border: 'none', cursor: 'pointer',
@@ -349,8 +338,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               </p>
             </div>
 
-            {/* FILTRO */}
-            <FiltroFiscais />
+            {blocoFiltro}
 
             {loading ? (
               <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}><div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div><p>Carregando...</p></div>
@@ -477,8 +465,7 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                   </div>
                 )}
 
-                {/* FILTRO */}
-                {!modoEditar && <FiltroFiscais />}
+                {!modoEditar && blocoFiltro}
 
                 {dadosFiscais.length === 0 && !modoEditar ? (
                   <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
