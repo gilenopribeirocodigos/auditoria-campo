@@ -29,9 +29,9 @@ export function iniciarRastreio(usuario) {
   // Envia a cada 10 segundos
   intervalId = setInterval(() => {
     navigator.geolocation.getCurrentPosition(enviarPosicao, console.error, {
-      enableHighAccuracy: true, timeout: 10000,
+      enableHighAccuracy: true, timeout: 4000,
     })
-  }, 10000)
+  }, 5000)
 }
 
 export function pararRastreio() {
