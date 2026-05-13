@@ -6,7 +6,11 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // ANTES — recarrega automaticamente ao detectar nova versão
+      //registerType: 'autoUpdate',
+
+      // DEPOIS — não recarrega sozinho
+      registerType: 'prompt',
       includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Auditoria de Campo — DPL',
