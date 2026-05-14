@@ -137,40 +137,29 @@ export function calcNota(form) {
   const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
   const items = CHECKLISTS[form.tipoServico][tipo].items
 
-  // Itens que participam da contagem
-  // Filhos cujo pai = NÃO são excluídos (atividade não ocorreu, não penaliza)
-  const itensAtivos = items.filter(i => {
-    if (i.marriedGroup && i.marriedRole === 'filho') {
-      const pai  = items.find(p => p.marriedGroup === i.marriedGroup && p.marriedRole === 'pai')
-      const rPai = pai ? form.respostas[pai.id] : undefined
-      if (rPai === false) return false // pai = NÃO → filho não conta
-    }
-    return true
-  })
-
-  const sim = itensAtivos.filter(i => {
+  const sim = items.filter(i => {
     const r = form.respostas[i.id]
 
-    // Pai: SIM = certo, NÃO = errado
+    // PAI: sempre conforme — o que determina é o filho
     if (i.marriedGroup && i.marriedRole === 'pai') {
-      return r === true
+      return true
     }
 
-    // Filho (pai = SIM garantido aqui): SIM = certo, NÃO = errado
+    // FILHO: conforme se pai === filho (ambos SIM ou ambos NÃO)
     if (i.marriedGroup && i.marriedRole === 'filho') {
       const pai  = items.find(p => p.marriedGroup === i.marriedGroup && p.marriedRole === 'pai')
       const rPai = pai ? form.respostas[pai.id] : undefined
-      return rPai === true && r === true
+      return rPai === r
     }
 
-    // Invertida: NÃO = certo
+    // INVERTIDA: NÃO = conforme
     if (i.inverted) return r === false
 
-    // Normal: SIM = certo
+    // NORMAL: SIM = conforme
     return r === true
   }).length
 
-  return Math.round((sim / itensAtivos.length) * 1000) / 10
+  return Math.round((sim / items.length) * 1000) / 10
 }
 
 export function getStatus(nota) {
