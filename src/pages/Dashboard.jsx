@@ -1,11 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase.js'
 
+// ─── helpers ────────────────────────────────────────────────────────────────
 function calcMesAtual() {
-  const hoje = new Date()
-  const ini  = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
-  const fim  = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split('T')[0]
-  return { ini, fim }
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
 
 function mesLabel(mesAno) {
@@ -27,14 +26,59 @@ function conceito(nota) {
   return                 { label: '❌ Crítico',    color: '#dc2626' }
 }
 
+function barColor(pct) {
+  if (pct >= 100) return '#16a34a'
+  if (pct >= 70)  return '#d97706'
+  return '#dc2626'
+}
+
+function conceitoMeta(notaMedia) {
+  if (notaMedia === '—' || notaMedia === null) return null
+  const n = parseFloat(notaMedia)
+  if (n >= 90) return { label: 'Excelente', emoji: '🏆', bg: '#dcfce7', color: '#15803d' }
+  if (n >= 80) return { label: 'Bom',       emoji: '✅', bg: '#dbeafe', color: '#1d4ed8' }
+  if (n >= 70) return { label: 'Regular',   emoji: '⚠️', bg: '#fef3c7', color: '#92400e' }
+  return             { label: 'Crítico',    emoji: '❌', bg: '#fee2e2', color: '#dc2626' }
+}
+
+function diasUteisMes(mesAno, feriados = []) {
+  const [ano, mes] = mesAno.split('-').map(Number)
+  const diasNoMes  = new Date(ano, mes, 0).getDate()
+  let uteis = 0
+  for (let d = 1; d <= diasNoMes; d++) {
+    const data = new Date(ano, mes - 1, d)
+    const diaSemana = data.getDay()
+    if (diaSemana === 0 || diaSemana === 6) continue
+    const dataStr = `${ano}-${String(mes).padStart(2,'0')}-${String(d).padStart(2,'0')}`
+    if (feriados.includes(dataStr)) continue
+    uteis++
+  }
+  return uteis
+}
+
+function hojeStr() {
+  return new Date().toISOString().split('T')[0]
+}
+
+const TIPO_EMOJI = { CORTE: '✂️', ANEXO: '🔌', RELIGA: '⚡' }
+
+// ─── componente ─────────────────────────────────────────────────────────────
 export default function Dashboard({ usuarioLogado, onVoltar }) {
-  const [mesAno,    setMesAno]    = useState(() => {
-    const d = new Date()
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
-  })
-  const [dados,     setDados]     = useState(null)
+  const [mesAno,    setMesAno]    = useState(calcMesAtual)
+  const [abaAtiva,  setAbaAtiva]  = useState('meta_dia')
   const [loading,   setLoading]   = useState(true)
-  const [abaRanking, setAbaRanking] = useState('equipes') // 'equipes' | 'fiscais'
+
+  // dados de ranking/auditoria
+  const [dados,     setDados]     = useState(null)
+
+  // dados de metas
+  const [fiscais,        setFiscais]        = useState([])
+  const [metas,          setMetas]          = useState([])
+  const [realizadas,     setRealizadas]     = useState([])
+  const [realizadasHoje, setRealizadasHoje] = useState([])
+  const [feriadosLista,  setFeriadosLista]  = useState([])
+  const [feriados,       setFeriados]       = useState([])
+  const [fiscaisSelecionados, setFiscaisSelecionados] = useState([])
 
   const mesesOpcoes = Array.from({ length: 6 }, (_, i) => {
     const d = new Date()
@@ -42,6 +86,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
 
+  // ── carrega tudo em paralelo ──────────────────────────────────────────────
   const carregar = async () => {
     setLoading(true)
     try {
@@ -49,15 +94,31 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
       const ini = `${ano}-${mes}-01`
       const fim = new Date(parseInt(ano), parseInt(mes), 0).toISOString().split('T')[0]
 
-      const { data: auds } = await supabase
-        .from('auditorias').select('*')
-        .gte('data_auditoria', ini)
-        .lte('data_auditoria', fim)
-        .order('data_auditoria')
+      const [
+        { data: auds },
+        { data: audsHoje },
+        { data: fData },
+        { data: mData },
+        { data: ferData },
+      ] = await Promise.all([
+        supabase.from('auditorias').select('*').gte('data_auditoria', ini).lte('data_auditoria', fim).order('data_auditoria'),
+        supabase.from('auditorias').select('fiscal, status, nota, data_auditoria').eq('data_auditoria', hojeStr()),
+        supabase.from('usuarios').select('nome, login, matricula').in('status', ['ATIVO', 'RESERVA']).order('nome'),
+        supabase.from('metas_fiscal').select('*').eq('mes_ano', mesAno),
+        supabase.from('feriados').select('*').order('data'),
+      ])
 
-      if (!auds) { setDados(null); return }
+      // ── guarda dados de metas ──────────────────────────────────────────
+      setFiscais(fData || [])
+      setMetas(mData || [])
+      setRealizadas(auds || [])
+      setRealizadasHoje(audsHoje || [])
+      setFeriadosLista(ferData || [])
+      setFeriados((ferData || []).map(f => f.data))
 
-      // ---- KPIs gerais ----
+      if (!auds || auds.length === 0) { setDados(null); return }
+
+      // ── KPIs gerais ───────────────────────────────────────────────────
       const total     = auds.length
       const atende    = auds.filter(a => a.status === 'ATENDE').length
       const parcial   = auds.filter(a => a.status === 'ATENDE PARCIAL').length
@@ -67,14 +128,14 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         : '—'
       const pctConformidade = total > 0 ? Math.round((atende / total) * 100) : 0
 
-      // ---- Ranking equipes ----
+      // ── ranking equipes ───────────────────────────────────────────────
       const mapaEq = {}
       auds.forEach(a => {
         if (!a.prefixo) return
         if (!mapaEq[a.prefixo]) mapaEq[a.prefixo] = { prefixo: a.prefixo, notas: [], total: 0, atende: 0, nao: 0 }
         mapaEq[a.prefixo].notas.push(Number(a.nota))
         mapaEq[a.prefixo].total++
-        if (a.status === 'ATENDE') mapaEq[a.prefixo].atende++
+        if (a.status === 'ATENDE')     mapaEq[a.prefixo].atende++
         if (a.status === 'NÃO ATENDE') mapaEq[a.prefixo].nao++
       })
       const rankingEquipes = Object.values(mapaEq).map(e => ({
@@ -82,14 +143,14 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         media: (e.notas.reduce((s, n) => s + n, 0) / e.notas.length).toFixed(1),
       })).sort((a, b) => Number(b.media) - Number(a.media))
 
-      // ---- Ranking fiscais ----
+      // ── ranking fiscais ───────────────────────────────────────────────
       const mapaFi = {}
       auds.forEach(a => {
         if (!a.fiscal) return
         if (!mapaFi[a.fiscal]) mapaFi[a.fiscal] = { fiscal: a.fiscal, notas: [], total: 0, atende: 0, nao: 0 }
         mapaFi[a.fiscal].notas.push(Number(a.nota))
         mapaFi[a.fiscal].total++
-        if (a.status === 'ATENDE') mapaFi[a.fiscal].atende++
+        if (a.status === 'ATENDE')     mapaFi[a.fiscal].atende++
         if (a.status === 'NÃO ATENDE') mapaFi[a.fiscal].nao++
       })
       const rankingFiscais = Object.values(mapaFi).map(f => ({
@@ -97,11 +158,11 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         media: (f.notas.reduce((s, n) => s + n, 0) / f.notas.length).toFixed(1),
       })).sort((a, b) => Number(b.media) - Number(a.media))
 
-      // ---- Evolução semanal ----
+      // ── evolução semanal ──────────────────────────────────────────────
       const semanas = {}
       auds.forEach(a => {
-        const d    = new Date(a.data_auditoria + 'T00:00:00')
-        const sem  = `S${Math.ceil(d.getDate() / 7)}`
+        const d   = new Date(a.data_auditoria + 'T00:00:00')
+        const sem = `S${Math.ceil(d.getDate() / 7)}`
         if (!semanas[sem]) semanas[sem] = { notas: [], total: 0 }
         semanas[sem].notas.push(Number(a.nota))
         semanas[sem].total++
@@ -112,7 +173,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         total: v.total,
       }))
 
-      // ---- Distribuição por tipo de serviço ----
+      // ── distribuição por tipo de serviço ──────────────────────────────
       const tipoServico = {}
       auds.forEach(a => {
         if (!a.tipo_servico) return
@@ -131,8 +192,160 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [mesAno])
 
-  const TIPO_EMOJI = { CORTE: '✂️', ANEXO: '🔌', RELIGA: '⚡' }
+  // ── computed metas ────────────────────────────────────────────────────────
+  const diasUteis         = diasUteisMes(mesAno, feriados)
+  const feriadosDoMes     = feriadosLista.filter(f => f.data.startsWith(mesAno))
+  const dataHojeFormatada = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
 
+  const dadosFiscais = fiscais.map(f => {
+    const metaObj    = metas.find(m => m.fiscal_login === f.login)
+    const meta       = metaObj?.meta ?? 0
+    const metaDia    = meta > 0 && diasUteis > 0 ? Math.ceil(meta / diasUteis) : 0
+    const auds       = realizadas.filter(a => a.fiscal === f.nome)
+    const audsHoje   = realizadasHoje.filter(a => a.fiscal === f.nome)
+    const total      = auds.length
+    const totalHoje  = audsHoje.length
+    const atende     = auds.filter(a => a.status === 'ATENDE').length
+    const parcial    = auds.filter(a => a.status === 'ATENDE PARCIAL').length
+    const nao        = auds.filter(a => a.status === 'NÃO ATENDE').length
+    const notaMedia  = auds.length > 0 ? (auds.reduce((acc, a) => acc + Number(a.nota), 0) / auds.length).toFixed(1) : '—'
+    const notaHoje   = audsHoje.length > 0 ? (audsHoje.reduce((acc, a) => acc + Number(a.nota), 0) / audsHoje.length).toFixed(1) : '—'
+    const pct        = meta > 0 ? Math.round((total / meta) * 100) : 0
+    const pctHoje    = metaDia > 0 ? Math.round((totalHoje / metaDia) * 100) : 0
+    const faltam     = Math.max(0, meta - total)
+    const faltamHoje = Math.max(0, metaDia - totalHoje)
+    return { ...f, meta, metaDia, total, totalHoje, atende, parcial, nao, notaMedia, notaHoje, pct, pctHoje, faltam, faltamHoje }
+  }).filter(f => f.meta > 0 || f.total > 0 || f.totalHoje > 0)
+
+  const dadosFiltrados = fiscaisSelecionados.length > 0
+    ? dadosFiscais.filter(f => fiscaisSelecionados.includes(f.login))
+    : dadosFiscais
+
+  const totalMeta      = dadosFiltrados.reduce((a, f) => a + f.meta, 0)
+  const totalFeito     = dadosFiltrados.reduce((a, f) => a + f.total, 0)
+  const totalFaltam    = dadosFiltrados.reduce((a, f) => a + f.faltam, 0)
+  const pctGeral       = totalMeta > 0 ? Math.round((totalFeito / totalMeta) * 100) : 0
+  const totalMetaHoje  = dadosFiltrados.reduce((a, f) => a + f.metaDia, 0)
+  const totalFeitoHoje = dadosFiltrados.reduce((a, f) => a + f.totalHoje, 0)
+  const pctGeralHoje   = totalMetaHoje > 0 ? Math.round((totalFeitoHoje / totalMetaHoje) * 100) : 0
+
+  const toggleFiscal = (login) =>
+    setFiscaisSelecionados(prev =>
+      prev.includes(login) ? prev.filter(l => l !== login) : [...prev, login]
+    )
+
+  // ── bloco filtro fiscais (reutilizado em meta_dia e meta_mes) ─────────────
+  const blocoFiltro = dadosFiscais.length > 0 ? (
+    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          🔍 Filtrar Fiscais
+        </p>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={() => setFiscaisSelecionados([])} style={{
+            padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            fontSize: 11, fontWeight: 700,
+            background: fiscaisSelecionados.length === 0 ? '#059669' : '#f1f5f9',
+            color:      fiscaisSelecionados.length === 0 ? '#fff'    : '#64748b',
+          }}>Todos</button>
+          {fiscaisSelecionados.length > 0 && (
+            <button onClick={() => setFiscaisSelecionados([])} style={{
+              padding: '4px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+              fontSize: 11, fontWeight: 700, background: '#fee2e2', color: '#dc2626',
+            }}>✕ Limpar</button>
+          )}
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {dadosFiscais.map(f => {
+          const sel = fiscaisSelecionados.includes(f.login)
+          return (
+            <button key={f.login} onClick={() => toggleFiscal(f.login)} style={{
+              padding: '5px 12px', borderRadius: 20, cursor: 'pointer',
+              fontSize: 12, fontWeight: 700, transition: 'all 0.15s',
+              background: sel ? '#065f46' : '#f0fdf4',
+              color:      sel ? '#fff'    : '#065f46',
+              border:     `1.5px solid ${sel ? '#065f46' : '#86efac'}`,
+            }}>
+              {f.nome.split(' ').slice(0, 2).join(' ')}
+            </button>
+          )
+        })}
+      </div>
+      {fiscaisSelecionados.length > 0 && (
+        <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+          Exibindo <strong>{fiscaisSelecionados.length}</strong> de <strong>{dadosFiscais.length}</strong> fiscais
+        </p>
+      )}
+    </div>
+  ) : null
+
+  // ── abas ─────────────────────────────────────────────────────────────────
+  const abas = [
+    { id: 'meta_dia', label: '📅 Meta do Dia'       },
+    { id: 'meta_mes', label: '📊 Meta do Mês'       },
+    { id: 'equipes',  label: '🚗 Ranking Equipes'   },
+    { id: 'fiscais',  label: '👤 Ranking Fiscais'   },
+  ]
+
+  // ── bloco ranking (equipes ou fiscais) ────────────────────────────────────
+  const blocoRanking = (tipo) => {
+    const lista = tipo === 'equipes' ? dados?.rankingEquipes : dados?.rankingFiscais
+    if (!lista) return null
+    return lista.map((item, idx) => {
+      const media   = Number(item.media)
+      const cor     = notaCor(media)
+      const conc    = conceito(media)
+      const isTop   = idx < 3
+      const isBot   = idx >= lista.length - 3
+      const pctConf = item.total > 0 ? Math.round((item.atende / item.total) * 100) : 0
+      const key     = tipo === 'equipes' ? item.prefixo : item.fiscal
+      return (
+        <div key={key} style={{
+          display: 'flex', alignItems: 'center', gap: 14,
+          padding: '14px 18px', borderBottom: '1px solid #f1f5f9',
+          background: isTop ? '#f0fdf4' : isBot ? '#fff7f7' : '#fff',
+        }}>
+          <div style={{
+            minWidth: 32, height: 32, borderRadius: '50%', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14,
+            background: idx === 0 ? '#fbbf24' : idx === 1 ? '#e2e8f0' : idx === 2 ? '#d97706' : cor.bg,
+            color:      idx === 0 ? '#7c2d12' : idx === 1 ? '#475569' : idx === 2 ? '#fff'    : cor.color,
+          }}>
+            {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {key}
+              </span>
+              <span style={{ fontSize: 11, color: conc.color, fontWeight: 700, marginLeft: 8, flexShrink: 0 }}>
+                {conc.label}
+              </span>
+            </div>
+            <div style={{ background: '#f1f5f9', borderRadius: 4, height: 6, overflow: 'hidden' }}>
+              <div style={{ width: `${media}%`, height: 6, borderRadius: 4, background: cor.color, transition: 'width 0.5s' }} />
+            </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
+              <span>{item.total} auditoria{item.total > 1 ? 's' : ''}</span>
+              <span>✅ {pctConf}% conf.</span>
+              <span style={{ color: '#dc2626' }}>❌ {item.nao} n/a</span>
+            </div>
+          </div>
+          <div style={{
+            minWidth: 52, height: 52, borderRadius: 12,
+            background: cor.bg, border: `1.5px solid ${cor.border}`,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <span style={{ fontSize: 18, fontWeight: 900, color: cor.color, lineHeight: 1 }}>{item.media}</span>
+            <span style={{ fontSize: 9, color: cor.color, opacity: 0.8 }}>média</span>
+          </div>
+        </div>
+      )
+    })
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
@@ -143,21 +356,18 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
             padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📊 Dashboard — Ranking Operacional</h1>
-              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
-                Visão consolidada do desempenho de equipes e fiscais
-              </p>
+              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Visão consolidada do desempenho de equipes e fiscais</p>
             </div>
-            <select value={mesAno} onChange={e => setMesAno(e.target.value)} style={{
+            <select value={mesAno} onChange={e => { setMesAno(e.target.value); setFiscaisSelecionados([]) }} style={{
               background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
               color: '#fff', padding: '9px 16px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}>
               {mesesOpcoes.map(m => (
                 <option key={m} value={m} style={{ color: '#1e293b', background: '#fff' }}>
-                  {mesLabel(m)}{m === mesAno ? ' ← atual' : ''}
+                  {mesLabel(m)}{m === calcMesAtual() ? ' ← atual' : ''}
                 </option>
               ))}
             </select>
@@ -167,227 +377,292 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '20px 16px 60px' }}>
 
+        {/* ── Abas ── */}
+        <div style={{ display: 'flex', marginBottom: 20, background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+          {abas.map(a => (
+            <button key={a.id} onClick={() => setAbaAtiva(a.id)} style={{
+              flex: 1, padding: '13px 6px', border: 'none', cursor: 'pointer',
+              fontSize: 12, fontWeight: 700,
+              background: abaAtiva === a.id ? '#1e3a5f' : '#fff',
+              color:      abaAtiva === a.id ? '#fff'    : '#64748b',
+              borderBottom: abaAtiva === a.id ? '3px solid #3b82f6' : '3px solid transparent',
+              transition: 'all 0.2s',
+            }}>{a.label}</button>
+          ))}
+        </div>
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: 80, color: '#64748b' }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
-            <p style={{ fontSize: 16 }}>Carregando dashboard...</p>
-          </div>
-        ) : !dados || dados.total === 0 ? (
-          <div style={{ textAlign: 'center', padding: 80, color: '#94a3b8' }}>
-            <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-            <p style={{ fontSize: 16, marginBottom: 8 }}>Nenhuma auditoria em {mesLabel(mesAno)}.</p>
-            <p style={{ fontSize: 13 }}>Selecione outro mês ou aguarde as auditorias serem realizadas.</p>
+            <p style={{ fontSize: 16 }}>Carregando...</p>
           </div>
         ) : (
           <>
-            {/* ===== KPIs ===== */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
-              {[
-                { label: 'Total Auditorias', val: dados.total,            icon: '📋', color: '#1e3a5f', bg: '#eff6ff' },
-                { label: 'Nota Média',        val: dados.notaMedia,        icon: '📊', color: '#7c3aed', bg: '#f5f3ff' },
-                { label: '% Conformidade',    val: `${dados.pctConformidade}%`, icon: '✅', color: '#15803d', bg: '#f0fdf4' },
-                { label: 'Atende',            val: dados.atende,           icon: '🟢', color: '#15803d', bg: '#dcfce7' },
-                { label: 'Atende Parcial',    val: dados.parcial,          icon: '🟡', color: '#d97706', bg: '#fef9c3' },
-                { label: 'Não Atende',        val: dados.naoAtende,        icon: '🔴', color: '#dc2626', bg: '#fee2e2' },
-              ].map(k => (
-                <div key={k.label} style={{
-                  background: k.bg, borderRadius: 14, padding: '16px',
-                  border: `1.5px solid ${k.color}22`, textAlign: 'center',
-                }}>
-                  <div style={{ fontSize: 24, marginBottom: 6 }}>{k.icon}</div>
-                  <div style={{ fontSize: 26, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.val}</div>
-                  <div style={{ fontSize: 11, color: k.color, fontWeight: 600, marginTop: 4, opacity: 0.8 }}>{k.label}</div>
-                </div>
-              ))}
-            </div>
 
-            {/* ===== BARRA DE CONFORMIDADE GERAL ===== */}
-            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px', marginBottom: 20 }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 12 }}>
-                📈 Distribuição de Resultados — {mesLabel(mesAno)}
-              </p>
-              <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
-                {dados.total > 0 && [
-                  { val: dados.atende,    color: '#16a34a', label: 'Atende' },
-                  { val: dados.parcial,   color: '#d97706', label: 'Parcial' },
-                  { val: dados.naoAtende, color: '#dc2626', label: 'Não Atende' },
-                ].map(b => b.val > 0 && (
-                  <div key={b.label} style={{
-                    width: `${(b.val / dados.total) * 100}%`,
-                    background: b.color,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 11, color: '#fff', fontWeight: 700,
-                    transition: 'width 0.5s',
-                  }}>
-                    {Math.round((b.val / dados.total) * 100)}%
+            {/* ══════════════ ABA META DO DIA ══════════════ */}
+            {abaAtiva === 'meta_dia' && (
+              <>
+                {/* Progresso do dia */}
+                <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '14px 16px', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Progresso de Hoje</p>
+                      <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 2, textTransform: 'capitalize' }}>{dataHojeFormatada}</p>
+                    </div>
+                    <span style={{ fontSize: 18, fontWeight: 900, color: barColor(pctGeralHoje) }}>
+                      {totalFeitoHoje}/{totalMetaHoje} ({pctGeralHoje}%)
+                    </span>
                   </div>
-                ))}
-              </div>
-              <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
-                <span>🟢 Atende: <strong style={{ color: '#15803d' }}>{dados.atende}</strong></span>
-                <span>🟡 Parcial: <strong style={{ color: '#d97706' }}>{dados.parcial}</strong></span>
-                <span>🔴 Não Atende: <strong style={{ color: '#dc2626' }}>{dados.naoAtende}</strong></span>
-              </div>
-            </div>
-
-            {/* ===== EVOLUÇÃO SEMANAL + TIPO DE SERVIÇO ===== */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
-
-              {/* Evolução semanal */}
-              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px' }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 16 }}>
-                  📅 Evolução Semanal
-                </p>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 100 }}>
-                  {dados.evolucao.map((s, i) => {
-                    const h   = Math.max(10, (Number(s.media) / 100) * 100)
-                    const cor = Number(s.media) >= 90 ? '#16a34a' : Number(s.media) >= 80 ? '#d97706' : '#dc2626'
-                    return (
-                      <div key={s.sem} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                        <span style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>{s.media}</span>
-                        <div style={{
-                          width: '100%', height: h, background: cor,
-                          borderRadius: '4px 4px 0 0', position: 'relative',
-                        }} />
-                        <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>{s.sem}</span>
-                        <span style={{ fontSize: 9, color: '#cbd5e1' }}>{s.total} aud.</span>
-                      </div>
-                    )
-                  })}
-                  {dados.evolucao.length === 0 && (
-                    <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', width: '100%' }}>Sem dados</p>
-                  )}
+                  <div style={{ background: '#f1f5f9', borderRadius: 6, height: 12, overflow: 'hidden' }}>
+                    <div style={{ height: 12, borderRadius: 6, width: `${Math.min(pctGeralHoje, 100)}%`, background: barColor(pctGeralHoje), transition: 'width 0.5s' }} />
+                  </div>
+                  <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
+                    Meta diária baseada em {diasUteis} dias úteis em {mesLabel(mesAno)}
+                    {feriadosDoMes.length > 0 && ` (${feriadosDoMes.length} feriado(s) descontado(s))`}
+                  </p>
                 </div>
-              </div>
 
-              {/* Por tipo de serviço */}
-              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px' }}>
-                <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 16 }}>
-                  🔧 Por Tipo de Serviço
-                </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {Object.entries(dados.tipoServico).map(([tipo, v]) => {
-                    const pct = Math.round((v.atende / v.total) * 100)
-                    const cor = pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
-                    return (
-                      <div key={tipo}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
-                            {TIPO_EMOJI[tipo] || '📋'} {tipo}
-                          </span>
-                          <span style={{ fontSize: 12, color: cor, fontWeight: 700 }}>
-                            {pct}% conf. · {v.total} aud.
-                          </span>
+                {blocoFiltro}
+
+                {dadosFiscais.filter(f => f.meta > 0).length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+                    <p>Nenhuma meta cadastrada para {mesLabel(mesAno)}.</p>
+                    <p style={{ fontSize: 12, marginTop: 8 }}>Acesse <strong>Metas por Fiscal</strong> para cadastrar.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {dadosFiltrados.filter(f => f.meta > 0).sort((a, b) => b.pctHoje - a.pctHoje).map(f => (
+                      <div key={f.login} style={{
+                        background: '#fff', borderRadius: 14,
+                        border: `1.5px solid ${f.pctHoje >= 100 ? '#86efac' : f.totalHoje > 0 ? '#fcd34d' : '#fca5a5'}`,
+                        padding: '14px 16px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                          <div>
+                            <p style={{ fontSize: 14, fontWeight: 800, color: '#1e293b', marginBottom: 2 }}>{f.nome}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8' }}>{f.login}</p>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 22, fontWeight: 900, color: barColor(f.pctHoje), lineHeight: 1 }}>{f.pctHoje}%</div>
+                            <div style={{ fontSize: 11, color: '#64748b' }}>{f.totalHoje}/{f.metaDia} hoje</div>
+                          </div>
                         </div>
-                        <div style={{ background: '#f1f5f9', borderRadius: 4, height: 8, overflow: 'hidden' }}>
-                          <div style={{ width: `${pct}%`, height: 8, background: cor, borderRadius: 4, transition: 'width 0.5s' }} />
+                        <div style={{ background: '#f1f5f9', borderRadius: 6, height: 10, overflow: 'hidden', marginBottom: 10 }}>
+                          <div style={{ height: 10, borderRadius: 6, width: `${Math.min(f.pctHoje, 100)}%`, background: barColor(f.pctHoje), transition: 'width 0.5s' }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+                          <span>📋 Meta dia: <strong>{f.metaDia}</strong></span>
+                          <span>✅ Feitas: <strong style={{ color: '#15803d' }}>{f.totalHoje}</strong></span>
+                          {f.notaHoje !== '—' && <span>📊 Nota: <strong>{f.notaHoje}</strong></span>}
+                          {f.faltamHoje > 0
+                            ? <span style={{ color: '#dc2626', fontWeight: 700 }}>⏳ Faltam {f.faltamHoje}</span>
+                            : <span style={{ color: '#15803d', fontWeight: 700 }}>🏆 Meta do dia atingida!</span>}
                         </div>
                       </div>
-                    )
-                  })}
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ══════════════ ABA META DO MÊS ══════════════ */}
+            {abaAtiva === 'meta_mes' && (
+              <>
+                {/* Progresso geral do mês */}
+                <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Progresso Geral — {mesLabel(mesAno)}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: barColor(pctGeral) }}>{totalFeito}/{totalMeta} ({pctGeral}%)</span>
+                  </div>
+                  <div style={{ background: '#f1f5f9', borderRadius: 6, height: 12, overflow: 'hidden' }}>
+                    <div style={{ height: 12, borderRadius: 6, width: `${Math.min(pctGeral, 100)}%`, background: barColor(pctGeral), transition: 'width 0.5s' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+                    <span>✅ Atende: <strong>{realizadas.filter(a => a.status === 'ATENDE').length}</strong></span>
+                    <span>⚠️ Parcial: <strong>{realizadas.filter(a => a.status === 'ATENDE PARCIAL').length}</strong></span>
+                    <span>❌ Não Atende: <strong>{realizadas.filter(a => a.status === 'NÃO ATENDE').length}</strong></span>
+                    <span>📊 Nota Média: <strong>{realizadas.length > 0 ? (realizadas.reduce((a, r) => a + Number(r.nota), 0) / realizadas.length).toFixed(1) : '—'}</strong></span>
+                    <span>📅 Dias úteis: <strong>{diasUteis}{feriadosDoMes.length > 0 && ` (-${feriadosDoMes.length} feriados)`}</strong></span>
+                  </div>
                 </div>
-              </div>
-            </div>
 
-            {/* ===== RANKING ===== */}
-            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 20 }}>
+                {blocoFiltro}
 
-              {/* Abas */}
-              <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0' }}>
-                {[
-                  { id: 'equipes', label: '🚗 Ranking de Equipes' },
-                  { id: 'fiscais', label: '👤 Ranking de Fiscais' },
-                ].map(a => (
-                  <button key={a.id} onClick={() => setAbaRanking(a.id)} style={{
-                    flex: 1, padding: '14px', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 700,
-                    background: abaRanking === a.id ? '#1e3a5f' : '#f8fafc',
-                    color:      abaRanking === a.id ? '#fff'    : '#64748b',
-                    borderBottom: abaRanking === a.id ? '3px solid #3b82f6' : '3px solid transparent',
-                    transition: 'all 0.2s',
-                  }}>
-                    {a.label}
-                  </button>
-                ))}
-              </div>
+                {dadosFiscais.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+                    <p style={{ marginBottom: 8 }}>Nenhuma meta cadastrada para {mesLabel(mesAno)}.</p>
+                    <p style={{ fontSize: 12 }}>Acesse <strong>Metas por Fiscal</strong> para cadastrar.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {dadosFiltrados.sort((a, b) => b.pct - a.pct).map(f => {
+                      const c = conceitoMeta(f.notaMedia)
+                      return (
+                        <div key={f.login} style={{
+                          background: '#fff', borderRadius: 14,
+                          border: `1.5px solid ${f.pct >= 100 ? '#86efac' : f.pct >= 70 ? '#fcd34d' : '#fca5a5'}`,
+                          padding: '16px',
+                        }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                                <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{f.nome}</span>
+                                <span style={{ fontSize: 11, color: '#94a3b8' }}>{f.login}</span>
+                              </div>
+                              {c && (
+                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, background: c.bg, color: c.color, padding: '3px 10px', borderRadius: 20, fontSize: 12, fontWeight: 700 }}>
+                                  {c.emoji} {c.label}<span style={{ fontWeight: 400, opacity: 0.8, marginLeft: 2 }}>· nota {f.notaMedia}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ textAlign: 'right', marginLeft: 12 }}>
+                              <div style={{ fontSize: 22, fontWeight: 900, color: barColor(f.pct), lineHeight: 1 }}>{f.pct}%</div>
+                              <div style={{ fontSize: 10, color: '#64748b' }}>{f.total}/{f.meta} auditorias</div>
+                            </div>
+                          </div>
+                          <div style={{ background: '#f1f5f9', borderRadius: 6, height: 10, overflow: 'hidden', marginBottom: 10 }}>
+                            <div style={{ height: 10, borderRadius: 6, width: `${Math.min(f.pct, 100)}%`, background: barColor(f.pct), transition: 'width 0.5s' }} />
+                          </div>
+                          <div style={{ display: 'flex', gap: 12, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+                            <span style={{ color: '#15803d', fontWeight: 600 }}>✅ {f.atende} Atende</span>
+                            <span style={{ color: '#d97706', fontWeight: 600 }}>⚠️ {f.parcial} Parcial</span>
+                            <span style={{ color: '#dc2626', fontWeight: 600 }}>❌ {f.nao} Não Atende</span>
+                            {f.faltam > 0 && <span style={{ color: '#dc2626', fontWeight: 700 }}>⏳ Faltam {f.faltam}</span>}
+                            {f.pct >= 100 && <span style={{ color: '#15803d', fontWeight: 700 }}>🏆 Meta atingida!</span>}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </>
+            )}
 
-              {/* Legenda */}
-              <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9', fontSize: 11, color: '#64748b', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                <span>🏆 Top 3 = melhores notas médias do período</span>
-                <span>⚠️ Últimos 3 = atenção necessária</span>
-              </div>
+            {/* ══════════════ ABAS RANKING ══════════════ */}
+            {(abaAtiva === 'equipes' || abaAtiva === 'fiscais') && (
+              <>
+                {!dados || dados.total === 0 ? (
+                  <div style={{ textAlign: 'center', padding: 80, color: '#94a3b8' }}>
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
+                    <p style={{ fontSize: 16, marginBottom: 8 }}>Nenhuma auditoria em {mesLabel(mesAno)}.</p>
+                    <p style={{ fontSize: 13 }}>Selecione outro mês ou aguarde as auditorias serem realizadas.</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* KPIs */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 12, marginBottom: 20 }}>
+                      {[
+                        { label: 'Total Auditorias', val: dados.total,                 icon: '📋', color: '#1e3a5f', bg: '#eff6ff' },
+                        { label: 'Nota Média',        val: dados.notaMedia,             icon: '📊', color: '#7c3aed', bg: '#f5f3ff' },
+                        { label: '% Conformidade',    val: `${dados.pctConformidade}%`, icon: '✅', color: '#15803d', bg: '#f0fdf4' },
+                        { label: 'Atende',            val: dados.atende,                icon: '🟢', color: '#15803d', bg: '#dcfce7' },
+                        { label: 'Atende Parcial',    val: dados.parcial,               icon: '🟡', color: '#d97706', bg: '#fef9c3' },
+                        { label: 'Não Atende',        val: dados.naoAtende,             icon: '🔴', color: '#dc2626', bg: '#fee2e2' },
+                      ].map(k => (
+                        <div key={k.label} style={{
+                          background: k.bg, borderRadius: 14, padding: '16px',
+                          border: `1.5px solid ${k.color}22`, textAlign: 'center',
+                        }}>
+                          <div style={{ fontSize: 24, marginBottom: 6 }}>{k.icon}</div>
+                          <div style={{ fontSize: 26, fontWeight: 900, color: k.color, lineHeight: 1 }}>{k.val}</div>
+                          <div style={{ fontSize: 11, color: k.color, fontWeight: 600, marginTop: 4, opacity: 0.8 }}>{k.label}</div>
+                        </div>
+                      ))}
+                    </div>
 
-              {/* Lista */}
-              <div>
-                {(abaRanking === 'equipes' ? dados.rankingEquipes : dados.rankingFiscais).map((item, idx) => {
-                  const media  = Number(item.media)
-                  const cor    = notaCor(media)
-                  const conc   = conceito(media)
-                  const isTop  = idx < 3
-                  const isBot  = idx >= (abaRanking === 'equipes' ? dados.rankingEquipes : dados.rankingFiscais).length - 3
-                  const pctConf = item.total > 0 ? Math.round((item.atende / item.total) * 100) : 0
-
-                  return (
-                    <div key={abaRanking === 'equipes' ? item.prefixo : item.fiscal} style={{
-                      display: 'flex', alignItems: 'center', gap: 14,
-                      padding: '14px 18px',
-                      borderBottom: '1px solid #f1f5f9',
-                      background: isTop ? '#f0fdf4' : isBot ? '#fff7f7' : '#fff',
-                    }}>
-                      {/* Posição */}
-                      <div style={{
-                        minWidth: 32, height: 32, borderRadius: '50%', display: 'flex',
-                        alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 14,
-                        background: idx === 0 ? '#fbbf24' : idx === 1 ? '#e2e8f0' : idx === 2 ? '#d97706' : cor.bg,
-                        color:      idx === 0 ? '#7c2d12' : idx === 1 ? '#475569' : idx === 2 ? '#fff'    : cor.color,
-                      }}>
-                        {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                    {/* Distribuição de resultados */}
+                    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px', marginBottom: 20 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 12 }}>
+                        📈 Distribuição de Resultados — {mesLabel(mesAno)}
+                      </p>
+                      <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
+                        {[
+                          { val: dados.atende,    color: '#16a34a', label: 'Atende'    },
+                          { val: dados.parcial,   color: '#d97706', label: 'Parcial'   },
+                          { val: dados.naoAtende, color: '#dc2626', label: 'Não Atende'},
+                        ].map(b => b.val > 0 && (
+                          <div key={b.label} style={{
+                            width: `${(b.val / dados.total) * 100}%`, background: b.color,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 11, color: '#fff', fontWeight: 700, transition: 'width 0.5s',
+                          }}>
+                            {Math.round((b.val / dados.total) * 100)}%
+                          </div>
+                        ))}
                       </div>
-
-                      {/* Nome + barra */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {abaRanking === 'equipes' ? item.prefixo : item.fiscal}
-                          </span>
-                          <span style={{ fontSize: 11, color: conc.color, fontWeight: 700, marginLeft: 8, flexShrink: 0 }}>
-                            {conc.label}
-                          </span>
-                        </div>
-                        <div style={{ background: '#f1f5f9', borderRadius: 4, height: 6, overflow: 'hidden' }}>
-                          <div style={{
-                            width: `${media}%`, height: 6, borderRadius: 4,
-                            background: cor.color, transition: 'width 0.5s',
-                          }} />
-                        </div>
-                        <div style={{ display: 'flex', gap: 12, marginTop: 4, fontSize: 11, color: '#94a3b8' }}>
-                          <span>{item.total} auditoria{item.total > 1 ? 's' : ''}</span>
-                          <span>✅ {pctConf}% conf.</span>
-                          <span style={{ color: '#dc2626' }}>❌ {item.nao} n/a</span>
-                        </div>
-                      </div>
-
-                      {/* Nota */}
-                      <div style={{
-                        minWidth: 52, height: 52, borderRadius: 12,
-                        background: cor.bg, border: `1.5px solid ${cor.border}`,
-                        display: 'flex', flexDirection: 'column',
-                        alignItems: 'center', justifyContent: 'center',
-                      }}>
-                        <span style={{ fontSize: 18, fontWeight: 900, color: cor.color, lineHeight: 1 }}>
-                          {item.media}
-                        </span>
-                        <span style={{ fontSize: 9, color: cor.color, opacity: 0.8 }}>média</span>
+                      <div style={{ display: 'flex', gap: 16, fontSize: 12, color: '#64748b', flexWrap: 'wrap' }}>
+                        <span>🟢 Atende: <strong style={{ color: '#15803d' }}>{dados.atende}</strong></span>
+                        <span>🟡 Parcial: <strong style={{ color: '#d97706' }}>{dados.parcial}</strong></span>
+                        <span>🔴 Não Atende: <strong style={{ color: '#dc2626' }}>{dados.naoAtende}</strong></span>
                       </div>
                     </div>
-                  )
-                })}
-              </div>
-            </div>
+
+                    {/* Evolução semanal + Tipo de serviço (só na aba equipes) */}
+                    {abaAtiva === 'equipes' && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
+                        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px' }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 16 }}>📅 Evolução Semanal</p>
+                          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, height: 100 }}>
+                            {dados.evolucao.map(s => {
+                              const h   = Math.max(10, (Number(s.media) / 100) * 100)
+                              const cor = Number(s.media) >= 90 ? '#16a34a' : Number(s.media) >= 80 ? '#d97706' : '#dc2626'
+                              return (
+                                <div key={s.sem} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                                  <span style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>{s.media}</span>
+                                  <div style={{ width: '100%', height: h, background: cor, borderRadius: '4px 4px 0 0' }} />
+                                  <span style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>{s.sem}</span>
+                                  <span style={{ fontSize: 9, color: '#cbd5e1' }}>{s.total} aud.</span>
+                                </div>
+                              )
+                            })}
+                            {dados.evolucao.length === 0 && (
+                              <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', width: '100%' }}>Sem dados</p>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px' }}>
+                          <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 16 }}>🔧 Por Tipo de Serviço</p>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                            {Object.entries(dados.tipoServico).map(([tipo, v]) => {
+                              const pct = Math.round((v.atende / v.total) * 100)
+                              const cor = pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
+                              return (
+                                <div key={tipo}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{TIPO_EMOJI[tipo] || '📋'} {tipo}</span>
+                                    <span style={{ fontSize: 12, color: cor, fontWeight: 700 }}>{pct}% conf. · {v.total} aud.</span>
+                                  </div>
+                                  <div style={{ background: '#f1f5f9', borderRadius: 4, height: 8, overflow: 'hidden' }}>
+                                    <div style={{ width: `${pct}%`, height: 8, background: cor, borderRadius: 4, transition: 'width 0.5s' }} />
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Lista de ranking */}
+                    <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 20 }}>
+                      <div style={{ padding: '10px 18px', background: '#f8fafc', borderBottom: '1px solid #f1f5f9', fontSize: 11, color: '#64748b', display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                        <span>🏆 Top 3 = melhores notas médias do período</span>
+                        <span>⚠️ Últimos 3 = atenção necessária</span>
+                      </div>
+                      <div>{blocoRanking(abaAtiva)}</div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
 
             {/* Rodapé */}
             <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
               DPL Construções — Contrato Equatorial Energia 1021/2024 · Atualizado em {new Date().toLocaleString('pt-BR')}
             </div>
+
           </>
         )}
       </div>
