@@ -22,7 +22,7 @@ export async function fazerLogin(login, senha) {
 
   const permissoes = (perms || []).map(p => p.permissao)
 
-  localStorage.setItem(SESSION_KEY, JSON.stringify({
+  const usuarioSessao = {
     id:          usuario.id,
     nome:        usuario.nome,
     login:       usuario.login,
@@ -30,8 +30,10 @@ export async function fazerLogin(login, senha) {
     matricula:   usuario.matricula,
     base_regiao: usuario.base_regiao,
     permissoes,
-  }))
-  return usuario
+  }
+
+  localStorage.setItem(SESSION_KEY, JSON.stringify(usuarioSessao))
+  return usuarioSessao
 }
 
 export function getUsuarioLogado() {
