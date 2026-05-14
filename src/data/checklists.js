@@ -139,13 +139,23 @@ export function calcNota(form) {
 
   const sim = items.filter(i => {
     const r = form.respostas[i.id]
-    if (i.marriedGroup && i.marriedRole === 'pai') return true
+
+    // PAI: sempre conforme — o que determina é o filho
+    if (i.marriedGroup && i.marriedRole === 'pai') {
+      return true
+    }
+
+    // FILHO: conforme se pai === filho (ambos SIM ou ambos NÃO)
     if (i.marriedGroup && i.marriedRole === 'filho') {
       const pai  = items.find(p => p.marriedGroup === i.marriedGroup && p.marriedRole === 'pai')
       const rPai = pai ? form.respostas[pai.id] : undefined
-      return rPai !== undefined && r !== undefined && rPai === r
+      return rPai === r
     }
+
+    // INVERTIDA: NÃO = conforme
     if (i.inverted) return r === false
+
+    // NORMAL: SIM = conforme
     return r === true
   }).length
 
