@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase.js'
 
 function mesAtual() {
   const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` 
 }
 
 function mesLabel(mesAno) {
@@ -116,7 +116,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #065f46, #059669)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{

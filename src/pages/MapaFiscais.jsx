@@ -51,7 +51,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   useEffect(() => {
     if (modoHistorico) return
     carregarPosicoes()
-    const interval = setInterval(carregarPosicoes, 10000)
+    const interval = setInterval(carregarPosicoes, 5000)
     return () => clearInterval(interval)
   }, [modoHistorico, fiscais])
 
@@ -60,7 +60,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     if (!L || !leafletMap.current) return
 
     // Últimas posições de cada fiscal (últimos 2 minutos)
-    const limite = new Date(Date.now() - 2 * 60 * 1000).toISOString()
+    const limite = new Date(Date.now() - 30 * 1000).toISOString()
     const { data } = await supabase
       .from('localizacoes')
       .select('*')
