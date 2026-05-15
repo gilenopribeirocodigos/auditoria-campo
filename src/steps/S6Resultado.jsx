@@ -57,27 +57,35 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       const elemento = printAreaRef.current
       if (!elemento) return
 
-      // Elementos que contêm fotos base64 (causam layout quebrado offline)
+      // Quando OFFLINE: esconde temporariamente seções de fotos base64
+      // que quebram o layout do html2canvas. O windowWidth: 480 precisa
+      // ser mantido nos dois modos para preservar o layout flex correto.
       const secoesParaEsconder = online ? [] : Array.from(
         elemento.querySelectorAll('.photo-grid, [data-fotos]')
       )
-
-      // Esconde temporariamente durante a captura
-      secoesParaEsconder.forEach(el => { el.style.visibility = 'hidden'; el.style.height = '0'; el.style.overflow = 'hidden' })
+      secoesParaEsconder.forEach(el => {
+        el.style.visibility = 'hidden'
+        el.style.height     = '0'
+        el.style.overflow   = 'hidden'
+        el.style.marginBottom = '0'
+      })
 
       const canvas = await html2canvas(elemento, {
-        scale: 2,
-        useCORS: true,
-        allowTaint: true,
+        scale:       2,
+        useCORS:     true,
+        allowTaint:  true,
         backgroundColor: '#f0f4f8',
-        logging: false,
-        // Não força windowWidth — usa a largura real do elemento
-        width:  elemento.offsetWidth,
-        height: elemento.scrollHeight,
+        logging:     false,
+        windowWidth: 480, // essencial para preservar o layout flex/grid
       })
 
       // Restaura elementos escondidos
-      secoesParaEsconder.forEach(el => { el.style.visibility = ''; el.style.height = ''; el.style.overflow = '' })
+      secoesParaEsconder.forEach(el => {
+        el.style.visibility   = ''
+        el.style.height       = ''
+        el.style.overflow     = ''
+        el.style.marginBottom = ''
+      })
 
       const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.png`.replace(/\s+/g, '_')
 
@@ -88,7 +96,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             await navigator.share({
               files: [file],
               title: `Auditoria ${form.prefixo}`,
-              text: `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
+              text:  `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
             })
           } else { baixarImagem(canvas, nomeArquivo) }
         }, 'image/png')
