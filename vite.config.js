@@ -5,10 +5,10 @@ import { VitePWA } from 'vite-plugin-pwa'
 export default defineConfig({
   plugins: [
     react(),
-    VitePWA({  
+    VitePWA({
       // ANTES — recarrega automaticamente ao detectar nova versão
       //registerType: 'autoUpdate',
-      
+
       // DEPOIS — não recarrega sozinho
       registerType: 'prompt',
       includeAssets: ['icon-192.png', 'icon-512.png'],

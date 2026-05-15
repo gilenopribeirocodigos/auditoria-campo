@@ -1,7 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase.js'
-
-const SESSION_KEY = 'dpl_audit_user'
+import { fazerLogin } from '../lib/auth.js'
 
 export default function Login({ onLogin }) {
   const [login,   setLogin]   = useState('')
@@ -16,59 +14,8 @@ export default function Login({ onLogin }) {
     setLoading(true); setErro(''); setDebug('')
 
     try {
-      // 1. Verifica se supabase está configurado
-      if (!supabase) {
-        setDebug('ERRO: Supabase é null — variáveis de ambiente não carregadas.')
-        throw new Error('Supabase não configurado.')
-      }
-      setDebug('Supabase OK. Buscando usuário...')
-
-      // 2. Busca sem filtro de status para ver o que existe
-      const { data: todos, error: errTodos } = await supabase
-        .from('usuarios')
-        .select('id, nome, login, status, perfil')
-
-      if (errTodos) {
-        setDebug('Erro ao acessar tabela usuarios: ' + errTodos.message)
-        throw new Error('Erro de conexão: ' + errTodos.message)
-      }
-
-      setDebug(`Usuários encontrados na tabela: ${JSON.stringify(todos?.map(u => u.login))}`)
-
-      // 3. Busca pelo login digitado
-      const loginDigitado = login.trim().toLowerCase()
-      const encontrado = todos?.find(u => u.login === loginDigitado)
-
-      if (!encontrado) {
-        setDebug(prev => prev + ` | Login "${loginDigitado}" NÃO encontrado na tabela.`)
-        throw new Error(`Usuário "${loginDigitado}" não encontrado.`)
-      }
-
-      if (encontrado.status !== 'ATIVO') {
-        throw new Error(`Usuário encontrado mas status é "${encontrado.status}".`)
-      }
-
-      // 4. Busca com senha
-      const { data: comSenha, error: errSenha } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('login', loginDigitado)
-
-      if (errSenha) throw new Error('Erro: ' + errSenha.message)
-
-      const usuario = comSenha[0]
-      if (usuario.senha !== senha) {
-        setDebug(prev => prev + ` | Senha digitada não confere.`)
-        throw new Error('Senha incorreta.')
-      }
-
-      // 5. Login OK
-      localStorage.setItem(SESSION_KEY, JSON.stringify({
-        id: usuario.id, nome: usuario.nome, login: usuario.login,
-        perfil: usuario.perfil, base_regiao: usuario.base_regiao,
-      }))
-      onLogin(usuario)
-
+      const usuarioSessao = await fazerLogin(login, senha)
+      onLogin(usuarioSessao)
     } catch (err) {
       setErro(err.message)
     } finally {
