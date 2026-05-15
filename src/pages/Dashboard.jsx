@@ -60,16 +60,25 @@ function hojeStr() {
   return new Date().toISOString().split('T')[0]
 }
 
+function fmtData(d) {
+  return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+}
+
 const TIPO_EMOJI = { CORTE: '✂️', ANEXO: '🔌', RELIGA: '⚡' }
 
 // ─── componente ─────────────────────────────────────────────────────────────
 export default function Dashboard({ usuarioLogado, onVoltar }) {
-  const [mesAno,    setMesAno]    = useState(calcMesAtual)
-  const [abaAtiva,  setAbaAtiva]  = useState('meta_dia')
-  const [loading,   setLoading]   = useState(true)
+  const [mesAno,      setMesAno]      = useState(calcMesAtual)
+  const [abaAtiva,    setAbaAtiva]    = useState('meta_dia')
+  const [loading,     setLoading]     = useState(true)
+
+  // ── filtro de período ─────────────────────────────────────────────────────
+  const [modoPeriodo, setModoPeriodo] = useState(false) // false = mês, true = período
+  const [dataIni,     setDataIni]     = useState('')
+  const [dataFim,     setDataFim]     = useState('')
 
   // dados de ranking/auditoria
-  const [dados,     setDados]     = useState(null)
+  const [dados, setDados] = useState(null)
 
   // dados de metas
   const [fiscais,        setFiscais]        = useState([])
@@ -86,13 +95,33 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
   })
 
+  // primeiro e último dia do mês selecionado (para min/max dos inputs de data)
+  const primeiroDia = `${mesAno}-01`
+  const ultimoDia   = new Date(parseInt(mesAno.split('-')[0]), parseInt(mesAno.split('-')[1]), 0)
+    .toISOString().split('T')[0]
+
+  // label dinâmico do período ativo
+  const periodoLabel = modoPeriodo && dataIni
+    ? (dataFim && dataFim !== dataIni ? `${fmtData(dataIni)} → ${fmtData(dataFim)}` : fmtData(dataIni))
+    : mesLabel(mesAno)
+
+  // datas efetivas para a query
+  function getDatasQuery() {
+    if (modoPeriodo && dataIni) {
+      return { ini: dataIni, fim: dataFim || dataIni }
+    }
+    const [ano, mes] = mesAno.split('-')
+    return {
+      ini: `${ano}-${mes}-01`,
+      fim: new Date(parseInt(ano), parseInt(mes), 0).toISOString().split('T')[0],
+    }
+  }
+
   // ── carrega tudo em paralelo ──────────────────────────────────────────────
   const carregar = async () => {
     setLoading(true)
     try {
-      const [ano, mes] = mesAno.split('-')
-      const ini = `${ano}-${mes}-01`
-      const fim = new Date(parseInt(ano), parseInt(mes), 0).toISOString().split('T')[0]
+      const { ini, fim } = getDatasQuery()
 
       const [
         { data: auds },
@@ -108,7 +137,6 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         supabase.from('feriados').select('*').order('data'),
       ])
 
-      // ── guarda dados de metas ──────────────────────────────────────────
       setFiscais(fData || [])
       setMetas(mData || [])
       setRealizadas(auds || [])
@@ -118,17 +146,14 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
 
       if (!auds || auds.length === 0) { setDados(null); return }
 
-      // ── KPIs gerais ───────────────────────────────────────────────────
       const total     = auds.length
       const atende    = auds.filter(a => a.status === 'ATENDE').length
       const parcial   = auds.filter(a => a.status === 'ATENDE PARCIAL').length
       const naoAtende = auds.filter(a => a.status === 'NÃO ATENDE').length
       const notaMedia = total > 0
-        ? (auds.reduce((s, a) => s + Number(a.nota), 0) / total).toFixed(1)
-        : '—'
+        ? (auds.reduce((s, a) => s + Number(a.nota), 0) / total).toFixed(1) : '—'
       const pctConformidade = total > 0 ? Math.round((atende / total) * 100) : 0
 
-      // ── ranking equipes ───────────────────────────────────────────────
       const mapaEq = {}
       auds.forEach(a => {
         if (!a.prefixo) return
@@ -139,11 +164,9 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         if (a.status === 'NÃO ATENDE') mapaEq[a.prefixo].nao++
       })
       const rankingEquipes = Object.values(mapaEq).map(e => ({
-        ...e,
-        media: (e.notas.reduce((s, n) => s + n, 0) / e.notas.length).toFixed(1),
+        ...e, media: (e.notas.reduce((s, n) => s + n, 0) / e.notas.length).toFixed(1),
       })).sort((a, b) => Number(b.media) - Number(a.media))
 
-      // ── ranking fiscais ───────────────────────────────────────────────
       const mapaFi = {}
       auds.forEach(a => {
         if (!a.fiscal) return
@@ -154,11 +177,9 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         if (a.status === 'NÃO ATENDE') mapaFi[a.fiscal].nao++
       })
       const rankingFiscais = Object.values(mapaFi).map(f => ({
-        ...f,
-        media: (f.notas.reduce((s, n) => s + n, 0) / f.notas.length).toFixed(1),
+        ...f, media: (f.notas.reduce((s, n) => s + n, 0) / f.notas.length).toFixed(1),
       })).sort((a, b) => Number(b.media) - Number(a.media))
 
-      // ── evolução semanal ──────────────────────────────────────────────
       const semanas = {}
       auds.forEach(a => {
         const d   = new Date(a.data_auditoria + 'T00:00:00')
@@ -168,12 +189,10 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         semanas[sem].total++
       })
       const evolucao = Object.entries(semanas).map(([sem, v]) => ({
-        sem,
+        sem, total: v.total,
         media: (v.notas.reduce((s, n) => s + n, 0) / v.notas.length).toFixed(1),
-        total: v.total,
       }))
 
-      // ── distribuição por tipo de serviço ──────────────────────────────
       const tipoServico = {}
       auds.forEach(a => {
         if (!a.tipo_servico) return
@@ -190,7 +209,18 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     }
   }
 
-  useEffect(() => { carregar() }, [mesAno])
+  // recarrega quando muda mês; no modo período, só quando dataIni estiver preenchida
+  useEffect(() => {
+    if (modoPeriodo && !dataIni) return
+    carregar()
+  }, [mesAno, modoPeriodo, dataIni, dataFim])
+
+  const trocarModo = (modo) => {
+    setModoPeriodo(modo)
+    setDataIni('')
+    setDataFim('')
+    setFiscaisSelecionados([])
+  }
 
   // ── computed metas ────────────────────────────────────────────────────────
   const diasUteis         = diasUteisMes(mesAno, feriados)
@@ -234,7 +264,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
       prev.includes(login) ? prev.filter(l => l !== login) : [...prev, login]
     )
 
-  // ── bloco filtro fiscais (reutilizado em meta_dia e meta_mes) ─────────────
+  // ── bloco filtro fiscais ──────────────────────────────────────────────────
   const blocoFiltro = dadosFiscais.length > 0 ? (
     <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '12px 16px', marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
@@ -282,13 +312,13 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
 
   // ── abas ─────────────────────────────────────────────────────────────────
   const abas = [
-    { id: 'meta_dia', label: '📅 Meta do Dia'       },
-    { id: 'meta_mes', label: '📊 Meta do Mês'       },
-    { id: 'equipes',  label: '🚗 Ranking Equipes'   },
-    { id: 'fiscais',  label: '👤 Ranking Fiscais'   },
+    { id: 'meta_dia', label: '📅 Meta do Dia'     },
+    { id: 'meta_mes', label: '📊 Meta do Mês'     },
+    { id: 'equipes',  label: '🚗 Ranking Equipes' },
+    { id: 'fiscais',  label: '👤 Ranking Fiscais' },
   ]
 
-  // ── bloco ranking (equipes ou fiscais) ────────────────────────────────────
+  // ── bloco ranking ─────────────────────────────────────────────────────────
   const blocoRanking = (tipo) => {
     const lista = tipo === 'equipes' ? dados?.rankingEquipes : dados?.rankingFiscais
     if (!lista) return null
@@ -349,28 +379,106 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      {/* Header */}
+      {/* ── Header ── */}
       <div style={{ background: 'linear-gradient(135deg, #1e3a5f, #1d4ed8)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
             padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📊 Dashboard — Ranking Operacional</h1>
               <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Visão consolidada do desempenho de equipes e fiscais</p>
             </div>
-            <select value={mesAno} onChange={e => { setMesAno(e.target.value); setFiscaisSelecionados([]) }} style={{
-              background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
-              color: '#fff', padding: '9px 16px', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-            }}>
-              {mesesOpcoes.map(m => (
-                <option key={m} value={m} style={{ color: '#1e293b', background: '#fff' }}>
-                  {mesLabel(m)}{m === calcMesAtual() ? ' ← atual' : ''}
-                </option>
-              ))}
-            </select>
+
+            {/* ── Controles de filtro ── */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'flex-end' }}>
+
+              {/* Toggle Mês / Período */}
+              <div style={{ display: 'flex', background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: 3, gap: 2 }}>
+                <button onClick={() => trocarModo(false)} style={{
+                  padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+                  background: !modoPeriodo ? '#fff' : 'transparent',
+                  color:      !modoPeriodo ? '#1e3a5f' : 'rgba(255,255,255,0.85)',
+                }}>📅 Mês</button>
+                <button onClick={() => trocarModo(true)} style={{
+                  padding: '6px 16px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+                  background: modoPeriodo ? '#fff' : 'transparent',
+                  color:      modoPeriodo ? '#1e3a5f' : 'rgba(255,255,255,0.85)',
+                }}>📆 Período</button>
+              </div>
+
+              {/* Seletor de mês (sempre visível) */}
+              <select value={mesAno} onChange={e => { setMesAno(e.target.value); setDataIni(''); setDataFim(''); setFiscaisSelecionados([]) }} style={{
+                background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.3)',
+                color: '#fff', padding: '8px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+              }}>
+                {mesesOpcoes.map(m => (
+                  <option key={m} value={m} style={{ color: '#1e293b', background: '#fff' }}>
+                    {mesLabel(m)}{m === calcMesAtual() ? ' ← atual' : ''}
+                  </option>
+                ))}
+              </select>
+
+              {/* Campos De / Até — só no modo Período */}
+              {modoPeriodo && (
+                <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <label style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: 700, letterSpacing: 0.5 }}>DE</label>
+                    <input type="date"
+                      value={dataIni}
+                      min={primeiroDia}
+                      max={dataFim || ultimoDia}
+                      onChange={e => setDataIni(e.target.value)}
+                      style={{
+                        padding: '7px 10px', borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        background: 'rgba(255,255,255,0.15)', color: '#fff',
+                        fontSize: 13, fontWeight: 700, cursor: 'pointer', colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                    <label style={{ fontSize: 10, color: 'rgba(255,255,255,0.7)', fontWeight: 700, letterSpacing: 0.5 }}>ATÉ</label>
+                    <input type="date"
+                      value={dataFim}
+                      min={dataIni || primeiroDia}
+                      max={ultimoDia}
+                      onChange={e => setDataFim(e.target.value)}
+                      style={{
+                        padding: '7px 10px', borderRadius: 8,
+                        border: '1px solid rgba(255,255,255,0.3)',
+                        background: 'rgba(255,255,255,0.15)', color: '#fff',
+                        fontSize: 13, fontWeight: 700, cursor: 'pointer', colorScheme: 'dark',
+                      }}
+                    />
+                  </div>
+                  {dataIni && (
+                    <button onClick={() => { setDataIni(''); setDataFim('') }} style={{
+                      padding: '7px 10px', borderRadius: 8,
+                      border: '1px solid rgba(255,255,255,0.3)',
+                      background: 'rgba(220,38,38,0.5)', color: '#fff',
+                      fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                    }}>✕</button>
+                  )}
+                </div>
+              )}
+
+              {/* Indicador do filtro ativo */}
+              <div style={{
+                fontSize: 11, fontWeight: 600, textAlign: 'right',
+                color: modoPeriodo && dataIni ? '#fbbf24' : 'rgba(255,255,255,0.55)',
+              }}>
+                {modoPeriodo
+                  ? dataIni ? `Filtrando: ${periodoLabel}` : '← Selecione a data inicial'
+                  : `Mês completo: ${periodoLabel}`}
+              </div>
+
+            </div>
           </div>
         </div>
       </div>
@@ -402,7 +510,6 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
             {/* ══════════════ ABA META DO DIA ══════════════ */}
             {abaAtiva === 'meta_dia' && (
               <>
-                {/* Progresso do dia */}
                 <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '14px 16px', marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                     <div>
@@ -469,10 +576,9 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
             {/* ══════════════ ABA META DO MÊS ══════════════ */}
             {abaAtiva === 'meta_mes' && (
               <>
-                {/* Progresso geral do mês */}
                 <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Progresso Geral — {mesLabel(mesAno)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Progresso — {periodoLabel}</span>
                     <span style={{ fontSize: 14, fontWeight: 800, color: barColor(pctGeral) }}>{totalFeito}/{totalMeta} ({pctGeral}%)</span>
                   </div>
                   <div style={{ background: '#f1f5f9', borderRadius: 6, height: 12, overflow: 'hidden' }}>
@@ -546,8 +652,8 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
                 {!dados || dados.total === 0 ? (
                   <div style={{ textAlign: 'center', padding: 80, color: '#94a3b8' }}>
                     <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-                    <p style={{ fontSize: 16, marginBottom: 8 }}>Nenhuma auditoria em {mesLabel(mesAno)}.</p>
-                    <p style={{ fontSize: 13 }}>Selecione outro mês ou aguarde as auditorias serem realizadas.</p>
+                    <p style={{ fontSize: 16, marginBottom: 8 }}>Nenhuma auditoria em {periodoLabel}.</p>
+                    <p style={{ fontSize: 13 }}>Selecione outro período ou aguarde as auditorias serem realizadas.</p>
                   </div>
                 ) : (
                   <>
@@ -575,7 +681,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
                     {/* Distribuição de resultados */}
                     <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '18px', marginBottom: 20 }}>
                       <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 12 }}>
-                        📈 Distribuição de Resultados — {mesLabel(mesAno)}
+                        📈 Distribuição de Resultados — {periodoLabel}
                       </p>
                       <div style={{ display: 'flex', height: 28, borderRadius: 8, overflow: 'hidden', marginBottom: 10 }}>
                         {[
