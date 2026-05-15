@@ -14,8 +14,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
   const sim     = items.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
   const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
-
-  // ── usa getItemsNaoConformes para aplicar corretamente a lógica married ──
   const ncItems = getItemsNaoConformes(form)
 
   const [saveStatus, setSaveStatus] = useState('idle')
@@ -48,17 +46,41 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     ? '🚫 EQUIPE NÃO EXECUTOU O CORTE'
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
+  // ── Gera imagem para WhatsApp ─────────────────────────────────────────────
+  // Quando OFFLINE: esconde temporariamente as seções de fotos (base64 pesadas
+  // que quebram o layout do html2canvas) e restaura após a captura.
+  // Quando ONLINE: comportamento normal — fotos são URLs do Supabase.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
       const html2canvas = (await import('html2canvas')).default
       const elemento = printAreaRef.current
       if (!elemento) return
+
+      // Elementos que contêm fotos base64 (causam layout quebrado offline)
+      const secoesParaEsconder = online ? [] : Array.from(
+        elemento.querySelectorAll('.photo-grid, [data-fotos]')
+      )
+
+      // Esconde temporariamente durante a captura
+      secoesParaEsconder.forEach(el => { el.style.visibility = 'hidden'; el.style.height = '0'; el.style.overflow = 'hidden' })
+
       const canvas = await html2canvas(elemento, {
-        scale: 2, useCORS: true, allowTaint: true,
-        backgroundColor: '#f0f4f8', logging: false, windowWidth: 480,
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#f0f4f8',
+        logging: false,
+        // Não força windowWidth — usa a largura real do elemento
+        width:  elemento.offsetWidth,
+        height: elemento.scrollHeight,
       })
+
+      // Restaura elementos escondidos
+      secoesParaEsconder.forEach(el => { el.style.visibility = ''; el.style.height = ''; el.style.overflow = '' })
+
       const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.png`.replace(/\s+/g, '_')
+
       if (navigator.share && navigator.canShare) {
         canvas.toBlob(async blob => {
           const file = new File([blob], nomeArquivo, { type: 'image/png' })
@@ -71,9 +93,13 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           } else { baixarImagem(canvas, nomeArquivo) }
         }, 'image/png')
       } else { baixarImagem(canvas, nomeArquivo) }
+
     } catch (err) {
+      console.error('Erro ao gerar imagem:', err)
       alert('Não foi possível gerar a imagem. Tente novamente.')
-    } finally { setCapturando(false) }
+    } finally {
+      setCapturando(false)
+    }
   }
 
   const baixarImagem = (canvas, nomeArquivo) => {
@@ -110,7 +136,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     setSaveStatus('saving')
     setSaveError('')
 
-    // ── MODO OFFLINE ─────────────────────────────────────────────────────────
+    // ── MODO OFFLINE ──────────────────────────────────────────────────────────
     if (!online && !modoEdicao) {
       try {
         const payload      = montarPayload()
@@ -276,7 +302,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
         {/* FOTOS ANTIGAS — modo edição */}
         {modoEdicao && fotosAntigas?.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 14 }} data-fotos="antigas">
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📁 Fotos anteriores ({fotosAntigas.length})</p>
             <div className="photo-grid">
               {fotosAntigas.map((url, i) => (
@@ -295,7 +321,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
         {/* NOVAS FOTOS */}
         {form.fotos.length > 0 && (
-          <div style={{ marginBottom: 14 }}>
+          <div style={{ marginBottom: 14 }} data-fotos="novas">
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
               {modoEdicao ? `📷 Novas fotos (${form.fotos.length})` : `Registro Fotográfico (${form.fotos.length})`}
             </p>
@@ -386,9 +412,15 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
                     ? 'Auditoria corrigida e fechada novamente.'
                     : 'Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.'}
               </p>
+              {/* Aviso adicional no offline: imagem sem fotos */}
+              {salvoOffline && (
+                <p style={{ color: '#92400e', fontSize: 10, marginTop: 6, fontStyle: 'italic' }}>
+                  ℹ️ No modo offline a imagem compartilhada não incluirá as fotos (apenas o resultado, dados e assinatura).
+                </p>
+              )}
             </div>
 
-            {/* ── Botões WhatsApp e PDF — aparecem SEMPRE (online e offline) ── */}
+            {/* Botões WhatsApp e PDF — aparecem SEMPRE (online e offline) */}
             <button
               className="btn-primary"
               onClick={gerarImagemWhatsApp}
