@@ -1,16 +1,23 @@
 import { supabase } from './supabase.js'
 
-const SESSION_KEY = 'dpl_audit_user'
+const SESSION_KEY  = 'dpl_audit_user'
+const VERSAO_KEY   = 'dpl_versao'
+const ATIVIDADE_KEY = 'dpl_ultima_atividade'
+const TIMEOUT_MIN  = 60 // minutos de ociosidade para deslogar
 
+// ─── Login ────────────────────────────────────────────────────────────────────
 export async function fazerLogin(login, senha) {
   if (!supabase) throw new Error('Supabase não configurado.')
+
   const { data, error } = await supabase
     .from('usuarios')
     .select('*')
     .eq('login', login.trim().toLowerCase())
     .eq('status', 'ATIVO')
+
   if (error) throw new Error('Erro de conexão: ' + error.message)
   if (!data || data.length === 0) throw new Error('Usuário não encontrado ou inativo.')
+
   const usuario = data[0]
   if (usuario.senha !== senha) throw new Error('Senha incorreta.')
 
@@ -33,9 +40,15 @@ export async function fazerLogin(login, senha) {
   }
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(usuarioSessao))
+
+  // Salva versão atual e atividade no login
+  registrarAtividade()
+  await sincronizarVersaoLocal()
+
   return usuarioSessao
 }
 
+// ─── Sessão ───────────────────────────────────────────────────────────────────
 export function getUsuarioLogado() {
   try {
     const s = localStorage.getItem(SESSION_KEY)
@@ -45,8 +58,73 @@ export function getUsuarioLogado() {
 
 export function fazerLogout() {
   localStorage.removeItem(SESSION_KEY)
+  localStorage.removeItem(ATIVIDADE_KEY)
 }
 
+// ─── Atividade ────────────────────────────────────────────────────────────────
+export function registrarAtividade() {
+  localStorage.setItem(ATIVIDADE_KEY, Date.now().toString())
+}
+
+function ociosoHaMais(minutos) {
+  const ultima = localStorage.getItem(ATIVIDADE_KEY)
+  if (!ultima) return false
+  const diff = (Date.now() - parseInt(ultima)) / 1000 / 60
+  return diff > minutos
+}
+
+// ─── Versão do sistema ────────────────────────────────────────────────────────
+async function sincronizarVersaoLocal() {
+  try {
+    const { data } = await supabase
+      .from('sistema_config')
+      .select('valor')
+      .eq('chave', 'versao')
+      .single()
+    if (data?.valor) {
+      localStorage.setItem(VERSAO_KEY, data.valor)
+    }
+  } catch { /* silencioso */ }
+}
+
+// Retorna true se a sessão é válida, false se deve deslogar/recarregar
+export async function verificarSessao() {
+  const usuario = getUsuarioLogado()
+  if (!usuario) return { valida: false, motivo: null }
+
+  // 1. Verifica timeout de ociosidade
+  if (ociosoHaMais(TIMEOUT_MIN)) {
+    fazerLogout()
+    return { valida: false, motivo: 'timeout' }
+  }
+
+  // 2. Verifica versão do sistema no servidor
+  try {
+    const { data } = await supabase
+      .from('sistema_config')
+      .select('valor')
+      .eq('chave', 'versao')
+      .single()
+
+    const versaoServidor = data?.valor
+    const versaoLocal    = localStorage.getItem(VERSAO_KEY)
+
+    if (versaoServidor && versaoLocal && versaoServidor !== versaoLocal) {
+      // Versão mudou — desloga e sinaliza para recarregar
+      fazerLogout()
+      localStorage.setItem(VERSAO_KEY, versaoServidor)
+      return { valida: false, motivo: 'nova_versao' }
+    }
+
+    if (versaoServidor && !versaoLocal) {
+      localStorage.setItem(VERSAO_KEY, versaoServidor)
+    }
+  } catch { /* sem internet, ignora verificação de versão */ }
+
+  return { valida: true, motivo: null }
+}
+
+// ─── Permissões ───────────────────────────────────────────────────────────────
 export function isAdmin(usuario) {
   return usuario?.perfil === 'ADMIN'
 }
@@ -57,6 +135,7 @@ export function temPermissao(usuario, permissao) {
   return (usuario.permissoes || []).includes(permissao)
 }
 
+// ─── CRUD Usuários ────────────────────────────────────────────────────────────
 export async function listarUsuarios() {
   const { data, error } = await supabase
     .from('usuarios').select('*').order('nome')
