@@ -47,45 +47,151 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
   // ── Gera imagem para WhatsApp ─────────────────────────────────────────────
-  // Quando OFFLINE: esconde temporariamente as seções de fotos (base64 pesadas
-  // que quebram o layout do html2canvas) e restaura após a captura.
-  // Quando ONLINE: comportamento normal — fotos são URLs do Supabase.
+  // Cria um elemento temporário com 100% inline styles para captura.
+  // Desta forma o html2canvas não depende de nenhuma classe CSS externa,
+  // garantindo formatação idêntica online e offline.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
       const html2canvas = (await import('html2canvas')).default
-      const elemento = printAreaRef.current
-      if (!elemento) return
 
-      // Quando OFFLINE: esconde temporariamente seções de fotos base64
-      // que quebram o layout do html2canvas. O windowWidth: 480 precisa
-      // ser mantido nos dois modos para preservar o layout flex correto.
-      const secoesParaEsconder = online ? [] : Array.from(
-        elemento.querySelectorAll('.photo-grid, [data-fotos]')
-      )
-      secoesParaEsconder.forEach(el => {
-        el.style.visibility = 'hidden'
-        el.style.height     = '0'
-        el.style.overflow   = 'hidden'
-        el.style.marginBottom = '0'
-      })
+      // ── helpers de cor ──
+      const catColor = cat => ({
+        COMPORTAMENTO: { bg: '#dbeafe', color: '#1d4ed8' },
+        QUALIDADE:     { bg: '#dcfce7', color: '#15803d' },
+        DESEMPENHO:    { bg: '#fef3c7', color: '#92400e' },
+      }[cat] || { bg: '#f1f5f9', color: '#374151' })
 
-      const canvas = await html2canvas(elemento, {
-        scale:       2,
-        useCORS:     true,
-        allowTaint:  true,
+      const barCor = pct => pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
+
+      const infoRow = (label, value) => value ? `
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px;">
+          <span style="color:#94a3b8;font-weight:600;min-width:110px;flex-shrink:0;">${label}</span>
+          <span style="color:#1e293b;font-weight:600;text-align:right;flex:1;padding-left:8px;">${value}</span>
+        </div>` : ''
+
+      // ── conteúdo HTML com inline styles ──
+      const html = `
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:16px;box-sizing:border-box;width:460px;">
+
+          ${eliminado ? `<div style="background:#dc2626;color:#fff;padding:6px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;text-align:center;">${msgEliminado}</div>` : ''}
+
+          <!-- Status -->
+          <div style="background:${st.bg};border:2px solid ${st.border};border-radius:16px;padding:20px;text-align:center;margin-bottom:14px;">
+            <div style="font-size:48px;margin-bottom:6px;">${st.icon}</div>
+            <div style="font-size:52px;font-weight:900;color:${st.color};line-height:1;">${nota.toFixed(0)}</div>
+            <div style="font-size:13px;color:${st.color};font-weight:500;margin-bottom:2px;">pontos</div>
+            <div style="font-size:22px;font-weight:800;color:${st.color};margin-bottom:6px;">${st.label}</div>
+            <div style="font-size:12px;color:${st.color};opacity:0.85;">${labelTipoAuditoria} — ${CHECKLISTS[form.tipoServico]?.label} — ${form.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
+          </div>
+
+          <!-- Contadores -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
+            <div style="background:#dcfce7;border-radius:12px;padding:12px;text-align:center;">
+              <div style="font-size:26px;font-weight:900;color:#16a34a;">${sim}</div>
+              <div style="font-size:11px;color:#16a34a;font-weight:600;">Conformes</div>
+            </div>
+            <div style="background:#fee2e2;border-radius:12px;padding:12px;text-align:center;">
+              <div style="font-size:26px;font-weight:900;color:#dc2626;">${nao}</div>
+              <div style="font-size:11px;color:#dc2626;font-weight:600;">Não conf.</div>
+            </div>
+            <div style="background:#eff6ff;border-radius:12px;padding:12px;text-align:center;">
+              <div style="font-size:26px;font-weight:900;color:#2563eb;">${items.length}</div>
+              <div style="font-size:11px;color:#2563eb;font-weight:600;">Total itens</div>
+            </div>
+          </div>
+
+          <!-- Por Categoria -->
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
+            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 12px 0;">Por Categoria</p>
+            ${catStats.map(c => {
+              const cc = catColor(c.cat)
+              return `
+              <div style="margin-bottom:10px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+                  <span style="background:${cc.bg};color:${cc.color};padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;">${CAT_META[c.cat].label}</span>
+                  <span style="font-size:12px;font-weight:700;color:#374151;">${c.sim}/${c.total} — ${c.pct}%</span>
+                </div>
+                <div style="background:#f1f5f9;border-radius:6px;height:10px;overflow:hidden;">
+                  <div style="width:${c.pct}%;height:10px;background:${barCor(c.pct)};border-radius:6px;"></div>
+                </div>
+              </div>`
+            }).join('')}
+          </div>
+
+          <!-- Dados da Auditoria -->
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
+            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 10px 0;">Dados da Auditoria</p>
+            ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
+            ${infoRow('Fiscal',         form.fiscal)}
+            ${infoRow('Matrícula',      form.matricula)}
+            ${infoRow('Equipe',         form.prefixo)}
+            ${infoRow('OS',             form.os)}
+            ${infoRow('UC',             form.uc)}
+            ${infoRow('Endereço',       form.endereco)}
+            ${infoRow('Data / Hora',    `${form.data} às ${form.hora}`)}
+            ${form.lat             ? infoRow('GPS',           `${form.lat}, ${form.lng}`) : ''}
+            ${form.nomeEletricista ? infoRow('Eletricista 1', form.nomeEletricista)         : ''}
+            ${form.nomeEletricista2 ? infoRow('Eletricista 2', form.nomeEletricista2)       : ''}
+          </div>
+
+          <!-- Não Conformidades -->
+          ${ncItems.length > 0 ? `
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:16px;margin-bottom:14px;">
+            <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0 0 10px 0;">❌ Itens Não Conformes (${ncItems.length})</p>
+            ${ncItems.map((item, i) => `
+              <div style="font-size:12px;color:#991b1b;padding:6px 0;${i < ncItems.length - 1 ? 'border-bottom:1px solid #fecaca;' : ''}line-height:1.5;">
+                <strong>${i + 1}.</strong> ${item.p}
+              </div>`).join('')}
+          </div>` : ''}
+
+          <!-- Feedback / Obs -->
+          ${form.feedback || form.observacoes ? `
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
+            ${form.feedback ? `<p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 4px 0;">FEEDBACK DO FISCAL:</p><p style="font-size:12px;color:#475569;line-height:1.5;margin:0 0 ${form.observacoes ? '12px' : '0'} 0;">${form.feedback}</p>` : ''}
+            ${form.observacoes ? `<p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 4px 0;">OBSERVAÇÕES:</p><p style="font-size:12px;color:#475569;line-height:1.5;margin:0;">${form.observacoes}</p>` : ''}
+          </div>` : ''}
+
+          <!-- Assinatura 1 -->
+          ${form.assinatura ? `
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
+            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 8px 0;">Assinatura — ${form.nomeEletricista || 'Eletricista 1'}</p>
+            <img src="${form.assinatura}" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
+            <p style="font-size:10px;color:#94a3b8;text-align:center;margin:6px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
+          </div>` : ''}
+
+          <!-- Assinatura 2 -->
+          ${form.assinatura2 ? `
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
+            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 8px 0;">Assinatura — ${form.nomeEletricista2 || 'Eletricista 2'}</p>
+            <img src="${form.assinatura2}" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
+            <p style="font-size:10px;color:#94a3b8;text-align:center;margin:6px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
+          </div>` : ''}
+
+          <!-- Rodapé -->
+          <div style="border-top:1px solid #e2e8f0;padding-top:12px;text-align:center;">
+            <p style="font-size:11px;color:#94a3b8;margin:0;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+            <p style="font-size:10px;color:#cbd5e1;margin:2px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+          </div>
+
+        </div>`
+
+      // ── monta o div temporário fora da tela ──
+      const div = document.createElement('div')
+      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
+      div.innerHTML = html
+      document.body.appendChild(div)
+
+      const canvas = await html2canvas(div.firstElementChild, {
+        scale:           2,
+        useCORS:         true,
+        allowTaint:      true,
         backgroundColor: '#f0f4f8',
-        logging:     false,
-        windowWidth: 480, // essencial para preservar o layout flex/grid
+        logging:         false,
+        windowWidth:     512,
       })
 
-      // Restaura elementos escondidos
-      secoesParaEsconder.forEach(el => {
-        el.style.visibility   = ''
-        el.style.height       = ''
-        el.style.overflow     = ''
-        el.style.marginBottom = ''
-      })
+      document.body.removeChild(div)
 
       const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.png`.replace(/\s+/g, '_')
 
