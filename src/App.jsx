@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import { useRegisterSW } from 'virtual:pwa-register/react'
 import { FORM_INICIAL } from './data/checklists.js'
-import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao } from './lib/auth.js'
+import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
@@ -36,12 +37,16 @@ export default function App() {
   const [auditoriasReabertas, setAuditoriasReabertas] = useState([])
   const [auditoriaEditando,   setAuditoriaEditando]   = useState(null)
   const [fotosAntigas,        setFotosAntigas]        = useState([])
+  const [msgSessao,           setMsgSessao]           = useState('')
 
   // Offline
   const [online,           setOnline]           = useState(navigator.onLine)
   const [pendentesOffline, setPendentesOffline] = useState(0)
   const [sincronizando,    setSincronizando]    = useState(false)
   const [msgSync,          setMsgSync]          = useState('')
+
+  // PWA — detecta nova versão disponível
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
 
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
@@ -53,7 +58,61 @@ export default function App() {
     setUsuario(null)
   }
 
-  // Sincroniza pendentes ao carregar o app (caso já esteja online)
+  // ── PWA: aplica update APENAS quando o usuário estiver na home ──────────────
+  // Nunca interrompe uma auditoria em andamento
+  useEffect(() => {
+    if (needRefresh && tela === 'home' && !auditoriaEditando) {
+      setMsgSessao('🔄 Nova versão disponível! Atualizando...')
+      setTimeout(() => {
+        updateServiceWorker(true)
+      }, 2000)
+    }
+  }, [needRefresh, tela])
+
+  // ── Verificação de sessão a cada 5 minutos ──────────────────────────────────
+  useEffect(() => {
+    if (!usuario) return
+
+    // Registra atividade em qualquer interação
+    const onAtividade = () => registrarAtividade()
+    window.addEventListener('click',      onAtividade)
+    window.addEventListener('keydown',    onAtividade)
+    window.addEventListener('touchstart', onAtividade)
+    window.addEventListener('scroll',     onAtividade)
+
+    // Verifica sessão a cada 5 minutos
+    const intervalo = setInterval(async () => {
+      const { valida, motivo } = await verificarSessao()
+      if (!valida) {
+        if (motivo === 'nova_versao') {
+          // Só aplica se não estiver no meio de uma auditoria
+          if (tela === 'home') {
+            setMsgSessao('🔄 Sistema atualizado! Recarregando...')
+            setTimeout(() => window.location.reload(), 2000)
+          }
+          // Se estiver em auditoria, aguarda terminar — verifica de novo no próximo ciclo
+        } else if (motivo === 'timeout') {
+          setMsgSessao('⏰ Sessão expirada por inatividade.')
+          setTimeout(() => {
+            setMsgSessao('')
+            setUsuario(null)
+          }, 2000)
+        } else {
+          setUsuario(null)
+        }
+      }
+    }, 5 * 60 * 1000) // a cada 5 minutos
+
+    return () => {
+      clearInterval(intervalo)
+      window.removeEventListener('click',      onAtividade)
+      window.removeEventListener('keydown',    onAtividade)
+      window.removeEventListener('touchstart', onAtividade)
+      window.removeEventListener('scroll',     onAtividade)
+    }
+  }, [usuario, tela])
+
+  // ── Sincroniza pendentes ao carregar ────────────────────────────────────────
   useEffect(() => {
     const syncInicial = async () => {
       if (navigator.onLine) {
@@ -84,7 +143,7 @@ export default function App() {
     syncInicial()
   }, [])
 
-  // Detecta transição online/offline
+  // ── Detecta online/offline ───────────────────────────────────────────────────
   useEffect(() => {
     const handleOnline = async () => {
       setOnline(true)
@@ -117,7 +176,7 @@ export default function App() {
     }
   }, [])
 
-  // Inicia rastreio automaticamente ao logar
+  // ── Inicia rastreio ao logar ─────────────────────────────────────────────────
   useEffect(() => {
     if (usuario) iniciarRastreio(usuario)
     return () => { if (!usuario) pararRastreio() }
@@ -205,7 +264,7 @@ export default function App() {
     }
   }
 
-  if (!usuario) return <Login onLogin={u => setUsuario(u)} />
+  if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
   if (tela === 'gestao')       return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'importar')     return <ImportarEquipes     onVoltar={() => setTela('home')} />
   if (tela === 'pauta')        return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
@@ -225,10 +284,22 @@ export default function App() {
         justifyContent: 'center', padding: 24,
       }}>
 
+        {/* BANNER SESSÃO / VERSÃO */}
+        {msgSessao && (
+          <div style={{
+            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            background: msgSessao.includes('⏰') ? '#d97706' : '#2563eb',
+            color: '#fff', padding: '12px 16px',
+            textAlign: 'center', fontSize: 13, fontWeight: 700,
+          }}>
+            {msgSessao}
+          </div>
+        )}
+
         {/* BANNER OFFLINE */}
         {!online && (
           <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            position: 'fixed', top: msgSessao ? 44 : 0, left: 0, right: 0, zIndex: 9998,
             background: '#dc2626', color: '#fff', padding: '10px 16px',
             textAlign: 'center', fontSize: 13, fontWeight: 700,
           }}>
@@ -239,7 +310,7 @@ export default function App() {
         {/* BANNER SINCRONIZAÇÃO */}
         {msgSync && (
           <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+            position: 'fixed', top: msgSessao ? 44 : 0, left: 0, right: 0, zIndex: 9998,
             background: msgSync.startsWith('✅') ? '#16a34a' : msgSync.startsWith('❌') ? '#dc2626' : '#2563eb',
             color: '#fff', padding: '10px 16px', textAlign: 'center', fontSize: 13, fontWeight: 700,
           }}>
@@ -247,7 +318,7 @@ export default function App() {
           </div>
         )}
 
-        <div style={{ textAlign: 'center', marginBottom: 40, marginTop: (!online || msgSync) ? 40 : 0 }}>
+        <div style={{ textAlign: 'center', marginBottom: 40, marginTop: (msgSessao || !online || msgSync) ? 50 : 0 }}>
           <div style={{ fontSize: 56, marginBottom: 12 }}>⚡</div>
           <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Auditoria Operacional</h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>DPL Construções — Equatorial Energia</p>
