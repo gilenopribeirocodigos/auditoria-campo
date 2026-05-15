@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, FORM_INICIAL } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, getItemsNaoConformes, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
@@ -14,7 +14,9 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
   const sim     = items.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
   const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
-  const ncItems = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false)
+
+  // ── usa getItemsNaoConformes para aplicar corretamente a lógica married ──
+  const ncItems = getItemsNaoConformes(form)
 
   const [saveStatus, setSaveStatus] = useState('idle')
   const [saveError,  setSaveError]  = useState('')
@@ -61,7 +63,11 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         canvas.toBlob(async blob => {
           const file = new File([blob], nomeArquivo, { type: 'image/png' })
           if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: `Auditoria ${form.prefixo}`, text: `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}` })
+            await navigator.share({
+              files: [file],
+              title: `Auditoria ${form.prefixo}`,
+              text: `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
+            })
           } else { baixarImagem(canvas, nomeArquivo) }
         }, 'image/png')
       } else { baixarImagem(canvas, nomeArquivo) }
@@ -77,7 +83,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     link.click()
   }
 
-  // Monta payload base (sem fotos — fotos tratadas separado)
   const montarPayload = () => ({
     fiscal:            form.fiscal,
     matricula:         form.matricula,
@@ -105,7 +110,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     setSaveStatus('saving')
     setSaveError('')
 
-    // ========== MODO OFFLINE ==========
+    // ── MODO OFFLINE ─────────────────────────────────────────────────────────
     if (!online && !modoEdicao) {
       try {
         const payload      = montarPayload()
@@ -125,7 +130,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       return
     }
 
-    // ========== MODO ONLINE (fluxo normal) ==========
+    // ── MODO ONLINE ───────────────────────────────────────────────────────────
     try {
       const auditId = modoEdicao
         ? auditoriaEditandoId
@@ -332,7 +337,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         </div>
       </div>
 
-      {/* AÇÕES */}
+      {/* ── AÇÕES ── */}
       <div className="no-print" style={{ marginBottom: 40, marginTop: 16 }}>
 
         {saveStatus === 'idle' && (
@@ -363,7 +368,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
         {saveStatus === 'saved' && (
           <>
-            <div style={{ background: salvoOffline ? '#fef3c7' : '#f0fdf4', border: `1px solid ${salvoOffline ? '#fcd34d' : '#86efac'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center' }}>
+            {/* Banner de confirmação */}
+            <div style={{
+              background: salvoOffline ? '#fef3c7' : '#f0fdf4',
+              border: `1px solid ${salvoOffline ? '#fcd34d' : '#86efac'}`,
+              borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center',
+            }}>
               <p style={{ color: salvoOffline ? '#92400e' : '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
                 {salvoOffline
                   ? '📵 Auditoria salva localmente!'
@@ -378,17 +388,23 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
               </p>
             </div>
 
-            {!salvoOffline && (
-              <>
-                <button className="btn-primary" onClick={gerarImagemWhatsApp} disabled={capturando}
-                  style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}>
-                  {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
-                </button>
-                <button className="btn-primary" onClick={() => window.print()} style={{ background: '#7c3aed', marginBottom: 10 }}>
-                  🖨️ Gerar PDF / Imprimir
-                </button>
-              </>
-            )}
+            {/* ── Botões WhatsApp e PDF — aparecem SEMPRE (online e offline) ── */}
+            <button
+              className="btn-primary"
+              onClick={gerarImagemWhatsApp}
+              disabled={capturando}
+              style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}
+            >
+              {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
+            </button>
+
+            <button
+              className="btn-primary"
+              onClick={() => window.print()}
+              style={{ background: '#7c3aed', marginBottom: 10 }}
+            >
+              🖨️ Gerar PDF / Imprimir
+            </button>
 
             <button className="btn-primary" onClick={nova} style={{ background: '#15803d' }}>
               + Iniciar Nova Auditoria
