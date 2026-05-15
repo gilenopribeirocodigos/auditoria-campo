@@ -6,10 +6,8 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // ANTES — recarrega automaticamente ao detectar nova versão
-      //registerType: 'autoUpdate',
-
-      // DEPOIS — não recarrega sozinho
+      // 'prompt' = não recarrega sozinho durante uso
+      // O App.jsx aplica a atualização automaticamente só quando o usuário está na Home
       registerType: 'prompt',
       includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
@@ -27,6 +25,9 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // Aplica o novo SW imediatamente quando o App.jsx solicitar (updateServiceWorker)
+        skipWaiting: true,
+        clientsClaim: true,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],
