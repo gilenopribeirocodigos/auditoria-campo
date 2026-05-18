@@ -62,6 +62,145 @@ function DropdownInput({ label, value, onChange, onSelect, suggestions, placehol
   )
 }
 
+// ─── função de impressão ─────────────────────────────────────────────────────
+function imprimirAuditoria(a, formatData) {
+  const sc = STATUS_COR[a.status] || { bg: '#f1f5f9', color: '#374151' }
+
+  const infoRow = (label, value) => value ? `
+    <tr>
+      <td style="padding:7px 10px;color:#64748b;font-size:13px;font-weight:600;white-space:nowrap;border-bottom:1px solid #f1f5f9;">${label}</td>
+      <td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${value}</td>
+    </tr>` : ''
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Auditoria ${a.prefixo} — OS ${a.os}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f4f8; padding: 24px; color: #1e293b; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .no-print { display: none !important; }
+      @page { margin: 15mm; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Cabeçalho -->
+  <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
+    <div style="font-size:11px;opacity:0.7;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">DPL Construções — Equatorial Energia</div>
+    <div style="font-size:20px;font-weight:800;margin-bottom:2px;">📁 Auditoria Operacional de Campo</div>
+    <div style="font-size:13px;opacity:0.8;">Contrato 1021/2024</div>
+  </div>
+
+  <!-- Status -->
+  <div style="background:${sc.bg};border:2px solid ${sc.color}33;border-radius:14px;padding:20px;text-align:center;margin-bottom:16px;">
+    <div style="font-size:52px;font-weight:900;color:${sc.color};line-height:1;">${Number(a.nota).toFixed(0)}</div>
+    <div style="font-size:13px;color:${sc.color};font-weight:500;margin-bottom:4px;">pontos</div>
+    <div style="font-size:22px;font-weight:800;color:${sc.color};">${a.status}</div>
+    <div style="font-size:12px;color:${sc.color};opacity:0.85;margin-top:6px;">
+      ${a.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço'} —
+      ${a.tipo_servico} — ${a.produtivo ? 'Produtivo' : 'Improdutivo'}
+    </div>
+  </div>
+
+  <!-- Dados -->
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;overflow:hidden;">
+    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;">
+      <span style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.8px;">Dados da Auditoria</span>
+    </div>
+    <table style="width:100%;border-collapse:collapse;">
+      ${infoRow('Tipo Auditoria', a.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço')}
+      ${infoRow('Fiscal',         a.fiscal)}
+      ${infoRow('Matrícula',      a.matricula)}
+      ${infoRow('Equipe',         a.prefixo)}
+      ${infoRow('OS',             a.os)}
+      ${infoRow('UC',             a.uc)}
+      ${infoRow('Endereço',       a.endereco)}
+      ${infoRow('Data / Hora',    `${formatData(a.data_auditoria)} às ${a.hora_auditoria}`)}
+      ${a.lat ? infoRow('GPS', `${a.lat}, ${a.lng}`) : ''}
+      ${infoRow('Eletricista 1',  a.nome_eletricista)}
+      ${infoRow('Eletricista 2',  a.nome_eletricista2)}
+    </table>
+  </div>
+
+  <!-- Feedback / Obs -->
+  ${(a.feedback || a.observacoes) ? `
+  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:14px;padding:16px;margin-bottom:16px;">
+    ${a.feedback ? `<p style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:4px;">FEEDBACK DO FISCAL:</p><p style="font-size:13px;color:#78350f;line-height:1.6;margin-bottom:${a.observacoes ? '12px' : '0'};">${a.feedback}</p>` : ''}
+    ${a.observacoes ? `<p style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:4px;">OBSERVAÇÕES:</p><p style="font-size:13px;color:#78350f;line-height:1.6;margin:0;">${a.observacoes}</p>` : ''}
+  </div>` : ''}
+
+  <!-- Fotos -->
+  ${a.fotos_urls?.length > 0 ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <p style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Registro Fotográfico (${a.fotos_urls.length})</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+      ${a.fotos_urls.map((url, i) => `
+        <img src="${url}" alt="Foto ${i+1}"
+          style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;"
+          crossorigin="anonymous"
+        />`).join('')}
+    </div>
+  </div>` : ''}
+
+  <!-- Assinatura 1 -->
+  ${a.assinatura_url ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <p style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">✍️ Assinatura — ${a.nome_eletricista || 'Eletricista 1'}</p>
+    <img src="${a.assinatura_url}" alt="Assinatura 1"
+      style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;"
+      crossorigin="anonymous"
+    />
+    <p style="font-size:10px;color:#94a3b8;text-align:center;margin-top:8px;">
+      Registrado em ${formatData(a.data_auditoria)} às ${a.hora_auditoria}
+    </p>
+  </div>` : ''}
+
+  <!-- Assinatura 2 -->
+  ${a.assinatura2_url ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <p style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">✍️ Assinatura — ${a.nome_eletricista2 || 'Eletricista 2'}</p>
+    <img src="${a.assinatura2_url}" alt="Assinatura 2"
+      style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;"
+      crossorigin="anonymous"
+    />
+    <p style="font-size:10px;color:#94a3b8;text-align:center;margin-top:8px;">
+      Registrado em ${formatData(a.data_auditoria)} às ${a.hora_auditoria}
+    </p>
+  </div>` : ''}
+
+  <!-- Rodapé -->
+  <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
+    <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+  </div>
+
+  <!-- Botão imprimir (escondido na impressão) -->
+  <div class="no-print" style="text-align:center;margin-top:24px;">
+    <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
+      🖨️ Imprimir / Salvar PDF
+    </button>
+  </div>
+
+</body>
+</html>`
+
+  const janela = window.open('', '_blank', 'width=700,height=900')
+  if (!janela) { alert('Permita pop-ups para imprimir.'); return }
+  janela.document.write(html)
+  janela.document.close()
+
+  // Aguarda imagens carregarem antes de acionar o print
+  janela.onload = () => {
+    setTimeout(() => janela.print(), 600)
+  }
+}
+
 export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [auditorias,   setAuditorias]   = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -128,7 +267,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { buscar() }, [])
 
-  // Autosincronização a cada 20 segundos
   useEffect(() => {
     intervalRef.current = setInterval(() => { buscar() }, 20000)
     return () => clearInterval(intervalRef.current)
@@ -433,6 +571,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         )}
       </div>
 
+      {/* ── MODAL DETALHE ── */}
       {detalhe && (
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
@@ -532,6 +671,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
+            {/* ── Botões do rodapé do modal ── */}
             {isAdmin && !detalhe.reaberta && (
               <button onClick={abrirModalReabrir} style={{
                 width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10,
@@ -539,14 +679,26 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               }}>🔓 Reabrir para Correção</button>
             )}
 
+            {/* Botão Imprimir PDF */}
+            <button
+              onClick={() => imprimirAuditoria(detalhe, formatData)}
+              style={{
+                width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10,
+                background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              }}
+            >
+              🖨️ Imprimir / Salvar PDF
+            </button>
+
             <button onClick={() => setDetalhe(null)} style={{
               width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0',
-              background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginTop: 8,
+              background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}>Fechar</button>
           </div>
         </div>
       )}
 
+      {/* ── MODAL REABRIR ── */}
       {modalReabrir && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 20 }}>
           <div style={{ background: '#fff', borderRadius: 16, padding: '24px 20px', width: '100%', maxWidth: 400 }}>
