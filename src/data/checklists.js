@@ -50,10 +50,10 @@ export const CHECKLISTS = {
         { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, bom relacionamento, brincadeira, discursões)' },
         { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou a atividade que deveria fazer?', disqualify: true },
         { id: 4,  cat: 'QUALIDADE',     p: 'O padrão de medição do cliente foi montado conforme especifica a atividade (aterramento, altura, material, etc)?' },
-        { id: 5,  cat: 'DESEMPENHO',    p: 'Houve instalação de medidor?',              marriedGroup: 'medidor', marriedRole: 'pai' },
-        { id: 6,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do medidor na OS?', marriedGroup: 'medidor', marriedRole: 'filho' },
-        { id: 7,  cat: 'DESEMPENHO',    p: 'Houve instalação de ramal?',                 marriedGroup: 'ramal',   marriedRole: 'pai' },
-        { id: 8,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do ramal na OS?',   marriedGroup: 'ramal',   marriedRole: 'filho' },
+        { id: 5,  cat: 'DESEMPENHO',    p: 'Houve instalação de medidor?',               marriedGroup: 'medidor', marriedRole: 'pai' },
+        { id: 6,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do medidor na OS?',  marriedGroup: 'medidor', marriedRole: 'filho' },
+        { id: 7,  cat: 'DESEMPENHO',    p: 'Houve instalação de ramal?',                  marriedGroup: 'ramal',   marriedRole: 'pai' },
+        { id: 8,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do ramal na OS?',    marriedGroup: 'ramal',   marriedRole: 'filho' },
         { id: 9,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor instalado; medidores vizinhos; leitura; poste; placa trafo, etc)?' },
         { id: 10, cat: 'QUALIDADE',     p: 'Registrado com foto o padrão (montado/rejeição/poste) conforme diretriz?' },
         { id: 11, cat: 'QUALIDADE',     p: 'Foi testado a instalação com leitura de grandezas elétricas (tensão, corrente, etc)?' },
@@ -124,6 +124,62 @@ export const CAT_META = {
   DESEMPENHO:    { label: 'Desempenho',    cls: 'badge-desemp'},
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// isItemConforme — determina se UM item específico está conforme
+// Aplica todas as regras: married (pai/filho), inverted e normal
+//
+// Regra married:
+//   PAI  → sempre conforme (nunca gera não conformidade)
+//   FILHO → conforme se pai === filho (ambos SIM ou ambos NÃO)
+//           não conforme se pai !== filho (um SIM e outro NÃO)
+//
+// Regra inverted:
+//   NÃO = conforme, SIM = não conforme
+//
+// Regra normal:
+//   SIM = conforme, NÃO = não conforme
+// ─────────────────────────────────────────────────────────────────────────────
+export function isItemConforme(item, items, respostas) {
+  const r = respostas[item.id]
+
+  // PAI: nunca é não conforme — a responsabilidade é do filho
+  if (item.marriedGroup && item.marriedRole === 'pai') {
+    return true
+  }
+
+  // FILHO: conforme somente se pai === filho (ambos SIM ou ambos NÃO)
+  if (item.marriedGroup && item.marriedRole === 'filho') {
+    const pai  = items.find(p => p.marriedGroup === item.marriedGroup && p.marriedRole === 'pai')
+    const rPai = pai ? respostas[pai.id] : undefined
+    // Se pai ainda não foi respondido, não julga
+    if (rPai === undefined || rPai === null) return true
+    return rPai === r
+  }
+
+  // INVERTIDA: NÃO = conforme
+  if (item.inverted) return r === false
+
+  // NORMAL: SIM = conforme
+  return r === true
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getItemsNaoConformes — retorna lista de itens NÃO conformes de um form
+// Use este para gerar a lista de não conformidades no resultado
+// ─────────────────────────────────────────────────────────────────────────────
+export function getItemsNaoConformes(form) {
+  if (!form.tipoServico || form.produtivo === null) return []
+  const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
+  const items = CHECKLISTS[form.tipoServico]?.[tipo]?.items || []
+
+  return items.filter(item => {
+    const r = form.respostas[item.id]
+    // item sem resposta ainda não é não conforme
+    if (r === undefined || r === null) return false
+    return !isItemConforme(item, items, form.respostas)
+  })
+}
+
 export function isDisqualified(form) {
   if (!form.tipoServico || form.produtivo === null) return false
   const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
@@ -137,27 +193,7 @@ export function calcNota(form) {
   const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
   const items = CHECKLISTS[form.tipoServico][tipo].items
 
-  const sim = items.filter(i => {
-    const r = form.respostas[i.id]
-
-    // PAI: sempre conforme — o que determina é o filho
-    if (i.marriedGroup && i.marriedRole === 'pai') {
-      return true
-    }
-
-    // FILHO: conforme se pai === filho (ambos SIM ou ambos NÃO)
-    if (i.marriedGroup && i.marriedRole === 'filho') {
-      const pai  = items.find(p => p.marriedGroup === i.marriedGroup && p.marriedRole === 'pai')
-      const rPai = pai ? form.respostas[pai.id] : undefined
-      return rPai === r
-    }
-
-    // INVERTIDA: NÃO = conforme
-    if (i.inverted) return r === false
-
-    // NORMAL: SIM = conforme
-    return r === true
-  }).length
+  const sim = items.filter(i => isItemConforme(i, items, form.respostas)).length
 
   return Math.round((sim / items.length) * 1000) / 10
 }
@@ -165,7 +201,7 @@ export function calcNota(form) {
 export function getStatus(nota) {
   if (nota >= 90) return { label: 'ATENDE',         color: '#16a34a', bg: '#dcfce7', border: '#86efac', icon: '🏆' }
   if (nota >= 80) return { label: 'ATENDE PARCIAL', color: '#d97706', bg: '#fef3c7', border: '#fcd34d', icon: '⚠️' }
-  return              { label: 'NÃO ATENDE',     color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', icon: '🚫' }
+  return                 { label: 'NÃO ATENDE',     color: '#dc2626', bg: '#fee2e2', border: '#fca5a5', icon: '🚫' }
 }
 
 export function nowDT() {
