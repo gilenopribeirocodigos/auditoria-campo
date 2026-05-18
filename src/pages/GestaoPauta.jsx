@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
+import * as XLSX from 'xlsx'
 
 const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
@@ -28,6 +29,59 @@ function calcStatus(p) {
   return 'PENDENTE'
 }
 
+// ── Detecta separador e parseia linhas ────────────────────────────────────────
+function parseCsvLinhas(texto) {
+  const linhas = texto.trim().split('\n').filter(l => l.trim())
+  if (linhas.length < 2) return []
+  const header = linhas[0]
+  // detecta separador: ; ou , ou \t
+  const sep = header.includes(';') ? ';' : header.includes('\t') ? '\t' : ','
+  const cols = header.split(sep).map(c => c.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/\s+/g, '_')
+  )
+  return linhas.slice(1).map(row => {
+    const vals = row.split(sep)
+    return cols.reduce((a, c, i) => ({ ...a, [c]: (vals[i] || '').trim() }), {})
+  })
+}
+
+// ── Normaliza valores dos campos ──────────────────────────────────────────────
+function normalizarPauta(obj) {
+  // tipo_servico
+  const ts = (obj.tipo_servico || '').toUpperCase().trim()
+  const tipoServico = ['CORTE','ANEXO','RELIGA'].includes(ts) ? ts : 'CORTE'
+
+  // tipo_auditoria
+  const ta = (obj.tipo_auditoria || '').toUpperCase().trim()
+  const tipoAuditoria = ta.includes('POS') || ta.includes('PÓS') ? 'POS_SERVICO' : 'DESEMPENHO'
+
+  // recorrencia
+  const rc = (obj.recorrencia || '').toUpperCase().trim()
+  const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
+
+  // data — aceita DD/MM/AAAA ou AAAA-MM-DD
+  let data = (obj.data_prevista || '').trim()
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
+    const [d, m, a] = data.split('/')
+    data = `${a}-${m}-${d}`
+  }
+  if (!data) data = new Date().toISOString().split('T')[0]
+
+  return {
+    prefixo:        (obj.prefixo || '').trim().toUpperCase(),
+    fiscal_login:   (obj.fiscal_login || obj.fiscal || '').trim().toLowerCase(),
+    data_prevista:  data,
+    tipo_servico:   tipoServico,
+    tipo_auditoria: tipoAuditoria,
+    recorrencia,
+    observacao:     (obj.observacao || obj.observacao || '').trim(),
+    os:             (obj.os || '').trim(),
+    uc:             (obj.uc || '').trim(),
+    status:         'PENDENTE',
+  }
+}
+
 export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [pautas,      setPautas]      = useState([])
   const [fiscais,     setFiscais]     = useState([])
@@ -41,9 +95,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [csvModal,    setCsvModal]    = useState(false)
   const [csvTexto,    setCsvTexto]    = useState('')
   const [csvStatus,   setCsvStatus]   = useState('')
+  const [csvPreview,  setCsvPreview]  = useState([]) // preview das linhas lidas
   const [prefixoSugs, setPrefixoSugs] = useState([])
   const prefixoRef  = useRef(null)
   const intervalRef = useRef(null)
+  const fileRef     = useRef(null)
 
   const carregar = async () => {
     setLoading(true)
@@ -60,7 +116,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [])
 
-  // Autosincronização a cada 20 segundos
   useEffect(() => {
     intervalRef.current = setInterval(() => { carregar() }, 20000)
     return () => clearInterval(intervalRef.current)
@@ -83,11 +138,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     upd('prefixo', v)
     if (v.length < 2) { setPrefixoSugs([]); return }
     const { data } = await supabase
-      .from('estrutura_equipes')
-      .select('prefixo')
-      .ilike('prefixo', `%${v}%`)
-      .order('prefixo')
-      .limit(10)
+      .from('estrutura_equipes').select('prefixo')
+      .ilike('prefixo', `%${v}%`).order('prefixo').limit(10)
     if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
   }
 
@@ -128,37 +180,87 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
+  // ── Lê arquivo CSV ou Excel ───────────────────────────────────────────────
+  const lerArquivo = (file) => {
+    setCsvStatus('')
+    setCsvPreview([])
+    const ext = file.name.split('.').pop().toLowerCase()
+
+    if (ext === 'xlsx' || ext === 'xls') {
+      // Excel
+      const reader = new FileReader()
+      reader.onload = e => {
+        try {
+          const wb    = XLSX.read(e.target.result, { type: 'array' })
+          const ws    = wb.Sheets[wb.SheetNames[0]]
+          const dados = XLSX.utils.sheet_to_json(ws, { defval: '' })
+          // Converte para CSV string com ; para reutilizar o parser
+          if (dados.length === 0) { setCsvStatus('❌ Planilha vazia.'); return }
+          const cols = Object.keys(dados[0])
+          const linhas = [
+            cols.join(';'),
+            ...dados.map(row => cols.map(c => String(row[c] ?? '')).join(';'))
+          ]
+          const texto = linhas.join('\n')
+          setCsvTexto(texto)
+          const preview = dados.slice(0, 3).map(r => normalizarPauta(
+            Object.fromEntries(Object.entries(r).map(([k, v]) => [
+              k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_'), v
+            ]))
+          ))
+          setCsvPreview(preview)
+          setCsvStatus(`✅ Arquivo lido: ${dados.length} linha(s) encontrada(s). Clique em Importar para salvar.`)
+        } catch (err) {
+          setCsvStatus('❌ Erro ao ler Excel: ' + err.message)
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      // CSV / TXT
+      const reader = new FileReader()
+      reader.onload = e => {
+        const texto = e.target.result
+        setCsvTexto(texto)
+        const objs = parseCsvLinhas(texto)
+        if (objs.length === 0) { setCsvStatus('❌ Nenhuma linha encontrada. Verifique o arquivo.'); return }
+        const preview = objs.slice(0, 3).map(normalizarPauta)
+        setCsvPreview(preview)
+        setCsvStatus(`✅ Arquivo lido: ${objs.length} linha(s) encontrada(s). Clique em Importar para salvar.`)
+      }
+      reader.readAsText(file, 'UTF-8')
+    }
+  }
+
+  const onFileChange = e => {
+    const file = e.target.files?.[0]
+    if (file) lerArquivo(file)
+    e.target.value = '' // permite reler o mesmo arquivo
+  }
+
+  // ── Importa pautas ────────────────────────────────────────────────────────
   const importarCsv = async () => {
+    if (!csvTexto.trim()) { setCsvStatus('❌ Nenhum dado para importar.'); return }
     setCsvStatus('importando')
     try {
-      const linhas = csvTexto.trim().split('\n').filter(l => l.trim())
-      const [header, ...rows] = linhas
-      const cols = header.split(';').map(c => c.trim().toLowerCase())
-      const pautasNovas = rows.map(row => {
-        const vals = row.split(';')
-        const obj  = cols.reduce((a, c, i) => ({ ...a, [c]: (vals[i] || '').trim() }), {})
-        return {
-          prefixo:        obj.prefixo        || '',
-          fiscal_login:   obj.fiscal_login   || '',
-          data_prevista:  obj.data_prevista  || new Date().toISOString().split('T')[0],
-          tipo_servico:   obj.tipo_servico   || 'CORTE',
-          tipo_auditoria: obj.tipo_auditoria || 'DESEMPENHO',
-          recorrencia:    obj.recorrencia    || 'UNICA',
-          observacao:     obj.observacao     || '',
-          os:             obj.os             || '',
-          uc:             obj.uc             || '',
-          status: 'PENDENTE',
-        }
-      }).filter(p => p.prefixo && p.fiscal_login)
+      const objs = parseCsvLinhas(csvTexto)
+      const pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
+
+      if (pautasNovas.length === 0) {
+        setCsvStatus('❌ Nenhuma linha válida encontrada. Verifique se prefixo e fiscal_login estão preenchidos.')
+        return
+      }
 
       for (const p of pautasNovas) await criarPauta(p)
-      setCsvStatus(`✅ ${pautasNovas.length} pautas importadas!`)
+
+      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s) com sucesso!`)
       await carregar()
-      setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus('') }, 1500)
+      setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2000)
     } catch (e) {
       setCsvStatus('❌ Erro: ' + e.message)
     }
   }
+
+  const fecharCsvModal = () => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }
 
   const pautasFiltradas = pautas.filter(p => {
     const s = calcStatus(p)
@@ -203,7 +305,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* Ações */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <button onClick={abrirNovo} style={{
             background: '#d97706', color: '#fff', border: 'none',
@@ -221,7 +322,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           )}
         </div>
 
-        {/* Filtros */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {['TODOS','PENDENTE','VENCIDA','CONCLUIDA','CANCELADA'].map(f => (
             <button key={f} onClick={() => setFiltro(f)} style={{
@@ -233,7 +333,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           ))}
         </div>
 
-        {/* Lista */}
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
         ) : pautasFiltradas.length === 0 ? (
@@ -305,7 +404,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         )}
       </div>
 
-      {/* Modal manual */}
+      {/* ── Modal manual ── */}
       {modal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
@@ -316,25 +415,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div className="form-group" style={{ position: 'relative' }} ref={prefixoRef}>
               <label className="form-label">Prefixo da Equipe *</label>
-              <input
-                className="form-input"
-                value={formData.prefixo}
-                onChange={e => onPrefixoChange(e.target.value)}
-                placeholder="Digite para buscar (ex: PI-THE)"
-              />
+              <input className="form-input" value={formData.prefixo} onChange={e => onPrefixoChange(e.target.value)} placeholder="Digite para buscar (ex: PI-THE)" />
               {prefixoSugs.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-                  background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
-                }}>
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto' }}>
                   {prefixoSugs.map((s, i) => (
-                    <button key={i} onClick={() => { upd('prefixo', s); setPrefixoSugs([]) }} style={{
-                      display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left',
-                      background: 'none', border: 'none',
-                      borderBottom: i < prefixoSugs.length - 1 ? '1px solid #f1f5f9' : 'none',
-                      fontSize: 13, color: '#1e293b', cursor: 'pointer',
-                    }}
+                    <button key={i} onClick={() => { upd('prefixo', s); setPrefixoSugs([]) }} style={{ display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left', background: 'none', border: 'none', borderBottom: i < prefixoSugs.length - 1 ? '1px solid #f1f5f9' : 'none', fontSize: 13, color: '#1e293b', cursor: 'pointer' }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}
                     >{s}</button>
@@ -401,52 +486,104 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            <button className="btn-primary" onClick={salvar} disabled={salvando}
-              style={{ background: salvando ? '#64748b' : '#d97706' }}>
+            <button className="btn-primary" onClick={salvar} disabled={salvando} style={{ background: salvando ? '#64748b' : '#d97706' }}>
               {salvando ? '⏳ Salvando...' : '💾 Salvar Pauta'}
             </button>
           </div>
         </div>
       )}
 
-      {/* Modal CSV */}
+      {/* ── Modal CSV ── */}
       {csvModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', padding: '24px 20px 40px', width: '100%', maxWidth: 480, maxHeight: '92vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 17, fontWeight: 700 }}>📥 Importar Pautas via CSV</h3>
-              <button onClick={() => { setCsvModal(false); setCsvTexto(''); setCsvStatus('') }}
-                style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
+              <h3 style={{ fontSize: 17, fontWeight: 700 }}>📥 Importar Pautas</h3>
+              <button onClick={fecharCsvModal} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
-            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 12, color: '#15803d' }}>
-              <strong>Formato do CSV (separado por ;):</strong><br />
-              <code>prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc</code><br /><br />
-              <strong>Exemplo:</strong><br />
-              <code>PI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;SEMANAL;Prioridade alta;12345;67890</code>
+            {/* Info de colunas */}
+            <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
+              <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
+              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · os · uc<br /><br />
+              <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
+              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
             </div>
 
+            {/* Upload de arquivo */}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,.xlsx,.xls,.txt"
+              onChange={onFileChange}
+              style={{ display: 'none' }}
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 12, border: '2px dashed #0f766e',
+                background: '#f0fdfa', color: '#0f766e', fontSize: 14, fontWeight: 700,
+                cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center',
+                justifyContent: 'center', gap: 8,
+              }}
+            >
+              📂 Selecionar arquivo CSV ou Excel
+            </button>
+
+            {/* Separador "ou" */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+              <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ou cole o conteúdo abaixo</span>
+              <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
+            </div>
+
+            {/* Textarea */}
             <div className="form-group">
-              <label className="form-label">Cole o conteúdo CSV abaixo:</label>
               <textarea
                 className="form-textarea"
                 value={csvTexto}
-                onChange={e => setCsvTexto(e.target.value)}
-                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-05-10;CORTE;DESEMPENHO;UNICA;;;`}
-                rows={8}
+                onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
+                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-05-19;CORTE;DESEMPENHO;UNICA;;;`}
+                rows={6}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
             </div>
 
-            {csvStatus && (
-              <div style={{ marginBottom: 12, fontSize: 13, fontWeight: 600, color: csvStatus.startsWith('✅') ? '#15803d' : '#b91c1c' }}>
+            {/* Preview */}
+            {csvPreview.length > 0 && (
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 11 }}>
+                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas):</p>
+                {csvPreview.map((p, i) => (
+                  <div key={i} style={{ color: '#475569', marginBottom: 4, lineHeight: 1.5 }}>
+                    <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico} · {p.tipo_auditoria} · {p.recorrencia}
+                    {p.os ? ` · OS:${p.os}` : ''}{p.uc ? ` · UC:${p.uc}` : ''}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Status */}
+            {csvStatus && csvStatus !== 'importando' && (
+              <div style={{
+                marginBottom: 14, padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
+                background: csvStatus.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
+                color: csvStatus.startsWith('✅') ? '#15803d' : '#b91c1c',
+                border: `1px solid ${csvStatus.startsWith('✅') ? '#86efac' : '#fecaca'}`,
+              }}>
                 {csvStatus}
               </div>
             )}
 
-            <button className="btn-primary" onClick={importarCsv}
+            {/* Botão importar */}
+            <button
+              onClick={importarCsv}
               disabled={!csvTexto.trim() || csvStatus === 'importando'}
-              style={{ background: '#0f766e' }}>
+              style={{
+                width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                background: !csvTexto.trim() || csvStatus === 'importando' ? '#94a3b8' : '#0f766e',
+                color: '#fff', fontSize: 15, fontWeight: 700, cursor: !csvTexto.trim() ? 'not-allowed' : 'pointer',
+              }}
+            >
               {csvStatus === 'importando' ? '⏳ Importando...' : '📥 Importar Pautas'}
             </button>
           </div>
