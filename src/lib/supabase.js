@@ -4,9 +4,9 @@ const url    = import.meta.env.VITE_SUPABASE_URL
 const key    = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 // ✅ DEV — schema isolado para desenvolvimento
-const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
+//const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
 // 🚫 PRODUÇÃO — descomente e comente a linha acima quando for para produção
-// const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'public'
+const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'public'
 
 export const supabase = (url && key)
   ? createClient(url, key, { db: { schema } })
