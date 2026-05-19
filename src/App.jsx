@@ -39,6 +39,9 @@ export default function App() {
   const [fotosAntigas,        setFotosAntigas]        = useState([])
   const [msgSessao,           setMsgSessao]           = useState('')
 
+  // ── NOVO: modal bloqueante de atualização obrigatória ─────────────────────
+  const [modalAtualizacao, setModalAtualizacao] = useState(false)
+
   // Offline
   const [online,           setOnline]           = useState(navigator.onLine)
   const [pendentesOffline, setPendentesOffline] = useState(0)
@@ -59,13 +62,9 @@ export default function App() {
   }
 
   // ── PWA: aplica update APENAS quando o usuário estiver na home ──────────────
-  // Nunca interrompe uma auditoria em andamento
   useEffect(() => {
     if (needRefresh && tela === 'home' && !auditoriaEditando) {
-      setMsgSessao('🔄 Nova versão disponível! Atualizando...')
-      setTimeout(() => {
-        updateServiceWorker(true)
-      }, 2000)
+      setTimeout(() => { updateServiceWorker(true) }, 1000)
     }
   }, [needRefresh, tela])
 
@@ -73,24 +72,22 @@ export default function App() {
   useEffect(() => {
     if (!usuario) return
 
-    // Registra atividade em qualquer interação
     const onAtividade = () => registrarAtividade()
     window.addEventListener('click',      onAtividade)
     window.addEventListener('keydown',    onAtividade)
     window.addEventListener('touchstart', onAtividade)
     window.addEventListener('scroll',     onAtividade)
 
-    // Verifica sessão a cada 5 minutos
     const intervalo = setInterval(async () => {
       const { valida, motivo } = await verificarSessao()
       if (!valida) {
         if (motivo === 'nova_versao') {
-          // Só aplica se não estiver no meio de uma auditoria
-          if (tela === 'home') {
-            setMsgSessao('🔄 Sistema atualizado! Recarregando...')
-            setTimeout(() => window.location.reload(), 2000)
-          }
-          // Se estiver em auditoria, aguarda terminar — verifica de novo no próximo ciclo
+          // ── Desloga IMEDIATAMENTE e exibe modal bloqueante ──────────────────
+          // Independente de onde o usuário estiver (home, auditoria, histórico…)
+          // O usuário não consegue fechar sem clicar em "Entrar novamente"
+          fazerLogout()
+          setUsuario(null)
+          setModalAtualizacao(true)
         } else if (motivo === 'timeout') {
           setMsgSessao('⏰ Sessão expirada por inatividade.')
           setTimeout(() => {
@@ -101,7 +98,7 @@ export default function App() {
           setUsuario(null)
         }
       }
-    }, 5 * 60 * 1000) // a cada 5 minutos
+    }, 5 * 60 * 1000)
 
     return () => {
       clearInterval(intervalo)
@@ -262,6 +259,50 @@ export default function App() {
         setPautasHoje(prev => prev.filter(p => p.id !== pautaAtiva.id))
       } catch (e) { console.error('Erro ao concluir pauta:', e) }
     }
+  }
+
+  // ── MODAL BLOQUEANTE DE ATUALIZAÇÃO ─────────────────────────────────────────
+  // Exibido quando o sistema detecta nova versão via sistema_config.versao
+  // Substitui TODA a tela — usuário não consegue fechar sem clicar no botão
+  if (modalAtualizacao) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
+      }}>
+        <div style={{
+          background: '#fff', borderRadius: 20, padding: '36px 28px',
+          maxWidth: 400, width: '100%', textAlign: 'center',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
+        }}>
+          <div style={{ fontSize: 56, marginBottom: 16 }}>🔄</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 10 }}>
+            Sistema Atualizado!
+          </h2>
+          <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.6, marginBottom: 8 }}>
+            Uma nova versão do sistema foi disponibilizada.
+          </p>
+          <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 28 }}>
+            Por segurança, sua sessão foi encerrada.<br />
+            Faça login novamente para continuar.
+          </p>
+          <button
+            onClick={() => { setModalAtualizacao(false); window.location.reload() }}
+            style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+              background: '#2563eb', color: '#fff', fontSize: 16,
+              fontWeight: 700, cursor: 'pointer',
+            }}
+          >
+            🔐 Entrar novamente
+          </button>
+          <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 16 }}>
+            DPL Construções — Auditoria Operacional v2.0
+          </p>
+        </div>
+      </div>
+    )
   }
 
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
