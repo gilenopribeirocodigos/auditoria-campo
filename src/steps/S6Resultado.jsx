@@ -16,14 +16,19 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
   const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
   const ncItems = getItemsNaoConformes(form)
 
-  const [saveStatus, setSaveStatus] = useState('idle')
-  const [saveError,  setSaveError]  = useState('')
-  const [capturando, setCapturando] = useState(false)
+  const [saveStatus,   setSaveStatus]   = useState('idle')
+  const [saveError,    setSaveError]    = useState('')
+  const [capturando,   setCapturando]   = useState(false)
   const [salvoOffline, setSalvoOffline] = useState(false)
+  // Guarda as URLs das fotos após upload para usar no WhatsApp
+  const [fotosUrlsSalvas, setFotosUrlsSalvas] = useState([])
 
   const printAreaRef = useRef(null)
   const modoEdicao   = !!auditoriaEditandoId
-  const online       = isOnline !== undefined ? isOnline : navigator.onLine
+
+  // isOnline vem do App.jsx que escuta os eventos online/offline do window.
+  // É mais confiável que navigator.onLine em dados móveis.
+  const online = isOnline !== undefined ? isOnline : navigator.onLine
 
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
@@ -47,15 +52,14 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
   // ── Gera imagem para WhatsApp ─────────────────────────────────────────────
-  // Cria um elemento temporário com 100% inline styles para captura.
-  // Desta forma o html2canvas não depende de nenhuma classe CSS externa,
-  // garantindo formatação idêntica online e offline.
+  // Cria div temporário com 100% inline styles (não depende de CSS externo).
+  // Online: inclui fotos (URLs do Supabase já salvas).
+  // Offline: não inclui fotos (são base64 pesadas que quebram o html2canvas).
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
       const html2canvas = (await import('html2canvas')).default
 
-      // ── helpers de cor ──
       const catColor = cat => ({
         COMPORTAMENTO: { bg: '#dbeafe', color: '#1d4ed8' },
         QUALIDADE:     { bg: '#dcfce7', color: '#15803d' },
@@ -70,7 +74,11 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <span style="color:#1e293b;font-weight:600;text-align:right;flex:1;padding-left:8px;">${value}</span>
         </div>` : ''
 
-      // ── conteúdo HTML com inline styles ──
+      // Fotos a exibir:
+      // - Online: usa URLs do Supabase (salvas após upload)
+      // - Offline: omite (base64 pesadas quebram o html2canvas)
+      const fotosParaExibir = !salvoOffline ? fotosUrlsSalvas : []
+
       const html = `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:16px;box-sizing:border-box;width:460px;">
 
@@ -130,8 +138,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             ${infoRow('UC',             form.uc)}
             ${infoRow('Endereço',       form.endereco)}
             ${infoRow('Data / Hora',    `${form.data} às ${form.hora}`)}
-            ${form.lat             ? infoRow('GPS',           `${form.lat}, ${form.lng}`) : ''}
-            ${form.nomeEletricista ? infoRow('Eletricista 1', form.nomeEletricista)         : ''}
+            ${form.lat              ? infoRow('GPS',           `${form.lat}, ${form.lng}`) : ''}
+            ${form.nomeEletricista  ? infoRow('Eletricista 1', form.nomeEletricista)        : ''}
             ${form.nomeEletricista2 ? infoRow('Eletricista 2', form.nomeEletricista2)       : ''}
           </div>
 
@@ -150,6 +158,18 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
             ${form.feedback ? `<p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 4px 0;">FEEDBACK DO FISCAL:</p><p style="font-size:12px;color:#475569;line-height:1.5;margin:0 0 ${form.observacoes ? '12px' : '0'} 0;">${form.feedback}</p>` : ''}
             ${form.observacoes ? `<p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 4px 0;">OBSERVAÇÕES:</p><p style="font-size:12px;color:#475569;line-height:1.5;margin:0;">${form.observacoes}</p>` : ''}
+          </div>` : ''}
+
+          <!-- Fotos (online: URLs do Supabase; offline: omitidas) -->
+          ${fotosParaExibir.length > 0 ? `
+          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
+            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 12px 0;">📷 Registro Fotográfico (${fotosParaExibir.length})</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+              ${fotosParaExibir.map((url, i) => `
+                <img src="${url}" alt="Foto ${i+1}" crossorigin="anonymous"
+                  style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;display:block;"/>
+              `).join('')}
+            </div>
           </div>` : ''}
 
           <!-- Assinatura 1 -->
@@ -176,11 +196,21 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
         </div>`
 
-      // ── monta o div temporário fora da tela ──
       const div = document.createElement('div')
       div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
       div.innerHTML = html
       document.body.appendChild(div)
+
+      // Aguarda imagens online carregarem antes de capturar
+      if (fotosParaExibir.length > 0) {
+        const imgs = div.querySelectorAll('img[crossorigin]')
+        await Promise.allSettled(Array.from(imgs).map(img =>
+          new Promise(res => {
+            if (img.complete) res()
+            else { img.onload = res; img.onerror = res }
+          })
+        ))
+      }
 
       const canvas = await html2canvas(div.firstElementChild, {
         scale:           2,
@@ -285,6 +315,9 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         ? [...(fotosAntigas || []), ...fotosNovas]
         : fotosNovas
 
+      // Guarda as URLs para usar no WhatsApp (com fotos online)
+      setFotosUrlsSalvas(fotosUrls)
+
       let assinaturaUrl  = null
       let assinatura2Url = null
       if (form.assinatura)  assinaturaUrl  = await uploadBase64(form.assinatura,  `${auditId}/assinatura_1.png`)
@@ -318,21 +351,18 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     <div>
       <div ref={printAreaRef} className="print-area" style={{ background: '#f0f4f8', padding: 16, borderRadius: 12 }}>
 
-        {/* BANNER MODO EDIÇÃO */}
         {modoEdicao && (
           <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e', fontWeight: 700 }}>
             ✏️ Modo edição — auditoria reaberta para correção
           </div>
         )}
 
-        {/* BANNER OFFLINE */}
         {!online && !modoEdicao && (
           <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e', fontWeight: 700 }}>
             📵 Sem internet — auditoria e fotos serão salvas localmente e enviadas ao banco quando a conexão voltar
           </div>
         )}
 
-        {/* STATUS PRINCIPAL */}
         <div className="result-card" style={{ background: st.bg, borderColor: st.border }}>
           {eliminado && (
             <div style={{ fontSize: 11, background: '#dc2626', color: '#fff', padding: '3px 12px', borderRadius: 8, marginBottom: 10, display: 'inline-block', fontWeight: 700 }}>
@@ -348,14 +378,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         </div>
 
-        {/* CONTADORES */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 14 }}>
           <StatCard label="Conformes"   value={sim}          color="#16a34a" />
           <StatCard label="Não conf."   value={nao}          color="#dc2626" />
           <StatCard label="Total itens" value={items.length} color="#2563eb" />
         </div>
 
-        {/* POR CATEGORIA */}
         <div className="card">
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 12 }}>Por Categoria</p>
           {catStats.map(c => (
@@ -371,7 +399,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           ))}
         </div>
 
-        {/* DADOS */}
         <div className="card">
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
@@ -387,7 +414,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           {form.nomeEletricista2 && <InfoRow label="Eletricista 2" value={form.nomeEletricista2} />}
         </div>
 
-        {/* NÃO CONFORMIDADES */}
         {ncItems.length > 0 && (
           <div className="card" style={{ background: '#fef2f2', border: '1px solid #fecaca' }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 10 }}>❌ Itens Não Conformes ({ncItems.length})</p>
@@ -400,7 +426,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         )}
 
-        {/* FEEDBACK / OBS */}
         {(form.feedback || form.observacoes) && (
           <div className="card">
             {form.feedback && <>
@@ -414,26 +439,20 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         )}
 
-        {/* FOTOS ANTIGAS — modo edição */}
         {modoEdicao && fotosAntigas?.length > 0 && (
           <div style={{ marginBottom: 14 }} data-fotos="antigas">
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📁 Fotos anteriores ({fotosAntigas.length})</p>
             <div className="photo-grid">
               {fotosAntigas.map((url, i) => (
                 <div key={i} className="photo-thumb">
-                  <a href={url} target="_blank" rel="noreferrer">
-                    <img src={url} alt={`Foto anterior ${i + 1}`} />
-                  </a>
-                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(15,118,110,0.7)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center' }}>
-                    Anterior {i + 1}
-                  </div>
+                  <a href={url} target="_blank" rel="noreferrer"><img src={url} alt={`Foto anterior ${i + 1}`} /></a>
+                  <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'rgba(15,118,110,0.7)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center' }}>Anterior {i + 1}</div>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* NOVAS FOTOS */}
         {form.fotos.length > 0 && (
           <div style={{ marginBottom: 14 }} data-fotos="novas">
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
@@ -452,7 +471,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         )}
 
-        {/* ASSINATURA 1 */}
         {form.assinatura && (
           <div className="card">
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Assinatura — {form.nomeEletricista || 'Eletricista 1'}</p>
@@ -461,7 +479,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         )}
 
-        {/* ASSINATURA 2 */}
         {form.assinatura2 && (
           <div className="card">
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Assinatura — {form.nomeEletricista2 || 'Eletricista 2'}</p>
@@ -470,7 +487,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
         )}
 
-        {/* RODAPÉ */}
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginBottom: 8, textAlign: 'center' }}>
           <p style={{ fontSize: 11, color: '#94a3b8' }}>DPL Construções — Contrato Equatorial Energia 1021/2024</p>
           <p style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
@@ -486,9 +502,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
               style={{ background: modoEdicao ? '#d97706' : online ? '#1e3a5f' : '#dc2626', marginBottom: 10, fontSize: 16 }}>
               {modoEdicao ? '💾 Salvar Correção' : online ? '💾 Salvar Auditoria' : '📵 Salvar Offline'}
             </button>
-            <button className="btn-secondary" onClick={() => setStep(4)} style={{ marginBottom: 10 }}>
-              ← Voltar e editar
-            </button>
+            <button className="btn-secondary" onClick={() => setStep(4)} style={{ marginBottom: 10 }}>← Voltar e editar</button>
           </>
         )}
 
@@ -508,25 +522,19 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
         {saveStatus === 'saved' && (
           <>
-            {/* Banner de confirmação */}
             <div style={{
               background: salvoOffline ? '#fef3c7' : '#f0fdf4',
               border: `1px solid ${salvoOffline ? '#fcd34d' : '#86efac'}`,
               borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center',
             }}>
               <p style={{ color: salvoOffline ? '#92400e' : '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-                {salvoOffline
-                  ? '📵 Auditoria salva localmente!'
-                  : modoEdicao ? '✅ Correção salva com sucesso!' : '✅ Auditoria salva com sucesso!'}
+                {salvoOffline ? '📵 Auditoria salva localmente!' : modoEdicao ? '✅ Correção salva com sucesso!' : '✅ Auditoria salva com sucesso!'}
               </p>
               <p style={{ color: '#64748b', fontSize: 11 }}>
                 {salvoOffline
                   ? 'Quando a internet voltar, será enviada automaticamente ao banco de dados com todas as fotos.'
-                  : modoEdicao
-                    ? 'Auditoria corrigida e fechada novamente.'
-                    : 'Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.'}
+                  : modoEdicao ? 'Auditoria corrigida e fechada novamente.' : 'Dados e fotos enviados ao banco. Esta auditoria não pode mais ser alterada.'}
               </p>
-              {/* Aviso adicional no offline: imagem sem fotos */}
               {salvoOffline && (
                 <p style={{ color: '#92400e', fontSize: 10, marginTop: 6, fontStyle: 'italic' }}>
                   ℹ️ No modo offline a imagem compartilhada não incluirá as fotos (apenas o resultado, dados e assinatura).
@@ -534,21 +542,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
               )}
             </div>
 
-            {/* Botões WhatsApp e PDF — aparecem SEMPRE (online e offline) */}
-            <button
-              className="btn-primary"
-              onClick={gerarImagemWhatsApp}
-              disabled={capturando}
-              style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}
-            >
+            <button className="btn-primary" onClick={gerarImagemWhatsApp} disabled={capturando}
+              style={{ background: capturando ? '#64748b' : '#25d366', marginBottom: 10 }}>
               {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
             </button>
 
-            <button
-              className="btn-primary"
-              onClick={() => window.print()}
-              style={{ background: '#7c3aed', marginBottom: 10 }}
-            >
+            <button className="btn-primary" onClick={() => window.print()} style={{ background: '#7c3aed', marginBottom: 10 }}>
               🖨️ Gerar PDF / Imprimir
             </button>
 
