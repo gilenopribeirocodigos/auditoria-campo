@@ -7,7 +7,6 @@ import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
 
-
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
 import ImportarEquipes      from './pages/ImportarEquipes.jsx'
@@ -20,6 +19,7 @@ import Dashboard            from './pages/Dashboard.jsx'
 import MapaFiscais          from './pages/MapaFiscais.jsx'
 import RegistrosApp           from './RegistrosApp.jsx'                        // ← NOVO
 import RegistrosOperacionais  from './pages/RegistrosOperacionais.jsx'         // ← NOVO
+import RelatorioEvidencias    from './pages/RelatorioEvidencias.jsx'           // ← NOVO
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -314,7 +314,8 @@ export default function App() {
   if (tela === 'dashboard')            return <Dashboard             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'mapa-fiscais')         return <MapaFiscais           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   // ── NOVO: Registros Operacionais ─────────────────────────────────────────────
-  if (tela === 'registros-historico')  return <RegistrosOperacionais usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} isOnline={online} />
+  if (tela === 'registros-historico')  return <RegistrosOperacionais usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
+  if (tela === 'relatorio-evidencias') return <RelatorioEvidencias   usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
   if (tela === 'registros-novo')       return <RegistrosApp          usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
 
   if (tela === 'home') {
