@@ -1,4 +1,4 @@
-import { CHECKLISTS, CAT_META, isDisqualified } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, isDisqualified, isItemConforme } from '../data/checklists.js'
 import { NavBar, Textarea } from '../components/Shared.jsx'
 
 export default function S3Checklist({ form, upd, setForm, next, prev }) {
@@ -8,19 +8,22 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
 
   const items = cl.items
 
-  // Contagem parcial considerando itens invertidos
   const respondidas = items.filter(i => form.respostas[i.id] !== undefined).length
-  const conformes   = items.filter(i =>
-    i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true
-  ).length
-  const notaParcial = respondidas > 0 ? Math.round(conformes / respondidas * 100) : 0
-  const completo    = respondidas === items.length
-  const eliminado   = isDisqualified(form)
+
+  // ── CORRIGIDO ─────────────────────────────────────────────────────────────
+  // Usa isItemConforme para aplicar corretamente a lógica married:
+  // - PAI (itens 5/7) = sempre conforme
+  // - FILHO (itens 6/8) = conforme só se PAI === FILHO
+  // Divide por items.length (igual ao calcNota) para ser consistente
+  const conformes   = items.filter(i => isItemConforme(i, items, form.respostas)).length
+  const notaParcial = respondidas > 0 ? Math.round(conformes / items.length * 100) : 0
+
+  const completo  = respondidas === items.length
+  const eliminado = isDisqualified(form)
 
   const responder = (id, val) =>
     setForm(f => ({ ...f, respostas: { ...f.respostas, [id]: val } }))
 
-  // Mensagem do banner de eliminação conforme tipo de serviço
   const msgEliminado = form.tipoServico === 'CORTE'
     ? 'A equipe não executou o corte.'
     : 'A equipe não executou a atividade.'
@@ -72,34 +75,29 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
 
       {/* Itens */}
       {items.map((item, idx) => {
-        const r           = form.respostas[item.id]
-        const meta        = CAT_META[item.cat]
-        const isElim      = item.disqualify
-        const isInverted  = item.inverted
-        
-        // Item filho casado: conforme só se resposta igual ao pai
-        // Invertido: NÃO = conforme
+        const r          = form.respostas[item.id]
+        const meta       = CAT_META[item.cat]
+        const isElim     = item.disqualify
+        const isInverted = item.inverted
+
         let isConforme, isNaoConforme, marriedWarning = ''
-        
+
         if (item.marriedGroup && item.marriedRole === 'pai') {
-          // Pai é sempre conforme — só registra um fato
           isConforme    = r !== undefined
           isNaoConforme = false
-        
+
         } else if (item.marriedGroup && item.marriedRole === 'filho') {
           const pai  = items.find(i => i.marriedGroup === item.marriedGroup && i.marriedRole === 'pai')
           const rPai = pai ? form.respostas[pai.id] : undefined
-          // Conforme: ambos SIM ou ambos NÃO
           isConforme    = rPai !== undefined && r !== undefined && rPai === r
           isNaoConforme = rPai !== undefined && r !== undefined && rPai !== r
-          // Alerta só quando há inconsistência
           if (rPai === true  && r === false) marriedWarning = '⚠️ Inconsistência: houve instalação mas não foi lançada na OS!'
           if (rPai === false && r === true)  marriedWarning = '⚠️ Inconsistência: não houve instalação mas foi lançada na OS!'
-        
+
         } else if (isInverted) {
           isConforme    = r === false
           isNaoConforme = r === true
-        
+
         } else {
           isConforme    = r === true
           isNaoConforme = r === false
@@ -111,7 +109,6 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
             style={isElim ? { borderWidth: 2 } : {}}>
             <div className="check-item-body">
 
-              {/* Meta linha */}
               <div className="check-item-meta">
                 <span className={`badge ${meta.cls}`}>{meta.label}</span>
                 <span style={{ fontSize: 11, color: '#cbd5e1' }}>#{idx + 1}</span>
@@ -130,10 +127,8 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
                 {isNaoConforme && isElim  && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 800, marginLeft: 'auto' }}>🚫 NÃO ATENDE</span>}
               </div>
 
-              {/* Pergunta */}
               <p className="check-item-text" style={isElim ? { fontWeight: 600 } : {}}>{item.p}</p>
 
-              {/* Avisos contextuais */}
               {isElim && (
                 <p style={{ fontSize: 11, color: '#ef4444', marginBottom: 8, background: '#fef2f2', padding: '4px 8px', borderRadius: 6 }}>
                   ⚠️ Se NÃO → resultado automaticamente NÃO ATENDE
@@ -150,7 +145,6 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
                 </p>
               )}
 
-              {/* Botões */}
               <div className="check-item-btns">
                 <button className={`btn-sim ${r === true ? 'active' : ''}`} onClick={() => responder(item.id, true)}>✓ SIM</button>
                 <button className={`btn-nao ${r === false ? 'active' : ''}`} onClick={() => responder(item.id, false)}>✗ NÃO</button>
