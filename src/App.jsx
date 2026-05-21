@@ -7,6 +7,7 @@ import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
 
+
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
 import ImportarEquipes      from './pages/ImportarEquipes.jsx'
