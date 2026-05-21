@@ -161,7 +161,7 @@ function imprimirLote(registros) {
 // ── Imprime um único registro ─────────────────────────────────────────────────
 function imprimirRegistro(r) { imprimirLote([r]) }
 
-export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
+export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo, onRelatorio }) {
   const [todos,     setTodos]     = useState([])   // todos os registros buscados
   const [exibidos,  setExibidos]  = useState([])   // após filtro local de participante
   const [loading,   setLoading]   = useState(true)
@@ -281,13 +281,21 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
         {/* Botão novo */}
-        <button onClick={onNovo} style={{
-          width: '100%', padding: 14, borderRadius: 12, border: 'none',
-          background: '#2563eb', color: '#fff', fontSize: 15, fontWeight: 700,
-          cursor: 'pointer', marginBottom: 16,
-        }}>
-          + Novo Registro Operacional
-        </button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
+          <button onClick={onNovo} style={{
+            width: '100%', padding: 14, borderRadius: 12, border: 'none',
+            background: '#2563eb', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+          }}>
+            + Novo Registro Operacional
+          </button>
+          {onRelatorio && (
+            <button onClick={onRelatorio} style={{
+              width: '100%', padding: 12, borderRadius: 12, border: 'none',
+              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', color: '#fff',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            }}>📊 Relatório de Evidências para Apresentações</button>
+          )}
+        </div>
 
         {/* ── Filtros ── */}
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
