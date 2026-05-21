@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, getItemsNaoConformes, FORM_INICIAL } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
@@ -12,28 +12,29 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
   const items     = cl?.items || []
   const eliminado = isDisqualified(form)
 
-  const sim     = items.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
-  const nao     = items.filter(i => i.inverted ? form.respostas[i.id] === true  : form.respostas[i.id] === false).length
+  // ── BUG A CORRIGIDO ───────────────────────────────────────────────────────
+  // Usa isItemConforme para aplicar a lógica married corretamente:
+  // PAI (itens 5/7) = sempre conforme — nunca entra no nao++
+  // FILHO (itens 6/8) = conforme só se PAI === FILHO
+  const sim = items.filter(i => isItemConforme(i, items, form.respostas)).length
+  const nao = items.length - sim
   const ncItems = getItemsNaoConformes(form)
 
   const [saveStatus,   setSaveStatus]   = useState('idle')
   const [saveError,    setSaveError]    = useState('')
   const [capturando,   setCapturando]   = useState(false)
   const [salvoOffline, setSalvoOffline] = useState(false)
-  // Guarda as URLs das fotos após upload para usar no WhatsApp
   const [fotosUrlsSalvas, setFotosUrlsSalvas] = useState([])
 
   const printAreaRef = useRef(null)
   const modoEdicao   = !!auditoriaEditandoId
-
-  // isOnline vem do App.jsx que escuta os eventos online/offline do window.
-  // É mais confiável que navigator.onLine em dados móveis.
-  const online = isOnline !== undefined ? isOnline : navigator.onLine
+  const online       = isOnline !== undefined ? isOnline : navigator.onLine
 
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
     const catItems = items.filter(i => i.cat === cat)
-    const catSim   = catItems.filter(i => i.inverted ? form.respostas[i.id] === false : form.respostas[i.id] === true).length
+    // ── BUG A CORRIGIDO também nas categorias ────────────────────────────────
+    const catSim   = catItems.filter(i => isItemConforme(i, items, form.respostas)).length
     const pct      = catItems.length > 0 ? Math.round(catSim / catItems.length * 100) : 0
     return { cat, total: catItems.length, sim: catSim, pct }
   }).filter(c => c.total > 0)
@@ -52,9 +53,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
   // ── Gera imagem para WhatsApp ─────────────────────────────────────────────
-  // Cria div temporário com 100% inline styles (não depende de CSS externo).
-  // Online: inclui fotos (URLs do Supabase já salvas).
-  // Offline: não inclui fotos (são base64 pesadas que quebram o html2canvas).
+  // BUG B CORRIGIDO: windowWidth alinhado com a largura real do div (460px)
+  // e scale aumentado para 3 para melhor resolução/nitidez da imagem.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
@@ -74,9 +74,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <span style="color:#1e293b;font-weight:600;text-align:right;flex:1;padding-left:8px;">${value}</span>
         </div>` : ''
 
-      // Fotos a exibir:
-      // - Online: usa URLs do Supabase (salvas após upload)
-      // - Offline: omite (base64 pesadas quebram o html2canvas)
       const fotosParaExibir = !salvoOffline ? fotosUrlsSalvas : []
 
       const html = `
@@ -213,12 +210,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       }
 
       const canvas = await html2canvas(div.firstElementChild, {
-        scale:           2,
+        scale:           3,    // ← BUG B: era 2, aumentado para 3 (imagem mais nítida)
         useCORS:         true,
         allowTaint:      true,
         backgroundColor: '#f0f4f8',
         logging:         false,
-        windowWidth:     512,
+        windowWidth:     460,  // ← BUG B: era 512, corrigido para 460 (igual ao width do div)
       })
 
       document.body.removeChild(div)
@@ -315,7 +312,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         ? [...(fotosAntigas || []), ...fotosNovas]
         : fotosNovas
 
-      // Guarda as URLs para usar no WhatsApp (com fotos online)
       setFotosUrlsSalvas(fotosUrls)
 
       let assinaturaUrl  = null
