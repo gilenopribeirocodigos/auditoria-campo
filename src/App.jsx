@@ -6,6 +6,7 @@ import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
+import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/registros_offline.js'
 
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
@@ -50,6 +51,7 @@ export default function App() {
   const [pendentesOffline, setPendentesOffline] = useState(0)
   const [sincronizando,    setSincronizando]    = useState(false)
   const [msgSync,          setMsgSync]          = useState('')
+  const [pendentesReg,     setPendentesReg]     = useState(0)
 
   // PWA — detecta nova versão disponível
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
@@ -113,17 +115,22 @@ export default function App() {
   useEffect(() => {
     const syncInicial = async () => {
       if (navigator.onLine) {
-        const qtd = await contarPendentes()
-        setPendentesOffline(qtd)
-        if (qtd > 0) {
+        const qtdAud = await contarPendentes()
+        const qtdReg = await contarPendentesRegistros()
+        setPendentesOffline(qtdAud)
+        setPendentesReg(qtdReg)
+        const total = qtdAud + qtdReg
+        if (total > 0) {
           setSincronizando(true)
-          setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) pendente(s)...`)
+          setMsgSync(`🔄 Sincronizando ${total} item(ns) pendente(s)...`)
           try {
-            const ok = await sincronizarPendentes((feito, total) => {
-              setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
-            })
+            let okAud = 0, okReg = 0
+            if (qtdAud > 0) okAud = await sincronizarPendentes()
+            if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
             setPendentesOffline(0)
-            setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+            setPendentesReg(0)
+            const okTotal = okAud + okReg
+            setMsgSync(`✅ ${okTotal} item(ns) sincronizado(s) com sucesso!`)
             setTimeout(() => setMsgSync(''), 4000)
           } catch (e) {
             setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
@@ -133,8 +140,10 @@ export default function App() {
           }
         }
       } else {
-        const qtd = await contarPendentes()
-        setPendentesOffline(qtd)
+        const qtdAud = await contarPendentes()
+        const qtdReg = await contarPendentesRegistros()
+        setPendentesOffline(qtdAud)
+        setPendentesReg(qtdReg)
       }
     }
     syncInicial()
@@ -144,16 +153,19 @@ export default function App() {
   useEffect(() => {
     const handleOnline = async () => {
       setOnline(true)
-      const qtd = await contarPendentes()
-      if (qtd > 0) {
+      const qtdAud = await contarPendentes()
+      const qtdReg = await contarPendentesRegistros()
+      const total  = qtdAud + qtdReg
+      if (total > 0) {
         setSincronizando(true)
-        setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) salva(s) offline...`)
+        setMsgSync(`🔄 Sincronizando ${total} item(ns) salvos offline...`)
         try {
-          const ok = await sincronizarPendentes((feito, total) => {
-            setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
-          })
-          setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+          let okAud = 0, okReg = 0
+          if (qtdAud > 0) okAud = await sincronizarPendentes()
+          if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
           setPendentesOffline(0)
+          setPendentesReg(0)
+          setMsgSync(`✅ ${okAud + okReg} item(ns) sincronizado(s) com sucesso!`)
           setTimeout(() => setMsgSync(''), 4000)
         } catch (e) {
           setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
@@ -394,7 +406,9 @@ export default function App() {
             borderRadius: 14, padding: '12px 16px',
           }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 8 }}>
-              📤 {pendentesOffline} auditoria(s) aguardando sincronização
+              📤 {pendentesOffline + pendentesReg} item(ns) aguardando sincronização
+              {pendentesOffline > 0 && ` (${pendentesOffline} auditoria(s)`}
+              {pendentesReg > 0 && ` · ${pendentesReg} registro(s))`}
             </p>
             <button onClick={async () => {
               setSincronizando(true)
