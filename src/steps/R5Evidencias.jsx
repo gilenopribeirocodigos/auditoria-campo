@@ -3,21 +3,71 @@ import { TIPOS_REGISTRO } from '../data/registros_config.js'
 
 const MAX_FOTOS = 5
 
-export default function R5Evidencias({ form, upd, next, prev }) {
-  const tipoConfig  = TIPOS_REGISTRO[form.tipo]
-  const fotoRef     = useRef(null)
-  const listaRef    = useRef(null)
+// ── Adiciona watermark à foto com GPS, fiscal e data/hora ─────────────────────
+async function adicionarWatermark(base64, form) {
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width  = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, 0, 0)
 
-  const adicionarFoto = (e) => {
-    const files = Array.from(e.target.files || [])
-    files.forEach(file => {
-      if (form.fotos.length >= MAX_FOTOS) return
-      const reader = new FileReader()
-      reader.onload = ev => {
-        upd('fotos', [...form.fotos, { url: ev.target.result }])
+      const barH    = Math.max(Math.round(img.height * 0.09), 44)
+      const fSize   = Math.max(Math.round(img.height * 0.028), 13)
+      const fSizeSm = Math.max(Math.round(img.height * 0.022), 10)
+      const pad     = 8
+
+      // Fundo semitransparente
+      ctx.fillStyle = 'rgba(0,0,0,0.68)'
+      ctx.fillRect(0, img.height - barH, img.width, barH)
+
+      // Linha 1 — fiscal + data/hora
+      ctx.fillStyle = '#ffffff'
+      ctx.font      = `bold ${fSize}px Arial`
+      ctx.fillText(
+        `${form.fiscal || '—'} · ${form.data || ''} às ${form.hora || ''}`,
+        pad,
+        img.height - barH + fSize + 4
+      )
+
+      // Linha 2 — GPS
+      if (form.lat) {
+        ctx.font      = `${fSizeSm}px Arial`
+        ctx.fillStyle = '#d1fae5'
+        ctx.fillText(
+          `📍 GPS: ${Number(form.lat).toFixed(5)}, ${Number(form.lng).toFixed(5)}`,
+          pad,
+          img.height - barH + fSize + fSizeSm + 10
+        )
       }
-      reader.readAsDataURL(file)
-    })
+
+      resolve(canvas.toDataURL('image/jpeg', 0.88))
+    }
+    img.onerror = () => resolve(base64) // fallback sem watermark
+    img.src = base64
+  })
+}
+
+export default function R5Evidencias({ form, upd, next, prev }) {
+  const tipoConfig = TIPOS_REGISTRO[form.tipo]
+  const fotoRef    = useRef(null)
+  const listaRef   = useRef(null)
+
+  const adicionarFoto = async (e) => {
+    const files = Array.from(e.target.files || [])
+    for (const file of files) {
+      if (form.fotos.length >= MAX_FOTOS) break
+      const base64 = await new Promise(res => {
+        const reader = new FileReader()
+        reader.onload = ev => res(ev.target.result)
+        reader.readAsDataURL(file)
+      })
+      // Aplica watermark com GPS, fiscal e data/hora
+      const comMarca = await adicionarWatermark(base64, form)
+      upd('fotos', [...form.fotos, { url: comMarca }])
+    }
     e.target.value = ''
   }
 
@@ -34,6 +84,9 @@ export default function R5Evidencias({ form, upd, next, prev }) {
     e.target.value = ''
   }
 
+  // Pelo menos 1 foto obrigatória
+  const podeProsseguir = form.fotos.length >= 1
+
   return (
     <div style={{ padding: '0 0 80px' }}>
 
@@ -49,11 +102,14 @@ export default function R5Evidencias({ form, upd, next, prev }) {
         </span>
       </div>
 
-      <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 6 }}>
-        Evidências (opcional)
+      <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
+        Evidências
       </h2>
-      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 20 }}>
-        Adicione fotos e/ou foto da lista de frequência impressa assinada
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 4 }}>
+        Adicione pelo menos <strong>1 foto</strong> de evidência.
+      </p>
+      <p style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>
+        📍 As fotos serão marcadas com GPS, nome do fiscal e data/hora automaticamente.
       </p>
 
       {/* ── Fotos de evidência ── */}
@@ -61,10 +117,12 @@ export default function R5Evidencias({ form, upd, next, prev }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: '#374151' }}>
             📷 Fotos de Evidência ({form.fotos.length}/{MAX_FOTOS})
+            <span style={{ fontSize: 11, color: '#dc2626', marginLeft: 6, fontWeight: 400 }}>
+              {form.fotos.length === 0 ? '(obrigatório — mínimo 1)' : '✅'}
+            </span>
           </p>
         </div>
 
-        {/* Grade de fotos */}
         {form.fotos.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 10 }}>
             {form.fotos.map((foto, i) => (
@@ -78,7 +136,8 @@ export default function R5Evidencias({ form, upd, next, prev }) {
                 }}>✕</button>
                 <div style={{
                   position: 'absolute', bottom: 0, left: 0, right: 0,
-                  background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9, padding: '2px 4px', textAlign: 'center',
+                  background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 9,
+                  padding: '2px 4px', textAlign: 'center',
                 }}>Foto {i+1}</div>
               </div>
             ))}
@@ -91,10 +150,12 @@ export default function R5Evidencias({ form, upd, next, prev }) {
               onChange={adicionarFoto} style={{ display: 'none' }} />
             <button onClick={() => fotoRef.current?.click()} style={{
               width: '100%', padding: 13, borderRadius: 12,
-              border: '2px dashed #2563eb', background: '#eff6ff',
-              color: '#2563eb', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              border: `2px dashed ${form.fotos.length === 0 ? '#dc2626' : '#2563eb'}`,
+              background: form.fotos.length === 0 ? '#fef2f2' : '#eff6ff',
+              color: form.fotos.length === 0 ? '#dc2626' : '#2563eb',
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
             }}>
-              📷 {form.fotos.length === 0 ? 'Adicionar foto(s)' : '+ Adicionar mais'}
+              📷 {form.fotos.length === 0 ? '⚠️ Adicionar foto (obrigatório)' : '+ Adicionar mais'}
             </button>
           </>
         )}
@@ -141,12 +202,15 @@ export default function R5Evidencias({ form, upd, next, prev }) {
 
       {/* Navegação */}
       <div style={{ marginTop: 24 }}>
-        <button onClick={next} style={{
+        <button onClick={next} disabled={!podeProsseguir} style={{
           width: '100%', padding: 14, borderRadius: 12, border: 'none',
-          background: '#1e3a5f', color: '#fff',
-          fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
+          background: podeProsseguir ? '#1e3a5f' : '#e2e8f0',
+          color: podeProsseguir ? '#fff' : '#94a3b8',
+          fontSize: 15, fontWeight: 700,
+          cursor: podeProsseguir ? 'pointer' : 'not-allowed',
+          marginBottom: 10,
         }}>
-          Continuar →
+          {podeProsseguir ? 'Continuar →' : '⚠️ Adicione pelo menos 1 foto'}
         </button>
         <button onClick={prev} style={{
           width: '100%', padding: 13, borderRadius: 10,
