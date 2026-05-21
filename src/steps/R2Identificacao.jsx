@@ -1,20 +1,48 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 
 export default function R2Identificacao({ form, upd, next, prev }) {
-  const [gpsMsg, setGpsMsg] = useState('')
+  const [gpsMsg,     setGpsMsg]     = useState('')
+  const [geocodando, setGeocodando] = useState(false)
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
 
   const obterGPS = () => {
     if (!navigator.geolocation) { setGpsMsg('GPS não suportado'); return }
     upd('gpsStatus', 'buscando')
     setGpsMsg('Buscando localização...')
+
     navigator.geolocation.getCurrentPosition(
-      pos => {
-        upd('lat', pos.coords.latitude)
-        upd('lng', pos.coords.longitude)
+      async pos => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        upd('lat', lat)
+        upd('lng', lng)
         upd('gpsStatus', 'ok')
-        setGpsMsg(`✅ GPS: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`)
+        setGpsMsg('')
+
+        // ── Geocodificação reversa — preenche endereço automaticamente ──
+        if (!form.endereco) {
+          setGeocodando(true)
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`,
+              { headers: { 'Accept-Language': 'pt-BR' } }
+            )
+            const data = await res.json()
+            if (data?.address) {
+              const a = data.address
+              const partes = [
+                a.road || a.pedestrian || a.path,
+                a.house_number,
+                a.suburb || a.neighbourhood || a.quarter,
+                a.city || a.town || a.village,
+                a.state,
+              ].filter(Boolean)
+              upd('endereco', partes.join(', '))
+            }
+          } catch (e) { /* silencioso — não bloqueia o fluxo */ }
+          finally { setGeocodando(false) }
+        }
       },
       () => {
         upd('gpsStatus', 'erro')
@@ -28,6 +56,7 @@ export default function R2Identificacao({ form, upd, next, prev }) {
 
   return (
     <div style={{ padding: '0 0 80px' }}>
+
       {/* Banner tipo */}
       <div style={{
         background: tipoConfig?.bg, border: `1.5px solid ${tipoConfig?.border}`,
@@ -47,7 +76,7 @@ export default function R2Identificacao({ form, upd, next, prev }) {
         Identificação
       </h2>
 
-      {/* Fiscal */}
+      {/* Fiscal — read-only */}
       <div className="form-group">
         <label className="form-label">Nome do Fiscal *</label>
         <input className="form-input" value={form.fiscal}
@@ -55,11 +84,25 @@ export default function R2Identificacao({ form, upd, next, prev }) {
           placeholder="Nome completo do fiscal" />
       </div>
 
+      {/* Matrícula — pré-preenchida do cadastro, editável se necessário */}
       <div className="form-group">
         <label className="form-label">Matrícula do Fiscal</label>
-        <input className="form-input" value={form.matricula_fiscal}
+        <input
+          className="form-input"
+          value={form.matricula_fiscal}
           onChange={e => upd('matricula_fiscal', e.target.value)}
-          placeholder="Matrícula" inputMode="numeric" />
+          placeholder="Matrícula"
+          inputMode="numeric"
+          style={{
+            background: form.matricula_fiscal ? '#f0fdf4' : '#fff',
+            borderColor: form.matricula_fiscal ? '#86efac' : undefined,
+          }}
+        />
+        {form.matricula_fiscal && (
+          <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>
+            ✅ Preenchida automaticamente do seu cadastro
+          </p>
+        )}
       </div>
 
       {/* Data e Hora */}
@@ -76,39 +119,46 @@ export default function R2Identificacao({ form, upd, next, prev }) {
         </div>
       </div>
 
-      {/* Endereço */}
+      {/* Endereço — preenchido automaticamente após GPS */}
       <div className="form-group">
-        <label className="form-label">Local / Endereço</label>
-        <input className="form-input" value={form.endereco}
+        <label className="form-label">
+          Local / Endereço
+          {geocodando && <span style={{ fontSize: 11, color: '#2563eb', marginLeft: 8 }}>📍 Buscando endereço...</span>}
+        </label>
+        <input
+          className="form-input"
+          value={form.endereco}
           onChange={e => upd('endereco', e.target.value)}
-          placeholder="Ex: Sede, nome da rua, bairro..." />
+          placeholder="Capture o GPS abaixo para preencher automaticamente"
+        />
       </div>
 
       {/* GPS */}
       <div className="form-group">
         <label className="form-label">GPS</label>
         <button onClick={obterGPS} disabled={form.gpsStatus === 'buscando'} style={{
-          width: '100%', padding: '11px', borderRadius: 10, border: '1.5px solid #e2e8f0',
+          width: '100%', padding: '11px', borderRadius: 10,
+          border: `1.5px solid ${form.gpsStatus === 'ok' ? '#86efac' : '#e2e8f0'}`,
           background: form.gpsStatus === 'ok' ? '#f0fdf4' : '#f8fafc',
           color: form.gpsStatus === 'ok' ? '#15803d' : '#374151',
           fontSize: 14, fontWeight: 600, cursor: 'pointer',
         }}>
           {form.gpsStatus === 'buscando' ? '⏳ Buscando...' :
            form.gpsStatus === 'ok'       ? `📍 ${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}` :
-           '📍 Capturar localização GPS'}
+           '📍 Capturar GPS (preenche endereço automaticamente)'}
         </button>
         {gpsMsg && form.gpsStatus === 'erro' && (
           <p style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>{gpsMsg}</p>
         )}
       </div>
 
-      {/* Botões navegação */}
+      {/* Navegação */}
       <button onClick={next} disabled={!podeProsseguir} style={{
         width: '100%', padding: 14, borderRadius: 12, border: 'none',
         background: podeProsseguir ? '#1e3a5f' : '#e2e8f0',
         color: podeProsseguir ? '#fff' : '#94a3b8',
-        fontSize: 15, fontWeight: 700, cursor: podeProsseguir ? 'pointer' : 'not-allowed',
-        marginBottom: 10,
+        fontSize: 15, fontWeight: 700,
+        cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10,
       }}>
         Continuar →
       </button>
