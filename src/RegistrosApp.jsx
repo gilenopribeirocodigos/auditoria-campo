@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { FORM_REGISTRO_INICIAL, STEPS_REGISTRO, TIPOS_REGISTRO } from '../data/registros_config.js'
-import R0TipoRegistro  from '../steps/R0TipoRegistro.jsx'
-import R1Modalidade    from '../steps/R1Modalidade.jsx'
-import R2Identificacao from '../steps/R2Identificacao.jsx'
-import R3Participantes from '../steps/R3Participantes.jsx'
-import R4Conteudo      from '../steps/R4Conteudo.jsx'
-import R5Evidencias    from '../steps/R5Evidencias.jsx'
-import R6ResultadoReg  from '../steps/R6ResultadoReg.jsx'
+import { FORM_REGISTRO_INICIAL, STEPS_REGISTRO, TIPOS_REGISTRO } from './data/registros_config.js'
+import R0TipoRegistro  from './steps/R0TipoRegistro.jsx'
+import R1Modalidade    from './steps/R1Modalidade.jsx'
+import R2Identificacao from './steps/R2Identificacao.jsx'
+import R3Participantes from './steps/R3Participantes.jsx'
+import R4Conteudo      from './steps/R4Conteudo.jsx'
+import R5Evidencias    from './steps/R5Evidencias.jsx'
+import R6ResultadoReg  from './steps/R6ResultadoReg.jsx'
 
 export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   const [step, setStep] = useState(0)
