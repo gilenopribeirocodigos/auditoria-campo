@@ -17,6 +17,8 @@ import FeedbacksPDF         from './pages/FeedbacksPDF.jsx'
 import RelatorioEquipe      from './pages/RelatorioEquipe.jsx'
 import Dashboard            from './pages/Dashboard.jsx'
 import MapaFiscais          from './pages/MapaFiscais.jsx'
+import RegistrosApp           from './RegistrosApp.jsx'                        // ← NOVO
+import RegistrosOperacionais  from './pages/RegistrosOperacionais.jsx'         // ← NOVO
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -39,7 +41,7 @@ export default function App() {
   const [fotosAntigas,        setFotosAntigas]        = useState([])
   const [msgSessao,           setMsgSessao]           = useState('')
 
-  // ── NOVO: modal bloqueante de atualização obrigatória ─────────────────────
+  // ── Modal bloqueante de atualização obrigatória ───────────────────────────
   const [modalAtualizacao, setModalAtualizacao] = useState(false)
 
   // Offline
@@ -82,9 +84,6 @@ export default function App() {
       const { valida, motivo } = await verificarSessao()
       if (!valida) {
         if (motivo === 'nova_versao') {
-          // ── Desloga IMEDIATAMENTE e exibe modal bloqueante ──────────────────
-          // Independente de onde o usuário estiver (home, auditoria, histórico…)
-          // O usuário não consegue fechar sem clicar em "Entrar novamente"
           fazerLogout()
           setUsuario(null)
           setModalAtualizacao(true)
@@ -261,9 +260,7 @@ export default function App() {
     }
   }
 
-  // ── MODAL BLOQUEANTE DE ATUALIZAÇÃO ─────────────────────────────────────────
-  // Exibido quando o sistema detecta nova versão via sistema_config.versao
-  // Substitui TODA a tela — usuário não consegue fechar sem clicar no botão
+  // ── Modal bloqueante de atualização ──────────────────────────────────────────
   if (modalAtualizacao) {
     return (
       <div style={{
@@ -306,15 +303,18 @@ export default function App() {
   }
 
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
-  if (tela === 'gestao')       return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar')     return <ImportarEquipes     onVoltar={() => setTela('home')} />
-  if (tela === 'pauta')        return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'historico')    return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'metas')        return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'feedbacks')    return <FeedbacksPDF        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'relat-equipe') return <RelatorioEquipe     usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'dashboard')    return <Dashboard           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'mapa-fiscais') return <MapaFiscais         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'gestao')               return <GestaoUsuarios        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'importar')             return <ImportarEquipes       onVoltar={() => setTela('home')} />
+  if (tela === 'pauta')                return <GestaoPauta           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'historico')            return <HistoricoAuditorias   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'metas')                return <Metas                 usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'feedbacks')            return <FeedbacksPDF          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'relat-equipe')         return <RelatorioEquipe       usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'dashboard')            return <Dashboard             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'mapa-fiscais')         return <MapaFiscais           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  // ── NOVO: Registros Operacionais ─────────────────────────────────────────────
+  if (tela === 'registros-historico')  return <RegistrosOperacionais usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} isOnline={online} />
+  if (tela === 'registros-novo')       return <RegistrosApp          usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
 
   if (tela === 'home') {
     return (
@@ -456,6 +456,13 @@ export default function App() {
           }}>
             📁 Histórico de Auditorias
           </button>
+
+          {/* ── NOVO: Registros Operacionais ── */}
+          <button onClick={() => setTela('registros-historico')} style={{
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
+            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          }}>📝 Registros Operacionais</button>
 
           {temPermissao(usuario, 'dashboard') && (
             <button onClick={() => setTela('dashboard')} style={{
