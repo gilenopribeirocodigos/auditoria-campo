@@ -1,7 +1,7 @@
 import { uploadBase64, salvarAuditoriaBD } from './supabase.js'
 
 const DB_NAME    = 'auditoria-dpl'
-const DB_VERSION = 1
+const DB_VERSION = 2              // ← CORRIGIDO: era 1 (conflitava com registros_offline.js)
 const STORE      = 'fila_offline'
 
 function abrirDB() {
@@ -9,9 +9,16 @@ function abrirDB() {
     const req = indexedDB.open(DB_NAME, DB_VERSION)
     req.onupgradeneeded = e => {
       const db = e.target.result
+      // Store de auditorias (existia na versão 1)
       if (!db.objectStoreNames.contains(STORE)) {
         const store = db.createObjectStore(STORE, { keyPath: 'id', autoIncrement: true })
         store.createIndex('sincronizado', 'sincronizado', { unique: false })
+      }
+      // Store de registros operacionais — ADICIONADO na versão 2
+      // Necessário para evitar conflito com registros_offline.js
+      if (!db.objectStoreNames.contains('fila_registros')) {
+        const s = db.createObjectStore('fila_registros', { keyPath: 'id', autoIncrement: true })
+        s.createIndex('sincronizado', 'sincronizado', { unique: false })
       }
     }
     req.onsuccess = e => resolve(e.target.result)
@@ -76,19 +83,15 @@ async function marcarSincronizado(id) {
 export async function sincronizarPendentes(onProgresso) {
   const pendentes = await buscarPendentes()
   if (pendentes.length === 0) return 0
-
   let sincronizados = 0
-
   for (const item of pendentes) {
     try {
       const auditId = `${Date.now()}_OS${item.payload.os}_${item.payload.prefixo}`.replace(/\s+/g, '_')
-
       const fotosUrls = []
       for (let i = 0; i < item.fotosBase64.length; i++) {
         const url = await uploadBase64(item.fotosBase64[i], `${auditId}/foto_${Date.now()}_${i + 1}.jpg`)
         fotosUrls.push(url)
       }
-
       let assinaturaUrl  = null
       let assinatura2Url = null
       if (item.assinaturaBase64) {
@@ -97,23 +100,19 @@ export async function sincronizarPendentes(onProgresso) {
       if (item.assinatura2Base64) {
         assinatura2Url = await uploadBase64(item.assinatura2Base64, `${auditId}/assinatura_2.png`)
       }
-
       const payload = {
         ...item.payload,
         fotos_urls: fotosUrls,
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
       }
-
       await salvarAuditoriaBD(payload)
       await marcarSincronizado(item.id)
       sincronizados++
-
       if (onProgresso) onProgresso(sincronizados, pendentes.length)
     } catch (e) {
       console.error('Erro ao sincronizar auditoria offline:', e)
     }
   }
-
   return sincronizados
 }
