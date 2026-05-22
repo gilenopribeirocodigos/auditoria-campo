@@ -12,18 +12,14 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
   const items     = cl?.items || []
   const eliminado = isDisqualified(form)
 
-  // ── BUG A CORRIGIDO ───────────────────────────────────────────────────────
-  // Usa isItemConforme para aplicar a lógica married corretamente:
-  // PAI (itens 5/7) = sempre conforme — nunca entra no nao++
-  // FILHO (itens 6/8) = conforme só se PAI === FILHO
-  const sim = items.filter(i => isItemConforme(i, items, form.respostas)).length
-  const nao = items.length - sim
+  const sim     = items.filter(i => isItemConforme(i, items, form.respostas)).length
+  const nao     = items.length - sim
   const ncItems = getItemsNaoConformes(form)
 
-  const [saveStatus,   setSaveStatus]   = useState('idle')
-  const [saveError,    setSaveError]    = useState('')
-  const [capturando,   setCapturando]   = useState(false)
-  const [salvoOffline, setSalvoOffline] = useState(false)
+  const [saveStatus,      setSaveStatus]      = useState('idle')
+  const [saveError,       setSaveError]       = useState('')
+  const [capturando,      setCapturando]      = useState(false)
+  const [salvoOffline,    setSalvoOffline]    = useState(false)
   const [fotosUrlsSalvas, setFotosUrlsSalvas] = useState([])
 
   const printAreaRef = useRef(null)
@@ -33,7 +29,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
     const catItems = items.filter(i => i.cat === cat)
-    // ── BUG A CORRIGIDO também nas categorias ────────────────────────────────
     const catSim   = catItems.filter(i => isItemConforme(i, items, form.respostas)).length
     const pct      = catItems.length > 0 ? Math.round(catSim / catItems.length * 100) : 0
     return { cat, total: catItems.length, sim: catSim, pct }
@@ -53,8 +48,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
   // ── Gera imagem para WhatsApp ─────────────────────────────────────────────
-  // BUG B CORRIGIDO: windowWidth alinhado com a largura real do div (460px)
-  // e scale aumentado para 3 para melhor resolução/nitidez da imagem.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
@@ -68,65 +61,67 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
       const barCor = pct => pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
 
+      // ── Fonte maior para melhor leitura após compressão do WhatsApp ──────────
       const infoRow = (label, value) => value ? `
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px;">
-          <span style="color:#94a3b8;font-weight:600;min-width:110px;flex-shrink:0;">${label}</span>
-          <span style="color:#1e293b;font-weight:600;text-align:right;flex:1;padding-left:8px;">${value}</span>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+          <span style="color:#94a3b8;font-weight:700;font-size:15px;min-width:120px;flex-shrink:0;">${label}</span>
+          <span style="color:#1e293b;font-weight:700;font-size:15px;text-align:right;flex:1;padding-left:10px;">${value}</span>
         </div>` : ''
 
       const fotosParaExibir = !salvoOffline ? fotosUrlsSalvas : []
 
+      // ── Template com width 520px e fontes ampliadas ───────────────────────
       const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:16px;box-sizing:border-box;width:460px;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
 
-          ${eliminado ? `<div style="background:#dc2626;color:#fff;padding:6px 14px;border-radius:8px;margin-bottom:12px;font-size:12px;font-weight:700;text-align:center;">${msgEliminado}</div>` : ''}
+          ${eliminado ? `<div style="background:#dc2626;color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:14px;font-size:15px;font-weight:800;text-align:center;letter-spacing:0.3px;">${msgEliminado}</div>` : ''}
 
           <!-- Status -->
-          <div style="background:${st.bg};border:2px solid ${st.border};border-radius:16px;padding:20px;text-align:center;margin-bottom:14px;">
-            <div style="font-size:48px;margin-bottom:6px;">${st.icon}</div>
-            <div style="font-size:52px;font-weight:900;color:${st.color};line-height:1;">${nota.toFixed(0)}</div>
-            <div style="font-size:13px;color:${st.color};font-weight:500;margin-bottom:2px;">pontos</div>
-            <div style="font-size:22px;font-weight:800;color:${st.color};margin-bottom:6px;">${st.label}</div>
-            <div style="font-size:12px;color:${st.color};opacity:0.85;">${labelTipoAuditoria} — ${CHECKLISTS[form.tipoServico]?.label} — ${form.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
+          <div style="background:${st.bg};border:3px solid ${st.border};border-radius:18px;padding:24px;text-align:center;margin-bottom:16px;">
+            <div style="font-size:52px;margin-bottom:8px;">${st.icon}</div>
+            <div style="font-size:64px;font-weight:900;color:${st.color};line-height:1;">${nota.toFixed(0)}</div>
+            <div style="font-size:15px;color:${st.color};font-weight:600;margin-bottom:4px;">pontos</div>
+            <div style="font-size:26px;font-weight:900;color:${st.color};margin-bottom:8px;">${st.label}</div>
+            <div style="font-size:14px;color:${st.color};opacity:0.9;">${labelTipoAuditoria} — ${CHECKLISTS[form.tipoServico]?.label} — ${form.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
           </div>
 
           <!-- Contadores -->
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px;">
-            <div style="background:#dcfce7;border-radius:12px;padding:12px;text-align:center;">
-              <div style="font-size:26px;font-weight:900;color:#16a34a;">${sim}</div>
-              <div style="font-size:11px;color:#16a34a;font-weight:600;">Conformes</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+            <div style="background:#dcfce7;border-radius:14px;padding:16px;text-align:center;">
+              <div style="font-size:34px;font-weight:900;color:#16a34a;">${sim}</div>
+              <div style="font-size:13px;color:#16a34a;font-weight:700;">Conformes</div>
             </div>
-            <div style="background:#fee2e2;border-radius:12px;padding:12px;text-align:center;">
-              <div style="font-size:26px;font-weight:900;color:#dc2626;">${nao}</div>
-              <div style="font-size:11px;color:#dc2626;font-weight:600;">Não conf.</div>
+            <div style="background:#fee2e2;border-radius:14px;padding:16px;text-align:center;">
+              <div style="font-size:34px;font-weight:900;color:#dc2626;">${nao}</div>
+              <div style="font-size:13px;color:#dc2626;font-weight:700;">Não conf.</div>
             </div>
-            <div style="background:#eff6ff;border-radius:12px;padding:12px;text-align:center;">
-              <div style="font-size:26px;font-weight:900;color:#2563eb;">${items.length}</div>
-              <div style="font-size:11px;color:#2563eb;font-weight:600;">Total itens</div>
+            <div style="background:#eff6ff;border-radius:14px;padding:16px;text-align:center;">
+              <div style="font-size:34px;font-weight:900;color:#2563eb;">${items.length}</div>
+              <div style="font-size:13px;color:#2563eb;font-weight:700;">Total itens</div>
             </div>
           </div>
 
           <!-- Por Categoria -->
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 12px 0;">Por Categoria</p>
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 14px 0;">Por Categoria</p>
             ${catStats.map(c => {
               const cc = catColor(c.cat)
               return `
-              <div style="margin-bottom:10px;">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
-                  <span style="background:${cc.bg};color:${cc.color};padding:3px 10px;border-radius:6px;font-size:11px;font-weight:700;">${CAT_META[c.cat].label}</span>
-                  <span style="font-size:12px;font-weight:700;color:#374151;">${c.sim}/${c.total} — ${c.pct}%</span>
+              <div style="margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                  <span style="background:${cc.bg};color:${cc.color};padding:4px 12px;border-radius:8px;font-size:13px;font-weight:800;">${CAT_META[c.cat].label}</span>
+                  <span style="font-size:15px;font-weight:800;color:#374151;">${c.sim}/${c.total} — ${c.pct}%</span>
                 </div>
-                <div style="background:#f1f5f9;border-radius:6px;height:10px;overflow:hidden;">
-                  <div style="width:${c.pct}%;height:10px;background:${barCor(c.pct)};border-radius:6px;"></div>
+                <div style="background:#f1f5f9;border-radius:8px;height:14px;overflow:hidden;">
+                  <div style="width:${c.pct}%;height:14px;background:${barCor(c.pct)};border-radius:8px;"></div>
                 </div>
               </div>`
             }).join('')}
           </div>
 
           <!-- Dados da Auditoria -->
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 10px 0;">Dados da Auditoria</p>
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
             ${infoRow('Fiscal',         form.fiscal)}
             ${infoRow('Matrícula',      form.matricula)}
@@ -140,55 +135,72 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             ${form.nomeEletricista2 ? infoRow('Eletricista 2', form.nomeEletricista2)       : ''}
           </div>
 
-          <!-- Não Conformidades -->
+          <!-- ❌ Não Conformidades — bloco de alto destaque ──────────────────── -->
           ${ncItems.length > 0 ? `
-          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0 0 10px 0;">❌ Itens Não Conformes (${ncItems.length})</p>
+          <div style="background:#fff0f0;border:3px solid #dc2626;border-radius:16px;padding:20px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+              <span style="font-size:24px;">❌</span>
+              <p style="font-size:18px;font-weight:900;color:#b91c1c;margin:0;">
+                Itens Não Conformes (${ncItems.length})
+              </p>
+            </div>
             ${ncItems.map((item, i) => `
-              <div style="font-size:12px;color:#991b1b;padding:6px 0;${i < ncItems.length - 1 ? 'border-bottom:1px solid #fecaca;' : ''}line-height:1.5;">
-                <strong>${i + 1}.</strong> ${item.p}
+              <div style="
+                background:#fef2f2;
+                border-left:5px solid #dc2626;
+                border-radius:0 10px 10px 0;
+                padding:12px 14px;
+                margin-bottom:${i < ncItems.length - 1 ? '10px' : '0'};
+                line-height:1.5;
+              ">
+                <span style="font-size:16px;font-weight:900;color:#991b1b;">${i + 1}. </span>
+                <span style="font-size:16px;font-weight:700;color:#991b1b;">${item.p}</span>
               </div>`).join('')}
           </div>` : ''}
 
           <!-- Feedback / Obs -->
           ${form.feedback || form.observacoes ? `
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            ${form.feedback ? `<p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 4px 0;">FEEDBACK DO FISCAL:</p><p style="font-size:12px;color:#475569;line-height:1.5;margin:0 0 ${form.observacoes ? '12px' : '0'} 0;">${form.feedback}</p>` : ''}
-            ${form.observacoes ? `<p style="font-size:11px;font-weight:700;color:#374151;margin:0 0 4px 0;">OBSERVAÇÕES:</p><p style="font-size:12px;color:#475569;line-height:1.5;margin:0;">${form.observacoes}</p>` : ''}
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            ${form.feedback ? `
+              <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Feedback do Fiscal:</p>
+              <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 ${form.observacoes ? '14px' : '0'} 0;">${form.feedback}</p>` : ''}
+            ${form.observacoes ? `
+              <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Observações:</p>
+              <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${form.observacoes}</p>` : ''}
           </div>` : ''}
 
-          <!-- Fotos (online: URLs do Supabase; offline: omitidas) -->
+          <!-- Fotos -->
           ${fotosParaExibir.length > 0 ? `
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 12px 0;">📷 Registro Fotográfico (${fotosParaExibir.length})</p>
-            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 14px 0;">📷 Registro Fotográfico (${fotosParaExibir.length})</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
               ${fotosParaExibir.map((url, i) => `
                 <img src="${url}" alt="Foto ${i+1}" crossorigin="anonymous"
-                  style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;display:block;"/>
+                  style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;"/>
               `).join('')}
             </div>
           </div>` : ''}
 
           <!-- Assinatura 1 -->
           ${form.assinatura ? `
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 8px 0;">Assinatura — ${form.nomeEletricista || 'Eletricista 1'}</p>
-            <img src="${form.assinatura}" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
-            <p style="font-size:10px;color:#94a3b8;text-align:center;margin:6px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista || 'Eletricista 1'}</p>
+            <img src="${form.assinatura}" style="width:100%;border-radius:10px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
+            <p style="font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
           </div>` : ''}
 
           <!-- Assinatura 2 -->
           ${form.assinatura2 ? `
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 8px 0;">Assinatura — ${form.nomeEletricista2 || 'Eletricista 2'}</p>
-            <img src="${form.assinatura2}" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
-            <p style="font-size:10px;color:#94a3b8;text-align:center;margin:6px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista2 || 'Eletricista 2'}</p>
+            <img src="${form.assinatura2}" style="width:100%;border-radius:10px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
+            <p style="font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
           </div>` : ''}
 
           <!-- Rodapé -->
-          <div style="border-top:1px solid #e2e8f0;padding-top:12px;text-align:center;">
-            <p style="font-size:11px;color:#94a3b8;margin:0;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-            <p style="font-size:10px;color:#cbd5e1;margin:2px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+          <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
+            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
           </div>
 
         </div>`
@@ -198,7 +210,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       div.innerHTML = html
       document.body.appendChild(div)
 
-      // Aguarda imagens online carregarem antes de capturar
       if (fotosParaExibir.length > 0) {
         const imgs = div.querySelectorAll('img[crossorigin]')
         await Promise.allSettled(Array.from(imgs).map(img =>
@@ -210,12 +221,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       }
 
       const canvas = await html2canvas(div.firstElementChild, {
-        scale:           3,    // ← BUG B: era 2, aumentado para 3 (imagem mais nítida)
+        scale:           5,    // ← AUMENTADO de 3 para 5 — muito mais nítido
         useCORS:         true,
         allowTaint:      true,
         backgroundColor: '#f0f4f8',
         logging:         false,
-        windowWidth:     460,  // ← BUG B: era 512, corrigido para 460 (igual ao width do div)
+        windowWidth:     520,  // ← ATUALIZADO para coincidir com largura do div
       })
 
       document.body.removeChild(div)
@@ -277,16 +288,13 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     setSaveStatus('saving')
     setSaveError('')
 
-    // ── MODO OFFLINE ──────────────────────────────────────────────────────────
     if (!online && !modoEdicao) {
       try {
         const payload      = montarPayload()
         const fotosBase64  = form.fotos.map(f => f.url)
         const assinBase64  = form.assinatura  || null
         const assin2Base64 = form.assinatura2 || null
-
         await salvarAuditoriaOffline(payload, fotosBase64, assinBase64, assin2Base64)
-
         setSalvoOffline(true)
         setSaveStatus('saved')
         if (onAuditoriaSalva) onAuditoriaSalva(null)
@@ -297,7 +305,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       return
     }
 
-    // ── MODO ONLINE ───────────────────────────────────────────────────────────
     try {
       const auditId = modoEdicao
         ? auditoriaEditandoId
@@ -308,10 +315,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         const url = await uploadBase64(form.fotos[i].url, `${auditId}/foto_${Date.now()}_${i + 1}.jpg`)
         fotosNovas.push(url)
       }
-      const fotosUrls = modoEdicao
-        ? [...(fotosAntigas || []), ...fotosNovas]
-        : fotosNovas
-
+      const fotosUrls = modoEdicao ? [...(fotosAntigas || []), ...fotosNovas] : fotosNovas
       setFotosUrlsSalvas(fotosUrls)
 
       let assinaturaUrl  = null
