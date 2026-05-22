@@ -20,7 +20,7 @@ export default function R2Identificacao({ form, upd, next, prev }) {
         upd('gpsStatus', 'ok')
         setGpsMsg('')
 
-        // ── Geocodificação reversa — preenche endereço automaticamente ──
+        // Geocodificação reversa — preenche endereço automaticamente
         if (!form.endereco) {
           setGeocodando(true)
           try {
@@ -40,19 +40,21 @@ export default function R2Identificacao({ form, upd, next, prev }) {
               ].filter(Boolean)
               upd('endereco', partes.join(', '))
             }
-          } catch (e) { /* silencioso — não bloqueia o fluxo */ }
+          } catch (e) { /* silencioso */ }
           finally { setGeocodando(false) }
         }
       },
       () => {
         upd('gpsStatus', 'erro')
-        setGpsMsg('❌ Não foi possível obter GPS')
+        setGpsMsg('❌ Não foi possível obter GPS. Tente novamente.')
       },
       { enableHighAccuracy: true, timeout: 10000 }
     )
   }
 
-  const podeProsseguir = form.fiscal && form.data && form.hora
+  // ── GPS é OBRIGATÓRIO — sem ele não avança ─────────────────────────────────
+  const gpsOk = form.gpsStatus === 'ok' && form.lat && form.lng
+  const podeProsseguir = form.fiscal && form.data && form.hora && gpsOk
 
   return (
     <div style={{ padding: '0 0 80px' }}>
@@ -76,7 +78,7 @@ export default function R2Identificacao({ form, upd, next, prev }) {
         Identificação
       </h2>
 
-      {/* Fiscal — read-only */}
+      {/* Fiscal */}
       <div className="form-group">
         <label className="form-label">Nome do Fiscal *</label>
         <input className="form-input" value={form.fiscal}
@@ -84,24 +86,16 @@ export default function R2Identificacao({ form, upd, next, prev }) {
           placeholder="Nome completo do fiscal" />
       </div>
 
-      {/* Matrícula — pré-preenchida do cadastro, editável se necessário */}
+      {/* Matrícula */}
       <div className="form-group">
         <label className="form-label">Matrícula do Fiscal</label>
-        <input
-          className="form-input"
-          value={form.matricula_fiscal}
+        <input className="form-input" value={form.matricula_fiscal}
           onChange={e => upd('matricula_fiscal', e.target.value)}
-          placeholder="Matrícula"
-          inputMode="numeric"
-          style={{
-            background: form.matricula_fiscal ? '#f0fdf4' : '#fff',
-            borderColor: form.matricula_fiscal ? '#86efac' : undefined,
-          }}
+          placeholder="Matrícula" inputMode="numeric"
+          style={{ background: form.matricula_fiscal ? '#f0fdf4' : '#fff', borderColor: form.matricula_fiscal ? '#86efac' : undefined }}
         />
         {form.matricula_fiscal && (
-          <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>
-            ✅ Preenchida automaticamente do seu cadastro
-          </p>
+          <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ Preenchida automaticamente do seu cadastro</p>
         )}
       </div>
 
@@ -119,34 +113,40 @@ export default function R2Identificacao({ form, upd, next, prev }) {
         </div>
       </div>
 
-      {/* Endereço — preenchido automaticamente após GPS */}
+      {/* Endereço */}
       <div className="form-group">
         <label className="form-label">
           Local / Endereço
           {geocodando && <span style={{ fontSize: 11, color: '#2563eb', marginLeft: 8 }}>📍 Buscando endereço...</span>}
         </label>
-        <input
-          className="form-input"
-          value={form.endereco}
+        <input className="form-input" value={form.endereco}
           onChange={e => upd('endereco', e.target.value)}
-          placeholder="Capture o GPS abaixo para preencher automaticamente"
-        />
+          placeholder="Capture o GPS abaixo para preencher automaticamente" />
       </div>
 
-      {/* GPS */}
+      {/* GPS — OBRIGATÓRIO */}
       <div className="form-group">
-        <label className="form-label">GPS</label>
+        <label className="form-label">
+          GPS <span style={{ color: '#dc2626', fontWeight: 700 }}>*</span>
+          <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6, fontWeight: 400 }}>(obrigatório)</span>
+        </label>
         <button onClick={obterGPS} disabled={form.gpsStatus === 'buscando'} style={{
-          width: '100%', padding: '11px', borderRadius: 10,
-          border: `1.5px solid ${form.gpsStatus === 'ok' ? '#86efac' : '#e2e8f0'}`,
-          background: form.gpsStatus === 'ok' ? '#f0fdf4' : '#f8fafc',
-          color: form.gpsStatus === 'ok' ? '#15803d' : '#374151',
-          fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          width: '100%', padding: '13px', borderRadius: 10,
+          border: `2px solid ${gpsOk ? '#86efac' : form.gpsStatus === 'erro' ? '#fca5a5' : '#f59e0b'}`,
+          background: gpsOk ? '#f0fdf4' : form.gpsStatus === 'erro' ? '#fef2f2' : '#fffbeb',
+          color: gpsOk ? '#15803d' : form.gpsStatus === 'erro' ? '#dc2626' : '#92400e',
+          fontSize: 14, fontWeight: 700, cursor: form.gpsStatus === 'buscando' ? 'not-allowed' : 'pointer',
         }}>
-          {form.gpsStatus === 'buscando' ? '⏳ Buscando...' :
-           form.gpsStatus === 'ok'       ? `📍 ${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}` :
-           '📍 Capturar GPS (preenche endereço automaticamente)'}
+          {form.gpsStatus === 'buscando' ? '⏳ Buscando localização...' :
+           gpsOk ? `✅ GPS capturado: ${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}` :
+           form.gpsStatus === 'erro' ? '❌ Erro — toque para tentar novamente' :
+           '📍 Toque aqui para capturar o GPS (obrigatório)'}
         </button>
+        {!gpsOk && form.gpsStatus !== 'buscando' && (
+          <p style={{ fontSize: 12, color: '#d97706', marginTop: 6, fontWeight: 600 }}>
+            ⚠️ Capture o GPS antes de continuar
+          </p>
+        )}
         {gpsMsg && form.gpsStatus === 'erro' && (
           <p style={{ fontSize: 12, color: '#dc2626', marginTop: 4 }}>{gpsMsg}</p>
         )}
@@ -158,9 +158,10 @@ export default function R2Identificacao({ form, upd, next, prev }) {
         background: podeProsseguir ? '#1e3a5f' : '#e2e8f0',
         color: podeProsseguir ? '#fff' : '#94a3b8',
         fontSize: 15, fontWeight: 700,
-        cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10,
+        cursor: podeProsseguir ? 'pointer' : 'not-allowed',
+        marginBottom: 10,
       }}>
-        Continuar →
+        {podeProsseguir ? 'Continuar →' : !gpsOk ? '📍 Capture o GPS para continuar' : 'Preencha os campos obrigatórios'}
       </button>
       <button onClick={prev} style={{
         width: '100%', padding: 13, borderRadius: 10,
