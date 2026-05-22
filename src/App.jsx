@@ -21,6 +21,7 @@ import MapaFiscais          from './pages/MapaFiscais.jsx'
 import RegistrosApp           from './RegistrosApp.jsx'                        // ← NOVO
 import RegistrosOperacionais  from './pages/RegistrosOperacionais.jsx'         // ← NOVO
 import RelatorioEvidencias    from './pages/RelatorioEvidencias.jsx'           // ← NOVO
+import PaginaAssinar          from './pages/PaginaAssinar.jsx'                // ← NOVO
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -314,6 +315,10 @@ export default function App() {
       </div>
     )
   }
+
+  // ── Rota pública: /assinar/:token (sem login) ────────────────────────────────
+  const pathToken = window.location.pathname.match(/^\/assinar\/([0-9a-f-]+)$/i)?.[1]
+  if (pathToken) return <PaginaAssinar tokenUUID={pathToken} />
 
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
   if (tela === 'gestao')               return <GestaoUsuarios        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
