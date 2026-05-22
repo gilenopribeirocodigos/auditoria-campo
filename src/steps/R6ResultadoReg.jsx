@@ -4,9 +4,9 @@ import { salvarRegistroBD, prepararPayload } from '../lib/registros.js'
 import { salvarRegistroOffline } from '../lib/registros_offline.js'
 
 export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
-  const [status,     setStatus]     = useState('idle') // idle | saving | saved | error
-  const [erro,       setErro]       = useState('')
-  const [capturando, setCapturando] = useState(false)
+  const [status,       setStatus]       = useState('idle')
+  const [erro,         setErro]         = useState('')
+  const [capturando,   setCapturando]   = useState(false)
   const [salvoOffline, setSalvoOffline] = useState(false)
 
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
@@ -20,12 +20,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     SUSPENSAO:           'Suspensão',
   }
 
-  // ── Salvar ────────────────────────────────────────────────────────────────
   const salvar = async () => {
     setStatus('saving')
     setErro('')
-
-    // ── MODO OFFLINE ──────────────────────────────────────────────────────────
     if (!online) {
       try {
         await salvarRegistroOffline(form)
@@ -37,8 +34,6 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       }
       return
     }
-
-    // ── MODO ONLINE ───────────────────────────────────────────────────────────
     try {
       const payload = await prepararPayload(form)
       await salvarRegistroBD(payload)
@@ -51,95 +46,93 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     }
   }
 
-  // ── Gera imagem WhatsApp ──────────────────────────────────────────────────
-  // Online: inclui fotos salvas no Supabase
-  // Offline: omite fotos (base64 pesadas — mesmo padrão das auditorias)
+  // ── Gera imagem WhatsApp em alta qualidade ────────────────────────────────
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
       const html2canvas = (await import('html2canvas')).default
 
       const infoRow = (label, value) => value ? `
-        <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px;">
-          <span style="color:#94a3b8;font-weight:600;min-width:110px;flex-shrink:0;">${label}</span>
-          <span style="color:#1e293b;font-weight:600;text-align:right;flex:1;padding-left:8px;">${value}</span>
+        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
+          <span style="color:#94a3b8;font-weight:700;font-size:15px;min-width:120px;flex-shrink:0;">${label}</span>
+          <span style="color:#1e293b;font-weight:700;font-size:15px;text-align:right;flex:1;padding-left:10px;">${value}</span>
         </div>` : ''
 
       const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:16px;box-sizing:border-box;width:460px;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
 
           ${salvoOffline ? `
-          <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:12px;color:#92400e;font-weight:700;text-align:center;">
+          <div style="background:#fef3c7;border:2px solid #fcd34d;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:14px;color:#92400e;font-weight:800;text-align:center;">
             📵 Salvo offline — será enviado ao banco quando a internet voltar
           </div>` : ''}
 
           <!-- Cabeçalho tipo -->
-          <div style="background:${tipoConfig?.bg};border:2px solid ${tipoConfig?.border};border-radius:16px;padding:20px;text-align:center;margin-bottom:14px;">
-            <div style="font-size:48px;margin-bottom:8px;">${tipoConfig?.emoji}</div>
-            <div style="font-size:22px;font-weight:800;color:${tipoConfig?.color};margin-bottom:4px;">${tipoConfig?.label}</div>
-            <div style="font-size:13px;color:${tipoConfig?.color};opacity:0.85;">
+          <div style="background:${tipoConfig?.bg};border:3px solid ${tipoConfig?.border};border-radius:18px;padding:24px;text-align:center;margin-bottom:16px;">
+            <div style="font-size:52px;margin-bottom:10px;">${tipoConfig?.emoji}</div>
+            <div style="font-size:26px;font-weight:900;color:${tipoConfig?.color};margin-bottom:6px;">${tipoConfig?.label}</div>
+            <div style="font-size:15px;color:${tipoConfig?.color};opacity:0.9;font-weight:600;">
               ${modConfig?.label} · ${form.participantes.length} participante(s)
             </div>
-            ${form.tipo === 'DISCIPLINAR' && form.tipo_medida
-              ? `<div style="margin-top:8px;background:${tipoConfig?.color};color:#fff;padding:3px 12px;border-radius:8px;display:inline-block;font-size:12px;font-weight:700;">
-                  ${TIPO_MEDIDA_LABEL[form.tipo_medida] || form.tipo_medida}
-                </div>` : ''}
+            ${form.tipo === 'DISCIPLINAR' && form.tipo_medida ? `
+            <div style="margin-top:10px;background:${tipoConfig?.color};color:#fff;padding:6px 16px;border-radius:10px;display:inline-block;font-size:15px;font-weight:800;">
+              ${TIPO_MEDIDA_LABEL[form.tipo_medida] || form.tipo_medida}
+            </div>` : ''}
           </div>
 
           <!-- Dados -->
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 10px 0;">Dados do Registro</p>
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 12px 0;">Dados do Registro</p>
             ${infoRow('Fiscal',       form.fiscal)}
             ${infoRow('Matrícula',    form.matricula_fiscal)}
             ${infoRow('Data / Hora',  `${form.data} às ${form.hora}`)}
-            ${form.endereco   ? infoRow('Local',         form.endereco)        : ''}
-            ${form.lat        ? infoRow('GPS',            `${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`) : ''}
-            ${form.tema       ? infoRow('Tema',           form.tema)            : ''}
-            ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria) : ''}
+            ${form.endereco      ? infoRow('Local',         form.endereco)                                    : ''}
+            ${form.lat           ? infoRow('GPS',           `${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`) : ''}
+            ${form.tema          ? infoRow('Tema',           form.tema)                                        : ''}
+            ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria)                               : ''}
           </div>
 
           <!-- Pauta -->
           ${form.pauta ? `
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#374151;margin:0 0 8px 0;">
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">
               ${form.tipo === 'DISCIPLINAR' ? 'Descrição da Ocorrência' : 'Pauta / Conteúdo'}
             </p>
-            <p style="font-size:13px;color:#475569;line-height:1.6;margin:0;">${form.pauta}</p>
+            <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${form.pauta}</p>
           </div>` : ''}
 
           <!-- Lista de frequência -->
-          <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:14px;">
-            <p style="font-size:12px;font-weight:700;color:#15803d;margin:0 0 10px 0;">
+          <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:18px;margin-bottom:16px;">
+            <p style="font-size:15px;font-weight:800;color:#15803d;margin:0 0 12px 0;">
               ✅ Lista de Frequência (${form.participantes.length})
             </p>
             ${form.participantes.map((p, i) => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;${i < form.participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;${i < form.participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
                 <div>
-                  <span style="font-size:13px;font-weight:700;color:#15803d;">${i+1}. ${p.nome}</span>
-                  ${p.matricula ? `<span style="font-size:11px;color:#64748b;margin-left:6px;">Mat: ${p.matricula}</span>` : ''}
+                  <span style="font-size:15px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
+                  ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
                 </div>
-                <span style="font-size:11px;color:#16a34a;">✓ Assinado</span>
+                <span style="font-size:13px;color:#16a34a;font-weight:700;">✓ Assinado</span>
               </div>`).join('')}
           </div>
 
           ${!salvoOffline && form.fotos.length > 0 ? `
-          <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:12px 16px;margin-bottom:14px;">
-            <p style="font-size:12px;color:#64748b;text-align:center;margin:0;">
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px 18px;margin-bottom:16px;">
+            <p style="font-size:15px;color:#64748b;text-align:center;margin:0;font-weight:600;">
               📷 ${form.fotos.length} foto(s) de evidência registradas
             </p>
           </div>` : ''}
 
           ${salvoOffline ? `
-          <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:14px;padding:12px 16px;margin-bottom:14px;text-align:center;">
-            <p style="font-size:12px;color:#92400e;margin:0;">
+          <div style="background:#fef3c7;border:2px solid #fcd34d;border-radius:16px;padding:14px 18px;margin-bottom:16px;text-align:center;">
+            <p style="font-size:14px;color:#92400e;margin:0;font-weight:600;">
               ℹ️ Fotos serão enviadas ao banco quando a internet voltar
             </p>
           </div>` : ''}
 
           <!-- Rodapé -->
-          <div style="border-top:1px solid #e2e8f0;padding-top:12px;text-align:center;">
-            <p style="font-size:11px;color:#94a3b8;margin:0;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-            <p style="font-size:10px;color:#cbd5e1;margin:2px 0 0 0;">
+          <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
+            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">
               Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}
             </p>
           </div>
@@ -151,8 +144,12 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       document.body.appendChild(div)
 
       const canvas = await html2canvas(div.firstElementChild, {
-        scale: 3, useCORS: true, allowTaint: true,
-        backgroundColor: '#f0f4f8', logging: false, windowWidth: 460,
+        scale:           5,    // ← AUMENTADO de 3 para 5
+        useCORS:         true,
+        allowTaint:      true,
+        backgroundColor: '#f0f4f8',
+        logging:         false,
+        windowWidth:     520,  // ← ATUALIZADO para coincidir com largura do div
       })
       document.body.removeChild(div)
 
@@ -178,7 +175,6 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     }
   }
 
-  // ── Imprime PDF com dados + assinaturas ───────────────────────────────────
   const imprimirPDF = () => {
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
     <title>${tipoConfig?.label}</title>
@@ -249,45 +245,28 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     janela.onload = () => setTimeout(() => janela.print(), 600)
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '0 0 40px' }}>
 
-      {/* Banner offline */}
       {!online && (
-        <div style={{
-          background: '#fef3c7', border: '1.5px solid #f59e0b',
-          borderRadius: 10, padding: '10px 14px', marginBottom: 14,
-          fontSize: 13, color: '#92400e', fontWeight: 700,
-        }}>
+        <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 13, color: '#92400e', fontWeight: 700 }}>
           📵 Sem internet — o registro será salvo localmente e enviado ao banco quando a conexão voltar.
         </div>
       )}
 
-      {/* Card resumo */}
-      <div style={{
-        background: tipoConfig?.bg, border: `2px solid ${tipoConfig?.border}`,
-        borderRadius: 16, padding: 20, textAlign: 'center', marginBottom: 16,
-      }}>
+      <div style={{ background: tipoConfig?.bg, border: `2px solid ${tipoConfig?.border}`, borderRadius: 16, padding: 20, textAlign: 'center', marginBottom: 16 }}>
         <div style={{ fontSize: 48, marginBottom: 8 }}>{tipoConfig?.emoji}</div>
-        <div style={{ fontSize: 20, fontWeight: 800, color: tipoConfig?.color, marginBottom: 4 }}>
-          {tipoConfig?.label}
-        </div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: tipoConfig?.color, marginBottom: 4 }}>{tipoConfig?.label}</div>
         <div style={{ fontSize: 13, color: tipoConfig?.color, opacity: 0.85 }}>
           {modConfig?.label} · {form.participantes.length} participante(s) assinado(s)
         </div>
         {form.tipo === 'DISCIPLINAR' && form.tipo_medida && (
-          <div style={{
-            marginTop: 8, background: tipoConfig?.color, color: '#fff',
-            padding: '4px 14px', borderRadius: 8, display: 'inline-block',
-            fontSize: 13, fontWeight: 700,
-          }}>
+          <div style={{ marginTop: 8, background: tipoConfig?.color, color: '#fff', padding: '4px 14px', borderRadius: 8, display: 'inline-block', fontSize: 13, fontWeight: 700 }}>
             {TIPO_MEDIDA_LABEL[form.tipo_medida]}
           </div>
         )}
       </div>
 
-      {/* Dados resumo */}
       <div className="card" style={{ marginBottom: 14 }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Resumo</p>
         {[
@@ -298,17 +277,13 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           ['Fotos',         form.fotos.length > 0 ? `${form.fotos.length} foto(s)` : null],
           ['Lista impressa', form.lista_impressa ? 'Anexada' : null],
         ].filter(([, v]) => v).map(([l, v]) => (
-          <div key={l} style={{
-            display: 'flex', justifyContent: 'space-between',
-            padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13,
-          }}>
+          <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
             <span style={{ color: '#94a3b8', fontWeight: 500 }}>{l}</span>
             <span style={{ color: '#1e293b', fontWeight: 600 }}>{v}</span>
           </div>
         ))}
       </div>
 
-      {/* Pauta resumo */}
       {form.pauta && (
         <div className="card" style={{ marginBottom: 14 }}>
           <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>
@@ -320,95 +295,48 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         </div>
       )}
 
-      {/* ── Botões de ação ── */}
       {status === 'idle' && (
         <>
-          <button onClick={salvar} style={{
-            width: '100%', padding: 14, borderRadius: 12, border: 'none',
-            background: online ? '#1e3a5f' : '#dc2626',
-            color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
-          }}>
+          <button onClick={salvar} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: online ? '#1e3a5f' : '#dc2626', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
             {online ? '💾 Salvar Registro' : '📵 Salvar Offline'}
           </button>
-          <button onClick={prev} style={{
-            width: '100%', padding: 13, borderRadius: 10,
-            border: '1px solid #e2e8f0', background: '#f8fafc',
-            color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}>← Voltar e editar</button>
+          <button onClick={prev} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Voltar e editar</button>
         </>
       )}
 
       {status === 'saving' && (
-        <button disabled style={{
-          width: '100%', padding: 14, borderRadius: 12, border: 'none',
-          background: '#64748b', color: '#fff', fontSize: 16, fontWeight: 700,
-        }}>⏳ {online ? 'Salvando...' : 'Salvando localmente...'}</button>
+        <button disabled style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#64748b', color: '#fff', fontSize: 16, fontWeight: 700 }}>
+          ⏳ {online ? 'Salvando...' : 'Salvando localmente...'}
+        </button>
       )}
 
       {status === 'error' && (
         <>
-          <div style={{
-            background: '#fef2f2', border: '1px solid #fecaca',
-            borderRadius: 10, padding: '12px 14px', marginBottom: 10,
-            fontSize: 13, color: '#b91c1c',
-          }}>❌ {erro}</div>
-          <button onClick={salvar} style={{
-            width: '100%', padding: 14, borderRadius: 12, border: 'none',
-            background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', marginBottom: 10,
-          }}>🔄 Tentar novamente</button>
-          <button onClick={prev} style={{
-            width: '100%', padding: 13, borderRadius: 10,
-            border: '1px solid #e2e8f0', background: '#f8fafc',
-            color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-          }}>← Voltar</button>
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '12px 14px', marginBottom: 10, fontSize: 13, color: '#b91c1c' }}>❌ {erro}</div>
+          <button onClick={salvar} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#dc2626', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>🔄 Tentar novamente</button>
+          <button onClick={prev} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Voltar</button>
         </>
       )}
 
       {status === 'saved' && (
         <>
-          {/* Banner de sucesso */}
-          <div style={{
-            background: salvoOffline ? '#fef3c7' : '#f0fdf4',
-            border: `1px solid ${salvoOffline ? '#fcd34d' : '#86efac'}`,
-            borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center',
-          }}>
-            <p style={{
-              color: salvoOffline ? '#92400e' : '#15803d',
-              fontWeight: 700, fontSize: 15, marginBottom: 4,
-            }}>
+          <div style={{ background: salvoOffline ? '#fef3c7' : '#f0fdf4', border: `1px solid ${salvoOffline ? '#fcd34d' : '#86efac'}`, borderRadius: 12, padding: '14px 16px', marginBottom: 14, textAlign: 'center' }}>
+            <p style={{ color: salvoOffline ? '#92400e' : '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
               {salvoOffline ? '📵 Registro salvo localmente!' : '✅ Registro salvo com sucesso!'}
             </p>
             <p style={{ color: '#64748b', fontSize: 12 }}>
-              {salvoOffline
-                ? 'Quando a internet voltar, será enviado automaticamente ao banco com todas as fotos e assinaturas.'
-                : 'Dados, fotos e assinaturas enviados ao banco.'}
+              {salvoOffline ? 'Quando a internet voltar, será enviado automaticamente ao banco com todas as fotos e assinaturas.' : 'Dados, fotos e assinaturas enviados ao banco.'}
             </p>
-            {salvoOffline && (
-              <p style={{ color: '#92400e', fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>
-                ℹ️ No modo offline, a imagem compartilhada não incluirá as fotos.
-              </p>
-            )}
+            {salvoOffline && <p style={{ color: '#92400e', fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>ℹ️ No modo offline, a imagem compartilhada não incluirá as fotos.</p>}
           </div>
 
-          <button onClick={gerarImagemWhatsApp} disabled={capturando} style={{
-            width: '100%', padding: 14, borderRadius: 12, border: 'none',
-            background: capturando ? '#64748b' : '#25d366',
-            color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
-          }}>
+          <button onClick={gerarImagemWhatsApp} disabled={capturando} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: capturando ? '#64748b' : '#25d366', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
             {capturando ? '⏳ Gerando...' : '📸 Compartilhar no WhatsApp'}
           </button>
 
-          <button onClick={imprimirPDF} style={{
-            width: '100%', padding: 14, borderRadius: 12, border: 'none',
-            background: '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', marginBottom: 10,
-          }}>🖨️ Gerar PDF / Imprimir</button>
+          <button onClick={imprimirPDF} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>🖨️ Gerar PDF / Imprimir</button>
 
-          <button onClick={onConcluir} style={{
-            width: '100%', padding: 14, borderRadius: 12, border: 'none',
-            background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
-          }}>+ Novo Registro</button>
+          <button onClick={onConcluir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>+ Novo Registro</button>
         </>
       )}
     </div>
