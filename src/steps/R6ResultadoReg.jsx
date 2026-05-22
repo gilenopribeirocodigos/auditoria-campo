@@ -250,6 +250,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   }
 
   return (
+    <>
     <div style={{ padding: '0 0 40px' }}>
 
       {!online && (
@@ -353,5 +354,6 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           onFechar={() => setMostrarModal(false)}
         />
       )}
+    </>
   )
 }
