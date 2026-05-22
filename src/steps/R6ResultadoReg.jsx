@@ -2,12 +2,15 @@ import { useState } from 'react'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { salvarRegistroBD, prepararPayload } from '../lib/registros.js'
 import { salvarRegistroOffline } from '../lib/registros_offline.js'
+import ModalLinkAssinatura from '../components/ModalLinkAssinatura.jsx'
 
 export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   const [status,       setStatus]       = useState('idle')
   const [erro,         setErro]         = useState('')
   const [capturando,   setCapturando]   = useState(false)
-  const [salvoOffline, setSalvoOffline] = useState(false)
+  const [salvoOffline,   setSalvoOffline]   = useState(false)
+  const [registroSalvoId, setRegistroSalvoId] = useState(null)
+  const [mostrarModal,    setMostrarModal]    = useState(false)
 
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const modConfig  = MODALIDADES[form.modalidade]
@@ -36,8 +39,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     }
     try {
       const payload = await prepararPayload(form)
-      await salvarRegistroBD(payload)
+      const saved = await salvarRegistroBD(payload)
       setSalvoOffline(false)
+      setRegistroSalvoId(saved?.id || null)
       setStatus('saved')
     } catch (err) {
       console.error('Erro ao salvar registro:', err)
@@ -334,11 +338,20 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             {capturando ? '⏳ Gerando...' : '📸 Compartilhar no WhatsApp'}
           </button>
 
+          <button onClick={() => setMostrarModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>🔗 Gerar Link + QR Code para Assinatura</button>
+
           <button onClick={imprimirPDF} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>🖨️ Gerar PDF / Imprimir</button>
 
           <button onClick={onConcluir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>+ Novo Registro</button>
         </>
       )}
     </div>
+
+      {mostrarModal && registroSalvoId && (
+        <ModalLinkAssinatura
+          registroId={registroSalvoId}
+          onFechar={() => setMostrarModal(false)}
+        />
+      )}
   )
 }
