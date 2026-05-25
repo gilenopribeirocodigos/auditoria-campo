@@ -5,10 +5,10 @@ import { salvarRegistroOffline } from '../lib/registros_offline.js'
 import ModalLinkAssinatura from '../components/ModalLinkAssinatura.jsx'
 
 export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
-  const [status,       setStatus]       = useState('idle')
-  const [erro,         setErro]         = useState('')
-  const [capturando,   setCapturando]   = useState(false)
-  const [salvoOffline,   setSalvoOffline]   = useState(false)
+  const [status,          setStatus]          = useState('idle')
+  const [erro,            setErro]            = useState('')
+  const [capturando,      setCapturando]      = useState(false)
+  const [salvoOffline,    setSalvoOffline]    = useState(false)
   const [registroSalvoId, setRegistroSalvoId] = useState(null)
   const [mostrarModal,    setMostrarModal]    = useState(false)
 
@@ -39,7 +39,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     }
     try {
       const payload = await prepararPayload(form)
-      const saved = await salvarRegistroBD(payload)
+      const saved   = await salvarRegistroBD(payload)
       setSalvoOffline(false)
       setRegistroSalvoId(saved?.id || null)
       setStatus('saved')
@@ -50,7 +50,16 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     }
   }
 
-  // ── Gera imagem WhatsApp em alta qualidade ────────────────────────────────
+  // ── Status visual de cada participante ────────────────────────────────────
+  // p.modo === 'ONLINE'     → aguardando assinatura via link
+  // p.modo === 'PRESENCIAL' → já assinou (tem assinatura no pad)
+  const statusParticipante = (p) => {
+    if (p.modo === 'ONLINE') {
+      return `<span style="font-size:13px;color:#2563eb;font-weight:700;">🔗 Aguardando (via link)</span>`
+    }
+    return `<span style="font-size:13px;color:#16a34a;font-weight:700;">✓ Assinado</span>`
+  }
+
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
@@ -70,7 +79,6 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             📵 Salvo offline — será enviado ao banco quando a internet voltar
           </div>` : ''}
 
-          <!-- Cabeçalho tipo -->
           <div style="background:${tipoConfig?.bg};border:3px solid ${tipoConfig?.border};border-radius:18px;padding:24px;text-align:center;margin-bottom:16px;">
             <div style="font-size:52px;margin-bottom:10px;">${tipoConfig?.emoji}</div>
             <div style="font-size:26px;font-weight:900;color:${tipoConfig?.color};margin-bottom:6px;">${tipoConfig?.label}</div>
@@ -83,19 +91,17 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             </div>` : ''}
           </div>
 
-          <!-- Dados -->
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 12px 0;">Dados do Registro</p>
             ${infoRow('Fiscal',       form.fiscal)}
             ${infoRow('Matrícula',    form.matricula_fiscal)}
             ${infoRow('Data / Hora',  `${form.data} às ${form.hora}`)}
-            ${form.endereco      ? infoRow('Local',         form.endereco)                                    : ''}
+            ${form.endereco      ? infoRow('Local',         form.endereco) : ''}
             ${form.lat           ? infoRow('GPS',           `${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`) : ''}
-            ${form.tema          ? infoRow('Tema',           form.tema)                                        : ''}
-            ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria)                               : ''}
+            ${form.tema          ? infoRow('Tema',           form.tema) : ''}
+            ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria) : ''}
           </div>
 
-          <!-- Pauta -->
           ${form.pauta ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">
@@ -104,7 +110,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${form.pauta}</p>
           </div>` : ''}
 
-          <!-- Lista de frequência -->
+          <!-- Lista de frequência — status real por p.modo -->
           <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#15803d;margin:0 0 12px 0;">
               ✅ Lista de Frequência (${form.participantes.length})
@@ -115,7 +121,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
                   <span style="font-size:15px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
                   ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
                 </div>
-                <span style="font-size:13px;color:#16a34a;font-weight:700;">✓ Assinado</span>
+                ${statusParticipante(p)}
               </div>`).join('')}
           </div>
 
@@ -133,7 +139,6 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             </p>
           </div>` : ''}
 
-          <!-- Rodapé -->
           <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
             <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
             <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">
@@ -148,12 +153,12 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       document.body.appendChild(div)
 
       const canvas = await html2canvas(div.firstElementChild, {
-        scale:           5,    // ← AUMENTADO de 3 para 5
+        scale:           5,
         useCORS:         true,
         allowTaint:      true,
         backgroundColor: '#f0f4f8',
         logging:         false,
-        windowWidth:     520,  // ← ATUALIZADO para coincidir com largura do div
+        windowWidth:     520,
       })
       document.body.removeChild(div)
 
@@ -172,7 +177,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         const link = document.createElement('a')
         link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
       }
-    } catch (err) {
+    } catch {
       alert('Não foi possível gerar a imagem.')
     } finally {
       setCapturando(false)
@@ -219,16 +224,23 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           <th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;width:30px;">Nº</th>
           <th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;">Nome</th>
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Matrícula</th>
-          <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura</th>
+          <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura / Status</th>
         </tr>
         ${form.participantes.map((p,i)=>`
-          <tr style="border-bottom:1px solid #f1f5f9;">
+          <tr style="border-bottom:1px solid #f1f5f9;${p.modo==='ONLINE'?'background:#eff6ff;':''}">
             <td style="padding:8px 10px;font-size:13px;">${i+1}</td>
-            <td style="padding:8px 10px;font-size:13px;font-weight:600;">${p.nome}</td>
+            <td style="padding:8px 10px;font-size:13px;font-weight:600;">
+              ${p.nome}
+              ${p.modo==='ONLINE'?'<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:4px;">🔗 online</span>':''}
+            </td>
             <td style="padding:8px 10px;font-size:13px;text-align:center;">${p.matricula||'—'}</td>
             <td style="padding:4px 8px;">
-              ${p.assinatura?`<img src="${p.assinatura}" style="height:40px;max-width:120px;object-fit:contain;"/>`:
-                '<span style="font-size:11px;color:#94a3b8;">sem assinatura</span>'}
+              ${p.modo === 'ONLINE'
+                ? '<span style="font-size:11px;color:#f59e0b;background:#fef3c7;padding:2px 8px;border-radius:4px;border:1px solid #fcd34d;">⏳ Aguardando assinatura online</span>'
+                : p.assinatura
+                  ? `<img src="${p.assinatura}" style="height:40px;max-width:120px;object-fit:contain;"/>`
+                  : '<span style="font-size:11px;color:#94a3b8;">—</span>'
+              }
             </td>
           </tr>`).join('')}
       </table>
@@ -263,7 +275,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         <div style={{ fontSize: 48, marginBottom: 8 }}>{tipoConfig?.emoji}</div>
         <div style={{ fontSize: 20, fontWeight: 800, color: tipoConfig?.color, marginBottom: 4 }}>{tipoConfig?.label}</div>
         <div style={{ fontSize: 13, color: tipoConfig?.color, opacity: 0.85 }}>
-          {modConfig?.label} · {form.participantes.length} participante(s) assinado(s)
+          {modConfig?.label} · {form.participantes.length} participante(s)
         </div>
         {form.tipo === 'DISCIPLINAR' && form.tipo_medida && (
           <div style={{ marginTop: 8, background: tipoConfig?.color, color: '#fff', padding: '4px 14px', borderRadius: 8, display: 'inline-block', fontSize: 13, fontWeight: 700 }}>
@@ -278,7 +290,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           ['Fiscal',        form.fiscal],
           ['Data/Hora',     `${form.data} às ${form.hora}`],
           ['Local',         form.endereco],
-          ['Participantes', `${form.participantes.length} assinado(s)`],
+          ['Participantes', `${form.participantes.length}`],
           ['Fotos',         form.fotos.length > 0 ? `${form.fotos.length} foto(s)` : null],
           ['Lista impressa', form.lista_impressa ? 'Anexada' : null],
         ].filter(([, v]) => v).map(([l, v]) => (
@@ -330,7 +342,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
               {salvoOffline ? '📵 Registro salvo localmente!' : '✅ Registro salvo com sucesso!'}
             </p>
             <p style={{ color: '#64748b', fontSize: 12 }}>
-              {salvoOffline ? 'Quando a internet voltar, será enviado automaticamente ao banco com todas as fotos e assinaturas.' : 'Dados, fotos e assinaturas enviados ao banco.'}
+              {salvoOffline
+                ? 'Quando a internet voltar, será enviado automaticamente ao banco com todas as fotos e assinaturas.'
+                : 'Dados, fotos e assinaturas enviados ao banco.'}
             </p>
             {salvoOffline && <p style={{ color: '#92400e', fontSize: 11, marginTop: 6, fontStyle: 'italic' }}>ℹ️ No modo offline, a imagem compartilhada não incluirá as fotos.</p>}
           </div>
@@ -339,21 +353,29 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             {capturando ? '⏳ Gerando...' : '📸 Compartilhar no WhatsApp'}
           </button>
 
-          <button onClick={() => setMostrarModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>🔗 Gerar Link + QR Code para Assinatura</button>
+          {/* FIX A: passa tipoLabel para o modal */}
+          <button onClick={() => setMostrarModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+            🔗 Gerar Link + QR Code para Assinatura
+          </button>
 
-          <button onClick={imprimirPDF} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>🖨️ Gerar PDF / Imprimir</button>
+          <button onClick={imprimirPDF} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+            🖨️ Gerar PDF / Imprimir
+          </button>
 
-          <button onClick={onConcluir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>+ Novo Registro</button>
+          <button onClick={onConcluir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
+            + Novo Registro
+          </button>
         </>
       )}
     </div>
 
-      {mostrarModal && registroSalvoId && (
-        <ModalLinkAssinatura
-          registroId={registroSalvoId}
-          onFechar={() => setMostrarModal(false)}
-        />
-      )}
+    {mostrarModal && registroSalvoId && (
+      <ModalLinkAssinatura
+        registroId={registroSalvoId}
+        tipoLabel={tipoConfig?.label}
+        onFechar={() => setMostrarModal(false)}
+      />
+    )}
     </>
   )
 }
