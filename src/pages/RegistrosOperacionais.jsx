@@ -392,6 +392,27 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                                 )}
                               </div>
                               {p.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Mat: {p.matricula}</p>}
+                              {/* Localização de onde assinou (apenas online com assinatura) */}
+                              {p.isOnline && p.assinouOnline && (() => {
+                                const assinOnlineData = assinOnline.find(
+                                  a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
+                                )
+                                return assinOnlineData ? (
+                                  <div style={{ marginTop: 6 }}>
+                                    {assinOnlineData.endereco_assinatura && (
+                                      <p style={{ fontSize: 11, color: '#1d4ed8', margin: '0 0 2px', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                                        <span style={{ flexShrink: 0 }}>📍</span>
+                                        <span>{assinOnlineData.endereco_assinatura}</span>
+                                      </p>
+                                    )}
+                                    {assinOnlineData.latitude && assinOnlineData.longitude && (
+                                      <p style={{ fontSize: 10, color: '#64748b', margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+                                        🌐 {Number(assinOnlineData.latitude).toFixed(7)}, {Number(assinOnlineData.longitude).toFixed(7)}
+                                      </p>
+                                    )}
+                                  </div>
+                                ) : null
+                              })()}
                               {/* Mensagem de aguardando só para online sem assinatura */}
                               {p.isOnline && !p.assinaturaFinal && !loadingOnline && (
                                 <p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, margin: '4px 0 0' }}>
@@ -428,6 +449,17 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                               <span style={{ fontSize: 10, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', padding: '1px 6px', borderRadius: 4 }}>🔗 online</span>
                             </div>
                             {a.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Mat: {a.matricula}</p>}
+                            {a.endereco_assinatura && (
+                              <p style={{ fontSize: 11, color: '#1d4ed8', margin: '4px 0 2px', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                                <span style={{ flexShrink: 0 }}>📍</span>
+                                <span>{a.endereco_assinatura}</span>
+                              </p>
+                            )}
+                            {a.latitude && a.longitude && (
+                              <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 2px', fontVariantNumeric: 'tabular-nums' }}>
+                                🌐 {Number(a.latitude).toFixed(7)}, {Number(a.longitude).toFixed(7)}
+                              </p>
+                            )}
                             <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 0' }}>
                               {new Date(a.assinado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                             </p>
