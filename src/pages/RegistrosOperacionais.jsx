@@ -17,10 +17,28 @@ const TIPO_MEDIDA_LABEL = {
   SUSPENSAO:           'Suspensão',
 }
 
-function imprimirRegistro(r) {
+// ── FIX F: imprimirRegistro agora recebe assinaturasOnline também ─────────────
+function imprimirRegistro(r, assinaturasOnline = []) {
   const tipoConfig = TIPOS_REGISTRO[r.tipo]
   const modConfig  = MODALIDADES[r.modalidade]
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+
+  // Monta lista unificada: participantes presenciais + assinaturas online
+  const participantesComAssinatura = (r.participantes || []).map(p => {
+    const assinaturaOnline = assinaturasOnline.find(
+      a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
+    )
+    return {
+      ...p,
+      assinatura_url: p.assinatura_url || assinaturaOnline?.assinatura_url || null,
+      isOnline: !p.assinatura_url && !!assinaturaOnline,
+    }
+  })
+
+  // Pessoas que assinaram online mas não estavam na lista presencial
+  const apenasOnline = assinaturasOnline.filter(
+    a => !r.participantes?.some(p => p.nome?.trim().toLowerCase() === a.nome?.trim().toLowerCase())
+  )
 
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
   <title>${tipoConfig?.label}</title>
@@ -42,19 +60,20 @@ function imprimirRegistro(r) {
     <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">${r.tipo==='DISCIPLINAR'?'Descrição da Ocorrência':'Pauta / Conteúdo'}</div>
     <div style="font-size:13px;color:#475569;line-height:1.7;">${r.pauta||''}</div>
   </div>
-  ${Array.isArray(r.participantes) && r.participantes.length > 0 ? `
+  ${participantesComAssinatura.length > 0 ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
-    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;">LISTA DE FREQUÊNCIA (${r.participantes.length})</div>
+    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;">LISTA DE FREQUÊNCIA (${participantesComAssinatura.length + apenasOnline.length})</div>
     <table style="width:100%;border-collapse:collapse;">
       <tr style="background:#1e3a5f;"><th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;">Nº</th><th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;">Nome</th><th style="padding:8px 10px;color:#fff;font-size:12px;">Matrícula</th><th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura</th></tr>
-      ${r.participantes.map((p,i)=>`<tr style="border-bottom:1px solid #f1f5f9;"><td style="padding:8px 10px;font-size:13px;">${i+1}</td><td style="padding:8px 10px;font-size:13px;font-weight:600;">${p.nome}</td><td style="padding:8px 10px;font-size:13px;text-align:center;">${p.matricula||'—'}</td><td style="padding:4px 8px;">${p.assinatura_url?`<img src="${p.assinatura_url}" style="height:40px;max-width:120px;object-fit:contain;" crossorigin="anonymous"/>`:''}</td></tr>`).join('')}
+      ${participantesComAssinatura.map((p,i)=>`<tr style="border-bottom:1px solid #f1f5f9;${p.isOnline?'background:#eff6ff;':''}"><td style="padding:8px 10px;font-size:13px;">${i+1}</td><td style="padding:8px 10px;font-size:13px;font-weight:600;">${p.nome}${p.isOnline?' <span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;">🔗 online</span>':''}</td><td style="padding:8px 10px;font-size:13px;text-align:center;">${p.matricula||'—'}</td><td style="padding:4px 8px;">${p.assinatura_url?`<img src="${p.assinatura_url}" style="height:40px;max-width:120px;object-fit:contain;" crossorigin="anonymous"/>`:''}</td></tr>`).join('')}
+      ${apenasOnline.map((a,i)=>`<tr style="border-bottom:1px solid #f1f5f9;background:#eff6ff;"><td style="padding:8px 10px;font-size:13px;">${participantesComAssinatura.length+i+1}</td><td style="padding:8px 10px;font-size:13px;font-weight:600;">${a.nome} <span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;">🔗 online</span></td><td style="padding:8px 10px;font-size:13px;text-align:center;">${a.matricula||'—'}</td><td style="padding:4px 8px;">${a.assinatura_url?`<img src="${a.assinatura_url}" style="height:40px;max-width:120px;object-fit:contain;" crossorigin="anonymous"/>`:''}</td></tr>`).join('')}
     </table>
   </div>` : ''}
   ${Array.isArray(r.fotos_urls) && r.fotos_urls.length > 0 ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
     <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Fotos (${r.fotos_urls.length})</div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
-      ${r.fotos_urls.map((url,i)=>`<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;"/>`).join('')}
+      ${r.fotos_urls.map(url=>`<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;"/>`).join('')}
     </div>
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
@@ -74,12 +93,12 @@ function imprimirRegistro(r) {
 }
 
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
-  const [registros, setRegistros] = useState([])
-  const [loading,   setLoading]   = useState(true)
+  const [registros,     setRegistros]     = useState([])
+  const [loading,       setLoading]       = useState(true)
   const [detalhe,       setDetalhe]       = useState(null)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
-  const [filtros,   setFiltros]   = useState({
+  const [filtros,       setFiltros]       = useState({
     dataIni: calcMesAtual().ini,
     dataFim: calcMesAtual().fim,
     tipo:    '',
@@ -107,11 +126,24 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
   const isAdmin = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
 
-  // Totais por tipo
-  const totais = {}
-  Object.keys(TIPOS_REGISTRO).forEach(t => {
-    totais[t] = registros.filter(r => r.tipo === t).length
-  })
+  const abrirDetalhe = async (r) => {
+    setDetalhe(r)
+    setAssinOnline([])
+    setLoadingOnline(true)
+    try {
+      const tokens = await listarTokensRegistro(r.id)
+      const todas  = []
+      for (const t of tokens) {
+        const col = await listarAssinaturasColetadas(t.id)
+        todas.push(...col)
+      }
+      setAssinOnline(todas)
+    } catch (e) {
+      console.error('Erro ao buscar assinaturas online:', e)
+    } finally {
+      setLoadingOnline(false)
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -130,11 +162,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 {isAdmin ? 'Todos os registros' : `Seus registros — ${usuarioLogado?.nome}`}
               </p>
             </div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>{registros.length}</div>
-                <div style={{ fontSize: 9, opacity: 0.85 }}>Total</div>
-              </div>
+            <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 12px', textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 800 }}>{registros.length}</div>
+              <div style={{ fontSize: 9, opacity: 0.85 }}>Total</div>
             </div>
           </div>
         </div>
@@ -142,7 +172,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* Botão novo */}
         <button onClick={onNovo} style={{
           width: '100%', padding: 14, borderRadius: 12, border: 'none',
           background: '#2563eb', color: '#fff', fontSize: 15, fontWeight: 700,
@@ -201,21 +230,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   border: `1.5px solid ${tc.border || '#e2e8f0'}`,
                   padding: '14px 16px', cursor: 'pointer',
                 }}
-                  onClick={async () => {
-                    setDetalhe(r)
-                    setAssinOnline([])
-                    setLoadingOnline(true)
-                    try {
-                      const tokens = await listarTokensRegistro(r.id)
-                      const todas = []
-                      for (const t of tokens) {
-                        const col = await listarAssinaturasColetadas(t.id)
-                        todas.push(...col)
-                      }
-                      setAssinOnline(todas)
-                    } catch(e) { console.error(e) }
-                    finally { setLoadingOnline(false) }
-                  }}
+                  onClick={() => abrirDetalhe(r)}
                   onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
                   onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
                 >
@@ -264,6 +279,31 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             {(() => {
               const tc = TIPOS_REGISTRO[detalhe.tipo] || {}
               const mc = MODALIDADES[detalhe.modalidade] || {}
+
+              // ── FIX F: lista unificada de participantes ──────────────────────
+              const participantes = detalhe.participantes || []
+
+              // Para cada participante presencial, verifica se tem assinatura online
+              const participantesEnriquecidos = participantes.map(p => {
+                const assinaturaOnline = assinOnline.find(
+                  a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
+                )
+                return {
+                  ...p,
+                  assinaturaFinal: p.assinatura_url || assinaturaOnline?.assinatura_url || null,
+                  isOnline: !p.assinatura_url && !!assinaturaOnline,
+                }
+              })
+
+              // Pessoas que assinaram online mas NÃO estavam na lista presencial
+              const apenasOnline = assinOnline.filter(
+                a => !participantes.some(
+                  p => p.nome?.trim().toLowerCase() === a.nome?.trim().toLowerCase()
+                )
+              )
+
+              const totalAssinantes = participantesEnriquecidos.length + apenasOnline.length
+
               return (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -276,7 +316,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     <div style={{ fontSize: 40, marginBottom: 6 }}>{tc.emoji}</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: tc.color }}>{tc.label}</div>
                     <div style={{ fontSize: 13, color: tc.color, opacity: 0.85, marginTop: 4 }}>
-                      {mc.emoji} {mc.label} · {Array.isArray(detalhe.participantes) ? detalhe.participantes.length : 0} participante(s)
+                      {mc.emoji} {mc.label} · {participantes.length} participante(s)
                     </div>
                     {detalhe.tipo === 'DISCIPLINAR' && detalhe.tipo_medida && (
                       <div style={{ marginTop: 8, background: tc.color, color: '#fff', padding: '3px 12px', borderRadius: 8, display: 'inline-block', fontSize: 12, fontWeight: 700 }}>
@@ -313,49 +353,72 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
-                  {/* Participantes */}
-                  {Array.isArray(detalhe.participantes) && detalhe.participantes.length > 0 && (
+                  {/* ── FIX F: Lista unificada presencial + online ──────────── */}
+                  {(participantesEnriquecidos.length > 0 || loadingOnline) && (
                     <div style={{ marginBottom: 14 }}>
                       <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
-                        ✅ Lista de Frequência ({detalhe.participantes.length})
+                        ✅ Lista de Frequência ({loadingOnline ? '...' : totalAssinantes})
                       </p>
-                      {detalhe.participantes.map((p, i) => (
-                        <div key={i} style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+
+                      {/* Participantes presenciais (com ou sem assinatura online integrada) */}
+                      {participantesEnriquecidos.map((p, i) => (
+                        <div key={i} style={{
+                          background: p.isOnline ? '#eff6ff' : '#f0fdf4',
+                          border: `1px solid ${p.isOnline ? '#bfdbfe' : '#86efac'}`,
+                          borderRadius: 10, padding: '10px 12px', marginBottom: 8,
+                        }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <div>
-                              <p style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>{i+1}. {p.nome}</p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: p.isOnline ? '#1d4ed8' : '#15803d' }}>
+                                  {i + 1}. {p.nome}
+                                </p>
+                                {p.isOnline && (
+                                  <span style={{ fontSize: 10, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', padding: '1px 6px', borderRadius: 4 }}>
+                                    🔗 online
+                                  </span>
+                                )}
+                              </div>
                               {p.matricula && <p style={{ fontSize: 12, color: '#64748b' }}>Mat: {p.matricula}</p>}
                             </div>
-                            {p.assinatura_url && (
-                              <img src={p.assinatura_url} alt="assinatura"
+                            {p.assinaturaFinal ? (
+                              <img src={p.assinaturaFinal} alt="assinatura"
                                 style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
+                            ) : loadingOnline ? (
+                              <span style={{ fontSize: 11, color: '#94a3b8' }}>⏳</span>
+                            ) : (
+                              <span style={{ fontSize: 11, color: '#fbbf24', background: '#fffbeb', padding: '2px 8px', borderRadius: 6, border: '1px solid #fcd34d' }}>
+                                pendente
+                              </span>
                             )}
                           </div>
                         </div>
                       ))}
-                    </div>
-                  )}
 
-                  {/* Assinaturas coletadas online */}
-                  {(loadingOnline || assinOnline.length > 0) && (
-                    <div style={{ marginBottom: 14 }}>
-                      <p style={{ fontSize: 12, fontWeight: 700, color: '#1d4ed8', marginBottom: 8 }}>
-                        🔗 Assinaturas via Link ({loadingOnline ? '...' : assinOnline.length})
-                      </p>
-                      {loadingOnline ? (
-                        <p style={{ fontSize: 12, color: '#94a3b8' }}>Carregando...</p>
-                      ) : assinOnline.map((a, i) => (
-                        <div key={i} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 12px', marginBottom: 8 }}>
+                      {/* Pessoas que assinaram online mas não estavam na lista presencial */}
+                      {apenasOnline.map((a, i) => (
+                        <div key={`online-${i}`} style={{
+                          background: '#eff6ff', border: '1px solid #bfdbfe',
+                          borderRadius: 10, padding: '10px 12px', marginBottom: 8,
+                        }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                             <div>
-                              <p style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8' }}>{i+1}. {a.nome}</p>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                <p style={{ fontSize: 13, fontWeight: 700, color: '#1d4ed8' }}>
+                                  {participantesEnriquecidos.length + i + 1}. {a.nome}
+                                </p>
+                                <span style={{ fontSize: 10, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', padding: '1px 6px', borderRadius: 4 }}>
+                                  🔗 online
+                                </span>
+                              </div>
                               {a.matricula && <p style={{ fontSize: 12, color: '#64748b' }}>Mat: {a.matricula}</p>}
                               <p style={{ fontSize: 11, color: '#94a3b8' }}>
                                 {new Date(a.assinado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
                               </p>
                             </div>
                             {a.assinatura_url && (
-                              <img src={a.assinatura_url} alt="assinatura" style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
+                              <img src={a.assinatura_url} alt="assinatura"
+                                style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
                             )}
                           </div>
                         </div>
@@ -380,7 +443,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   )}
 
                   {/* Botões */}
-                  <button onClick={() => imprimirRegistro(detalhe)} style={{
+                  {/* FIX F: passa assinOnline para o imprimirRegistro */}
+                  <button onClick={() => imprimirRegistro(detalhe, assinOnline)} style={{
                     width: '100%', padding: 13, borderRadius: 10, border: 'none',
                     background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700,
                     cursor: 'pointer', marginBottom: 10,
