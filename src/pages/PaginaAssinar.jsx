@@ -30,10 +30,10 @@ function AssinaturaPad({ onConfirmar }) {
     const src  = e.touches ? e.touches[0] : e
     return { x: (src.clientX - rect.left) * (canvas.width / rect.width), y: (src.clientY - rect.top) * (canvas.height / rect.height) }
   }
-  const iniciar = e => { e.preventDefault(); const pos = getPos(e, canvasRef.current); setDesenhando(true); setTemTraco(true); const ctx = canvasRef.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(pos.x, pos.y) }
+  const iniciar  = e => { e.preventDefault(); const pos = getPos(e, canvasRef.current); setDesenhando(true); setTemTraco(true); const ctx = canvasRef.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(pos.x, pos.y) }
   const desenhar = e => { e.preventDefault(); if (!desenhando) return; const pos = getPos(e, canvasRef.current); const ctx = canvasRef.current.getContext('2d'); ctx.lineTo(pos.x, pos.y); ctx.stroke() }
-  const parar = e => { e.preventDefault(); setDesenhando(false) }
-  const limpar = () => { const ctx = canvasRef.current.getContext('2d'); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height); setTemTraco(false) }
+  const parar    = e => { e.preventDefault(); setDesenhando(false) }
+  const limpar   = () => { const ctx = canvasRef.current.getContext('2d'); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height); setTemTraco(false) }
 
   return (
     <div>
@@ -65,14 +65,12 @@ function AutocompleteNome({ participantesRegistro, onSelect }) {
     return () => document.removeEventListener('mousedown', fn)
   }, [])
 
-  // Prioriza participantes do registro, depois busca na estrutura_equipes
   const buscar = async (v) => {
     setTermo(v)
     if (v.length < 2) { setSugestoes([]); setAberto(false); return }
-
     const t = v.toLowerCase()
 
-    // 1. Participantes já cadastrados no registro (mais relevantes)
+    // 1. Participantes já cadastrados no registro (prioritários)
     const doRegistro = (participantesRegistro || [])
       .filter(p => p.nome?.toLowerCase().includes(t))
       .map(p => ({ nome: p.nome, matricula: p.matricula || '', fonte: 'registro' }))
@@ -139,8 +137,8 @@ export default function PaginaAssinar({ tokenUUID }) {
   const [erro,       setErro]       = useState('')
   const [salvando,   setSalvando]   = useState(false)
 
-  const registro   = tokenData?.registros_operacionais
-  const tipoConfig = registro ? TIPOS_REGISTRO[registro.tipo] : null
+  const registro              = tokenData?.registros_operacionais
+  const tipoConfig            = registro ? TIPOS_REGISTRO[registro.tipo] : null
   const participantesRegistro = registro?.participantes || []
 
   useEffect(() => { carregarToken() }, [tokenUUID])
@@ -159,14 +157,45 @@ export default function PaginaAssinar({ tokenUUID }) {
 
   const onSelectNome = (n, m) => { setNome(n); setMatricula(m); setErro('') }
 
+  // ── FIX B + E: validações antes de ir para a tela de assinatura ────────────
   const prosseguirParaAssinatura = async () => {
     if (!nome.trim()) { setErro('Digite seu nome completo.'); return }
     setErro('')
+
+    // FIX E — Verificar se a pessoa está na lista de participantes
+    if (participantesRegistro.length > 0) {
+      const participanteEncontrado = participantesRegistro.find(
+        p => p.nome?.trim().toLowerCase() === nome.trim().toLowerCase()
+      )
+
+      if (!participanteEncontrado) {
+        setErro(
+          `"${nome.trim()}" não está na lista de participantes deste registro. ` +
+          `Somente as pessoas cadastradas pelo fiscal podem assinar.`
+        )
+        return
+      }
+
+      // FIX B — Verificar se já assinou presencialmente (tem assinatura_url na lista)
+      if (participanteEncontrado.assinatura_url) {
+        setErro(
+          `"${nome.trim()}" já assinou este documento presencialmente. ` +
+          `Não é possível assinar duas vezes o mesmo registro.`
+        )
+        return
+      }
+    }
+
+    // Verificar se já assinou via link online (já existia)
     const jaAssinou = await verificarJaAssinou(tokenData.id, nome.trim())
     if (jaAssinou) {
-      setErro(`"${nome.trim()}" já assinou este documento às ${new Date(jaAssinou.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`)
+      setErro(
+        `"${nome.trim()}" já assinou este documento online às ` +
+        `${new Date(jaAssinou.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`
+      )
       return
     }
+
     setFase('assinando')
   }
 
@@ -175,13 +204,17 @@ export default function PaginaAssinar({ tokenUUID }) {
     try {
       await salvarAssinaturaColetada(tokenData.id, tokenData.registro_id, nome.trim(), matricula.trim(), assinaturaBase64)
       setFase('sucesso')
-    } catch (e) { console.error(e); setErro('Erro ao salvar assinatura. Tente novamente.'); setFase('formulario') }
-    finally { setSalvando(false) }
+    } catch (e) {
+      console.error(e)
+      setErro('Erro ao salvar assinatura. Tente novamente.')
+      setFase('formulario')
+    } finally {
+      setSalvando(false)
+    }
   }
 
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
-  // ── Telas de estado ────────────────────────────────────────────────────────
   const telaSimples = (emoji, titulo, msg, cor = '#64748b') => (
     <div style={styles.tela}>
       <div style={{ textAlign: 'center', padding: 60 }}>
@@ -247,7 +280,6 @@ export default function PaginaAssinar({ tokenUUID }) {
               ['Fiscal',    registro.fiscal],
               ['Data/Hora', `${formatData(registro.data_registro)} às ${registro.hora_registro}`],
               ['Local',     registro.endereco],
-              ['Tema',      registro.tema],
               registro.tipo_medida ? ['Medida', TIPO_MEDIDA_LABEL[registro.tipo_medida]] : null,
             ].filter(Boolean).filter(([, v]) => v).map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
@@ -286,7 +318,6 @@ export default function PaginaAssinar({ tokenUUID }) {
 
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome completo *</label>
-                {/* Autocomplete busca participantes do registro + estrutura_equipes */}
                 <AutocompleteNome
                   participantesRegistro={participantesRegistro}
                   onSelect={onSelectNome}
@@ -302,7 +333,9 @@ export default function PaginaAssinar({ tokenUUID }) {
               </div>
 
               {erro && (
-                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13, color: '#b91c1c' }}>⚠️ {erro}</div>
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13, color: '#b91c1c', lineHeight: 1.5 }}>
+                  ⚠️ {erro}
+                </div>
               )}
 
               <button onClick={prosseguirParaAssinatura} disabled={!nome.trim()}
@@ -338,4 +371,6 @@ export default function PaginaAssinar({ tokenUUID }) {
   )
 }
 
-const styles = { tela: { minHeight: '100vh', background: '#f0f4f8', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' } }
+const styles = {
+  tela: { minHeight: '100vh', background: '#f0f4f8', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }
+}
