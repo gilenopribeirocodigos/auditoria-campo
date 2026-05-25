@@ -1,24 +1,22 @@
 import { useState, useEffect } from 'react'
 import { criarTokenAssinatura, listarAssinaturasColetadas, encerrarToken } from '../lib/assinaturas.js'
 
-// BASE_URL da aplicação — detecta automaticamente dev ou produção
 const BASE_URL = window.location.origin
 
-export default function ModalLinkAssinatura({ registroId, onFechar }) {
-  const [fase,       setFase]       = useState('gerando') // gerando | pronto | encerrado
+// ── FIX A: recebe tipoLabel como prop ─────────────────────────────────────────
+export default function ModalLinkAssinatura({ registroId, tipoLabel, onFechar }) {
+  const [fase,       setFase]       = useState('gerando')
   const [tokenData,  setTokenData]  = useState(null)
   const [assinadas,  setAssinadas]  = useState([])
   const [copiado,    setCopiado]    = useState(false)
   const [encerrando, setEncerrando] = useState(false)
   const [erro,       setErro]       = useState('')
 
-  const link = tokenData ? `${BASE_URL}/assinar/${tokenData.token}` : ''
+  const link  = tokenData ? `${BASE_URL}/assinar/${tokenData.token}` : ''
+  const label = tipoLabel || 'Registro Operacional'
 
-  useEffect(() => {
-    gerarToken()
-  }, [registroId])
+  useEffect(() => { gerarToken() }, [registroId])
 
-  // Atualiza lista de assinados a cada 8 segundos
   useEffect(() => {
     if (fase !== 'pronto' || !tokenData) return
     const interval = setInterval(() => {
@@ -31,6 +29,8 @@ export default function ModalLinkAssinatura({ registroId, onFechar }) {
     try {
       const data = await criarTokenAssinatura(registroId)
       setTokenData(data)
+      const coletadas = await listarAssinaturasColetadas(data.id)
+      setAssinadas(coletadas)
       setFase('pronto')
     } catch (e) {
       setErro('Erro ao gerar link: ' + e.message)
@@ -45,9 +45,10 @@ export default function ModalLinkAssinatura({ registroId, onFechar }) {
     })
   }
 
+  // ── FIX A: usa tipoLabel no texto do WhatsApp ──────────────────────────────
   const compartilharWhatsApp = () => {
     const texto = encodeURIComponent(
-      `📋 *${document.title || 'Registro Operacional'}*\n\nClique no link abaixo para assinar:\n${link}`
+      `📋 *${label}*\nDPL Construções — Equatorial Energia\n\nClique no link abaixo para assinar:\n${link}`
     )
     window.open(`https://wa.me/?text=${texto}`, '_blank')
   }
@@ -83,17 +84,16 @@ export default function ModalLinkAssinatura({ registroId, onFechar }) {
         overflowY: 'auto', padding: '24px 20px 40px',
       }}>
 
-        {/* Handle */}
         <div style={{ width: 40, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 20px' }} />
 
-        {/* Header */}
+        {/* Header mostrando o tipo real do registro */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', marginBottom: 2 }}>
               🔗 Link de Assinatura
             </h2>
-            <p style={{ fontSize: 13, color: '#64748b' }}>
-              Compartilhe para coletar assinaturas remotamente
+            <p style={{ fontSize: 13, color: '#2563eb', fontWeight: 700 }}>
+              {label}
             </p>
           </div>
           <button onClick={onFechar} style={{
@@ -110,7 +110,6 @@ export default function ModalLinkAssinatura({ registroId, onFechar }) {
 
         {(fase === 'pronto' || fase === 'encerrado') && !erro && tokenData && (
           <>
-            {/* Status */}
             {fase === 'encerrado' && (
               <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#b91c1c', fontWeight: 700, textAlign: 'center' }}>
                 🔒 Link encerrado — não aceita mais assinaturas
@@ -213,7 +212,6 @@ export default function ModalLinkAssinatura({ registroId, onFechar }) {
               )}
             </div>
 
-            {/* Encerrar link */}
             {fase === 'pronto' && (
               <button onClick={onEncerrar} disabled={encerrando} style={{
                 width: '100%', padding: 13, borderRadius: 12,
@@ -245,24 +243,11 @@ export default function ModalLinkAssinatura({ registroId, onFechar }) {
   )
 }
 
-// ── QR Code puro em SVG (sem dependência externa) ─────────────────────────────
 function QRCodeSVG({ value, size = 180 }) {
   const [qrSVG, setQrSVG] = useState(null)
-
   useEffect(() => {
-    // Usa a API do QR Server (CDN público e gratuito)
     setQrSVG(`https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(value)}&format=svg&margin=2`)
   }, [value, size])
-
   if (!qrSVG) return <div style={{ width: size, height: size, background: '#f1f5f9', borderRadius: 8 }} />
-
-  return (
-    <img
-      src={qrSVG}
-      alt="QR Code"
-      width={size}
-      height={size}
-      style={{ borderRadius: 8, display: 'block' }}
-    />
-  )
+  return <img src={qrSVG} alt="QR Code" width={size} height={size} style={{ borderRadius: 8, display: 'block' }} />
 }
