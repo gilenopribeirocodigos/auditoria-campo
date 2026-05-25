@@ -23,10 +23,11 @@ function imprimirRegistro(r, assinaturasOnline = []) {
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
   const participantesRenderizados = (r.participantes || []).map(p => {
-    const isOnline = p.modo === 'online'
-    const assinaturaOnline = isOnline
-      ? assinaturasOnline.find(a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase())
-      : null
+    const assinaturaOnline = assinaturasOnline.find(
+      a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
+    )
+    // isOnline: campo modo presente, OU tem assinatura coletada online sem assinatura presencial
+    const isOnline = p.modo === 'online' || (!!assinaturaOnline && !p.assinatura_url)
     return {
       ...p,
       isOnline,
@@ -289,17 +290,22 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               const mc           = MODALIDADES[detalhe.modalidade] || {}
               const participantes = detalhe.participantes || []
 
-              // ── Enriquece cada participante usando p.modo (não depende de assinOnline) ──
+              // ── Enriquece cada participante ──────────────────────────────────────────
+              // Lógica dupla: usa p.modo quando disponível (registros novos),
+              // e sempre cruza com assinOnline para capturar assinaturas já realizadas
+              // (cobre também registros antigos sem o campo modo)
               const participantesEnriquecidos = participantes.map(p => {
-                const isOnline = p.modo === 'online'
-                const assinaturaOnline = isOnline
-                  ? assinOnline.find(a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase())
-                  : null
+                // Busca assinatura online independente do modo
+                const assinaturaOnline = assinOnline.find(
+                  a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
+                )
+                // É online se: campo modo diz 'online', OU tem assinatura em assinOnline sem assinatura presencial
+                const isOnline = p.modo === 'online' || (!!assinaturaOnline && !p.assinatura_url)
                 return {
                   ...p,
                   isOnline,
-                  assinouOnline:      !!assinaturaOnline,
-                  assinaturaFinal:    p.assinatura_url || assinaturaOnline?.assinatura_url || null,
+                  assinouOnline:   !!assinaturaOnline,
+                  assinaturaFinal: p.assinatura_url || assinaturaOnline?.assinatura_url || null,
                 }
               })
 
