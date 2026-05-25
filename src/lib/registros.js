@@ -20,19 +20,15 @@ export async function listarRegistros(filtros = {}, usuarioLogado) {
     .select('*')
     .order('data_registro', { ascending: false })
     .order('hora_registro', { ascending: false })
-
   const podeVerTodos = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO']
     .includes(usuarioLogado?.perfil)
-
   if (!podeVerTodos) {
     q = q.eq('matricula_fiscal', usuarioLogado?.matricula)
   }
-
   if (filtros.dataIni) q = q.gte('data_registro', filtros.dataIni)
   if (filtros.dataFim) q = q.lte('data_registro', filtros.dataFim)
   if (filtros.tipo)    q = q.eq('tipo', filtros.tipo)
   if (filtros.fiscal)  q = q.ilike('fiscal', `%${filtros.fiscal}%`)
-
   const { data, error } = await q
   if (error) throw error
   return data || []
@@ -66,10 +62,11 @@ export async function prepararPayload(form) {
       )
     }
     participantesComUrl.push({
-      nome:          p.nome,
-      matricula:     p.matricula,
+      nome:           p.nome,
+      matricula:      p.matricula,
       assinatura_url: assinaturaUrl,
-      assinado_em:   p.assinado_em,
+      assinado_em:    p.assinado_em,
+      modo:           p.modo || null,   // ← CAMPO ADICIONADO
     })
   }
 
@@ -84,22 +81,22 @@ export async function prepararPayload(form) {
   }
 
   return {
-    tipo:             form.tipo,
-    modalidade:       form.modalidade,
-    tipo_medida:      form.tipo_medida || null,
-    fiscal:           form.fiscal,
-    matricula_fiscal: form.matricula_fiscal,
-    data_registro:    form.data,
-    hora_registro:    form.hora,
-    endereco:         form.endereco,
-    lat:              form.lat,
-    lng:              form.lng,
-    pauta:            form.pauta,
-    tema:             form.tema || null,
-    carga_horaria:    form.carga_horaria || null,
-    participantes:    participantesComUrl,
-    fotos_urls:       fotosUrls,
+    tipo:               form.tipo,
+    modalidade:         form.modalidade,
+    tipo_medida:        form.tipo_medida || null,
+    fiscal:             form.fiscal,
+    matricula_fiscal:   form.matricula_fiscal,
+    data_registro:      form.data,
+    hora_registro:      form.hora,
+    endereco:           form.endereco,
+    lat:                form.lat,
+    lng:                form.lng,
+    pauta:              form.pauta,
+    tema:               form.tema || null,
+    carga_horaria:      form.carga_horaria || null,
+    participantes:      participantesComUrl,
+    fotos_urls:         fotosUrls,
     lista_impressa_url: listaImpressaUrl,
-    observacoes:      form.observacoes || null,
+    observacoes:        form.observacoes || null,
   }
 }
