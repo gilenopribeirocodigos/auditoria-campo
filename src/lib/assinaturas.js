@@ -1,11 +1,15 @@
 import { supabase, uploadBase64 } from './supabase.js'
 
 // ── Cria token de assinatura para um registro ─────────────────────────────────
-export async function criarTokenAssinatura(registro_id) {
+// expiresMinutes: tempo em minutos até o link expirar (padrão: 60)
+export async function criarTokenAssinatura(registro_id, expiresMinutes = 60) {
   if (!supabase) throw new Error('Supabase não configurado.')
+
+  const expires_at = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString()
+
   const { data, error } = await supabase
     .from('assinaturas_pendentes')
-    .insert({ registro_id, status: 'ABERTO' })
+    .insert({ registro_id, status: 'ABERTO', expires_at })
     .select()
     .single()
   if (error) throw error
@@ -45,11 +49,13 @@ export async function listarAssinaturasColetadas(token_id) {
   return data || []
 }
 
-// ── Salva assinatura coletada via link ────────────────────────────────────────
-export async function salvarAssinaturaColetada(token_id, registro_id, nome, matricula, assinaturaBase64) {
+// ── Salva assinatura coletada via link (com localização) ─────────────────────
+export async function salvarAssinaturaColetada(
+  token_id, registro_id, nome, matricula, assinaturaBase64,
+  latitude = null, longitude = null, endereco_assinatura = null
+) {
   if (!supabase) throw new Error('Supabase não configurado.')
 
-  // Upload da assinatura para o Storage
   let assinatura_url = null
   if (assinaturaBase64) {
     const path = `assinaturas_remotas/${token_id}/${Date.now()}_${nome.replace(/\s+/g, '_')}.png`
@@ -62,8 +68,11 @@ export async function salvarAssinaturaColetada(token_id, registro_id, nome, matr
       token_id,
       registro_id,
       nome,
-      matricula: matricula || null,
+      matricula:           matricula || null,
       assinatura_url,
+      latitude:            latitude  || null,
+      longitude:           longitude || null,
+      endereco_assinatura: endereco_assinatura || null,
     })
     .select()
     .single()
