@@ -51,10 +51,10 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   }
 
   // ── Status visual de cada participante ────────────────────────────────────
-  // p.modo === 'ONLINE'     → aguardando assinatura via link
-  // p.modo === 'PRESENCIAL' → já assinou (tem assinatura no pad)
+  // p.modo === 'online'     → aguardando assinatura via link
+  // p.modo === 'presencial' → já assinou (tem assinatura no pad)
   const statusParticipante = (p) => {
-    if (p.modo === 'ONLINE') {
+    if (p.modo === 'online') {
       return `<span style="font-size:13px;color:#2563eb;font-weight:700;">🔗 Aguardando (via link)</span>`
     }
     return `<span style="font-size:13px;color:#16a34a;font-weight:700;">✓ Assinado</span>`
@@ -227,15 +227,15 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura / Status</th>
         </tr>
         ${form.participantes.map((p,i)=>`
-          <tr style="border-bottom:1px solid #f1f5f9;${p.modo==='ONLINE'?'background:#eff6ff;':''}">
+          <tr style="border-bottom:1px solid #f1f5f9;${p.modo==='online'?'background:#eff6ff;':''}">
             <td style="padding:8px 10px;font-size:13px;">${i+1}</td>
             <td style="padding:8px 10px;font-size:13px;font-weight:600;">
               ${p.nome}
-              ${p.modo==='ONLINE'?'<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:4px;">🔗 online</span>':''}
+              ${p.modo==='online'?'<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:4px;">🔗 online</span>':''}
             </td>
             <td style="padding:8px 10px;font-size:13px;text-align:center;">${p.matricula||'—'}</td>
             <td style="padding:4px 8px;">
-              ${p.modo === 'ONLINE'
+              ${p.modo === 'online'
                 ? '<span style="font-size:11px;color:#f59e0b;background:#fef3c7;padding:2px 8px;border-radius:4px;border:1px solid #fcd34d;">⏳ Aguardando assinatura online</span>'
                 : p.assinatura
                   ? `<img src="${p.assinatura}" style="height:40px;max-width:120px;object-fit:contain;"/>`
