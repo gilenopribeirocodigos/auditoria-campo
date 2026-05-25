@@ -10,6 +10,44 @@ const TIPO_MEDIDA_LABEL = {
   SUSPENSAO:           'Suspensão',
 }
 
+// ── Geocodificação reversa via Nominatim (OpenStreetMap, gratuito) ────────────
+async function geocodificarReverso(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`,
+      { headers: { 'User-Agent': 'DPL-Auditoria-Campo/1.0' } }
+    )
+    const data = await res.json()
+    if (data?.display_name) {
+      // Formata de forma compacta: Rua, Número, Bairro, Cidade
+      const a = data.address || {}
+      const partes = [
+        a.road || a.pedestrian || a.path,
+        a.house_number,
+        a.suburb || a.neighbourhood || a.quarter,
+        a.city || a.town || a.village || a.municipality,
+        a.state,
+      ].filter(Boolean)
+      return partes.join(', ')
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+// ── Captura GPS do dispositivo ────────────────────────────────────────────────
+function capturarGPS() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      ()   => resolve(null),
+      { timeout: 8000, enableHighAccuracy: true }
+    )
+  })
+}
+
 // ── Canvas de assinatura ──────────────────────────────────────────────────────
 function AssinaturaPad({ onConfirmar }) {
   const canvasRef = useRef(null)
@@ -52,7 +90,7 @@ function AssinaturaPad({ onConfirmar }) {
   )
 }
 
-// ── Autocomplete buscando participantes do registro + estrutura_equipes ────────
+// ── Autocomplete ──────────────────────────────────────────────────────────────
 function AutocompleteNome({ participantesRegistro, onSelect }) {
   const [termo,     setTermo]     = useState('')
   const [sugestoes, setSugestoes] = useState([])
@@ -69,28 +107,21 @@ function AutocompleteNome({ participantesRegistro, onSelect }) {
     setTermo(v)
     if (v.length < 2) { setSugestoes([]); setAberto(false); return }
     const t = v.toLowerCase()
-
-    // 1. Participantes já cadastrados no registro (prioritários)
     const doRegistro = (participantesRegistro || [])
       .filter(p => p.nome?.toLowerCase().includes(t))
       .map(p => ({ nome: p.nome, matricula: p.matricula || '', fonte: 'registro' }))
-
-    // 2. Busca complementar na estrutura_equipes
     let daEstrutura = []
     try {
       const { data } = await supabase.from('estrutura_equipes')
         .select('colaborador, matricula').ilike('colaborador', `%${v}%`).limit(10)
       if (data?.length > 0) {
-        const nomesCadastrados = new Set(doRegistro.map(p => p.nome))
-        daEstrutura = data
-          .filter(r => !nomesCadastrados.has(r.colaborador))
+        const set = new Set(doRegistro.map(p => p.nome))
+        daEstrutura = data.filter(r => !set.has(r.colaborador))
           .map(r => ({ nome: r.colaborador, matricula: r.matricula || '', fonte: 'estrutura' }))
       }
     } catch { /* silencioso */ }
-
     const todos = [...doRegistro, ...daEstrutura]
-    setSugestoes(todos)
-    setAberto(todos.length > 0)
+    setSugestoes(todos); setAberto(todos.length > 0)
   }
 
   const selecionar = (item) => {
@@ -100,13 +131,10 @@ function AutocompleteNome({ participantesRegistro, onSelect }) {
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <input
-        value={termo}
-        onChange={e => buscar(e.target.value)}
+      <input value={termo} onChange={e => buscar(e.target.value)}
         onFocus={() => sugestoes.length > 0 && setAberto(true)}
         placeholder="Digite seu nome ou selecione abaixo..."
-        style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 15, outline: 'none', boxSizing: 'border-box' }}
-      />
+        style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 15, outline: 'none', boxSizing: 'border-box' }} />
       {aberto && sugestoes.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 240, overflowY: 'auto' }}>
           {sugestoes.map((s, i) => (
@@ -136,12 +164,34 @@ export default function PaginaAssinar({ tokenUUID }) {
   const [matricula,  setMatricula]  = useState('')
   const [erro,       setErro]       = useState('')
   const [salvando,   setSalvando]   = useState(false)
+  const [msgSalvando, setMsgSalvando] = useState('')
+  const [countdown,  setCountdown]  = useState('')
+  const [localAssinatura, setLocalAssinatura] = useState(null) // { endereco } capturado
 
   const registro              = tokenData?.registros_operacionais
   const tipoConfig            = registro ? TIPOS_REGISTRO[registro.tipo] : null
   const participantesRegistro = registro?.participantes || []
 
   useEffect(() => { carregarToken() }, [tokenUUID])
+
+  // ── Countdown timer ────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!tokenData?.expires_at || fase === 'sucesso') return
+    const tick = () => {
+      const diff = new Date(tokenData.expires_at) - new Date()
+      if (diff <= 0) { setCountdown('expirado'); setFase('expirado'); return }
+      const h = Math.floor(diff / 3600000)
+      const m = Math.floor((diff % 3600000) / 60000)
+      const s = Math.floor((diff % 60000) / 1000)
+      setCountdown(h > 0
+        ? `${h}h ${String(m).padStart(2,'0')}min`
+        : `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`
+      )
+    }
+    tick()
+    const id = setInterval(tick, 1000)
+    return () => clearInterval(id)
+  }, [tokenData, fase])
 
   const carregarToken = async () => {
     try {
@@ -157,52 +207,59 @@ export default function PaginaAssinar({ tokenUUID }) {
 
   const onSelectNome = (n, m) => { setNome(n); setMatricula(m); setErro('') }
 
-  // ── FIX B + E: validações antes de ir para a tela de assinatura ────────────
   const prosseguirParaAssinatura = async () => {
     if (!nome.trim()) { setErro('Digite seu nome completo.'); return }
     setErro('')
 
-    // FIX E — Verificar se a pessoa está na lista de participantes
     if (participantesRegistro.length > 0) {
       const participanteEncontrado = participantesRegistro.find(
         p => p.nome?.trim().toLowerCase() === nome.trim().toLowerCase()
       )
-
       if (!participanteEncontrado) {
-        setErro(
-          `"${nome.trim()}" não está na lista de participantes deste registro. ` +
-          `Somente as pessoas cadastradas pelo fiscal podem assinar.`
-        )
+        setErro(`"${nome.trim()}" não está na lista de participantes. Somente as pessoas cadastradas pelo fiscal podem assinar.`)
         return
       }
-
-      // FIX B — Verificar se já assinou presencialmente (tem assinatura_url na lista)
       if (participanteEncontrado.assinatura_url) {
-        setErro(
-          `"${nome.trim()}" já assinou este documento presencialmente. ` +
-          `Não é possível assinar duas vezes o mesmo registro.`
-        )
+        setErro(`"${nome.trim()}" já assinou este documento presencialmente. Não é possível assinar duas vezes.`)
         return
       }
     }
 
-    // Verificar se já assinou via link online (já existia)
     const jaAssinou = await verificarJaAssinou(tokenData.id, nome.trim())
     if (jaAssinou) {
-      setErro(
-        `"${nome.trim()}" já assinou este documento online às ` +
-        `${new Date(jaAssinou.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`
-      )
+      setErro(`"${nome.trim()}" já assinou às ${new Date(jaAssinou.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}.`)
       return
     }
 
     setFase('assinando')
   }
 
+  // ── Confirmar assinatura: captura GPS → geocodifica → salva ────────────────
   const onConfirmarAssinatura = async (assinaturaBase64) => {
     setSalvando(true)
+    setMsgSalvando('📍 Capturando sua localização...')
+
+    let lat = null, lng = null, endereco = null
+
     try {
-      await salvarAssinaturaColetada(tokenData.id, tokenData.registro_id, nome.trim(), matricula.trim(), assinaturaBase64)
+      const gps = await capturarGPS()
+      if (gps) {
+        lat = gps.lat; lng = gps.lng
+        setMsgSalvando('🗺️ Identificando endereço...')
+        endereco = await geocodificarReverso(lat, lng)
+        setLocalAssinatura({ endereco })
+      }
+    } catch { /* GPS negado — continua sem localização */ }
+
+    setMsgSalvando('💾 Salvando assinatura...')
+
+    try {
+      await salvarAssinaturaColetada(
+        tokenData.id, tokenData.registro_id,
+        nome.trim(), matricula.trim(),
+        assinaturaBase64,
+        lat, lng, endereco
+      )
       setFase('sucesso')
     } catch (e) {
       console.error(e)
@@ -210,6 +267,7 @@ export default function PaginaAssinar({ tokenUUID }) {
       setFase('formulario')
     } finally {
       setSalvando(false)
+      setMsgSalvando('')
     }
   }
 
@@ -227,7 +285,7 @@ export default function PaginaAssinar({ tokenUUID }) {
 
   if (fase === 'carregando') return telaSimples('⏳', 'Carregando...', 'Aguarde um momento.')
   if (fase === 'erro')       return telaSimples('❌', 'Link inválido', 'Este link não existe ou foi removido.', '#dc2626')
-  if (fase === 'expirado')   return telaSimples('⏰', 'Link expirado', 'Solicite um novo link ao fiscal.', '#d97706')
+  if (fase === 'expirado')   return telaSimples('⏰', 'Link expirado', 'O prazo para assinar encerrou. Solicite um novo link ao fiscal.', '#d97706')
   if (fase === 'encerrado')  return telaSimples('🔒', 'Link encerrado', 'O fiscal encerrou este link.', '#64748b')
 
   if (fase === 'sucesso') return (
@@ -237,8 +295,17 @@ export default function PaginaAssinar({ tokenUUID }) {
         <p style={{ fontSize: 22, fontWeight: 800, color: '#15803d', marginBottom: 8 }}>Assinatura registrada!</p>
         <p style={{ fontSize: 15, color: '#64748b', marginBottom: 6 }}>Obrigado, <strong>{nome}</strong>!</p>
         <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6 }}>Sua assinatura foi salva com sucesso.<br />Você pode fechar esta página.</p>
+
+        {/* Localização registrada */}
+        {localAssinatura?.endereco && (
+          <div style={{ marginTop: 16, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', textAlign: 'left' }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', marginBottom: 4 }}>📍 LOCAL REGISTRADO</p>
+            <p style={{ fontSize: 13, color: '#1e293b' }}>{localAssinatura.endereco}</p>
+          </div>
+        )}
+
         {registro && (
-          <div style={{ marginTop: 24, background: tipoConfig?.bg, border: `1.5px solid ${tipoConfig?.border}`, borderRadius: 14, padding: 16, textAlign: 'left' }}>
+          <div style={{ marginTop: 16, background: tipoConfig?.bg, border: `1.5px solid ${tipoConfig?.border}`, borderRadius: 14, padding: 16, textAlign: 'left' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <span style={{ fontSize: 22 }}>{tipoConfig?.emoji}</span>
               <span style={{ fontSize: 15, fontWeight: 800, color: tipoConfig?.color }}>{tipoConfig?.label}</span>
@@ -249,7 +316,7 @@ export default function PaginaAssinar({ tokenUUID }) {
             </p>
           </div>
         )}
-        <div style={{ marginTop: 20, background: '#f1f5f9', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#64748b' }}>
+        <div style={{ marginTop: 16, background: '#f1f5f9', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#64748b' }}>
           DPL Construções — Contrato Equatorial Energia 1021/2024
         </div>
       </div>
@@ -261,12 +328,21 @@ export default function PaginaAssinar({ tokenUUID }) {
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1e3a5f, #1d4ed8)', color: '#fff', padding: '16px 20px', borderRadius: '0 0 20px 20px', marginBottom: 20 }}>
         <p style={{ fontSize: 11, opacity: 0.7, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>DPL Construções — Equatorial Energia</p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 24 }}>{tipoConfig?.emoji || '📝'}</span>
-          <div>
-            <p style={{ fontSize: 17, fontWeight: 800 }}>{tipoConfig?.label || 'Registro Operacional'}</p>
-            <p style={{ fontSize: 12, opacity: 0.8 }}>Assinatura digital solicitada</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 24 }}>{tipoConfig?.emoji || '📝'}</span>
+            <div>
+              <p style={{ fontSize: 17, fontWeight: 800 }}>{tipoConfig?.label || 'Registro Operacional'}</p>
+              <p style={{ fontSize: 12, opacity: 0.8 }}>Assinatura digital solicitada</p>
+            </div>
           </div>
+          {/* Countdown visível no header */}
+          {countdown && countdown !== 'expirado' && (
+            <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 8, padding: '6px 10px', textAlign: 'center' }}>
+              <p style={{ fontSize: 9, opacity: 0.8, marginBottom: 1 }}>EXPIRA EM</p>
+              <p style={{ fontSize: 15, fontWeight: 800, fontVariantNumeric: 'tabular-nums' }}>{countdown}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -318,10 +394,7 @@ export default function PaginaAssinar({ tokenUUID }) {
 
               <div style={{ marginBottom: 12 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome completo *</label>
-                <AutocompleteNome
-                  participantesRegistro={participantesRegistro}
-                  onSelect={onSelectNome}
-                />
+                <AutocompleteNome participantesRegistro={participantesRegistro} onSelect={onSelectNome} />
                 {nome && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ {nome}</p>}
               </div>
 
@@ -330,6 +403,11 @@ export default function PaginaAssinar({ tokenUUID }) {
                 <input value={matricula} onChange={e => setMatricula(e.target.value)}
                   placeholder="Sua matrícula" inputMode="numeric"
                   style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 15, outline: 'none', boxSizing: 'border-box', background: matricula ? '#f0fdf4' : '#fff' }} />
+              </div>
+
+              {/* Aviso GPS */}
+              <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#0369a1' }}>
+                📍 Ao assinar, sua localização será registrada automaticamente como evidência.
               </div>
 
               {erro && (
@@ -356,7 +434,11 @@ export default function PaginaAssinar({ tokenUUID }) {
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 14 }}>Assine no campo abaixo com o dedo</p>
             {salvando ? (
               <div style={{ textAlign: 'center', padding: 40 }}>
-                <p style={{ fontSize: 14, color: '#64748b' }}>⏳ Salvando assinatura...</p>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>
+                  {msgSalvando.startsWith('📍') ? '📍' : msgSalvando.startsWith('🗺️') ? '🗺️' : '💾'}
+                </div>
+                <p style={{ fontSize: 14, color: '#2563eb', fontWeight: 600 }}>{msgSalvando}</p>
+                <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 8 }}>Aguarde, não feche esta página...</p>
               </div>
             ) : (
               <>
