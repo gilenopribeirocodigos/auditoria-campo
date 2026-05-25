@@ -23,7 +23,7 @@ function imprimirRegistro(r, assinaturasOnline = []) {
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
   const participantesRenderizados = (r.participantes || []).map(p => {
-    const isOnline = p.modo === 'ONLINE'
+    const isOnline = p.modo === 'online'
     const assinaturaOnline = isOnline
       ? assinaturasOnline.find(a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase())
       : null
@@ -291,7 +291,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
               // ── Enriquece cada participante usando p.modo (não depende de assinOnline) ──
               const participantesEnriquecidos = participantes.map(p => {
-                const isOnline = p.modo === 'ONLINE'
+                const isOnline = p.modo === 'online'
                 const assinaturaOnline = isOnline
                   ? assinOnline.find(a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase())
                   : null
