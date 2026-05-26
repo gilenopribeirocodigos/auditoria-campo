@@ -217,10 +217,33 @@ export default function R3Participantes({ form, upd, next, prev }) {
     setAssinandoPart({ nome, matricula: mat })
   }
 
-  const onConfirmarAssinatura = (png) => {
+  const onConfirmarAssinatura = async (png) => {
+    let lat = null, lng = null, endereco_assinatura = null
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation
+          ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, enableHighAccuracy: true })
+          : rej()
+      )
+      lat = pos.coords.latitude
+      lng = pos.coords.longitude
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`,
+          { headers: { 'User-Agent': 'DPL-Auditoria-Campo/1.0' } }
+        )
+        const d = await r.json()
+        if (d?.address) {
+          const a = d.address
+          endereco_assinatura = [a.road || a.pedestrian, a.suburb || a.neighbourhood, a.city || a.town || a.village, a.state].filter(Boolean).join(', ')
+        }
+      } catch { /* silencioso */ }
+    } catch { /* GPS negado */ }
+
     upd('participantes', [...form.participantes, {
       nome: assinandoPart.nome, matricula: assinandoPart.matricula,
       assinatura: png, assinado_em: new Date().toISOString(), modo: 'presencial',
+      lat, lng, endereco_assinatura,
     }])
     setAssinandoPart(null)
     if (form.modalidade === 'DUPLA' && form.participantes.length + 1 < 2) setAdicionando(true)
