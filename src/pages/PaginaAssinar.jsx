@@ -115,12 +115,26 @@ function AutocompleteNome({ participantesRegistro, onSelect }) {
       const { data } = await supabase.from('estrutura_equipes')
         .select('colaborador, matricula').ilike('colaborador', `%${v}%`).limit(10)
       if (data?.length > 0) {
-        const set = new Set(doRegistro.map(p => p.nome))
-        daEstrutura = data.filter(r => !set.has(r.colaborador))
+        const set = new Set(doRegistro.map(p => p.nome?.trim().toLowerCase()))
+        daEstrutura = data.filter(r => !set.has(r.colaborador?.trim().toLowerCase()))
           .map(r => ({ nome: r.colaborador, matricula: r.matricula || '', fonte: 'estrutura' }))
       }
     } catch { /* silencioso */ }
-    const todos = [...doRegistro, ...daEstrutura]
+
+    // Busca também em usuarios (exceto ADMIN, apenas ativos)
+    let dosUsuarios = []
+    try {
+      const { data } = await supabase.from('usuarios')
+        .select('nome, matricula').ilike('nome', `%${v}%`)
+        .neq('perfil', 'ADMIN').eq('status', 'ATIVO').limit(10)
+      if (data?.length > 0) {
+        const set = new Set([...doRegistro, ...daEstrutura].map(p => p.nome?.trim().toLowerCase()))
+        dosUsuarios = data.filter(r => !set.has(r.nome?.trim().toLowerCase()))
+          .map(r => ({ nome: r.nome, matricula: r.matricula || '', fonte: 'estrutura' }))
+      }
+    } catch { /* silencioso */ }
+
+    const todos = [...doRegistro, ...daEstrutura, ...dosUsuarios]
     setSugestoes(todos); setAberto(todos.length > 0)
   }
 
