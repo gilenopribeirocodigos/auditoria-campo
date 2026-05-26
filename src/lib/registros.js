@@ -62,11 +62,14 @@ export async function prepararPayload(form) {
       )
     }
     participantesComUrl.push({
-      nome:           p.nome,
-      matricula:      p.matricula,
-      assinatura_url: assinaturaUrl,
-      assinado_em:    p.assinado_em,
-      modo:           p.modo || null,   // ← CAMPO ADICIONADO
+      nome:                p.nome,
+      matricula:           p.matricula,
+      assinatura_url:      assinaturaUrl,
+      assinado_em:         p.assinado_em,
+      modo:                p.modo || null,
+      lat:                 p.lat || null,
+      lng:                 p.lng || null,
+      endereco_assinatura: p.endereco_assinatura || null,
     })
   }
 
