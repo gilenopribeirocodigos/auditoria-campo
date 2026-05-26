@@ -360,6 +360,13 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
+                  {detalhe.observacoes && (
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>OBSERVAÇÕES:</p>
+                      <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>{detalhe.observacoes}</p>
+                    </div>
+                  )}
+
                   {/* Lista de Frequência unificada */}
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
