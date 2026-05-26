@@ -6,6 +6,7 @@ import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
+import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/registros_offline.js'
 
 import Login                from './pages/Login.jsx'
 import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
@@ -17,6 +18,10 @@ import FeedbacksPDF         from './pages/FeedbacksPDF.jsx'
 import RelatorioEquipe      from './pages/RelatorioEquipe.jsx'
 import Dashboard            from './pages/Dashboard.jsx'
 import MapaFiscais          from './pages/MapaFiscais.jsx'
+import RegistrosApp           from './RegistrosApp.jsx'                        // ← NOVO
+import RegistrosOperacionais  from './pages/RegistrosOperacionais.jsx'         // ← NOVO
+import RelatorioEvidencias    from './pages/RelatorioEvidencias.jsx'           // ← NOVO
+import PaginaAssinar          from './pages/PaginaAssinar.jsx'                // ← NOVO
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -39,7 +44,7 @@ export default function App() {
   const [fotosAntigas,        setFotosAntigas]        = useState([])
   const [msgSessao,           setMsgSessao]           = useState('')
 
-  // ── NOVO: modal bloqueante de atualização obrigatória ─────────────────────
+  // ── Modal bloqueante de atualização obrigatória ───────────────────────────
   const [modalAtualizacao, setModalAtualizacao] = useState(false)
 
   // Offline
@@ -47,6 +52,7 @@ export default function App() {
   const [pendentesOffline, setPendentesOffline] = useState(0)
   const [sincronizando,    setSincronizando]    = useState(false)
   const [msgSync,          setMsgSync]          = useState('')
+  const [pendentesReg,     setPendentesReg]     = useState(0)
 
   // PWA — detecta nova versão disponível
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
@@ -82,9 +88,6 @@ export default function App() {
       const { valida, motivo } = await verificarSessao()
       if (!valida) {
         if (motivo === 'nova_versao') {
-          // ── Desloga IMEDIATAMENTE e exibe modal bloqueante ──────────────────
-          // Independente de onde o usuário estiver (home, auditoria, histórico…)
-          // O usuário não consegue fechar sem clicar em "Entrar novamente"
           fazerLogout()
           setUsuario(null)
           setModalAtualizacao(true)
@@ -113,17 +116,22 @@ export default function App() {
   useEffect(() => {
     const syncInicial = async () => {
       if (navigator.onLine) {
-        const qtd = await contarPendentes()
-        setPendentesOffline(qtd)
-        if (qtd > 0) {
+        const qtdAud = await contarPendentes()
+        const qtdReg = await contarPendentesRegistros()
+        setPendentesOffline(qtdAud)
+        setPendentesReg(qtdReg)
+        const total = qtdAud + qtdReg
+        if (total > 0) {
           setSincronizando(true)
-          setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) pendente(s)...`)
+          setMsgSync(`🔄 Sincronizando ${total} item(ns) pendente(s)...`)
           try {
-            const ok = await sincronizarPendentes((feito, total) => {
-              setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
-            })
+            let okAud = 0, okReg = 0
+            if (qtdAud > 0) okAud = await sincronizarPendentes()
+            if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
             setPendentesOffline(0)
-            setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+            setPendentesReg(0)
+            const okTotal = okAud + okReg
+            setMsgSync(`✅ ${okTotal} item(ns) sincronizado(s) com sucesso!`)
             setTimeout(() => setMsgSync(''), 4000)
           } catch (e) {
             setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
@@ -133,8 +141,10 @@ export default function App() {
           }
         }
       } else {
-        const qtd = await contarPendentes()
-        setPendentesOffline(qtd)
+        const qtdAud = await contarPendentes()
+        const qtdReg = await contarPendentesRegistros()
+        setPendentesOffline(qtdAud)
+        setPendentesReg(qtdReg)
       }
     }
     syncInicial()
@@ -144,16 +154,19 @@ export default function App() {
   useEffect(() => {
     const handleOnline = async () => {
       setOnline(true)
-      const qtd = await contarPendentes()
-      if (qtd > 0) {
+      const qtdAud = await contarPendentes()
+      const qtdReg = await contarPendentesRegistros()
+      const total  = qtdAud + qtdReg
+      if (total > 0) {
         setSincronizando(true)
-        setMsgSync(`🔄 Sincronizando ${qtd} auditoria(s) salva(s) offline...`)
+        setMsgSync(`🔄 Sincronizando ${total} item(ns) salvos offline...`)
         try {
-          const ok = await sincronizarPendentes((feito, total) => {
-            setMsgSync(`🔄 Sincronizando... ${feito}/${total}`)
-          })
-          setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s) com sucesso!`)
+          let okAud = 0, okReg = 0
+          if (qtdAud > 0) okAud = await sincronizarPendentes()
+          if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
           setPendentesOffline(0)
+          setPendentesReg(0)
+          setMsgSync(`✅ ${okAud + okReg} item(ns) sincronizado(s) com sucesso!`)
           setTimeout(() => setMsgSync(''), 4000)
         } catch (e) {
           setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
@@ -261,9 +274,7 @@ export default function App() {
     }
   }
 
-  // ── MODAL BLOQUEANTE DE ATUALIZAÇÃO ─────────────────────────────────────────
-  // Exibido quando o sistema detecta nova versão via sistema_config.versao
-  // Substitui TODA a tela — usuário não consegue fechar sem clicar no botão
+  // ── Modal bloqueante de atualização ──────────────────────────────────────────
   if (modalAtualizacao) {
     return (
       <div style={{
@@ -305,16 +316,24 @@ export default function App() {
     )
   }
 
+  // ── Rota pública: /assinar/:token (sem login) ────────────────────────────────
+  const pathToken = window.location.pathname.match(/^\/assinar\/([0-9a-f-]+)$/i)?.[1]
+  if (pathToken) return <PaginaAssinar tokenUUID={pathToken} />
+
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
-  if (tela === 'gestao')       return <GestaoUsuarios      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar')     return <ImportarEquipes     onVoltar={() => setTela('home')} />
-  if (tela === 'pauta')        return <GestaoPauta         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'historico')    return <HistoricoAuditorias usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'metas')        return <Metas               usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'feedbacks')    return <FeedbacksPDF        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'relat-equipe') return <RelatorioEquipe     usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'dashboard')    return <Dashboard           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'mapa-fiscais') return <MapaFiscais         usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'gestao')               return <GestaoUsuarios        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'importar')             return <ImportarEquipes       onVoltar={() => setTela('home')} />
+  if (tela === 'pauta')                return <GestaoPauta           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'historico')            return <HistoricoAuditorias   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'metas')                return <Metas                 usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'feedbacks')            return <FeedbacksPDF          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'relat-equipe')         return <RelatorioEquipe       usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'dashboard')            return <Dashboard             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'mapa-fiscais')         return <MapaFiscais           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  // ── NOVO: Registros Operacionais ─────────────────────────────────────────────
+  if (tela === 'registros-historico')  return <RegistrosOperacionais usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
+  if (tela === 'relatorio-evidencias') return <RelatorioEvidencias   usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
+  if (tela === 'registros-novo')       return <RegistrosApp          usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
 
   if (tela === 'home') {
     return (
@@ -392,7 +411,9 @@ export default function App() {
             borderRadius: 14, padding: '12px 16px',
           }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 8 }}>
-              📤 {pendentesOffline} auditoria(s) aguardando sincronização
+              📤 {pendentesOffline + pendentesReg} item(ns) aguardando sincronização
+              {pendentesOffline > 0 && ` (${pendentesOffline} auditoria(s)`}
+              {pendentesReg > 0 && ` · ${pendentesReg} registro(s))`}
             </p>
             <button onClick={async () => {
               setSincronizando(true)
@@ -456,6 +477,13 @@ export default function App() {
           }}>
             📁 Histórico de Auditorias
           </button>
+
+          {/* ── NOVO: Registros Operacionais ── */}
+          <button onClick={() => setTela('registros-historico')} style={{
+            background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
+            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          }}>📝 Registros Operacionais</button>
 
           {temPermissao(usuario, 'dashboard') && (
             <button onClick={() => setTela('dashboard')} style={{
