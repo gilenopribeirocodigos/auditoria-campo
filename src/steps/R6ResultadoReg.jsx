@@ -312,6 +312,29 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         </div>
       )}
 
+      {form.observacoes && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 4 }}>OBSERVAÇÕES:</p>
+          <p style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+            {form.observacoes.length > 200 ? form.observacoes.slice(0, 200) + '...' : form.observacoes}
+          </p>
+        </div>
+      )}
+
+      {form.fotos?.length > 0 && (
+        <div className="card" style={{ marginBottom: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 10 }}>
+            📷 FOTOS ({form.fotos.length})
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+            {form.fotos.map((f, i) => (
+              <img key={i} src={f.url} alt={`Foto ${i+1}`}
+                style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block', border: '1px solid #e2e8f0' }} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {status === 'idle' && (
         <>
           <button onClick={salvar} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: online ? '#1e3a5f' : '#dc2626', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
