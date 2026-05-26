@@ -29,28 +29,10 @@ function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
     }
   }
 
-  const iniciar = e => {
-    e.preventDefault()
-    const pos = getPos(e, canvasRef.current)
-    setDesenhando(true)
-    setTemTraco(true)
-    const ctx = canvasRef.current.getContext('2d')
-    ctx.beginPath(); ctx.moveTo(pos.x, pos.y)
-  }
-  const desenhar = e => {
-    e.preventDefault()
-    if (!desenhando) return
-    const pos = getPos(e, canvasRef.current)
-    const ctx = canvasRef.current.getContext('2d')
-    ctx.lineTo(pos.x, pos.y); ctx.stroke()
-  }
-  const parar = e => { e.preventDefault(); setDesenhando(false) }
-  const limpar = () => {
-    const ctx = canvasRef.current.getContext('2d')
-    ctx.fillStyle = '#fafafa'
-    ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height)
-    setTemTraco(false)
-  }
+  const iniciar  = e => { e.preventDefault(); const pos = getPos(e, canvasRef.current); setDesenhando(true); setTemTraco(true); const ctx = canvasRef.current.getContext('2d'); ctx.beginPath(); ctx.moveTo(pos.x, pos.y) }
+  const desenhar = e => { e.preventDefault(); if (!desenhando) return; const pos = getPos(e, canvasRef.current); const ctx = canvasRef.current.getContext('2d'); ctx.lineTo(pos.x, pos.y); ctx.stroke() }
+  const parar    = e => { e.preventDefault(); setDesenhando(false) }
+  const limpar   = () => { const ctx = canvasRef.current.getContext('2d'); ctx.fillStyle = '#fafafa'; ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height); setTemTraco(false) }
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, padding: 16 }}>
@@ -78,7 +60,7 @@ function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
   )
 }
 
-// ── Autocomplete de eletricista ───────────────────────────────────────────────
+// ── Autocomplete: busca em estrutura_equipes + usuarios (exceto ADMIN) ────────
 function AutocompleteEletricista({ onSelect }) {
   const [termo,     setTermo]     = useState('')
   const [sugestoes, setSugestoes] = useState([])
@@ -97,13 +79,41 @@ function AutocompleteEletricista({ onSelect }) {
     setTermo(v); setNomeFinal(v); setMat('')
     if (v.length < 2) { setSugestoes([]); setAberto(false); return }
     try {
-      const { data, error } = await supabase.from('estrutura_equipes')
-        .select('colaborador, matricula').ilike('colaborador', `%${v}%`).order('colaborador').limit(15)
-      if (!error && data?.length > 0) {
-        const vistos = new Set()
-        const unicos = data.filter(r => { const k = `${r.colaborador}|${r.matricula}`; if (vistos.has(k)) return false; vistos.add(k); return true })
-        setSugestoes(unicos); setAberto(true)
-      } else { setSugestoes([]); setAberto(false) }
+      // 1. Busca em estrutura_equipes
+      const { data: dataEq } = await supabase.from('estrutura_equipes')
+        .select('colaborador, matricula')
+        .ilike('colaborador', `%${v}%`)
+        .order('colaborador').limit(15)
+
+      // 2. Busca em usuarios (exceto ADMIN, apenas ativos)
+      const { data: dataUs } = await supabase.from('usuarios')
+        .select('nome, matricula')
+        .ilike('nome', `%${v}%`)
+        .neq('perfil', 'ADMIN')
+        .eq('status', 'ATIVO')
+        .order('nome').limit(10)
+
+      // Mescla sem duplicatas (estrutura_equipes tem prioridade)
+      const vistos = new Set()
+      const unicos = []
+
+      for (const r of (dataEq || [])) {
+        const k = r.colaborador?.trim().toLowerCase()
+        if (k && !vistos.has(k)) {
+          vistos.add(k)
+          unicos.push({ colaborador: r.colaborador, matricula: r.matricula || '' })
+        }
+      }
+      for (const r of (dataUs || [])) {
+        const k = r.nome?.trim().toLowerCase()
+        if (k && !vistos.has(k)) {
+          vistos.add(k)
+          unicos.push({ colaborador: r.nome, matricula: r.matricula || '' })
+        }
+      }
+
+      if (unicos.length > 0) { setSugestoes(unicos); setAberto(true) }
+      else { setSugestoes([]); setAberto(false) }
     } catch { setSugestoes([]); setAberto(false) }
   }
 
@@ -119,7 +129,7 @@ function AutocompleteEletricista({ onSelect }) {
         <label className="form-label">Nome completo *</label>
         <input className="form-input" value={termo} onChange={e => buscar(e.target.value)}
           onFocus={() => sugestoes.length > 0 && setAberto(true)}
-          placeholder="Digite para buscar o eletricista..." autoComplete="off" autoFocus />
+          placeholder="Digite para buscar..." autoComplete="off" autoFocus />
         {aberto && sugestoes.length > 0 && (
           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 240, overflowY: 'auto' }}>
             {sugestoes.map((s, i) => (
@@ -145,7 +155,7 @@ function AutocompleteEletricista({ onSelect }) {
   )
 }
 
-// ── Formulário de novo participante presencial ────────────────────────────────
+// ── Formulário presencial ─────────────────────────────────────────────────────
 function FormParticipante({ onSolicitar, onCancelar }) {
   const [nome, setNome] = useState('')
   const [mat,  setMat]  = useState('')
@@ -165,7 +175,7 @@ function FormParticipante({ onSolicitar, onCancelar }) {
   )
 }
 
-// ── Formulário de novo participante online ────────────────────────────────────
+// ── Formulário online ─────────────────────────────────────────────────────────
 function FormParticipanteOnline({ onAdicionar, onCancelar }) {
   const [nome, setNome] = useState('')
   const [mat,  setMat]  = useState('')
@@ -188,21 +198,19 @@ function FormParticipanteOnline({ onAdicionar, onCancelar }) {
 
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function R3Participantes({ form, upd, next, prev }) {
-  const tipoConfig  = TIPOS_REGISTRO[form.tipo]
-  const modConfig   = MODALIDADES[form.modalidade]
+  const tipoConfig = TIPOS_REGISTRO[form.tipo]
+  const modConfig  = MODALIDADES[form.modalidade]
   const [assinandoPart, setAssinandoPart] = useState(null)
   const [adicionando,   setAdicionando]   = useState(false)
   const [modoAdd,       setModoAdd]       = useState(null) // 'presencial' | 'online' | null
 
   const maxPart = modConfig?.maxPart || 100
-
   const podeProsseguir = form.participantes.length > 0
 
   useEffect(() => {
     if (form.participantes.length === 0 && !adicionando) setAdicionando(true)
   }, [])
 
-  // Adiciona presencial (requer assinatura imediata)
   const onSolicitarAssinatura = (nome, mat) => {
     if (!nome) return
     setAdicionando(false); setModoAdd(null)
@@ -218,7 +226,6 @@ export default function R3Participantes({ form, upd, next, prev }) {
     if (form.modalidade === 'DUPLA' && form.participantes.length + 1 < 2) setAdicionando(true)
   }
 
-  // Adiciona online (sem assinatura — vai assinar via link)
   const onAdicionarOnline = (nome, mat) => {
     if (!nome) return
     upd('participantes', [...form.participantes, {
@@ -234,7 +241,6 @@ export default function R3Participantes({ form, upd, next, prev }) {
   return (
     <div style={{ padding: '0 0 80px' }}>
 
-      {/* Banner tipo */}
       <div style={{ background: tipoConfig?.bg, border: `1.5px solid ${tipoConfig?.border}`, borderRadius: 10, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 18 }}>{tipoConfig?.emoji}</span>
         <span style={{ fontSize: 13, fontWeight: 700, color: tipoConfig?.color }}>{tipoConfig?.label}</span>
@@ -246,7 +252,6 @@ export default function R3Participantes({ form, upd, next, prev }) {
         <span style={{ fontSize: 12, color: '#64748b' }}>{form.participantes.length}/{maxPart === 100 ? '∞' : maxPart}</span>
       </div>
 
-      {/* Participantes já adicionados */}
       {form.participantes.map((p, i) => (
         <div key={i} style={{
           background: p.modo === 'online' ? '#eff6ff' : '#f0fdf4',
@@ -272,7 +277,7 @@ export default function R3Participantes({ form, upd, next, prev }) {
         </div>
       ))}
 
-      {/* Escolha do modo de adição */}
+      {/* Escolha do modo */}
       {adicionando && !modoAdd && (
         <div style={{ background: '#f8fafc', border: '1.5px dashed #e2e8f0', borderRadius: 14, padding: 16, marginBottom: 12 }}>
           <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>Como este participante irá assinar?</p>
@@ -296,7 +301,6 @@ export default function R3Participantes({ form, upd, next, prev }) {
         </div>
       )}
 
-      {/* Formulários conforme modo */}
       {adicionando && modoAdd === 'presencial' && (
         <FormParticipante
           onSolicitar={onSolicitarAssinatura}
@@ -310,7 +314,6 @@ export default function R3Participantes({ form, upd, next, prev }) {
         />
       )}
 
-      {/* Botões de adicionar mais */}
       {!adicionando && form.participantes.length < maxPart && (
         <button onClick={() => { setAdicionando(true); setModoAdd(null) }} style={{ width: '100%', padding: 13, borderRadius: 12, border: '2px dashed #2563eb', background: '#eff6ff', color: '#2563eb', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
           + Adicionar participante
