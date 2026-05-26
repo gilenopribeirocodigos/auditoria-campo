@@ -399,13 +399,31 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                                 )}
                               </div>
                               {p.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Mat: {p.matricula}</p>}
-                              {/* Localização de onde assinou (apenas online com assinatura) */}
+
+                              {/* Localização — presencial (salvo no JSON do participante) */}
+                              {!p.isOnline && p.assinaturaFinal && (p.endereco_assinatura || p.lat) && (
+                                <div style={{ marginTop: 5 }}>
+                                  {p.endereco_assinatura && (
+                                    <p style={{ fontSize: 11, color: '#15803d', margin: '0 0 2px', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                                      <span style={{ flexShrink: 0 }}>📍</span>
+                                      <span>{p.endereco_assinatura}</span>
+                                    </p>
+                                  )}
+                                  {p.lat && p.lng && (
+                                    <p style={{ fontSize: 10, color: '#64748b', margin: 0, fontVariantNumeric: 'tabular-nums' }}>
+                                      🌐 {Number(p.lat).toFixed(7)}, {Number(p.lng).toFixed(7)}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Localização — online (salvo em assinaturas_coletadas) */}
                               {p.isOnline && p.assinouOnline && (() => {
                                 const assinOnlineData = assinOnline.find(
                                   a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
                                 )
                                 return assinOnlineData ? (
-                                  <div style={{ marginTop: 6 }}>
+                                  <div style={{ marginTop: 5 }}>
                                     {assinOnlineData.endereco_assinatura && (
                                       <p style={{ fontSize: 11, color: '#1d4ed8', margin: '0 0 2px', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
                                         <span style={{ flexShrink: 0 }}>📍</span>
@@ -420,7 +438,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                                   </div>
                                 ) : null
                               })()}
-                              {/* Mensagem de aguardando só para online sem assinatura */}
+
+                              {/* Aguardando assinatura online */}
                               {p.isOnline && !p.assinaturaFinal && !loadingOnline && (
                                 <p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, margin: '4px 0 0' }}>
                                   ⏳ Aguardando assinatura via link
