@@ -146,9 +146,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
   useEffect(() => { buscar() }, [])
   useEffect(() => {
-    intervalRef.current = setInterval(buscar, 30000)
+    // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
+    intervalRef.current = setInterval(() => {
+      if (!detalhe) buscar()
+    }, 300000)
     return () => clearInterval(intervalRef.current)
-  }, [])
+  }, [detalhe])
 
   const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
