@@ -126,10 +126,17 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           </div>
 
           ${!salvoOffline && form.fotos.length > 0 ? `
-          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px 18px;margin-bottom:16px;">
-            <p style="font-size:15px;color:#64748b;text-align:center;margin:0;font-weight:600;">
-              📷 ${form.fotos.length} foto(s) de evidência registradas
+          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:16px;">
+            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 12px 0;">
+              📷 Fotos (${form.fotos.length})
             </p>
+            <div style="display:grid;grid-template-columns:repeat(${Math.min(form.fotos.length, 3)},1fr);gap:8px;">
+              ${form.fotos.map((f, i) => `
+                <img src="${f.url}" crossorigin="anonymous"
+                  style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block;border:1px solid #e2e8f0;"
+                  onerror="this.style.display='none'" />
+              `).join('')}
+            </div>
           </div>` : ''}
 
           ${salvoOffline ? `
