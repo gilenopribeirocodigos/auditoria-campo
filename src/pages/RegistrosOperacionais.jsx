@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { listarRegistros } from '../lib/registros.js'
-import { listarAssinaturasColetadas, listarTokensRegistro } from '../lib/assinaturas.js'
+import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 
 function calcMesAtual() {
@@ -133,6 +133,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     tipo:    '',
     fiscal:  '',
   })
+  const [tokensAtivos,  setTokensAtivos]  = useState({}) // { registroId: tokenData }
+  const [encerrando,    setEncerrando]    = useState(null) // registroId sendo encerrado
   const intervalRef = useRef(null)
 
   const buscar = async () => {
@@ -140,6 +142,19 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     try {
       const data = await listarRegistros(filtros, usuarioLogado)
       setRegistros(data)
+      // Busca tokens ativos para todos os registros de uma vez
+      if (data.length > 0) {
+        const { supabase } = await import('../lib/supabase.js')
+        const { data: tokens } = await supabase
+          .from('assinaturas_pendentes')
+          .select('id, token, registro_id, status, expires_at')
+          .eq('status', 'ABERTO')
+          .gt('expires_at', new Date().toISOString())
+          .in('registro_id', data.map(r => r.id))
+        const mapa = {}
+        for (const t of (tokens || [])) mapa[t.registro_id] = t
+        setTokensAtivos(mapa)
+      }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }
@@ -229,6 +244,15 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 ))}
               </select>
             </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Nome do Participante / Emp.</label>
+              <input
+                type="text" value={filtros.fiscal}
+                onChange={e => upd('fiscal', e.target.value)}
+                placeholder="Filtrar por fiscal..."
+                className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}
+              />
+            </div>
           </div>
           <button onClick={buscar} style={{ marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
             🔍 Buscar
@@ -251,32 +275,63 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               const tc = TIPOS_REGISTRO[r.tipo] || {}
               const mc = MODALIDADES[r.modalidade] || {}
               return (
-                <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
-                  onClick={() => abrirDetalhe(r)}
-                  onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
-                  onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
-                >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                        <span style={{ fontSize: 18 }}>{tc.emoji}</span>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: tc.color || '#1e293b' }}>{tc.label}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: tc.bg, color: tc.color }}>{mc.emoji} {mc.label}</span>
-                        {r.tipo === 'DISCIPLINAR' && r.tipo_medida && (
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fee2e2', color: '#dc2626' }}>{TIPO_MEDIDA_LABEL[r.tipo_medida]}</span>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
-                        <span>👤 {r.fiscal}</span>
-                        <span style={{ margin: '0 8px' }}>·</span>
-                        <span>📅 {formatData(r.data_registro)} às {r.hora_registro}</span>
-                        <span style={{ margin: '0 8px' }}>·</span>
-                        <span>👥 {Array.isArray(r.participantes) ? r.participantes.length : 0} participante(s)</span>
+                {(() => {
+                  const tokenAtivo = tokensAtivos[r.id]
+                  const expira = tokenAtivo ? new Date(tokenAtivo.expires_at) : null
+                  const minutosRestantes = expira ? Math.ceil((expira - new Date()) / 60000) : 0
+                  return (
+                    <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: tokenAtivo ? '1.5px solid #22c55e' : `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
+                      onClick={() => abrirDetalhe(r)}
+                      onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
+                      onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                            <span style={{ fontSize: 18 }}>{tc.emoji}</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: tc.color || '#1e293b' }}>{tc.label}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: tc.bg, color: tc.color }}>{mc.emoji} {mc.label}</span>
+                            {r.tipo === 'DISCIPLINAR' && r.tipo_medida && (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fee2e2', color: '#dc2626' }}>{TIPO_MEDIDA_LABEL[r.tipo_medida]}</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+                            <span>👤 {r.fiscal}</span>
+                            <span style={{ margin: '0 8px' }}>·</span>
+                            <span>📅 {formatData(r.data_registro)} às {r.hora_registro}</span>
+                            <span style={{ margin: '0 8px' }}>·</span>
+                            <span>👥 {Array.isArray(r.participantes) ? r.participantes.length : 0} participante(s)</span>
+                          </div>
+                          {/* Badge de link ativo */}
+                          {tokenAtivo && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}
+                              onClick={e => e.stopPropagation()}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d', background: '#dcfce7', padding: '3px 10px', borderRadius: 20, border: '1px solid #86efac', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                🔗 Link ativo · {minutosRestantes > 60 ? `${Math.floor(minutosRestantes/60)}h ${minutosRestantes%60}min` : `${minutosRestantes}min`}
+                              </span>
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation()
+                                  if (!window.confirm('Encerrar o link de assinatura deste registro?')) return
+                                  setEncerrando(r.id)
+                                  try {
+                                    await encerrarToken(tokenAtivo.id)
+                                    setTokensAtivos(prev => { const n = {...prev}; delete n[r.id]; return n })
+                                  } catch { alert('Erro ao encerrar link.') }
+                                  finally { setEncerrando(null) }
+                                }}
+                                disabled={encerrando === r.id}
+                                style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fef2f2', padding: '3px 10px', borderRadius: 20, border: '1px solid #fecaca', cursor: 'pointer' }}>
+                                {encerrando === r.id ? '⏳ Encerrando...' : '🔒 Encerrar link'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</div>
                       </div>
                     </div>
-                    <div style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</div>
-                  </div>
-                </div>
+                  )
+                })()}
               )
             })}
           </div>
