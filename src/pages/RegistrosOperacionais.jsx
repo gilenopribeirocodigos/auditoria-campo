@@ -274,12 +274,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             {registros.map(r => {
               const tc = TIPOS_REGISTRO[r.tipo] || {}
               const mc = MODALIDADES[r.modalidade] || {}
+              const tokenAtivo = tokensAtivos[r.id]
+              const expira = tokenAtivo ? new Date(tokenAtivo.expires_at) : null
+              const minutosRestantes = expira ? Math.ceil((expira - new Date()) / 60000) : 0
               return (
-                {(() => {
-                  const tokenAtivo = tokensAtivos[r.id]
-                  const expira = tokenAtivo ? new Date(tokenAtivo.expires_at) : null
-                  const minutosRestantes = expira ? Math.ceil((expira - new Date()) / 60000) : 0
-                  return (
                     <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: tokenAtivo ? '1.5px solid #22c55e' : `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
                       onClick={() => abrirDetalhe(r)}
                       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
@@ -330,8 +328,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                         <div style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</div>
                       </div>
                     </div>
-                  )
-                })()}
               )
             })}
           </div>
