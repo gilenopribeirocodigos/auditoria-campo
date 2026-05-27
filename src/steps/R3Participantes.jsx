@@ -54,58 +54,87 @@ function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
 
 // ── Modal: importar em lote por supervisor ────────────────────────────────────
 function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFechar }) {
+  const [aba,             setAba]             = useState('supervisor') // 'supervisor' | 'usuarios'
   const [supervisores,    setSupervisores]    = useState([])
   const [selecionados,    setSelecionados]    = useState([])
   const [preview,         setPreview]         = useState([])
   const [loadingSup,      setLoadingSup]      = useState(true)
   const [loadingPreview,  setLoadingPreview]  = useState(false)
-  const [modoImport,      setModoImport]      = useState('online') // 'online' | 'presencial'
+  const [modoImport,      setModoImport]      = useState('online')
+  // aba usuarios
+  const [usuarios,        setUsuarios]        = useState([])
+  const [loadingUs,       setLoadingUs]       = useState(false)
+  const [usuariosSel,     setUsuariosSel]     = useState([])
 
-  // Carrega lista de supervisores únicos
+  const jaAdicionados = new Set(participantesJaAdicionados.map(p => p.nome?.trim().toLowerCase()))
+
+  // Carrega supervisores
   useEffect(() => {
     supabase.from('estrutura_equipes')
-      .select('superv_campo')
-      .not('superv_campo', 'is', null)
-      .neq('superv_campo', '')
+      .select('superv_campo').not('superv_campo', 'is', null).neq('superv_campo', '')
       .then(({ data }) => {
         const unicos = [...new Set((data || []).map(r => r.superv_campo?.trim()).filter(Boolean))].sort()
-        setSupervisores(unicos)
-        setLoadingSup(false)
+        setSupervisores(unicos); setLoadingSup(false)
       })
   }, [])
 
-  // Atualiza preview quando muda seleção
+  // Carrega usuarios quando muda para aba usuarios
   useEffect(() => {
+    if (aba !== 'usuarios' || usuarios.length > 0) return
+    setLoadingUs(true)
+    supabase.from('usuarios')
+      .select('nome, matricula, perfil').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
+      .then(({ data }) => { setUsuarios(data || []); setLoadingUs(false) })
+  }, [aba])
+
+  // Preview supervisores
+  useEffect(() => {
+    if (aba !== 'supervisor') return
     if (selecionados.length === 0) { setPreview([]); return }
     setLoadingPreview(true)
     supabase.from('estrutura_equipes')
       .select('colaborador, matricula, superv_campo')
-      .in('superv_campo', selecionados)
-      .order('superv_campo').order('colaborador')
+      .in('superv_campo', selecionados).order('superv_campo').order('colaborador')
       .then(({ data }) => {
-        // Remove duplicatas e quem já está na lista
-        const jaAdicionados = new Set(participantesJaAdicionados.map(p => p.nome?.trim().toLowerCase()))
         const vistos = new Set()
         const lista = (data || []).filter(r => {
           const k = r.colaborador?.trim().toLowerCase()
           if (!k || vistos.has(k) || jaAdicionados.has(k)) return false
           vistos.add(k); return true
         })
-        setPreview(lista)
-        setLoadingPreview(false)
+        setPreview(lista); setLoadingPreview(false)
       })
   }, [selecionados])
 
-  const toggleSupervisor = (sup) => {
-    setSelecionados(prev =>
-      prev.includes(sup) ? prev.filter(s => s !== sup) : [...prev, sup]
-    )
+  // Preview usuarios selecionados
+  const previewUsuarios = usuarios.filter(u => {
+    const k = u.nome?.trim().toLowerCase()
+    return usuariosSel.includes(u.nome) && !jaAdicionados.has(k)
+  })
+
+  const toggleSupervisor = (sup) =>
+    setSelecionados(prev => prev.includes(sup) ? prev.filter(s => s !== sup) : [...prev, sup])
+
+  const toggleUsuario = (nome) =>
+    setUsuariosSel(prev => prev.includes(nome) ? prev.filter(n => n !== nome) : [...prev, nome])
+
+  const selecionarTodosUsuarios = () => {
+    const disponiveis = usuarios.filter(u => !jaAdicionados.has(u.nome?.trim().toLowerCase())).map(u => u.nome)
+    setUsuariosSel(disponiveis)
   }
 
   const confirmar = () => {
-    if (preview.length === 0) return
-    onImportar(preview, modoImport)
+    if (aba === 'supervisor') {
+      if (preview.length === 0) return
+      onImportar(preview, modoImport)
+    } else {
+      if (previewUsuarios.length === 0) return
+      const lista = previewUsuarios.map(u => ({ colaborador: u.nome, matricula: u.matricula || '' }))
+      onImportar(lista, modoImport)
+    }
   }
+
+  const totalPreview = aba === 'supervisor' ? preview.length : previewUsuarios.length
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 2000 }}>
@@ -114,11 +143,22 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
         <div style={{ width: 40, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 20px' }} />
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <div>
-            <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', margin: 0 }}>👥 Importar por Supervisor</h2>
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>Selecione 1 ou mais supervisores de campo</p>
-          </div>
+          <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', margin: 0 }}>👥 Importar participantes</h2>
           <button onClick={onFechar} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8' }}>×</button>
+        </div>
+
+        {/* Abas */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 16 }}>
+          <button onClick={() => setAba('supervisor')} style={{ padding: '10px 8px', borderRadius: 10, border: `2px solid ${aba === 'supervisor' ? '#7c3aed' : '#e2e8f0'}`, background: aba === 'supervisor' ? '#faf5ff' : '#f8fafc', cursor: 'pointer', textAlign: 'center' }}>
+            <div style={{ fontSize: 16, marginBottom: 2 }}>👷</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: aba === 'supervisor' ? '#7c3aed' : '#374151' }}>Por Supervisor</div>
+            <div style={{ fontSize: 10, color: '#64748b' }}>Eletricistas de campo</div>
+          </button>
+          <button onClick={() => setAba('usuarios')} style={{ padding: '10px 8px', borderRadius: 10, border: `2px solid ${aba === 'usuarios' ? '#0f766e' : '#e2e8f0'}`, background: aba === 'usuarios' ? '#f0fdfa' : '#f8fafc', cursor: 'pointer', textAlign: 'center' }}>
+            <div style={{ fontSize: 16, marginBottom: 2 }}>🧑‍💼</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: aba === 'usuarios' ? '#0f766e' : '#374151' }}>Usuários do Sistema</div>
+            <div style={{ fontSize: 10, color: '#64748b' }}>Supervisores e fiscais</div>
+          </button>
         </div>
 
         {/* Modo de assinatura */}
@@ -138,79 +178,117 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
           </div>
         </div>
 
-        {/* Lista de supervisores */}
-        <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Supervisores disponíveis:</p>
-        {loadingSup ? (
-          <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>⏳ Carregando...</p>
-        ) : (
-          <div style={{ marginBottom: 16 }}>
-            {supervisores.map(sup => {
-              const marcado = selecionados.includes(sup)
-              return (
-                <button key={sup} onClick={() => toggleSupervisor(sup)} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, width: '100%',
-                  padding: '12px 14px', marginBottom: 6, borderRadius: 12, cursor: 'pointer',
-                  border: `2px solid ${marcado ? '#2563eb' : '#e2e8f0'}`,
-                  background: marcado ? '#eff6ff' : '#f8fafc', textAlign: 'left',
-                }}>
-                  <div style={{
-                    width: 22, height: 22, borderRadius: 6, border: `2px solid ${marcado ? '#2563eb' : '#cbd5e1'}`,
-                    background: marcado ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
-                    {marcado && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
-                  </div>
-                  <span style={{ fontSize: 14, fontWeight: marcado ? 700 : 600, color: marcado ? '#1d4ed8' : '#1e293b' }}>
-                    {sup}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        )}
-
-        {/* Preview dos participantes que serão importados */}
-        {selecionados.length > 0 && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: 14, marginBottom: 16 }}>
-            {loadingPreview ? (
-              <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>⏳ Carregando equipe...</p>
+        {/* ── ABA: POR SUPERVISOR ─────────────────────────────────────────── */}
+        {aba === 'supervisor' && (
+          <>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Supervisores disponíveis:</p>
+            {loadingSup ? (
+              <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>⏳ Carregando...</p>
             ) : (
-              <>
-                <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>
-                  ✅ {preview.length} participante(s) serão adicionados:
-                </p>
-                <div style={{ maxHeight: 180, overflowY: 'auto' }}>
-                  {preview.map((p, i) => (
-                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < preview.length - 1 ? '1px solid #bbf7d0' : 'none', fontSize: 13 }}>
-                      <span style={{ color: '#15803d', fontWeight: 600 }}>{i + 1}. {p.colaborador}</span>
-                      <span style={{ color: '#64748b', fontSize: 11 }}>
-                        {p.matricula ? `Mat: ${p.matricula}` : ''} · <span style={{ color: '#94a3b8' }}>{p.superv_campo}</span>
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                {participantesJaAdicionados.length > 0 && (
-                  <p style={{ fontSize: 11, color: '#64748b', marginTop: 8, fontStyle: 'italic' }}>
-                    ℹ️ Participantes já na lista foram excluídos automaticamente.
-                  </p>
-                )}
-              </>
+              <div style={{ marginBottom: 16 }}>
+                {supervisores.map(sup => {
+                  const marcado = selecionados.includes(sup)
+                  return (
+                    <button key={sup} onClick={() => toggleSupervisor(sup)} style={{
+                      display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                      padding: '12px 14px', marginBottom: 6, borderRadius: 12, cursor: 'pointer',
+                      border: `2px solid ${marcado ? '#7c3aed' : '#e2e8f0'}`,
+                      background: marcado ? '#faf5ff' : '#f8fafc', textAlign: 'left',
+                    }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${marcado ? '#7c3aed' : '#cbd5e1'}`, background: marcado ? '#7c3aed' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {marcado && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
+                      </div>
+                      <span style={{ fontSize: 14, fontWeight: marcado ? 700 : 600, color: marcado ? '#7c3aed' : '#1e293b' }}>{sup}</span>
+                    </button>
+                  )
+                })}
+              </div>
             )}
-          </div>
+            {selecionados.length > 0 && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: 14, marginBottom: 16 }}>
+                {loadingPreview ? (
+                  <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>⏳ Carregando equipe...</p>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✅ {preview.length} participante(s) serão adicionados:</p>
+                    <div style={{ maxHeight: 180, overflowY: 'auto' }}>
+                      {preview.map((p, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < preview.length - 1 ? '1px solid #bbf7d0' : 'none', fontSize: 13 }}>
+                          <span style={{ color: '#15803d', fontWeight: 600 }}>{i + 1}. {p.colaborador}</span>
+                          <span style={{ color: '#94a3b8', fontSize: 11 }}>{p.superv_campo}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {selecionados.length === 0 && !loadingSup && (
+              <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e', textAlign: 'center' }}>
+                Selecione pelo menos um supervisor acima.
+              </div>
+            )}
+          </>
         )}
 
-        {selecionados.length === 0 && !loadingSup && (
-          <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#92400e', textAlign: 'center' }}>
-            Selecione pelo menos um supervisor acima.
-          </div>
+        {/* ── ABA: USUÁRIOS DO SISTEMA ────────────────────────────────────── */}
+        {aba === 'usuarios' && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', margin: 0 }}>Usuários do sistema (exceto Admin):</p>
+              <button onClick={selecionarTodosUsuarios} style={{ fontSize: 11, color: '#0f766e', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 700 }}>
+                ✅ Selecionar todos
+              </button>
+            </div>
+            {loadingUs ? (
+              <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>⏳ Carregando usuários...</p>
+            ) : (
+              <div style={{ marginBottom: 16 }}>
+                {usuarios.map(u => {
+                  const marcado = usuariosSel.includes(u.nome)
+                  const jaNaLista = jaAdicionados.has(u.nome?.trim().toLowerCase())
+                  return (
+                    <button key={u.nome} onClick={() => !jaNaLista && toggleUsuario(u.nome)} style={{
+                      display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                      padding: '10px 14px', marginBottom: 6, borderRadius: 12, cursor: jaNaLista ? 'not-allowed' : 'pointer',
+                      border: `2px solid ${jaNaLista ? '#f1f5f9' : marcado ? '#0f766e' : '#e2e8f0'}`,
+                      background: jaNaLista ? '#f8fafc' : marcado ? '#f0fdfa' : '#f8fafc', textAlign: 'left',
+                      opacity: jaNaLista ? 0.5 : 1,
+                    }}>
+                      <div style={{ width: 22, height: 22, borderRadius: 6, border: `2px solid ${marcado ? '#0f766e' : '#cbd5e1'}`, background: marcado ? '#0f766e' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        {marcado && <span style={{ color: '#fff', fontSize: 13, fontWeight: 800 }}>✓</span>}
+                        {jaNaLista && <span style={{ color: '#94a3b8', fontSize: 11 }}>—</span>}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: 13, fontWeight: marcado ? 700 : 600, color: marcado ? '#0f766e' : '#1e293b' }}>{u.nome}</span>
+                        {jaNaLista && <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 8 }}>já na lista</span>}
+                      </div>
+                      <div style={{ textAlign: 'right' }}>
+                        {u.matricula && <span style={{ fontSize: 11, color: '#64748b' }}>Mat: {u.matricula}</span>}
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>{u.perfil}</div>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {usuariosSel.length > 0 && (
+              <div style={{ background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 12, padding: '10px 14px', marginBottom: 16 }}>
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', margin: 0 }}>
+                  ✅ {previewUsuarios.length} usuário(s) selecionado(s)
+                </p>
+              </div>
+            )}
+          </>
         )}
 
-        <button onClick={confirmar} disabled={preview.length === 0 || loadingPreview}
+        <button onClick={confirmar} disabled={totalPreview === 0}
           style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', marginBottom: 10,
-            background: preview.length > 0 && !loadingPreview ? '#1e3a5f' : '#e2e8f0',
-            color: preview.length > 0 && !loadingPreview ? '#fff' : '#94a3b8',
-            fontSize: 15, fontWeight: 700, cursor: preview.length > 0 ? 'pointer' : 'not-allowed',
+            background: totalPreview > 0 ? '#1e3a5f' : '#e2e8f0',
+            color: totalPreview > 0 ? '#fff' : '#94a3b8',
+            fontSize: 15, fontWeight: 700, cursor: totalPreview > 0 ? 'pointer' : 'not-allowed',
           }}>
-          ✅ Adicionar {preview.length > 0 ? `${preview.length} participante(s)` : ''}
+          ✅ Adicionar {totalPreview > 0 ? `${totalPreview} participante(s)` : ''}
         </button>
 
         <button onClick={onFechar} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
