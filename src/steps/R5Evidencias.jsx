@@ -46,22 +46,32 @@ async function adicionarWatermark(base64, form) {
 }
 
 export default function R5Evidencias({ form, upd, next, prev }) {
-  const tipoConfig  = TIPOS_REGISTRO[form.tipo]
-  const cameraRef   = useRef(null)   // câmera direta
-  const galeriaRef  = useRef(null)   // galeria/arquivos
-  const listaRef    = useRef(null)   // lista impressa
+  const tipoConfig = TIPOS_REGISTRO[form.tipo]
+  const cameraRef  = useRef(null)
+  const galeriaRef = useRef(null)
+  const listaRef   = useRef(null)
 
+  // ── FIX: processa TODAS as fotos primeiro, depois faz um único upd ──────────
   const processarFotos = async (files) => {
-    for (const file of Array.from(files || [])) {
-      if (form.fotos.length >= MAX_FOTOS) break
+    const filesArray = Array.from(files || [])
+    const disponiveis = MAX_FOTOS - form.fotos.length
+    if (disponiveis <= 0) return
+
+    const selecionadas = filesArray.slice(0, disponiveis)
+    const novasFotos = []
+
+    for (const file of selecionadas) {
       const base64 = await new Promise(res => {
         const reader = new FileReader()
         reader.onload = ev => res(ev.target.result)
         reader.readAsDataURL(file)
       })
       const comMarca = await adicionarWatermark(base64, form)
-      upd('fotos', [...form.fotos, { url: comMarca }])
+      novasFotos.push({ url: comMarca })
     }
+
+    // Um único upd com todas as fotos acumuladas
+    upd('fotos', [...form.fotos, ...novasFotos])
   }
 
   const onCamera  = async (e) => { await processarFotos(e.target.files); e.target.value = '' }
@@ -81,6 +91,7 @@ export default function R5Evidencias({ form, upd, next, prev }) {
   }
 
   const podeProsseguir = form.fotos.length >= 1
+  const fotasRestantes = MAX_FOTOS - form.fotos.length
 
   return (
     <div style={{ padding: '0 0 80px' }}>
@@ -145,7 +156,6 @@ export default function R5Evidencias({ form, upd, next, prev }) {
         {/* Botões Tirar Foto / Da Galeria */}
         {form.fotos.length < MAX_FOTOS && (
           <>
-            {/* inputs ocultos */}
             <input
               ref={cameraRef}
               type="file"
@@ -154,6 +164,7 @@ export default function R5Evidencias({ form, upd, next, prev }) {
               onChange={onCamera}
               style={{ display: 'none' }}
             />
+            {/* multiple permite selecionar várias fotos de uma vez */}
             <input
               ref={galeriaRef}
               type="file"
@@ -163,57 +174,45 @@ export default function R5Evidencias({ form, upd, next, prev }) {
               style={{ display: 'none' }}
             />
 
-            {/* Grid de botões igual ao modelo */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
 
-              {/* Tirar Foto */}
               <button
                 onClick={() => cameraRef.current?.click()}
                 style={{
-                  padding: '20px 12px',
-                  borderRadius: 14,
+                  padding: '20px 12px', borderRadius: 14,
                   border: `2px dashed ${form.fotos.length === 0 ? '#dc2626' : '#2563eb'}`,
                   background: form.fotos.length === 0 ? '#fef2f2' : '#eff6ff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 8,
+                  cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 8,
                 }}
               >
                 <span style={{ fontSize: 32 }}>📷</span>
-                <span style={{
-                  fontSize: 14, fontWeight: 700,
-                  color: form.fotos.length === 0 ? '#dc2626' : '#2563eb',
-                }}>Tirar foto</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: form.fotos.length === 0 ? '#dc2626' : '#2563eb' }}>
+                  Tirar foto
+                </span>
                 <span style={{ fontSize: 11, color: '#94a3b8' }}>Câmera</span>
               </button>
 
-              {/* Da Galeria */}
               <button
                 onClick={() => galeriaRef.current?.click()}
                 style={{
-                  padding: '20px 12px',
-                  borderRadius: 14,
+                  padding: '20px 12px', borderRadius: 14,
                   border: `2px dashed ${form.fotos.length === 0 ? '#dc2626' : '#2563eb'}`,
                   background: form.fotos.length === 0 ? '#fef2f2' : '#eff6ff',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 8,
+                  cursor: 'pointer', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 8,
                 }}
               >
                 <span style={{ fontSize: 32 }}>🖼️</span>
-                <span style={{
-                  fontSize: 14, fontWeight: 700,
-                  color: form.fotos.length === 0 ? '#dc2626' : '#2563eb',
-                }}>Da galeria</span>
-                <span style={{ fontSize: 11, color: '#94a3b8' }}>Galeria</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: form.fotos.length === 0 ? '#dc2626' : '#2563eb' }}>
+                  Da galeria
+                </span>
+                <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                  {fotasRestantes > 1 ? `até ${fotasRestantes} fotos` : 'Galeria'}
+                </span>
               </button>
             </div>
 
-            {/* Aviso obrigatório */}
             {form.fotos.length === 0 && (
               <div style={{
                 marginTop: 10, background: '#fef3c7', border: '1px solid #fcd34d',
@@ -221,6 +220,15 @@ export default function R5Evidencias({ form, upd, next, prev }) {
               }}>
                 <p style={{ fontSize: 12, color: '#92400e', fontWeight: 600 }}>
                   ⚠️ Adicione pelo menos 1 foto
+                </p>
+              </div>
+            )}
+
+            {/* Dica de seleção múltipla */}
+            {form.fotos.length > 0 && fotasRestantes > 1 && (
+              <div style={{ marginTop: 8, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '6px 12px', textAlign: 'center' }}>
+                <p style={{ fontSize: 11, color: '#0369a1' }}>
+                  💡 Na galeria, mantenha pressionado para selecionar até {fotasRestantes} fotos de uma vez
                 </p>
               </div>
             )}
@@ -261,7 +269,6 @@ export default function R5Evidencias({ form, upd, next, prev }) {
               onChange={onListaImpressaFoto}
               style={{ display: 'none' }}
             />
-            {/* Dois botões também para lista impressa */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <button onClick={() => {
                 if (listaRef.current) {
