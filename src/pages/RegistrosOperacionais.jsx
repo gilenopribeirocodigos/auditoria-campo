@@ -619,6 +619,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       const mc2 = MODALIDADES[detalhe.modalidade] || {}
                       const formatD = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
                       const participantes = detalhe.participantes || []
+                      // Cruza participantes com assinaturas online (igual ao modal)
+                      const participantesComAssinatura = participantes.map(p => {
+                        const assinaturaOnline = assinOnline.find(
+                          a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
+                        )
+                        return {
+                          ...p,
+                          assinaturaFinal: p.assinatura_url || assinaturaOnline?.assinatura_url || null,
+                          isOnline: p.modo === 'online' || (!!assinaturaOnline && !p.assinatura_url),
+                          assinouOnline: !!assinaturaOnline,
+                        }
+                      })
 
                       const infoRow = (label, value) => value ? `
                         <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
@@ -653,21 +665,21 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${detalhe.observacoes}</p>
                           </div>` : ''}
                           <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:16px;margin-bottom:16px;">
-                            <p style="font-size:16px;font-weight:800;color:#15803d;margin:0 0 12px 0;">✅ Lista de Frequência (${participantes.length})</p>
-                            ${participantes.map((p, i) => `
+                            <p style="font-size:16px;font-weight:800;color:#15803d;margin:0 0 12px 0;">✅ Lista de Frequência (${participantesComAssinatura.length})</p>
+                            ${participantesComAssinatura.map((p, i) => `
                               <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;${i < participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
                                 <div>
                                   <span style="font-size:15px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
                                   ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
                                   ${p.modo === 'online' ? `<span style="font-size:11px;color:#1d4ed8;background:#dbeafe;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;">🔗 online</span>` : ''}
                                 </div>
-                                ${p.assinatura_url ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:44px;max-width:110px;object-fit:contain;border-radius:6px;background:#fafafa;border:1px solid #e2e8f0;"/>` : p.modo === 'online' ? '<span style="font-size:12px;color:#2563eb;font-weight:600;">⏳ aguardando</span>' : ''}
+                                ${p.assinaturaFinal ? `<img src="${p.assinaturaFinal}" crossorigin="anonymous" style="height:44px;max-width:110px;object-fit:contain;border-radius:6px;background:#fafafa;border:1px solid #e2e8f0;"/>` : p.isOnline ? '<span style="font-size:12px;color:#f59e0b;font-weight:600;">⏳ aguardando</span>' : ''}
                               </div>`).join('')}
                           </div>
                           ${Array.isArray(detalhe.fotos_urls) && detalhe.fotos_urls.length > 0 ? `
                           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
                             <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">📷 Fotos (${detalhe.fotos_urls.length})</p>
-                            <div style="display:grid;grid-template-columns:repeat(${Math.min(detalhe.fotos_urls.length,3)},1fr);gap:8px;">
+                            <div style="display:grid;grid-template-columns:repeat(${Math.min((detalhe.fotos_urls||[]).length,3)},1fr);gap:8px;">
                               ${detalhe.fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;"/>`).join('')}
                             </div>
                           </div>` : ''}
