@@ -627,11 +627,11 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                         </div>` : ''
 
                       const html = `
-                        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
+                        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">
                           <div style="background:${tc2.bg || '#eff6ff'};border:3px solid ${tc2.border || '#bfdbfe'};border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;">
-                            <div style="font-size:44px;margin-bottom:8px;">${tc2.emoji || '📝'}</div>
-                            <div style="font-size:22px;font-weight:900;color:${tc2.color || '#1d4ed8'};margin-bottom:4px;">${tc2.label || detalhe.tipo}</div>
-                            <div style="font-size:14px;color:${tc2.color || '#1d4ed8'};opacity:0.85;font-weight:600;">${mc2.emoji || ''} ${mc2.label || ''} · ${participantes.length} participante(s)</div>
+                            <div style="font-size:52px;margin-bottom:10px;">${tc2.emoji || '📝'}</div>
+                            <div style="font-size:26px;font-weight:900;color:${tc2.color || '#1d4ed8'};margin-bottom:6px;letter-spacing:-0.5px;">${tc2.label || detalhe.tipo}</div>
+                            <div style="font-size:15px;color:${tc2.color || '#1d4ed8'};opacity:0.85;font-weight:700;">${mc2.emoji || ''} ${mc2.label || ''} · ${participantes.length} participante(s)</div>
                           </div>
                           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
                             <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">Dados do Registro</p>
@@ -653,15 +653,15 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${detalhe.observacoes}</p>
                           </div>` : ''}
                           <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:16px;margin-bottom:16px;">
-                            <p style="font-size:14px;font-weight:800;color:#15803d;margin:0 0 10px 0;">✅ Lista de Frequência (${participantes.length})</p>
+                            <p style="font-size:16px;font-weight:800;color:#15803d;margin:0 0 12px 0;">✅ Lista de Frequência (${participantes.length})</p>
                             ${participantes.map((p, i) => `
-                              <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;${i < participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+                              <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;${i < participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
                                 <div>
-                                  <span style="font-size:14px;font-weight:700;color:#15803d;">${i+1}. ${p.nome}</span>
-                                  ${p.matricula ? `<span style="font-size:12px;color:#64748b;margin-left:6px;">Mat: ${p.matricula}</span>` : ''}
-                                  ${p.modo === 'online' ? `<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:6px;">🔗 online</span>` : ''}
+                                  <span style="font-size:15px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
+                                  ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
+                                  ${p.modo === 'online' ? `<span style="font-size:11px;color:#1d4ed8;background:#dbeafe;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;">🔗 online</span>` : ''}
                                 </div>
-                                ${p.assinatura_url ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:36px;max-width:90px;object-fit:contain;"/>` : p.modo === 'online' ? '<span style="font-size:11px;color:#2563eb;">⏳ aguardando</span>' : ''}
+                                ${p.assinatura_url ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:44px;max-width:110px;object-fit:contain;border-radius:6px;background:#fafafa;border:1px solid #e2e8f0;"/>` : p.modo === 'online' ? '<span style="font-size:12px;color:#2563eb;font-weight:600;">⏳ aguardando</span>' : ''}
                               </div>`).join('')}
                           </div>
                           ${Array.isArray(detalhe.fotos_urls) && detalhe.fotos_urls.length > 0 ? `
@@ -672,8 +672,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             </div>
                           </div>` : ''}
                           <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
-                            <p style="font-size:12px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-                            <p style="font-size:11px;color:#cbd5e1;margin:3px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+                            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
                           </div>
                         </div>`
 
@@ -683,8 +683,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       document.body.appendChild(div)
 
                       const canvas = await html2canvas(div.firstElementChild, {
-                        scale: 4, useCORS: true, allowTaint: true,
-                        backgroundColor: '#f0f4f8', logging: false, windowWidth: 520,
+                        scale: 6, useCORS: true, allowTaint: true,
+                        backgroundColor: '#f0f4f8', logging: false, windowWidth: 640,
                       })
                       document.body.removeChild(div)
 
