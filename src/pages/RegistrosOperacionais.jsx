@@ -135,12 +135,17 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   })
   const [tokensAtivos,  setTokensAtivos]  = useState({}) // { registroId: tokenData }
   const [encerrando,    setEncerrando]    = useState(null) // registroId sendo encerrado
+  const [fiscaisLista,  setFiscaisLista]  = useState([]) // usuários para filtro
+  const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
+  const [dropdownOpen,  setDropdownOpen]  = useState(false)
+  const [capturando,    setCapturando]    = useState(false)
+  const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
 
   const buscar = async () => {
     setLoading(true)
     try {
-      const data = await listarRegistros(filtros, usuarioLogado)
+      const data = await listarRegistros({ ...filtros, fiscais: fiscaisSel }, usuarioLogado)
       setRegistros(data)
       // Busca tokens ativos para todos os registros de uma vez
       if (data.length > 0) {
@@ -159,7 +164,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     finally { setLoading(false) }
   }
 
-  useEffect(() => { buscar() }, [])
+  useEffect(() => {
+    buscar()
+    // Carrega lista de fiscais (usuários ativos exceto ADMIN)
+    import('../lib/supabase.js').then(({ supabase }) => {
+      supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
+        .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
+    })
+    // Fecha dropdown ao clicar fora
+    const fn = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
   useEffect(() => {
     // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
     intervalRef.current = setInterval(() => {
@@ -244,14 +260,38 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 ))}
               </select>
             </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Nome do Participante / Emp.</label>
-              <input
-                type="text" value={filtros.fiscal}
-                onChange={e => upd('fiscal', e.target.value)}
-                placeholder="Filtrar por fiscal..."
-                className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}
-              />
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Fiscal / Usuário</label>
+              <button onClick={() => setDropdownOpen(o => !o)} style={{
+                width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0',
+                background: '#fff', fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <span style={{ color: fiscaisSel.length ? '#1e293b' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+                  {fiscaisSel.length === 0 ? 'Todos' : fiscaisSel.length === 1 ? fiscaisSel[0].split(' ')[0] : `${fiscaisSel.length} selecionados`}
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>▼</span>
+              </button>
+              {dropdownOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto', minWidth: 200 }}>
+                  <button onMouseDown={() => setFiscaisSel([])} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: fiscaisSel.length === 0 ? '#eff6ff' : 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#2563eb' }}>
+                    ✓ Todos os fiscais
+                  </button>
+                  {fiscaisLista.map((nome, i) => {
+                    const sel = fiscaisSel.includes(nome)
+                    return (
+                      <button key={i} onMouseDown={() => setFiscaisSel(prev => sel ? prev.filter(n => n !== nome) : [...prev, nome])}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 14px', textAlign: 'left', background: sel ? '#eff6ff' : 'none', border: 'none', borderBottom: i < fiscaisLista.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
+                        onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#f8fafc' }}
+                        onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${sel ? '#2563eb' : '#cbd5e1'}`, background: sel ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {sel && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800 }}>✓</span>}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 500, color: sel ? '#1d4ed8' : '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <button onClick={buscar} style={{ marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
@@ -569,6 +609,107 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   <button onClick={() => imprimirRegistro(detalhe, assinOnline)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
                     🖨️ Imprimir / Salvar PDF
                   </button>
+
+                  {/* Botão compartilhar no WhatsApp — gera imagem igual ao R6 */}
+                  <button onClick={async () => {
+                    setCapturando(true)
+                    try {
+                      const html2canvas = (await import('html2canvas')).default
+                      const tc2 = TIPOS_REGISTRO[detalhe.tipo] || {}
+                      const mc2 = MODALIDADES[detalhe.modalidade] || {}
+                      const formatD = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+                      const participantes = detalhe.participantes || []
+
+                      const infoRow = (label, value) => value ? `
+                        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+                          <span style="color:#94a3b8;font-weight:700;font-size:14px;min-width:100px;flex-shrink:0;">${label}</span>
+                          <span style="color:#1e293b;font-weight:700;font-size:14px;text-align:right;flex:1;padding-left:8px;">${value}</span>
+                        </div>` : ''
+
+                      const html = `
+                        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">
+                          <div style="background:${tc2.bg || '#eff6ff'};border:3px solid ${tc2.border || '#bfdbfe'};border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;">
+                            <div style="font-size:52px;margin-bottom:10px;">${tc2.emoji || '📝'}</div>
+                            <div style="font-size:26px;font-weight:900;color:${tc2.color || '#1d4ed8'};margin-bottom:6px;letter-spacing:-0.5px;">${tc2.label || detalhe.tipo}</div>
+                            <div style="font-size:15px;color:${tc2.color || '#1d4ed8'};opacity:0.85;font-weight:700;">${mc2.emoji || ''} ${mc2.label || ''} · ${participantes.length} participante(s)</div>
+                          </div>
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">Dados do Registro</p>
+                            ${infoRow('Fiscal', detalhe.fiscal)}
+                            ${infoRow('Data / Hora', formatD(detalhe.data_registro) + ' às ' + detalhe.hora_registro)}
+                            ${infoRow('Local', detalhe.endereco)}
+                            ${infoRow('GPS', detalhe.lat ? detalhe.lat.toFixed(5) + ', ' + detalhe.lng.toFixed(5) : null)}
+                            ${infoRow('Tema', detalhe.tema)}
+                            ${infoRow('Carga Horária', detalhe.carga_horaria)}
+                          </div>
+                          ${detalhe.pauta ? `
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 8px 0;">${detalhe.tipo === 'DISCIPLINAR' ? 'Descrição' : 'Pauta / Conteúdo'}</p>
+                            <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${detalhe.pauta}</p>
+                          </div>` : ''}
+                          ${detalhe.observacoes ? `
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 8px 0;">Observações</p>
+                            <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${detalhe.observacoes}</p>
+                          </div>` : ''}
+                          <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:16px;font-weight:800;color:#15803d;margin:0 0 12px 0;">✅ Lista de Frequência (${participantes.length})</p>
+                            ${participantes.map((p, i) => `
+                              <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;${i < participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+                                <div>
+                                  <span style="font-size:15px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
+                                  ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
+                                  ${p.modo === 'online' ? `<span style="font-size:11px;color:#1d4ed8;background:#dbeafe;padding:2px 6px;border-radius:4px;margin-left:6px;font-weight:700;">🔗 online</span>` : ''}
+                                </div>
+                                ${p.assinatura_url ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:44px;max-width:110px;object-fit:contain;border-radius:6px;background:#fafafa;border:1px solid #e2e8f0;"/>` : p.modo === 'online' ? '<span style="font-size:12px;color:#2563eb;font-weight:600;">⏳ aguardando</span>' : ''}
+                              </div>`).join('')}
+                          </div>
+                          ${Array.isArray(detalhe.fotos_urls) && detalhe.fotos_urls.length > 0 ? `
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">📷 Fotos (${detalhe.fotos_urls.length})</p>
+                            <div style="display:grid;grid-template-columns:repeat(${Math.min(detalhe.fotos_urls.length,3)},1fr);gap:8px;">
+                              ${detalhe.fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;"/>`).join('')}
+                            </div>
+                          </div>` : ''}
+                          <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
+                            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+                          </div>
+                        </div>`
+
+                      const div = document.createElement('div')
+                      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
+                      div.innerHTML = html
+                      document.body.appendChild(div)
+
+                      const canvas = await html2canvas(div.firstElementChild, {
+                        scale: 8, useCORS: true, allowTaint: true,
+                        backgroundColor: '#f0f4f8', logging: false, windowWidth: 680,
+                      })
+                      document.body.removeChild(div)
+
+                      const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.jpg`.replace(/\s+/g, '_')
+                      if (navigator.share && navigator.canShare) {
+                        canvas.toBlob(async blob => {
+                          const file = new File([blob], nomeArq, { type: 'image/jpeg' })
+                          if (navigator.canShare({ files: [file] })) {
+                            await navigator.share({ files: [file], title: tc2.label })
+                          } else {
+                            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+                          }
+                        }, 'image/jpeg', 0.95)
+                      } else {
+                        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
+                      }
+                    } catch (err) {
+                      console.error(err); alert('Não foi possível gerar a imagem.')
+                    } finally {
+                      setCapturando(false)
+                    }
+                  }} disabled={capturando} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: capturando ? '#64748b' : '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: capturando ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
+                  </button>
+
                   <button onClick={() => setDetalhe(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Fechar
                   </button>

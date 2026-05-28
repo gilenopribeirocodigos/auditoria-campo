@@ -28,7 +28,12 @@ export async function listarRegistros(filtros = {}, usuarioLogado) {
   if (filtros.dataIni) q = q.gte('data_registro', filtros.dataIni)
   if (filtros.dataFim) q = q.lte('data_registro', filtros.dataFim)
   if (filtros.tipo)    q = q.eq('tipo', filtros.tipo)
-  if (filtros.fiscal)  q = q.ilike('fiscal', `%${filtros.fiscal}%`)
+  if (filtros.fiscais && filtros.fiscais.length > 0) {
+    // Múltiplos fiscais selecionados
+    q = q.in('fiscal', filtros.fiscais)
+  } else if (filtros.fiscal) {
+    q = q.ilike('fiscal', `%${filtros.fiscal}%`)
+  }
   const { data, error } = await q
   if (error) throw error
   return data || []
