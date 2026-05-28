@@ -138,6 +138,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [fiscaisLista,  setFiscaisLista]  = useState([]) // usuários para filtro
   const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
   const [dropdownOpen,  setDropdownOpen]  = useState(false)
+  const [capturando,    setCapturando]    = useState(false)
   const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
 
@@ -609,31 +610,104 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     🖨️ Imprimir / Salvar PDF
                   </button>
 
-                  {/* Botão compartilhar no WhatsApp */}
-                  <button onClick={() => {
-                    const tc2 = TIPOS_REGISTRO[detalhe.tipo] || {}
-                    const formatD = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
-                    const nParticipantes = (detalhe.participantes || []).length
-                    const texto = encodeURIComponent(
-                      `📋 *${tc2.label || detalhe.tipo}*
-` +
-                      `DPL Construções — Equatorial Energia
+                  {/* Botão compartilhar no WhatsApp — gera imagem igual ao R6 */}
+                  <button onClick={async () => {
+                    setCapturando(true)
+                    try {
+                      const html2canvas = (await import('html2canvas')).default
+                      const tc2 = TIPOS_REGISTRO[detalhe.tipo] || {}
+                      const mc2 = MODALIDADES[detalhe.modalidade] || {}
+                      const formatD = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+                      const participantes = detalhe.participantes || []
 
-` +
-                      `👤 Fiscal: ${detalhe.fiscal}
-` +
-                      `📅 Data: ${formatD(detalhe.data_registro)} às ${detalhe.hora_registro}
-` +
-                      `📍 Local: ${detalhe.endereco || '—'}
-` +
-                      `👥 Participantes: ${nParticipantes}
-` +
-                      (detalhe.pauta ? `
-📝 Pauta: ${detalhe.pauta.slice(0, 200)}${detalhe.pauta.length > 200 ? '...' : ''}` : '')
-                    )
-                    window.open(`https://wa.me/?text=${texto}`, '_blank')
-                  }} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-                    📤 Compartilhar no WhatsApp
+                      const infoRow = (label, value) => value ? `
+                        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+                          <span style="color:#94a3b8;font-weight:700;font-size:14px;min-width:100px;flex-shrink:0;">${label}</span>
+                          <span style="color:#1e293b;font-weight:700;font-size:14px;text-align:right;flex:1;padding-left:8px;">${value}</span>
+                        </div>` : ''
+
+                      const html = `
+                        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
+                          <div style="background:${tc2.bg || '#eff6ff'};border:3px solid ${tc2.border || '#bfdbfe'};border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;">
+                            <div style="font-size:44px;margin-bottom:8px;">${tc2.emoji || '📝'}</div>
+                            <div style="font-size:22px;font-weight:900;color:${tc2.color || '#1d4ed8'};margin-bottom:4px;">${tc2.label || detalhe.tipo}</div>
+                            <div style="font-size:14px;color:${tc2.color || '#1d4ed8'};opacity:0.85;font-weight:600;">${mc2.emoji || ''} ${mc2.label || ''} · ${participantes.length} participante(s)</div>
+                          </div>
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">Dados do Registro</p>
+                            ${infoRow('Fiscal', detalhe.fiscal)}
+                            ${infoRow('Data / Hora', formatD(detalhe.data_registro) + ' às ' + detalhe.hora_registro)}
+                            ${infoRow('Local', detalhe.endereco)}
+                            ${infoRow('GPS', detalhe.lat ? detalhe.lat.toFixed(5) + ', ' + detalhe.lng.toFixed(5) : null)}
+                            ${infoRow('Tema', detalhe.tema)}
+                            ${infoRow('Carga Horária', detalhe.carga_horaria)}
+                          </div>
+                          ${detalhe.pauta ? `
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 8px 0;">${detalhe.tipo === 'DISCIPLINAR' ? 'Descrição' : 'Pauta / Conteúdo'}</p>
+                            <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${detalhe.pauta}</p>
+                          </div>` : ''}
+                          ${detalhe.observacoes ? `
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 8px 0;">Observações</p>
+                            <p style="font-size:14px;color:#475569;line-height:1.6;margin:0;">${detalhe.observacoes}</p>
+                          </div>` : ''}
+                          <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:16px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#15803d;margin:0 0 10px 0;">✅ Lista de Frequência (${participantes.length})</p>
+                            ${participantes.map((p, i) => `
+                              <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;${i < participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+                                <div>
+                                  <span style="font-size:14px;font-weight:700;color:#15803d;">${i+1}. ${p.nome}</span>
+                                  ${p.matricula ? `<span style="font-size:12px;color:#64748b;margin-left:6px;">Mat: ${p.matricula}</span>` : ''}
+                                  ${p.modo === 'online' ? `<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:6px;">🔗 online</span>` : ''}
+                                </div>
+                                ${p.assinatura_url ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:36px;max-width:90px;object-fit:contain;"/>` : p.modo === 'online' ? '<span style="font-size:11px;color:#2563eb;">⏳ aguardando</span>' : ''}
+                              </div>`).join('')}
+                          </div>
+                          ${Array.isArray(detalhe.fotos_urls) && detalhe.fotos_urls.length > 0 ? `
+                          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
+                            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">📷 Fotos (${detalhe.fotos_urls.length})</p>
+                            <div style="display:grid;grid-template-columns:repeat(${Math.min(detalhe.fotos_urls.length,3)},1fr);gap:8px;">
+                              ${detalhe.fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;"/>`).join('')}
+                            </div>
+                          </div>` : ''}
+                          <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
+                            <p style="font-size:12px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+                            <p style="font-size:11px;color:#cbd5e1;margin:3px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+                          </div>
+                        </div>`
+
+                      const div = document.createElement('div')
+                      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
+                      div.innerHTML = html
+                      document.body.appendChild(div)
+
+                      const canvas = await html2canvas(div.firstElementChild, {
+                        scale: 4, useCORS: true, allowTaint: true,
+                        backgroundColor: '#f0f4f8', logging: false, windowWidth: 520,
+                      })
+                      document.body.removeChild(div)
+
+                      const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.png`.replace(/\s+/g, '_')
+                      if (navigator.share && navigator.canShare) {
+                        canvas.toBlob(async blob => {
+                          const file = new File([blob], nomeArq, { type: 'image/png' })
+                          if (navigator.canShare({ files: [file] })) {
+                            await navigator.share({ files: [file], title: tc2.label })
+                          } else {
+                            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+                          }
+                        }, 'image/png')
+                      } else {
+                        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+                      }
+                    } catch (err) {
+                      console.error(err); alert('Não foi possível gerar a imagem.')
+                    } finally {
+                      setCapturando(false)
+                    }
+                  }} disabled={capturando} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: capturando ? '#64748b' : '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: capturando ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
                   </button>
 
                   <button onClick={() => setDetalhe(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
