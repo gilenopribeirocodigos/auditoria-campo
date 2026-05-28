@@ -135,12 +135,16 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   })
   const [tokensAtivos,  setTokensAtivos]  = useState({}) // { registroId: tokenData }
   const [encerrando,    setEncerrando]    = useState(null) // registroId sendo encerrado
+  const [fiscaisLista,  setFiscaisLista]  = useState([]) // usuários para filtro
+  const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
+  const [dropdownOpen,  setDropdownOpen]  = useState(false)
+  const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
 
   const buscar = async () => {
     setLoading(true)
     try {
-      const data = await listarRegistros(filtros, usuarioLogado)
+      const data = await listarRegistros({ ...filtros, fiscais: fiscaisSel }, usuarioLogado)
       setRegistros(data)
       // Busca tokens ativos para todos os registros de uma vez
       if (data.length > 0) {
@@ -159,7 +163,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     finally { setLoading(false) }
   }
 
-  useEffect(() => { buscar() }, [])
+  useEffect(() => {
+    buscar()
+    // Carrega lista de fiscais (usuários ativos exceto ADMIN)
+    import('../lib/supabase.js').then(({ supabase }) => {
+      supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
+        .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
+    })
+    // Fecha dropdown ao clicar fora
+    const fn = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
   useEffect(() => {
     // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
     intervalRef.current = setInterval(() => {
@@ -244,14 +259,38 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 ))}
               </select>
             </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Nome do Participante / Emp.</label>
-              <input
-                type="text" value={filtros.fiscal}
-                onChange={e => upd('fiscal', e.target.value)}
-                placeholder="Filtrar por fiscal..."
-                className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}
-              />
+            <div ref={dropdownRef} style={{ position: 'relative' }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Fiscal / Usuário</label>
+              <button onClick={() => setDropdownOpen(o => !o)} style={{
+                width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0',
+                background: '#fff', fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+              }}>
+                <span style={{ color: fiscaisSel.length ? '#1e293b' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
+                  {fiscaisSel.length === 0 ? 'Todos' : fiscaisSel.length === 1 ? fiscaisSel[0].split(' ')[0] : `${fiscaisSel.length} selecionados`}
+                </span>
+                <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>▼</span>
+              </button>
+              {dropdownOpen && (
+                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto', minWidth: 200 }}>
+                  <button onMouseDown={() => setFiscaisSel([])} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: fiscaisSel.length === 0 ? '#eff6ff' : 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#2563eb' }}>
+                    ✓ Todos os fiscais
+                  </button>
+                  {fiscaisLista.map((nome, i) => {
+                    const sel = fiscaisSel.includes(nome)
+                    return (
+                      <button key={i} onMouseDown={() => setFiscaisSel(prev => sel ? prev.filter(n => n !== nome) : [...prev, nome])}
+                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 14px', textAlign: 'left', background: sel ? '#eff6ff' : 'none', border: 'none', borderBottom: i < fiscaisLista.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
+                        onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#f8fafc' }}
+                        onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
+                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${sel ? '#2563eb' : '#cbd5e1'}`, background: sel ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          {sel && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800 }}>✓</span>}
+                        </div>
+                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 500, color: sel ? '#1d4ed8' : '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
           </div>
           <button onClick={buscar} style={{ marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
@@ -569,6 +608,34 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   <button onClick={() => imprimirRegistro(detalhe, assinOnline)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
                     🖨️ Imprimir / Salvar PDF
                   </button>
+
+                  {/* Botão compartilhar no WhatsApp */}
+                  <button onClick={() => {
+                    const tc2 = TIPOS_REGISTRO[detalhe.tipo] || {}
+                    const formatD = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+                    const nParticipantes = (detalhe.participantes || []).length
+                    const texto = encodeURIComponent(
+                      `📋 *${tc2.label || detalhe.tipo}*
+` +
+                      `DPL Construções — Equatorial Energia
+
+` +
+                      `👤 Fiscal: ${detalhe.fiscal}
+` +
+                      `📅 Data: ${formatD(detalhe.data_registro)} às ${detalhe.hora_registro}
+` +
+                      `📍 Local: ${detalhe.endereco || '—'}
+` +
+                      `👥 Participantes: ${nParticipantes}
+` +
+                      (detalhe.pauta ? `
+📝 Pauta: ${detalhe.pauta.slice(0, 200)}${detalhe.pauta.length > 200 ? '...' : ''}` : '')
+                    )
+                    window.open(`https://wa.me/?text=${texto}`, '_blank')
+                  }} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+                    📤 Compartilhar no WhatsApp
+                  </button>
+
                   <button onClick={() => setDetalhe(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Fechar
                   </button>
