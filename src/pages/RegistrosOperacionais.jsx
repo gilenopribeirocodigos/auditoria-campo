@@ -683,23 +683,23 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       document.body.appendChild(div)
 
                       const canvas = await html2canvas(div.firstElementChild, {
-                        scale: 6, useCORS: true, allowTaint: true,
-                        backgroundColor: '#f0f4f8', logging: false, windowWidth: 640,
+                        scale: 8, useCORS: true, allowTaint: true,
+                        backgroundColor: '#f0f4f8', logging: false, windowWidth: 680,
                       })
                       document.body.removeChild(div)
 
-                      const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.png`.replace(/\s+/g, '_')
+                      const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.jpg`.replace(/\s+/g, '_')
                       if (navigator.share && navigator.canShare) {
                         canvas.toBlob(async blob => {
-                          const file = new File([blob], nomeArq, { type: 'image/png' })
+                          const file = new File([blob], nomeArq, { type: 'image/jpeg' })
                           if (navigator.canShare({ files: [file] })) {
                             await navigator.share({ files: [file], title: tc2.label })
                           } else {
                             const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
                           }
-                        }, 'image/png')
+                        }, 'image/jpeg', 0.95)
                       } else {
-                        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+                        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
                       }
                     } catch (err) {
                       console.error(err); alert('Não foi possível gerar a imagem.')
