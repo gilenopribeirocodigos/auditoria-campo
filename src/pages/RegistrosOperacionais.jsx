@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { listarRegistros } from '../lib/registros.js'
+import { getVersaoApp } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 
@@ -139,7 +140,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
   const [dropdownOpen,  setDropdownOpen]  = useState(false)
   const [capturando,    setCapturando]    = useState(false)
-  const [versaoSistema, setVersaoSistema] = useState(localStorage.getItem('dpl_versao') || '')
+  const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
 
@@ -171,9 +172,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     import('../lib/supabase.js').then(({ supabase }) => {
       supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
         .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
-      // Busca versão atual do sistema direto do banco (garante exibição mesmo sem localStorage)
-      supabase.from('sistema_config').select('valor').eq('chave', 'versao').single()
-        .then(({ data }) => { if (data?.valor) setVersaoSistema(data.valor) })
+      // Versão do sistema vem do build (getVersaoApp), não precisa buscar do banco
     })
     // Fecha dropdown ao clicar fora
     const fn = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false) }
