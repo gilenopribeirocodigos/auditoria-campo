@@ -101,7 +101,7 @@ export default function App() {
           setUsuario(null)
         }
       }
-    }, 5 * 60 * 1000)
+    }, 25 * 60 * 1000)  ###PARA AJUSTAR O TEMPO DE ATUALIZAÇÃO !
 
     return () => {
       clearInterval(intervalo)
