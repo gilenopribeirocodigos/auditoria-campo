@@ -107,7 +107,7 @@ function imprimirRegistro(r, assinaturasOnline = []) {
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})}</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})} · <span style="color:#93c5fd;">v${localStorage.getItem('dpl_versao')||''}</span></p>
   </div>
   <div class="no-print" style="text-align:center;margin-top:24px;">
     <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
@@ -180,7 +180,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
     intervalRef.current = setInterval(() => {
       if (!detalhe) buscar()
-    }, 1500000)   // 25 min
+    }, 300000)
     return () => clearInterval(intervalRef.current)
   }, [detalhe])
 
@@ -685,7 +685,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                           </div>` : ''}
                           <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
                             <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#93c5fd;font-weight:700;">v${localStorage.getItem('dpl_versao')||''}</span></p>
                           </div>
                         </div>`
 
