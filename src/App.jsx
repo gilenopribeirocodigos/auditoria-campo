@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { FORM_INICIAL } from './data/checklists.js'
-import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade } from './lib/auth.js'
+import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade, getVersaoApp } from './lib/auth.js'
 import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
@@ -30,6 +30,9 @@ import S5Assinatura    from './steps/S5Assinatura.jsx'
 import S6Resultado     from './steps/S6Resultado.jsx'
 
 const STEPS = ['Serviço', 'Identificação', 'Checklist', 'Evidências', 'Assinatura', 'Resultado']
+
+// Versão atual do app (vem do package.json via Vite)
+const VERSAO = getVersaoApp()
 
 export default function App() {
   const [usuario,             setUsuario]             = useState(getUsuarioLogado)
@@ -74,7 +77,7 @@ export default function App() {
     }
   }, [needRefresh, tela])
 
-  // ── Verificação de sessão a cada 5 minutos ──────────────────────────────────
+  // ── Verificação de sessão ───────────────────────────────────────────────────
   useEffect(() => {
     if (!usuario) return
 
@@ -309,7 +312,7 @@ export default function App() {
             🔐 Entrar novamente
           </button>
           <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 16 }}>
-            DPL Construções — Auditoria Operacional v2.0
+            DPL Construções — Auditoria Operacional v{VERSAO}
           </p>
         </div>
       </div>
@@ -551,7 +554,7 @@ export default function App() {
 
         </div>
 
-        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>Contrato 1021/2024 — v2.0</p>
+        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>Contrato 1021/2024 — v{VERSAO}</p>
       </div>
     )
   }
