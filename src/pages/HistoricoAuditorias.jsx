@@ -74,7 +74,7 @@ function DropdownInput({ label, value, onChange, onSelect, suggestions, placehol
 }
 
 // ─── função de impressão ─────────────────────────────────────────────────────
-function imprimirAuditoria(a, formatData) {
+function imprimirAuditoria(a, formatData, versaoApp = '') {
   const sc      = STATUS_COR[a.status] || { bg: '#f1f5f9', color: '#374151' }
   const ncItems = calcNcItems(a)
 
@@ -177,7 +177,7 @@ function imprimirAuditoria(a, formatData) {
 
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${localStorage.getItem('dpl_versao')||''}</span></p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
   </div>
 
   <div class="no-print" style="text-align:center;margin-top:24px;">
@@ -220,6 +220,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [reabrirErro,       setReabrirErro]       = useState('')
   const [reabrirSucesso,    setReabrirSucesso]    = useState(false)
 
+  const [versaoSistema, setVersaoSistema] = useState(localStorage.getItem('dpl_versao') || '')
   const intervalRef = useRef(null)
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
 
@@ -257,7 +258,12 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { buscar() }, [])
+  useEffect(() => {
+    buscar()
+    // Busca versão atual do sistema direto do banco
+    supabase.from('sistema_config').select('valor').eq('chave', 'versao').single()
+      .then(({ data }) => { if (data?.valor) setVersaoSistema(data.valor) })
+  }, [])
   useEffect(() => {
     intervalRef.current = setInterval(() => { buscar() }, 20000)
     return () => clearInterval(intervalRef.current)
@@ -605,10 +611,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             )}
 
             <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
-              v{localStorage.getItem('dpl_versao') || ''}
+              v{versaoSistema}
             </p>
 
-            <button onClick={() => imprimirAuditoria(detalhe, formatData)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+            <button onClick={() => imprimirAuditoria(detalhe, formatData, versaoSistema)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               🖨️ Imprimir / Salvar PDF
             </button>
 
