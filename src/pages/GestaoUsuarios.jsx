@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario } from '../lib/auth.js'
+import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 
 const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
@@ -66,11 +66,9 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     finally { setLoading(false) }
   }
 
-  const carregarVersaoSistema = async () => {
-    try {
-      const { data } = await supabase.from('sistema_config').select('valor').eq('chave', 'versao').single()
-      if (data?.valor) setVersaoSistema(data.valor)
-    } catch { /* silencioso */ }
+  const carregarVersaoSistema = () => {
+    // Versão atual vem do build (package.json via Vite), não do banco
+    setVersaoSistema(getVersaoApp())
   }
 
   const carregarPermissoes = async () => {
