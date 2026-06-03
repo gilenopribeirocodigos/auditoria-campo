@@ -43,7 +43,18 @@ export async function fazerLogin(login, senha) {
 
   // Salva versão atual e atividade no login
   registrarAtividade()
-  await sincronizarVersaoLocal()
+  const versaoAtual = await sincronizarVersaoLocal()
+
+  // Registra no banco qual versão o usuário está usando e quando logou
+  try {
+    await supabase
+      .from('usuarios')
+      .update({
+        versao_app:   versaoAtual || null,
+        ultimo_login: new Date().toISOString(),
+      })
+      .eq('id', usuario.id)
+  } catch { /* não bloqueia o login se falhar */ }
 
   return usuarioSessao
 }
@@ -74,6 +85,7 @@ function ociosoHaMais(minutos) {
 }
 
 // ─── Versão do sistema ────────────────────────────────────────────────────────
+// Retorna a versão sincronizada (para registrar no banco no login)
 async function sincronizarVersaoLocal() {
   try {
     const { data } = await supabase
@@ -83,8 +95,10 @@ async function sincronizarVersaoLocal() {
       .single()
     if (data?.valor) {
       localStorage.setItem(VERSAO_KEY, data.valor)
+      return data.valor
     }
   } catch { /* silencioso */ }
+  return localStorage.getItem(VERSAO_KEY) || null
 }
 
 // Retorna true se a sessão é válida, false se deve deslogar/recarregar
