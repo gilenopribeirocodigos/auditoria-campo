@@ -180,7 +180,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
     intervalRef.current = setInterval(() => {
       if (!detalhe) buscar()
-    }, 300000)
+    }, 1500000)   // 25 min
     return () => clearInterval(intervalRef.current)
   }, [detalhe])
 
