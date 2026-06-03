@@ -177,7 +177,7 @@ function imprimirAuditoria(a, formatData) {
 
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#93c5fd;">v${localStorage.getItem('dpl_versao')||''}</span></p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${localStorage.getItem('dpl_versao')||''}</span></p>
   </div>
 
   <div class="no-print" style="text-align:center;margin-top:24px;">
@@ -603,6 +603,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             {isAdmin && !detalhe.reaberta && (
               <button onClick={abrirModalReabrir} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>🔓 Reabrir para Correção</button>
             )}
+
+            <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
+              v{localStorage.getItem('dpl_versao') || ''}
+            </p>
 
             <button onClick={() => imprimirAuditoria(detalhe, formatData)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               🖨️ Imprimir / Salvar PDF
