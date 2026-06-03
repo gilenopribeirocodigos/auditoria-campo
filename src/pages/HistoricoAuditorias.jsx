@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { reabrirAuditoria } from '../lib/supabase.js'
 import { CHECKLISTS, getItemsNaoConformes } from '../data/checklists.js'
+import { getVersaoApp } from '../lib/auth.js'
 import * as XLSX from 'xlsx'
 
 const STATUS_COR = {
@@ -220,7 +221,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [reabrirErro,       setReabrirErro]       = useState('')
   const [reabrirSucesso,    setReabrirSucesso]    = useState(false)
 
-  const [versaoSistema, setVersaoSistema] = useState(localStorage.getItem('dpl_versao') || '')
+  const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const intervalRef = useRef(null)
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
 
@@ -260,9 +261,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
   useEffect(() => {
     buscar()
-    // Busca versão atual do sistema direto do banco
-    supabase.from('sistema_config').select('valor').eq('chave', 'versao').single()
-      .then(({ data }) => { if (data?.valor) setVersaoSistema(data.valor) })
+    // Versão do sistema vem do build (getVersaoApp)
+    setVersaoSistema(getVersaoApp())
   }, [])
   useEffect(() => {
     intervalRef.current = setInterval(() => { buscar() }, 20000)
