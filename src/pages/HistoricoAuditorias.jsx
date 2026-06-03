@@ -222,6 +222,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [reabrirSucesso,    setReabrirSucesso]    = useState(false)
 
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
+  const [capturando,    setCapturando]    = useState(false)
   const intervalRef = useRef(null)
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
 
@@ -616,6 +617,114 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
             <button onClick={() => imprimirAuditoria(detalhe, formatData, versaoSistema)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
               🖨️ Imprimir / Salvar PDF
+            </button>
+
+            {/* Botão compartilhar no WhatsApp — gera imagem */}
+            <button onClick={async () => {
+              setCapturando(true)
+              try {
+                const html2canvas = (await import('html2canvas')).default
+                const sc2 = STATUS_COR[detalhe.status] || { bg: '#f1f5f9', color: '#374151' }
+                const ncItems = calcNcItems(detalhe)
+
+                const infoRow = (label, value) => value ? `
+                  <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+                    <span style="color:#94a3b8;font-weight:700;font-size:14px;min-width:110px;flex-shrink:0;">${label}</span>
+                    <span style="color:#1e293b;font-weight:700;font-size:14px;text-align:right;flex:1;padding-left:10px;">${value}</span>
+                  </div>` : ''
+
+                const html = `
+                  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">
+                    <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:18px 22px;border-radius:16px;margin-bottom:16px;">
+                      <div style="font-size:11px;opacity:0.7;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
+                      <div style="font-size:20px;font-weight:900;">📁 Auditoria Operacional de Campo</div>
+                      <div style="font-size:13px;opacity:0.85;margin-top:2px;">Contrato 1021/2024</div>
+                    </div>
+                    <div style="background:${sc2.bg};border:3px solid ${sc2.color}44;border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;">
+                      <div style="font-size:52px;font-weight:900;color:${sc2.color};line-height:1;">${Number(detalhe.nota).toFixed(0)}</div>
+                      <div style="font-size:13px;color:${sc2.color};font-weight:600;margin-bottom:4px;">pontos</div>
+                      <div style="font-size:22px;font-weight:900;color:${sc2.color};">${detalhe.status}</div>
+                      <div style="font-size:13px;color:${sc2.color};opacity:0.85;margin-top:6px;font-weight:700;">
+                        ${detalhe.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço'} · ${detalhe.tipo_servico} · ${detalhe.produtivo ? 'Produtivo' : 'Improdutivo'}
+                      </div>
+                    </div>
+                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+                      <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">Dados da Auditoria</p>
+                      ${infoRow('Fiscal', detalhe.fiscal)}
+                      ${infoRow('Matrícula', detalhe.matricula)}
+                      ${infoRow('Equipe', detalhe.prefixo)}
+                      ${infoRow('OS', detalhe.os)}
+                      ${infoRow('UC', detalhe.uc)}
+                      ${infoRow('Endereço', detalhe.endereco)}
+                      ${infoRow('Data / Hora', formatData(detalhe.data_auditoria) + ' às ' + detalhe.hora_auditoria)}
+                      ${detalhe.lat ? infoRow('GPS', detalhe.lat + ', ' + detalhe.lng) : ''}
+                      ${infoRow('Eletricista 1', detalhe.nome_eletricista)}
+                      ${infoRow('Eletricista 2', detalhe.nome_eletricista2)}
+                    </div>
+                    ${ncItems.length > 0 ? `
+                    <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:16px;padding:16px;margin-bottom:16px;">
+                      <p style="font-size:14px;font-weight:800;color:#b91c1c;margin:0 0 10px 0;">❌ Itens Não Conformes (${ncItems.length})</p>
+                      ${ncItems.map((item, i) => `<div style="font-size:13px;color:#991b1b;padding:6px 0;${i < ncItems.length - 1 ? 'border-bottom:1px solid #fecaca;' : ''}line-height:1.5;"><strong>${i+1}.</strong> ${item.p}</div>`).join('')}
+                    </div>` : ''}
+                    ${(detalhe.feedback || detalhe.observacoes) ? `
+                    <div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:16px;padding:16px;margin-bottom:16px;">
+                      ${detalhe.feedback ? `<p style="font-size:12px;font-weight:800;color:#92400e;margin:0 0 4px;">FEEDBACK DO FISCAL:</p><p style="font-size:14px;color:#78350f;line-height:1.6;margin:0 0 ${detalhe.observacoes ? '12px' : '0'};">${detalhe.feedback}</p>` : ''}
+                      ${detalhe.observacoes ? `<p style="font-size:12px;font-weight:800;color:#92400e;margin:0 0 4px;">OBSERVAÇÕES:</p><p style="font-size:14px;color:#78350f;line-height:1.6;margin:0;">${detalhe.observacoes}</p>` : ''}
+                    </div>` : ''}
+                    ${detalhe.fotos_urls?.length > 0 ? `
+                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
+                      <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">📷 Registro Fotográfico (${detalhe.fotos_urls.length})</p>
+                      <div style="display:grid;grid-template-columns:repeat(${Math.min(detalhe.fotos_urls.length, 3)},1fr);gap:8px;">
+                        ${detalhe.fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"/>`).join('')}
+                      </div>
+                    </div>` : ''}
+                    ${detalhe.assinatura_url ? `
+                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
+                      <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 8px;">✍️ Assinatura — ${detalhe.nome_eletricista || 'Eletricista 1'}</p>
+                      <img src="${detalhe.assinatura_url}" crossorigin="anonymous" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;"/>
+                    </div>` : ''}
+                    ${detalhe.assinatura2_url ? `
+                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
+                      <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 8px;">✍️ Assinatura — ${detalhe.nome_eletricista2 || 'Eletricista 2'}</p>
+                      <img src="${detalhe.assinatura2_url}" crossorigin="anonymous" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;"/>
+                    </div>` : ''}
+                    <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
+                      <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+                      <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;font-weight:700;">v${versaoSistema}</span></p>
+                    </div>
+                  </div>`
+
+                const div = document.createElement('div')
+                div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
+                div.innerHTML = html
+                document.body.appendChild(div)
+
+                const canvas = await html2canvas(div.firstElementChild, {
+                  scale: 8, useCORS: true, allowTaint: true,
+                  backgroundColor: '#f0f4f8', logging: false, windowWidth: 680,
+                })
+                document.body.removeChild(div)
+
+                const nomeArq = `Auditoria_${detalhe.prefixo}_${detalhe.data_auditoria}.jpg`.replace(/\s+/g, '_')
+                if (navigator.share && navigator.canShare) {
+                  canvas.toBlob(async blob => {
+                    const file = new File([blob], nomeArq, { type: 'image/jpeg' })
+                    if (navigator.canShare({ files: [file] })) {
+                      await navigator.share({ files: [file], title: `Auditoria ${detalhe.prefixo}` })
+                    } else {
+                      const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
+                    }
+                  }, 'image/jpeg', 0.95)
+                } else {
+                  const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
+                }
+              } catch (err) {
+                console.error(err); alert('Não foi possível gerar a imagem.')
+              } finally {
+                setCapturando(false)
+              }
+            }} disabled={capturando} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: capturando ? '#64748b' : '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: capturando ? 'not-allowed' : 'pointer' }}>
+              {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
             </button>
 
             <button onClick={() => setDetalhe(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>Fechar</button>
