@@ -177,7 +177,7 @@ function imprimirAuditoria(a, formatData) {
 
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#93c5fd;">v${localStorage.getItem('dpl_versao')||''}</span></p>
   </div>
 
   <div class="no-print" style="text-align:center;margin-top:24px;">
