@@ -107,7 +107,7 @@ function imprimirRegistro(r, assinaturasOnline = []) {
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})} · <span style="color:#93c5fd;">v${localStorage.getItem('dpl_versao')||''}</span></p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})} · <span style="color:#dc2626;">v${localStorage.getItem('dpl_versao')||''}</span></p>
   </div>
   <div class="no-print" style="text-align:center;margin-top:24px;">
     <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
@@ -606,6 +606,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
+                  <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
+                    v{localStorage.getItem('dpl_versao') || ''}
+                  </p>
+
                   <button onClick={() => imprimirRegistro(detalhe, assinOnline)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
                     🖨️ Imprimir / Salvar PDF
                   </button>
@@ -685,7 +689,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                           </div>` : ''}
                           <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
                             <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#93c5fd;font-weight:700;">v${localStorage.getItem('dpl_versao')||''}</span></p>
+                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;font-weight:700;">v${localStorage.getItem('dpl_versao')||''}</span></p>
                           </div>
                         </div>`
 
