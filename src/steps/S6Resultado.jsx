@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, FORM_INICIAL } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
@@ -7,9 +7,8 @@ import { salvarAuditoriaOffline } from '../lib/offline.js'
 export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
-  const tipo      = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
-  const cl        = CHECKLISTS[form.tipoServico]?.[tipo]
-  const items     = cl?.items || []
+  const cl        = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
+  const items     = getItemsAtivos(cl?.items || [], form)
   const eliminado = isDisqualified(form)
 
   const sim     = items.filter(i => isItemConforme(i, items, form.respostas)).length
@@ -61,7 +60,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
       const barCor = pct => pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
 
-      // ── Fonte maior para melhor leitura após compressão do WhatsApp ──────────
       const infoRow = (label, value) => value ? `
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
           <span style="color:#94a3b8;font-weight:700;font-size:15px;min-width:120px;flex-shrink:0;">${label}</span>
@@ -70,13 +68,11 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
       const fotosParaExibir = !salvoOffline ? fotosUrlsSalvas : []
 
-      // ── Template com width 520px e fontes ampliadas ───────────────────────
       const html = `
         <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
 
           ${eliminado ? `<div style="background:#dc2626;color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:14px;font-size:15px;font-weight:800;text-align:center;letter-spacing:0.3px;">${msgEliminado}</div>` : ''}
 
-          <!-- Status -->
           <div style="background:${st.bg};border:3px solid ${st.border};border-radius:18px;padding:24px;text-align:center;margin-bottom:16px;">
             <div style="font-size:52px;margin-bottom:8px;">${st.icon}</div>
             <div style="font-size:64px;font-weight:900;color:${st.color};line-height:1;">${nota.toFixed(0)}</div>
@@ -85,7 +81,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             <div style="font-size:14px;color:${st.color};opacity:0.9;">${labelTipoAuditoria} — ${CHECKLISTS[form.tipoServico]?.label} — ${form.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
           </div>
 
-          <!-- Contadores -->
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
             <div style="background:#dcfce7;border-radius:14px;padding:16px;text-align:center;">
               <div style="font-size:34px;font-weight:900;color:#16a34a;">${sim}</div>
@@ -101,7 +96,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             </div>
           </div>
 
-          <!-- Por Categoria -->
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 14px 0;">Por Categoria</p>
             ${catStats.map(c => {
@@ -119,7 +113,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             }).join('')}
           </div>
 
-          <!-- Dados da Auditoria -->
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
@@ -135,7 +128,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             ${form.nomeEletricista2 ? infoRow('Eletricista 2', form.nomeEletricista2)       : ''}
           </div>
 
-          <!-- ❌ Não Conformidades — bloco de alto destaque ──────────────────── -->
           ${ncItems.length > 0 ? `
           <div style="background:#fff0f0;border:3px solid #dc2626;border-radius:16px;padding:20px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
@@ -158,7 +150,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
               </div>`).join('')}
           </div>` : ''}
 
-          <!-- Feedback / Obs -->
           ${form.feedback || form.observacoes ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             ${form.feedback ? `
@@ -169,7 +160,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
               <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${form.observacoes}</p>` : ''}
           </div>` : ''}
 
-          <!-- Fotos -->
           ${fotosParaExibir.length > 0 ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 14px 0;">📷 Registro Fotográfico (${fotosParaExibir.length})</p>
@@ -181,7 +171,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             </div>
           </div>` : ''}
 
-          <!-- Assinatura 1 -->
           ${form.assinatura ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista || 'Eletricista 1'}</p>
@@ -189,7 +178,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             <p style="font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
           </div>` : ''}
 
-          <!-- Assinatura 2 -->
           ${form.assinatura2 ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista2 || 'Eletricista 2'}</p>
@@ -197,7 +185,6 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             <p style="font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
           </div>` : ''}
 
-          <!-- Rodapé -->
           <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
             <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
             <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
@@ -221,12 +208,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       }
 
       const canvas = await html2canvas(div.firstElementChild, {
-        scale:           5,    // ← AUMENTADO de 3 para 5 — muito mais nítido
+        scale:           5,
         useCORS:         true,
         allowTaint:      true,
         backgroundColor: '#f0f4f8',
         logging:         false,
-        windowWidth:     520,  // ← ATUALIZADO para coincidir com largura do div
+        windowWidth:     520,
       })
 
       document.body.removeChild(div)
@@ -275,6 +262,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     tipo_auditoria:    form.tipoAuditoria,
     tipo_servico:      form.tipoServico,
     produtivo:         form.produtivo,
+    debito_pago:       form.debitoPago,
     nota,
     status:            st.label,
     respostas:         form.respostas,
