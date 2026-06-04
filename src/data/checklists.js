@@ -1,41 +1,93 @@
+// ═══════════════════════════════════════════════════════════════════════════
+// ESTRUTURA DOS CHECKLISTS
+//
+// CORTE tem 4 checklists distintos (3 dimensões):
+//   CORTE.DESEMPENHO.PRODUTIVO    — 13 perguntas, com lógica condicional "débito pago"
+//   CORTE.DESEMPENHO.IMPRODUTIVO  —  9 perguntas
+//   CORTE.POS_SERVICO.PRODUTIVO   —  8 perguntas
+//   CORTE.POS_SERVICO.IMPRODUTIVO —  8 perguntas
+//
+// ANEXO e RELIGA mantêm checklist único (2 dimensões) — o mesmo vale para
+// Desempenho e Pós Serviço. A função getChecklist() resolve isso.
+//
+// Lógica condicional (só CORTE.DESEMPENHO.PRODUTIVO):
+//   Pergunta "Foi débito pago?" (campo form.debitoPago)
+//     - SIM  → mostra perguntas 10 e 11 → 13 itens no cálculo
+//     - NÃO  → esconde perguntas 10 e 11 → 11 itens no cálculo
+//   Itens condicionais têm: conditionalGroup: 'debito'
+// ═══════════════════════════════════════════════════════════════════════════
+
 export const CHECKLISTS = {
   CORTE: {
     label: 'Corte / Recorte',
     emoji: '✂️',
-    PRODUTIVO: {
-      label: 'Produtivo',
-      peso: 7.7,
-      items: [
-        { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
-        { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
-        { id: 3,  cat: 'DESEMPENHO',    p: 'Foi confirmada a unidade consumidora?' },
-        { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true },
-        { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?' },
-        { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?' },
-        { id: 7,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor, vizinhos, leitura, poste, placa trafo, etc)?' },
-        { id: 8,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, fachada, mini toi, etc)?' },
-        { id: 9,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
-        { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?' },
-        { id: 11, cat: 'DESEMPENHO',    p: 'Foi confirmado pagamento de todas as faturas apontadas na OS?' },
-        { id: 12, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
-        { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?' },
-      ],
+    // ── 3 dimensões: tem nível de tipoAuditoria ──
+    porAuditoria: true,
+    DESEMPENHO: {
+      PRODUTIVO: {
+        label: 'Produtivo',
+        peso: 7.7,
+        items: [
+          { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
+          { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'Foi confirmada a unidade consumidora?' },
+          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true },
+          { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?' },
+          { id: 7,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor, vizinhos, leitura, poste, placa trafo, etc)?' },
+          { id: 8,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, fachada, mini toi, etc)?' },
+          { id: 9,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
+          { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?', conditionalGroup: 'debito' },
+          { id: 11, cat: 'DESEMPENHO',    p: 'Foi confirmado pagamento de todas as faturas apontadas na OS?',         conditionalGroup: 'debito' },
+          { id: 12, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
+          { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?' },
+        ],
+      },
+      IMPRODUTIVO: {
+        label: 'Improdutivo',
+        peso: 11.1,
+        items: [
+          { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
+          { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
+          { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
+          { id: 7,  cat: 'DESEMPENHO',    p: 'Embora tendo sido improdutivo, havia algo proativo que a equipe poderia ter feito para resolver?' },
+          { id: 8,  cat: 'DESEMPENHO',    p: 'Baixou a nota com o motivo correto?' },
+          { id: 9,  cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (8 min)?' },
+        ],
+      },
     },
-    IMPRODUTIVO: {
-      label: 'Improdutivo',
-      peso: 10.0,
-      items: [
-        { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
-        { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
-        { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
-        { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
-        { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
-        { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
-        { id: 7,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
-        { id: 8,  cat: 'DESEMPENHO',    p: 'Embora tendo sido improdutivo, havia algo proativo que a equipe poderia ter feito para resolver?' },
-        { id: 9,  cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
-        { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (8 min)?' },
-      ],
+    POS_SERVICO: {
+      PRODUTIVO: {
+        label: 'Produtivo',
+        peso: 12.5,
+        items: [
+          { id: 3,  cat: 'DESEMPENHO',    p: 'Foi cortada a unidade consumidora correta?' },
+          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true },
+          { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?' },
+          { id: 7,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor, vizinhos, leitura, poste, placa trafo, etc)?' },
+          { id: 8,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, fachada, mini toi, etc)?' },
+          { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?' },
+          { id: 12, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
+          { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?' },
+        ],
+      },
+      IMPRODUTIVO: {
+        label: 'Improdutivo',
+        peso: 12.5,
+        items: [
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
+          { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
+          { id: 8,  cat: 'DESEMPENHO',    p: 'Embora tendo sido improdutivo, havia algo proativo que a equipe poderia ter feito para resolver?' },
+          { id: 9,  cat: 'DESEMPENHO',    p: 'Baixou a nota com o motivo correto?' },
+          { id: 10, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (8 min)?' },
+        ],
+      },
     },
   },
 
@@ -125,56 +177,71 @@ export const CAT_META = {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// getChecklist — resolve o checklist correto considerando as 3 dimensões.
+// Para serviços com porAuditoria=true (CORTE), usa o nível tipoAuditoria.
+// Para os demais (ANEXO, RELIGA), usa direto PRODUTIVO/IMPRODUTIVO (ignora auditoria).
+// ─────────────────────────────────────────────────────────────────────────────
+export function getChecklist(tipoServico, tipoAuditoria, produtivo) {
+  const servico = CHECKLISTS[tipoServico]
+  if (!servico) return null
+  const tipo = produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
+
+  if (servico.porAuditoria) {
+    // Fallback: se tipoAuditoria não vier, usa DESEMPENHO por padrão
+    const aud = tipoAuditoria && servico[tipoAuditoria] ? tipoAuditoria : 'DESEMPENHO'
+    return servico[aud]?.[tipo] || null
+  }
+  return servico[tipo] || null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// getItemsAtivos — retorna apenas os itens que entram no cálculo, considerando
+// a lógica condicional do "débito pago".
+//   form.debitoPago === false → remove itens com conditionalGroup === 'debito'
+//   form.debitoPago === true (ou undefined) → mantém todos
+// ─────────────────────────────────────────────────────────────────────────────
+export function getItemsAtivos(items, form) {
+  if (!items) return []
+  if (form?.debitoPago === false) {
+    return items.filter(i => i.conditionalGroup !== 'debito')
+  }
+  return items
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // isItemConforme — determina se UM item específico está conforme
-// Aplica todas as regras: married (pai/filho), inverted e normal
-//
-// Regra married:
-//   PAI  → sempre conforme (nunca gera não conformidade)
-//   FILHO → conforme se pai === filho (ambos SIM ou ambos NÃO)
-//           não conforme se pai !== filho (um SIM e outro NÃO)
-//
-// Regra inverted:
-//   NÃO = conforme, SIM = não conforme
-//
-// Regra normal:
-//   SIM = conforme, NÃO = não conforme
+// Regra married (pai/filho), inverted e normal — inalteradas
 // ─────────────────────────────────────────────────────────────────────────────
 export function isItemConforme(item, items, respostas) {
   const r = respostas[item.id]
 
-  // PAI: nunca é não conforme — a responsabilidade é do filho
   if (item.marriedGroup && item.marriedRole === 'pai') {
     return true
   }
 
-  // FILHO: conforme somente se pai === filho (ambos SIM ou ambos NÃO)
   if (item.marriedGroup && item.marriedRole === 'filho') {
     const pai  = items.find(p => p.marriedGroup === item.marriedGroup && p.marriedRole === 'pai')
     const rPai = pai ? respostas[pai.id] : undefined
-    // Se pai ainda não foi respondido, não julga
     if (rPai === undefined || rPai === null) return true
     return rPai === r
   }
 
-  // INVERTIDA: NÃO = conforme
   if (item.inverted) return r === false
 
-  // NORMAL: SIM = conforme
   return r === true
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// getItemsNaoConformes — retorna lista de itens NÃO conformes de um form
-// Use este para gerar a lista de não conformidades no resultado
+// getItemsNaoConformes — itens NÃO conformes (já respeitando o débito condicional)
 // ─────────────────────────────────────────────────────────────────────────────
 export function getItemsNaoConformes(form) {
   if (!form.tipoServico || form.produtivo === null) return []
-  const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
-  const items = CHECKLISTS[form.tipoServico]?.[tipo]?.items || []
+  const cl = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
+  if (!cl) return []
+  const items = getItemsAtivos(cl.items, form)
 
   return items.filter(item => {
     const r = form.respostas[item.id]
-    // item sem resposta ainda não é não conforme
     if (r === undefined || r === null) return false
     return !isItemConforme(item, items, form.respostas)
   })
@@ -182,16 +249,19 @@ export function getItemsNaoConformes(form) {
 
 export function isDisqualified(form) {
   if (!form.tipoServico || form.produtivo === null) return false
-  const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
-  const items = CHECKLISTS[form.tipoServico][tipo].items
+  const cl = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
+  if (!cl) return false
+  const items = getItemsAtivos(cl.items, form)
   return items.some(i => i.disqualify && form.respostas[i.id] === false)
 }
 
 export function calcNota(form) {
   if (!form.tipoServico || form.produtivo === null) return 0
   if (isDisqualified(form)) return 0
-  const tipo  = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
-  const items = CHECKLISTS[form.tipoServico][tipo].items
+  const cl = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
+  if (!cl) return 0
+  const items = getItemsAtivos(cl.items, form)
+  if (items.length === 0) return 0
 
   const sim = items.filter(i => isItemConforme(i, items, form.respostas)).length
 
@@ -223,5 +293,6 @@ export const FORM_INICIAL = () => {
     assinatura2: null,
     matriculaEletricista1: '',
     matriculaEletricista2: '',
+    debitoPago: null, // null = ainda não respondeu o check "Foi débito pago?"
   }
 }

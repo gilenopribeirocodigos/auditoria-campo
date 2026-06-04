@@ -1,4 +1,4 @@
-import { CHECKLISTS } from '../data/checklists.js'
+import { CHECKLISTS, getChecklist } from '../data/checklists.js'
 import { NavBar, Alert } from '../components/Shared.jsx'
 
 const TIPOS_AUDITORIA = [
@@ -11,7 +11,7 @@ const TIPO_AUDITORIA_LABEL = { DESEMPENHO: 'Desempenho Op.', POS_SERVICO: 'Pós 
 export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva }) {
   const temPautas = pautasHoje.length > 0
   const ok = form.tipoAuditoria && form.tipoServico && form.produtivo !== null
-  const cl = ok ? CHECKLISTS[form.tipoServico]?.[form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'] : null
+  const cl = ok ? getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo) : null
 
   // Seleciona uma pauta obrigatória e pré-preenche o formulário
   const selecionarPauta = (pauta) => {
@@ -20,16 +20,17 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
       ...f,
       tipoServico:   pauta.tipo_servico,
       tipoAuditoria: pauta.tipo_auditoria,
-      prefixo:       pauta.prefixo,        // ← linha nova
+      prefixo:       pauta.prefixo,
       produtivo:     null,
       respostas:     {},
+      debitoPago:    null,
     }))
   }
 
   // Desmarca pauta
   const desmarcarPauta = () => {
     setPautaAtiva(null)
-    setForm(f => ({ ...f, tipoServico: '', tipoAuditoria: '', produtivo: null, respostas: {} }))
+    setForm(f => ({ ...f, tipoServico: '', tipoAuditoria: '', produtivo: null, respostas: {}, debitoPago: null }))
   }
 
   // SE TEM PAUTAS OBRIGATÓRIAS — modo bloqueado
@@ -97,14 +98,14 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
             <div className="type-grid">
               <button
                 className={`type-card ${form.produtivo === true ? 'selected-green' : ''}`}
-                onClick={() => { upd('produtivo', true); upd('respostas', {}) }}>
+                onClick={() => { upd('produtivo', true); upd('respostas', {}); upd('debitoPago', null) }}>
                 <div className="type-emoji">✅</div>
                 <div className="type-label" style={{ color: form.produtivo === true ? '#15803d' : '#374151' }}>Produtivo</div>
                 <div className="type-sub">Serviço executado</div>
               </button>
               <button
                 className={`type-card ${form.produtivo === false ? 'selected-red' : ''}`}
-                onClick={() => { upd('produtivo', false); upd('respostas', {}) }}>
+                onClick={() => { upd('produtivo', false); upd('respostas', {}); upd('debitoPago', null) }}>
                 <div className="type-emoji">❌</div>
                 <div className="type-label" style={{ color: form.produtivo === false ? '#b91c1c' : '#374151' }}>Improdutivo</div>
                 <div className="type-sub">Não executado</div>
@@ -134,7 +135,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
         {TIPOS_AUDITORIA.map(t => (
           <button key={t.id}
             className={`type-card ${form.tipoAuditoria === t.id ? 'selected-blue' : ''}`}
-            onClick={() => { upd('tipoAuditoria', t.id); upd('tipoServico', ''); upd('produtivo', null); upd('respostas', {}) }}>
+            onClick={() => { upd('tipoAuditoria', t.id); upd('tipoServico', ''); upd('produtivo', null); upd('respostas', {}); upd('debitoPago', null) }}>
             <div className="type-emoji">{t.emoji}</div>
             <div className="type-label" style={{ color: form.tipoAuditoria === t.id ? '#1d4ed8' : '#374151' }}>{t.label}</div>
             <div className="type-sub">{t.sub}</div>
@@ -149,7 +150,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
             {Object.entries(CHECKLISTS).map(([key, val]) => (
               <button key={key}
                 className={`type-card ${form.tipoServico === key ? 'selected-blue' : ''}`}
-                onClick={() => { upd('tipoServico', key); upd('produtivo', null); upd('respostas', {}) }}
+                onClick={() => { upd('tipoServico', key); upd('produtivo', null); upd('respostas', {}); upd('debitoPago', null) }}
                 style={{ padding: '14px 6px' }}>
                 <div className="type-emoji" style={{ fontSize: 24 }}>{val.emoji}</div>
                 <div className="type-label" style={{ fontSize: 11, color: form.tipoServico === key ? '#1d4ed8' : '#374151', lineHeight: 1.3, marginTop: 4 }}>
@@ -167,14 +168,14 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
           <div className="type-grid">
             <button
               className={`type-card ${form.produtivo === true ? 'selected-green' : ''}`}
-              onClick={() => { upd('produtivo', true); upd('respostas', {}) }}>
+              onClick={() => { upd('produtivo', true); upd('respostas', {}); upd('debitoPago', null) }}>
               <div className="type-emoji">✅</div>
               <div className="type-label" style={{ color: form.produtivo === true ? '#15803d' : '#374151' }}>Produtivo</div>
               <div className="type-sub">Serviço executado</div>
             </button>
             <button
               className={`type-card ${form.produtivo === false ? 'selected-red' : ''}`}
-              onClick={() => { upd('produtivo', false); upd('respostas', {}) }}>
+              onClick={() => { upd('produtivo', false); upd('respostas', {}); upd('debitoPago', null) }}>
               <div className="type-emoji">❌</div>
               <div className="type-label" style={{ color: form.produtivo === false ? '#b91c1c' : '#374151' }}>Improdutivo</div>
               <div className="type-sub">Não executado</div>
