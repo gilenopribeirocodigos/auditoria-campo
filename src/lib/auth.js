@@ -3,7 +3,7 @@ import { supabase } from './supabase.js'
 const SESSION_KEY   = 'dpl_audit_user'
 const VERSAO_KEY    = 'dpl_versao'
 const ATIVIDADE_KEY = 'dpl_ultima_atividade'
-const TIMEOUT_MIN   = 60 // minutos de ociosidade para deslogar
+const TIMEOUT_MIN   = 120 // minutos de ociosidade para deslogar
 
 // Versão buildada (injetada pelo Vite a partir do package.json — Opção A)
 // Fallback para '' caso não esteja definida (ex.: ambiente de teste)
