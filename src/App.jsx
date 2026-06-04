@@ -312,7 +312,7 @@ export default function App() {
             🔐 Entrar novamente
           </button>
           <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 16 }}>
-            DPL Construções — Auditoria Operacional v{VERSAO}
+            VérticeGP · v{VERSAO}
           </p>
         </div>
       </div>
@@ -383,8 +383,8 @@ export default function App() {
 
         <div style={{ textAlign: 'center', marginBottom: 40, marginTop: (msgSessao || !online || msgSync) ? 50 : 0 }}>
           <div style={{ fontSize: 56, marginBottom: 12 }}>⚡</div>
-          <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>Auditoria Operacional</h1>
-          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>DPL Construções — Equatorial Energia</p>
+          <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>VérticeGP</h1>
+          <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Plataforma de Gestão Operacional</p>
         </div>
 
         <div style={{
@@ -554,7 +554,7 @@ export default function App() {
 
         </div>
 
-        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>Contrato 1021/2024 — v{VERSAO}</p>
+        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>VérticeGP · v{VERSAO} · © 2026 Todos os direitos reservados</p>
       </div>
     )
   }
@@ -576,7 +576,7 @@ export default function App() {
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            DPL Construções — Equatorial Energia
+            Plataforma de Gestão Operacional
           </div>
           <button onClick={() => setTela('home')} style={{
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
