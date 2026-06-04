@@ -109,7 +109,7 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
                 border: `2px solid ${form.debitoPago === true ? '#16a34a' : '#cbd5e1'}`,
                 background: form.debitoPago === true ? '#16a34a' : '#fff',
                 color: form.debitoPago === true ? '#fff' : '#64748b',
-              }}>✓ SIM, foi pago</button>
+              }}>✓ SIM</button>
             <button
               onClick={() => responderDebito(false)}
               style={{
@@ -118,7 +118,7 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
                 border: `2px solid ${form.debitoPago === false ? '#dc2626' : '#cbd5e1'}`,
                 background: form.debitoPago === false ? '#dc2626' : '#fff',
                 color: form.debitoPago === false ? '#fff' : '#64748b',
-              }}>✗ NÃO foi pago</button>
+              }}>✗ NÃO</button>
           </div>
           {form.debitoPago === null && (
             <p style={{ fontSize: 11, color: '#dc2626', marginTop: 10, fontWeight: 700 }}>
