@@ -1,28 +1,42 @@
-import { CHECKLISTS, CAT_META, isDisqualified, isItemConforme } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, isDisqualified, isItemConforme, getChecklist, getItemsAtivos } from '../data/checklists.js'
 import { NavBar, Textarea } from '../components/Shared.jsx'
 
 export default function S3Checklist({ form, upd, setForm, next, prev }) {
-  const tipo = form.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO'
-  const cl = CHECKLISTS[form.tipoServico]?.[tipo]
+  const cl = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
   if (!cl) return null
 
-  const items = cl.items
+  // Verifica se este checklist tem o grupo condicional "débito"
+  const temDebito = cl.items.some(i => i.conditionalGroup === 'debito')
+
+  // Itens ativos consideram a resposta do "débito pago"
+  const items = getItemsAtivos(cl.items, form)
 
   const respondidas = items.filter(i => form.respostas[i.id] !== undefined).length
 
-  // ── CORRIGIDO ─────────────────────────────────────────────────────────────
-  // Usa isItemConforme para aplicar corretamente a lógica married:
-  // - PAI (itens 5/7) = sempre conforme
-  // - FILHO (itens 6/8) = conforme só se PAI === FILHO
-  // Divide por items.length (igual ao calcNota) para ser consistente
   const conformes   = items.filter(i => isItemConforme(i, items, form.respostas)).length
   const notaParcial = respondidas > 0 ? Math.round(conformes / items.length * 100) : 0
 
-  const completo  = respondidas === items.length
+  // Para prosseguir: todas as perguntas ativas respondidas E (se tem débito) o check respondido
+  const debitoOk  = !temDebito || form.debitoPago !== null && form.debitoPago !== undefined
+  const completo  = respondidas === items.length && debitoOk
   const eliminado = isDisqualified(form)
 
   const responder = (id, val) =>
     setForm(f => ({ ...f, respostas: { ...f.respostas, [id]: val } }))
+
+  // Ao mudar o "débito pago", se marcar NÃO, limpa as respostas das perguntas condicionais
+  const responderDebito = (val) => {
+    setForm(f => {
+      const novasRespostas = { ...f.respostas }
+      if (val === false) {
+        // remove respostas das perguntas condicionais
+        cl.items.filter(i => i.conditionalGroup === 'debito').forEach(i => {
+          delete novasRespostas[i.id]
+        })
+      }
+      return { ...f, debitoPago: val, respostas: novasRespostas }
+    })
+  }
 
   const msgEliminado = form.tipoServico === 'CORTE'
     ? 'A equipe não executou o corte.'
@@ -70,15 +84,57 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
 
       {/* Barra de progresso */}
       <div className="progress-track">
-        <div className="progress-fill" style={{ width: `${respondidas / items.length * 100}%` }} />
+        <div className="progress-fill" style={{ width: `${items.length > 0 ? respondidas / items.length * 100 : 0}%` }} />
       </div>
 
-      {/* Itens */}
-      {items.map((item, idx) => {
+      {/* ── CHECK CONDICIONAL: Foi débito pago? ── */}
+      {temDebito && (
+        <div style={{
+          background: '#eff6ff', border: '2px solid #3b82f6', borderRadius: 12,
+          padding: '14px 16px', marginBottom: 14,
+        }}>
+          <p style={{ fontSize: 14, fontWeight: 800, color: '#1e40af', marginBottom: 4 }}>
+            💰 Foi débito pago?
+          </p>
+          <p style={{ fontSize: 12, color: '#1e3a8a', marginBottom: 12, lineHeight: 1.5 }}>
+            Se <strong>SIM</strong>, serão avaliadas as perguntas sobre comprovante e confirmação de pagamento (13 itens no total).
+            Se <strong>NÃO</strong>, essas perguntas não se aplicam (11 itens no total).
+          </p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <button
+              onClick={() => responderDebito(true)}
+              style={{
+                flex: 1, padding: '12px', borderRadius: 10, cursor: 'pointer',
+                fontSize: 14, fontWeight: 800,
+                border: `2px solid ${form.debitoPago === true ? '#16a34a' : '#cbd5e1'}`,
+                background: form.debitoPago === true ? '#16a34a' : '#fff',
+                color: form.debitoPago === true ? '#fff' : '#64748b',
+              }}>✓ SIM, foi pago</button>
+            <button
+              onClick={() => responderDebito(false)}
+              style={{
+                flex: 1, padding: '12px', borderRadius: 10, cursor: 'pointer',
+                fontSize: 14, fontWeight: 800,
+                border: `2px solid ${form.debitoPago === false ? '#dc2626' : '#cbd5e1'}`,
+                background: form.debitoPago === false ? '#dc2626' : '#fff',
+                color: form.debitoPago === false ? '#fff' : '#64748b',
+              }}>✗ NÃO foi pago</button>
+          </div>
+          {form.debitoPago === null && (
+            <p style={{ fontSize: 11, color: '#dc2626', marginTop: 10, fontWeight: 700 }}>
+              ⚠️ Responda essa pergunta para liberar o checklist completo.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Itens — só mostra após responder o débito (quando há débito) */}
+      {(!temDebito || form.debitoPago !== null) && items.map((item, idx) => {
         const r          = form.respostas[item.id]
         const meta       = CAT_META[item.cat]
         const isElim     = item.disqualify
         const isInverted = item.inverted
+        const isCond     = item.conditionalGroup === 'debito'
 
         let isConforme, isNaoConforme, marriedWarning = ''
 
@@ -115,6 +171,11 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
                 {isElim && (
                   <span style={{ fontSize: 10, background: '#dc2626', color: '#fff', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>
                     ELIMINATÓRIA
+                  </span>
+                )}
+                {isCond && (
+                  <span style={{ fontSize: 10, background: '#2563eb', color: '#fff', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>
+                    DÉBITO PAGO
                   </span>
                 )}
                 {isInverted && (
@@ -157,7 +218,9 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
 
       {!completo && (
         <div className="alert alert-info" style={{ textAlign: 'center' }}>
-          Responda todas as {items.length} perguntas para prosseguir
+          {temDebito && form.debitoPago === null
+            ? 'Responda "Foi débito pago?" para continuar'
+            : `Responda todas as ${items.length} perguntas para prosseguir`}
         </div>
       )}
 
