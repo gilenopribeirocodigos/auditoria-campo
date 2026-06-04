@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { listarRegistros } from '../lib/registros.js'
+import { getVersaoApp } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 
@@ -17,7 +18,7 @@ const TIPO_MEDIDA_LABEL = {
   SUSPENSAO:           'Suspensão',
 }
 
-function imprimirRegistro(r, assinaturasOnline = []) {
+function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
   const tipoConfig = TIPOS_REGISTRO[r.tipo]
   const modConfig  = MODALIDADES[r.modalidade]
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
@@ -107,7 +108,7 @@ function imprimirRegistro(r, assinaturasOnline = []) {
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})}</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})} · <span style="color:#dc2626;">v${versaoApp}</span></p>
   </div>
   <div class="no-print" style="text-align:center;margin-top:24px;">
     <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
@@ -139,6 +140,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
   const [dropdownOpen,  setDropdownOpen]  = useState(false)
   const [capturando,    setCapturando]    = useState(false)
+  const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
 
@@ -170,6 +172,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     import('../lib/supabase.js').then(({ supabase }) => {
       supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
         .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
+      // Versão do sistema vem do build (getVersaoApp), não precisa buscar do banco
     })
     // Fecha dropdown ao clicar fora
     const fn = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false) }
@@ -606,7 +609,11 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
-                  <button onClick={() => imprimirRegistro(detalhe, assinOnline)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+                  <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
+                    v{versaoSistema}
+                  </p>
+
+                  <button onClick={() => imprimirRegistro(detalhe, assinOnline, versaoSistema)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
                     🖨️ Imprimir / Salvar PDF
                   </button>
 
@@ -685,7 +692,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                           </div>` : ''}
                           <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
                             <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+                            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;font-weight:700;">v${versaoSistema}</span></p>
                           </div>
                         </div>`
 

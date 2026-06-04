@@ -1,9 +1,18 @@
 import { supabase } from './supabase.js'
 
-const SESSION_KEY  = 'dpl_audit_user'
-const VERSAO_KEY   = 'dpl_versao'
+const SESSION_KEY   = 'dpl_audit_user'
+const VERSAO_KEY    = 'dpl_versao'
 const ATIVIDADE_KEY = 'dpl_ultima_atividade'
-const TIMEOUT_MIN  = 60 // minutos de ociosidade para deslogar
+const TIMEOUT_MIN   = 150 // minutos de ociosidade para deslogar.
+
+// Versão buildada (injetada pelo Vite a partir do package.json — Opção A)
+// Fallback para '' caso não esteja definida (ex.: ambiente de teste)
+const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
+
+// Exporta para outros módulos (App.jsx, telas, etc.) usarem a versão atual
+export function getVersaoApp() {
+  return APP_VERSION
+}
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 export async function fazerLogin(login, senha) {
@@ -41,9 +50,21 @@ export async function fazerLogin(login, senha) {
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(usuarioSessao))
 
-  // Salva versão atual e atividade no login
+  // Salva a versão buildada que o usuário está rodando neste login
   registrarAtividade()
-  await sincronizarVersaoLocal()
+  localStorage.setItem(VERSAO_KEY, APP_VERSION)
+
+  // Registra no banco qual versão o usuário está usando e quando logou
+  // (alimenta a tela de Gestão de Usuários)
+  try {
+    await supabase
+      .from('usuarios')
+      .update({
+        versao_app:   APP_VERSION || null,
+        ultimo_login: new Date().toISOString(),
+      })
+      .eq('id', usuario.id)
+  } catch { /* não bloqueia o login se falhar */ }
 
   return usuarioSessao
 }
@@ -73,20 +94,7 @@ function ociosoHaMais(minutos) {
   return diff > minutos
 }
 
-// ─── Versão do sistema ────────────────────────────────────────────────────────
-async function sincronizarVersaoLocal() {
-  try {
-    const { data } = await supabase
-      .from('sistema_config')
-      .select('valor')
-      .eq('chave', 'versao')
-      .single()
-    if (data?.valor) {
-      localStorage.setItem(VERSAO_KEY, data.valor)
-    }
-  } catch { /* silencioso */ }
-}
-
+// ─── Verificação de sessão ──────────────────────────────────────────────────
 // Retorna true se a sessão é válida, false se deve deslogar/recarregar
 export async function verificarSessao() {
   const usuario = getUsuarioLogado()
@@ -98,28 +106,21 @@ export async function verificarSessao() {
     return { valida: false, motivo: 'timeout' }
   }
 
-  // 2. Verifica versão do sistema no servidor
-  try {
-    const { data } = await supabase
-      .from('sistema_config')
-      .select('valor')
-      .eq('chave', 'versao')
-      .single()
+  // 2. Verifica se a versão buildada mudou em relação à que o usuário tem.
+  //    Quando você faz deploy de uma versão nova do package.json,
+  //    APP_VERSION muda e força o relogin automaticamente — SEM SQL.
+  const versaoLocal = localStorage.getItem(VERSAO_KEY)
 
-    const versaoServidor = data?.valor
-    const versaoLocal    = localStorage.getItem(VERSAO_KEY)
+  if (APP_VERSION && versaoLocal && APP_VERSION !== versaoLocal) {
+    fazerLogout()
+    localStorage.setItem(VERSAO_KEY, APP_VERSION)
+    return { valida: false, motivo: 'nova_versao' }
+  }
 
-    if (versaoServidor && versaoLocal && versaoServidor !== versaoLocal) {
-      // Versão mudou — desloga e sinaliza para recarregar
-      fazerLogout()
-      localStorage.setItem(VERSAO_KEY, versaoServidor)
-      return { valida: false, motivo: 'nova_versao' }
-    }
-
-    if (versaoServidor && !versaoLocal) {
-      localStorage.setItem(VERSAO_KEY, versaoServidor)
-    }
-  } catch { /* sem internet, ignora verificação de versão */ }
+  // Primeira vez sem versão salva — apenas registra
+  if (APP_VERSION && !versaoLocal) {
+    localStorage.setItem(VERSAO_KEY, APP_VERSION)
+  }
 
   return { valida: true, motivo: null }
 }

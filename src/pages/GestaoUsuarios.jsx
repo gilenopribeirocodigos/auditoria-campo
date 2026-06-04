@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario } from '../lib/auth.js'
+import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 
 const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
@@ -28,6 +28,19 @@ const FORM_VAZIO = {
   perfil: 'SUPERV. CAMPO', base_regiao: 'Todas', status: 'ATIVO',
 }
 
+// Formata data/hora do último login
+function formatarUltimoLogin(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  const hoje = new Date()
+  const ontem = new Date(); ontem.setDate(hoje.getDate() - 1)
+  const mesmodia = (a, b) => a.toDateString() === b.toDateString()
+  const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  if (mesmodia(d, hoje))  return `hoje às ${hora}`
+  if (mesmodia(d, ontem)) return `ontem às ${hora}`
+  return d.toLocaleDateString('pt-BR') + ' ' + hora
+}
+
 export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const [usuarios,    setUsuarios]    = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -37,6 +50,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const [salvando,    setSalvando]    = useState(false)
   const [erro,        setErro]        = useState('')
   const [abaAtiva,    setAbaAtiva]    = useState('usuarios')
+  const [versaoSistema, setVersaoSistema] = useState('')
 
   // Permissões
   const [permissoes,       setPermissoes]       = useState({}) // { perfil: [permissao,...] }
@@ -50,6 +64,11 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     try { setUsuarios(await listarUsuarios()) }
     catch (e) { setErro(e.message) }
     finally { setLoading(false) }
+  }
+
+  const carregarVersaoSistema = () => {
+    // Versão atual vem do build (package.json via Vite), não do banco
+    setVersaoSistema(getVersaoApp())
   }
 
   const carregarPermissoes = async () => {
@@ -68,7 +87,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     }
   }
 
-  useEffect(() => { carregar() }, [])
+  useEffect(() => { carregar(); carregarVersaoSistema() }, [])
   useEffect(() => { if (abaAtiva === 'permissoes') carregarPermissoes() }, [abaAtiva])
 
   const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setModal(true) }
@@ -83,6 +102,9 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     try {
       const payload = { ...formData }
       if (!payload.senha) delete payload.senha
+      // Não sobrescreve campos de monitoramento ao editar
+      delete payload.versao_app
+      delete payload.ultimo_login
       if (editando) await atualizarUsuario(editando.id, payload)
       else          await criarUsuario(payload)
       await carregar(); fechar()
@@ -144,8 +166,18 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     'INATIVO': { bg: '#fee2e2', color: '#dc2626', label: '⭕ INATIVO'  },
   }[s] || { bg: '#f1f5f9', color: '#374151', label: s })
 
+  // Status de versão do usuário comparado com a versão atual do sistema
+  const versaoStatus = u => {
+    if (!u.versao_app) return { bg: '#f1f5f9', color: '#94a3b8', label: '— nunca logou', atualizado: null }
+    if (!versaoSistema) return { bg: '#e0e7ff', color: '#3730a3', label: `v${u.versao_app}`, atualizado: null }
+    if (u.versao_app === versaoSistema) return { bg: '#dcfce7', color: '#15803d', label: `✅ v${u.versao_app}`, atualizado: true }
+    return { bg: '#fef3c7', color: '#b45309', label: `⚠️ v${u.versao_app}`, atualizado: false }
+  }
+
   const ativos   = usuarios.filter(u => u.status === 'ATIVO').length
   const reservas = usuarios.filter(u => u.status === 'RESERVA').length
+  // Quantos ativos estão desatualizados
+  const desatualizados = usuarios.filter(u => u.status === 'ATIVO' && u.versao_app && versaoSistema && u.versao_app !== versaoSistema).length
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -160,7 +192,10 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>👥 Gestão de Usuários</h1>
-              <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>Administrador: {usuarioLogado.nome}</p>
+              <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>
+                Administrador: {usuarioLogado.nome}
+                {versaoSistema && <> · Sistema: <strong>v{versaoSistema}</strong></>}
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
@@ -199,6 +234,18 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
         {/* ===== ABA USUÁRIOS ===== */}
         {abaAtiva === 'usuarios' && (
           <>
+            {/* Banner de desatualizados */}
+            {desatualizados > 0 && (
+              <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
+                <p style={{ fontSize: 13, fontWeight: 700, color: '#b45309', margin: 0 }}>
+                  ⚠️ {desatualizados} usuário(s) ativo(s) estão em versão desatualizada
+                </p>
+                <p style={{ fontSize: 12, color: '#92400e', margin: '4px 0 0' }}>
+                  Peça para saírem e logarem novamente para atualizar para a v{versaoSistema}.
+                </p>
+              </div>
+            )}
+
             <button onClick={abrirNovo} style={{
               display: 'flex', alignItems: 'center', gap: 8,
               background: '#7c3aed', color: '#fff', border: 'none',
@@ -213,6 +260,8 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                 {usuarios.map(u => {
                   const pc = PERFIL_CORES[u.perfil] || { bg: '#f1f5f9', color: '#374151' }
                   const sc = statusCor(u.status)
+                  const vs = versaoStatus(u)
+                  const ultimoLogin = formatarUltimoLogin(u.ultimo_login)
                   return (
                     <div key={u.id} style={{
                       background: '#fff', borderRadius: 14,
@@ -230,12 +279,23 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                             <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
                               {sc.label}
                             </span>
+                            {/* Badge de versão */}
+                            {u.perfil !== 'ADMIN' && (
+                              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: vs.bg, color: vs.color }}>
+                                {vs.label}
+                              </span>
+                            )}
                           </div>
                           <div style={{ fontSize: 12, color: '#64748b' }}>
                             Login: <strong>{u.login}</strong>
                             {u.matricula && <> · Matrícula: <strong>{u.matricula}</strong></>}
                             {' '}· Base: {u.base_regiao}
                           </div>
+                          {ultimoLogin && (
+                            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                              🕐 Último acesso: {ultimoLogin}
+                            </div>
+                          )}
                         </div>
                         <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
                           <button onClick={() => abrirEditar(u)} style={{

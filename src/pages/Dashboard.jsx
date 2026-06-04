@@ -766,7 +766,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
 
             {/* Rodapé */}
             <div style={{ textAlign: 'center', fontSize: 11, color: '#94a3b8' }}>
-              DPL Construções — Contrato Equatorial Energia 1021/2024 · Atualizado em {new Date().toLocaleString('pt-BR')}
+              VérticeGP · Atualizado em {new Date().toLocaleString('pt-BR')}              
             </div>
 
           </>
