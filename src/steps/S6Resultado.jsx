@@ -62,8 +62,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
       const infoRow = (label, value) => value ? `
         <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
-          <span style="color:#94a3b8;font-weight:700;font-size:15px;min-width:120px;flex-shrink:0;">${label}</span>
-          <span style="color:#1e293b;font-weight:700;font-size:15px;text-align:right;flex:1;padding-left:10px;">${value}</span>
+          <span style="color:#64748b;font-weight:700;font-size:16px;min-width:120px;flex-shrink:0;">${label}</span>
+          <span style="color:#0f172a;font-weight:800;font-size:16px;text-align:right;flex:1;padding-left:10px;">${value}</span>
         </div>` : ''
 
       const fotosParaExibir = !salvoOffline ? fotosUrlsSalvas : []
@@ -78,7 +78,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             <div style="font-size:64px;font-weight:900;color:${st.color};line-height:1;">${nota.toFixed(0)}</div>
             <div style="font-size:15px;color:${st.color};font-weight:600;margin-bottom:4px;">pontos</div>
             <div style="font-size:26px;font-weight:900;color:${st.color};margin-bottom:8px;">${st.label}</div>
-            <div style="font-size:14px;color:${st.color};opacity:0.9;">${labelTipoAuditoria} — ${CHECKLISTS[form.tipoServico]?.label} — ${form.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
+            <div style="font-size:17px;color:${st.color};font-weight:800;line-height:1.4;">${labelTipoAuditoria} — ${CHECKLISTS[form.tipoServico]?.label} — ${form.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
           </div>
 
           <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
@@ -97,7 +97,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
 
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 14px 0;">Por Categoria</p>
+            <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 14px 0;">Por Categoria</p>
             ${catStats.map(c => {
               const cc = catColor(c.cat)
               return `
@@ -114,7 +114,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>
 
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 12px 0;">Dados da Auditoria</p>
+            <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
             ${infoRow('Fiscal',         form.fiscal)}
             ${infoRow('Matrícula',      form.matricula)}
@@ -151,18 +151,18 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>` : ''}
 
           ${form.feedback || form.observacoes ? `
-          <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+          <div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:16px;padding:18px;margin-bottom:16px;">
             ${form.feedback ? `
-              <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Feedback do Fiscal:</p>
-              <p style="font-size:15px;color:#475569;line-height:1.6;margin:0 0 ${form.observacoes ? '14px' : '0'} 0;">${form.feedback}</p>` : ''}
+              <p style="font-size:14px;font-weight:900;color:#92400e;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Feedback do Fiscal:</p>
+              <p style="font-size:17px;color:#1e293b;font-weight:600;line-height:1.6;margin:0 0 ${form.observacoes ? '16px' : '0'} 0;">${form.feedback}</p>` : ''}
             ${form.observacoes ? `
-              <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Observações:</p>
-              <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${form.observacoes}</p>` : ''}
+              <p style="font-size:14px;font-weight:900;color:#92400e;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Observações:</p>
+              <p style="font-size:17px;color:#1e293b;font-weight:600;line-height:1.6;margin:0;">${form.observacoes}</p>` : ''}
           </div>` : ''}
 
           ${fotosParaExibir.length > 0 ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 14px 0;">📷 Registro Fotográfico (${fotosParaExibir.length})</p>
+            <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 14px 0;">📷 Registro Fotográfico (${fotosParaExibir.length})</p>
             <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
               ${fotosParaExibir.map((url, i) => `
                 <img src="${url}" alt="Foto ${i+1}" crossorigin="anonymous"
@@ -173,14 +173,14 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
           ${form.assinatura ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista || 'Eletricista 1'}</p>
+            <p style="font-size:16px;font-weight:900;color:#1e293b;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista || 'Eletricista 1'}</p>
             <img src="${form.assinatura}" style="width:100%;border-radius:10px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
             <p style="font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
           </div>` : ''}
 
           ${form.assinatura2 ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista2 || 'Eletricista 2'}</p>
+            <p style="font-size:16px;font-weight:900;color:#1e293b;margin:0 0 10px 0;">Assinatura — ${form.nomeEletricista2 || 'Eletricista 2'}</p>
             <img src="${form.assinatura2}" style="width:100%;border-radius:10px;border:1px solid #f1f5f9;background:#fafafa;display:block;" />
             <p style="font-size:12px;color:#94a3b8;text-align:center;margin:8px 0 0 0;">Registrado em ${form.data} às ${form.hora}</p>
           </div>` : ''}
