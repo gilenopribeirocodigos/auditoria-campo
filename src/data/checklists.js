@@ -40,7 +40,8 @@ export const CHECKLISTS = {
           { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?', conditionalGroup: 'debito' },
           { id: 11, cat: 'DESEMPENHO',    p: 'Foi confirmado pagamento de todas as faturas apontadas na OS?',         conditionalGroup: 'debito' },
           { id: 12, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
-          { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?' },
+          { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?', conditionalGroup: 'nao_debito' },
+        { id: 14, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (10 min)?', conditionalGroup: 'so_debito' },
         ],
       },
       IMPRODUTIVO: {
@@ -72,7 +73,8 @@ export const CHECKLISTS = {
           { id: 8,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, fachada, mini toi, etc)?' },
           { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?' },
           { id: 12, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
-          { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?' },
+          { id: 13, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (18 min)?', conditionalGroup: 'nao_debito' },
+        { id: 14, cat: 'DESEMPENHO',    p: 'Executou a atividade num tempo adequado (10 min)?', conditionalGroup: 'so_debito' },
         ],
       },
       IMPRODUTIVO: {
@@ -267,16 +269,16 @@ export function getChecklist(tipoServico, tipoAuditoria, produtivo) {
 // ─────────────────────────────────────────────────────────────────────────────
 export function getItemsAtivos(items, form) {
   if (!items) return []
-  // débito NÃO → oculta itens do grupo 'debito' (10, 11)
-  if (form?.debitoPago === false) {
-    return items.filter(i => i.conditionalGroup !== 'debito')
-  }
-  // débito SIM → oculta itens do grupo 'nao_debito' (4, 5, 6, 9)
-  if (form?.debitoPago === true) {
-    return items.filter(i => i.conditionalGroup !== 'nao_debito')
-  }
-  // débito ainda não respondido → mostra todos
-  return items
+  const deb = form?.debitoPago
+  return items.filter(i => {
+    // 'debito' (10,11): some APENAS quando NÃO (false). Aparece no SIM e no null.
+    if (i.conditionalGroup === 'debito'     && deb === false) return false
+    // 'nao_debito' (4,5,6,9,13): só aparece quando NÃO (false) ou null. Some quando SIM.
+    if (i.conditionalGroup === 'nao_debito' && deb === true)  return false
+    // 'so_debito' (14): só aparece quando SIM (true). Some quando NÃO ou null.
+    if (i.conditionalGroup === 'so_debito'  && deb !== true)  return false
+    return true
+  })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
