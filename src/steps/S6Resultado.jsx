@@ -116,6 +116,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
+            ${infoRow('Tipo de Serviço', CHECKLISTS[form.tipoServico]?.label)}
+            ${infoRow('Status do Serviço', form.produtivo ? 'Produtivo' : 'Improdutivo')}
             ${infoRow('Fiscal',         form.fiscal)}
             ${infoRow('Matrícula',      form.matricula)}
             ${infoRow('Equipe',         form.prefixo)}
@@ -390,6 +392,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         <div className="card">
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
+          <InfoRow label="Tipo de Serviço"  value={CHECKLISTS[form.tipoServico]?.label} />
+          <InfoRow label="Status do Serviço" value={form.produtivo ? 'Produtivo' : 'Improdutivo'} />
           <InfoRow label="Fiscal"         value={form.fiscal} />
           <InfoRow label="Matrícula"      value={form.matricula} />
           <InfoRow label="Equipe"         value={form.prefixo} />
