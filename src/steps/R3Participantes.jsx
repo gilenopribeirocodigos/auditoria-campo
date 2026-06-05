@@ -453,6 +453,7 @@ export default function R3Participantes({ form, upd, next, prev }) {
   const [adicionando,      setAdicionando]      = useState(false)
   const [modoAdd,          setModoAdd]          = useState(null) // 'presencial' | 'online' | null
   const [modalImportar,    setModalImportar]    = useState(false)
+  const [confirmarPend,    setConfirmarPend]    = useState(false)
 
   const maxPart = modConfig?.maxPart || 100
   const podeProsseguir = form.participantes.length > 0
@@ -522,6 +523,12 @@ export default function R3Participantes({ form, upd, next, prev }) {
   }
 
   const remover = (idx) => upd('participantes', form.participantes.filter((_, i) => i !== idx))
+
+  // Intercepta o Continuar: se houver presenciais sem assinar, pede confirmação
+  const tentarContinuar = () => {
+    if (presenciaisPendentes > 0) setConfirmarPend(true)
+    else next()
+  }
 
   return (
     <div style={{ padding: '0 0 80px' }}>
@@ -649,7 +656,7 @@ export default function R3Participantes({ form, upd, next, prev }) {
         </div>
       )}
 
-      <button onClick={next} disabled={!podeProsseguir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: podeProsseguir ? '#1e3a5f' : '#e2e8f0', color: podeProsseguir ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700, cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10 }}>
+      <button onClick={tentarContinuar} disabled={!podeProsseguir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: podeProsseguir ? '#1e3a5f' : '#e2e8f0', color: podeProsseguir ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700, cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10 }}>
         Continuar →
       </button>
       <button onClick={prev} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Voltar</button>
@@ -664,6 +671,37 @@ export default function R3Participantes({ form, upd, next, prev }) {
           onImportar={onImportarLote}
           onFechar={() => setModalImportar(false)}
         />
+      )}
+
+      {/* Modal de confirmação de pendências de assinatura */}
+      {confirmarPend && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2100, padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmarPend(false) }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '26px 22px', width: '100%', maxWidth: 380, textAlign: 'center' }}>
+            <div style={{ fontSize: 44, marginBottom: 10 }}>✍️</div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', marginBottom: 10 }}>
+              Assinaturas pendentes
+            </h3>
+            <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.6, marginBottom: 6 }}>
+              {presenciaisPendentes === 1
+                ? 'Há 1 participante presencial que ainda não assinou.'
+                : `Há ${presenciaisPendentes} participantes presenciais que ainda não assinaram.`}
+            </p>
+            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 22 }}>
+              Você pode coletar as assinaturas agora ou continuar mesmo assim. Se continuar, o registro será salvo com as assinaturas pendentes.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={() => setConfirmarPend(false)} style={{
+                width: '100%', padding: 13, borderRadius: 12, border: 'none',
+                background: '#16a34a', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+              }}>✍️ Voltar e coletar assinaturas</button>
+              <button onClick={() => { setConfirmarPend(false); next() }} style={{
+                width: '100%', padding: 13, borderRadius: 12, border: '1px solid #e2e8f0',
+                background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>Continuar mesmo assim →</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
