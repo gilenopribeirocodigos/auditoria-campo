@@ -24,13 +24,19 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
   const responder = (id, val) =>
     setForm(f => ({ ...f, respostas: { ...f.respostas, [id]: val } }))
 
-  // Ao mudar o "débito pago", se marcar NÃO, limpa as respostas das perguntas condicionais
+  // Ao mudar o "débito pago":
+  // - NÃO → limpa respostas dos itens 'debito' (10, 11)
+  // - SIM → limpa respostas dos itens 'nao_debito' (4, 5, 6, 9)
   const responderDebito = (val) => {
     setForm(f => {
       const novasRespostas = { ...f.respostas }
       if (val === false) {
-        // remove respostas das perguntas condicionais
-        cl.items.filter(i => i.conditionalGroup === 'debito').forEach(i => {
+        // limpa 'debito' (10,11) e 'so_debito' (14) — não se aplicam quando NÃO
+        cl.items.filter(i => i.conditionalGroup === 'debito' || i.conditionalGroup === 'so_debito').forEach(i => {
+          delete novasRespostas[i.id]
+        })
+      } else if (val === true) {
+        cl.items.filter(i => i.conditionalGroup === 'nao_debito').forEach(i => {
           delete novasRespostas[i.id]
         })
       }

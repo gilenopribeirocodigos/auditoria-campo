@@ -176,6 +176,11 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
               <div style={{ fontSize: 10, color: '#64748b' }}>Assina no celular</div>
             </button>
           </div>
+          {modoImport === 'presencial' && (
+            <p style={{ fontSize: 11, color: '#15803d', marginTop: 10, lineHeight: 1.5 }}>
+              ℹ️ Após importar, toque em <strong>✍️ Assinar</strong> em cada participante para coletar a assinatura no celular.
+            </p>
+          )}
         </div>
 
         {/* ── ABA: POR SUPERVISOR ─────────────────────────────────────────── */}
@@ -415,17 +420,46 @@ function FormParticipanteOnline({ onAdicionar, onCancelar }) {
   )
 }
 
+// ── Captura GPS + geocodificação (reutilizável) ───────────────────────────────
+async function capturarLocalizacao() {
+  let lat = null, lng = null, endereco_assinatura = null
+  try {
+    const pos = await new Promise((res, rej) =>
+      navigator.geolocation
+        ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, enableHighAccuracy: true })
+        : rej()
+    )
+    lat = pos.coords.latitude; lng = pos.coords.longitude
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`,
+        { headers: { 'User-Agent': 'DPL-Auditoria-Campo/1.0' } }
+      )
+      const d = await r.json()
+      if (d?.address) {
+        const a = d.address
+        endereco_assinatura = [a.road || a.pedestrian, a.suburb || a.neighbourhood, a.city || a.town || a.village, a.state].filter(Boolean).join(', ')
+      }
+    } catch { /* silencioso */ }
+  } catch { /* GPS negado */ }
+  return { lat, lng, endereco_assinatura }
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function R3Participantes({ form, upd, next, prev }) {
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const modConfig  = MODALIDADES[form.modalidade]
-  const [assinandoPart,    setAssinandoPart]    = useState(null)
+  const [assinandoPart,    setAssinandoPart]    = useState(null) // { nome, matricula } (novo) OU { nome, idx } (existente)
   const [adicionando,      setAdicionando]      = useState(false)
   const [modoAdd,          setModoAdd]          = useState(null) // 'presencial' | 'online' | null
   const [modalImportar,    setModalImportar]    = useState(false)
+  const [confirmarPend,    setConfirmarPend]    = useState(false)
 
   const maxPart = modConfig?.maxPart || 100
   const podeProsseguir = form.participantes.length > 0
+
+  // Conta presenciais que ainda não assinaram
+  const presenciaisPendentes = form.participantes.filter(p => p.modo === 'presencial' && !p.assinatura).length
 
   useEffect(() => {
     if (form.participantes.length === 0 && !adicionando) setAdicionando(true)
@@ -434,31 +468,31 @@ export default function R3Participantes({ form, upd, next, prev }) {
   const onSolicitarAssinatura = (nome, mat) => {
     if (!nome) return
     setAdicionando(false); setModoAdd(null)
-    setAssinandoPart({ nome, matricula: mat })
+    setAssinandoPart({ nome, matricula: mat }) // sem idx = participante novo
+  }
+
+  // Abre o canvas para um participante JÁ existente na lista (ex.: importado em lote)
+  const assinarExistente = (idx) => {
+    const p = form.participantes[idx]
+    setAssinandoPart({ nome: p.nome, idx })
   }
 
   const onConfirmarAssinatura = async (png) => {
-    let lat = null, lng = null, endereco_assinatura = null
-    try {
-      const pos = await new Promise((res, rej) =>
-        navigator.geolocation
-          ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, enableHighAccuracy: true })
-          : rej()
-      )
-      lat = pos.coords.latitude; lng = pos.coords.longitude
-      try {
-        const r = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`,
-          { headers: { 'User-Agent': 'DPL-Auditoria-Campo/1.0' } }
-        )
-        const d = await r.json()
-        if (d?.address) {
-          const a = d.address
-          endereco_assinatura = [a.road || a.pedestrian, a.suburb || a.neighbourhood, a.city || a.town || a.village, a.state].filter(Boolean).join(', ')
-        }
-      } catch { /* silencioso */ }
-    } catch { /* GPS negado */ }
+    const { lat, lng, endereco_assinatura } = await capturarLocalizacao()
 
+    // Caso 1: assinatura de participante EXISTENTE (tem idx) — atualiza no lugar
+    if (assinandoPart.idx !== undefined && assinandoPart.idx !== null) {
+      const novos = form.participantes.map((p, i) =>
+        i === assinandoPart.idx
+          ? { ...p, assinatura: png, assinado_em: new Date().toISOString(), modo: 'presencial', lat, lng, endereco_assinatura }
+          : p
+      )
+      upd('participantes', novos)
+      setAssinandoPart(null)
+      return
+    }
+
+    // Caso 2: participante NOVO — adiciona à lista
     upd('participantes', [...form.participantes, {
       nome: assinandoPart.nome, matricula: assinandoPart.matricula,
       assinatura: png, assinado_em: new Date().toISOString(), modo: 'presencial',
@@ -490,6 +524,12 @@ export default function R3Participantes({ form, upd, next, prev }) {
 
   const remover = (idx) => upd('participantes', form.participantes.filter((_, i) => i !== idx))
 
+  // Intercepta o Continuar: se houver presenciais sem assinar, pede confirmação
+  const tentarContinuar = () => {
+    if (presenciaisPendentes > 0) setConfirmarPend(true)
+    else next()
+  }
+
   return (
     <div style={{ padding: '0 0 80px' }}>
 
@@ -514,31 +554,58 @@ export default function R3Participantes({ form, upd, next, prev }) {
         👥 Importar por Supervisor de Campo
       </button>
 
-      {/* Lista de participantes já adicionados */}
-      {form.participantes.map((p, i) => (
-        <div key={i} style={{
-          background: p.modo === 'online' ? '#eff6ff' : '#f0fdf4',
-          border: `1.5px solid ${p.modo === 'online' ? '#bfdbfe' : '#86efac'}`,
-          borderRadius: 12, padding: '12px 14px', marginBottom: 10,
-          display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
-              <p style={{ fontSize: 14, fontWeight: 700, color: p.modo === 'online' ? '#1d4ed8' : '#15803d' }}>
-                {i + 1}. {p.nome}
-              </p>
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: p.modo === 'online' ? '#dbeafe' : '#dcfce7', color: p.modo === 'online' ? '#1d4ed8' : '#15803d' }}>
-                {p.modo === 'online' ? '🔗 Online' : '✍️ Presencial'}
-              </span>
-            </div>
-            {p.matricula && <p style={{ fontSize: 12, color: '#64748b' }}>Mat: {p.matricula}</p>}
-            {p.assinatura && <p style={{ fontSize: 11, color: '#94a3b8' }}>✅ Assinado · {new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
-            {!p.assinatura && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb' }}>⏳ Assinará via link</p>}
-          </div>
-          {p.assinatura && <img src={p.assinatura} alt="assinatura" style={{ width: 80, height: 40, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />}
-          <button onClick={() => remover(i)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>✕</button>
+      {/* Aviso de pendências de assinatura presencial */}
+      {presenciaisPendentes > 0 && (
+        <div style={{ background: '#fef3c7', border: '1.5px solid #f59e0b', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', margin: 0 }}>
+            ✍️ {presenciaisPendentes} participante(s) presencial(is) ainda não assinaram
+          </p>
+          <p style={{ fontSize: 12, color: '#b45309', margin: '4px 0 0' }}>
+            Toque em <strong>✍️ Assinar</strong> ao lado de cada um para coletar a assinatura. Você pode salvar mesmo com pendências, mas o ideal é coletar todas.
+          </p>
         </div>
-      ))}
+      )}
+
+      {/* Lista de participantes já adicionados */}
+      {form.participantes.map((p, i) => {
+        const pendentePresencial = p.modo === 'presencial' && !p.assinatura
+        return (
+          <div key={i} style={{
+            background: p.modo === 'online' ? '#eff6ff' : pendentePresencial ? '#fffbeb' : '#f0fdf4',
+            border: `1.5px solid ${p.modo === 'online' ? '#bfdbfe' : pendentePresencial ? '#fcd34d' : '#86efac'}`,
+            borderRadius: 12, padding: '12px 14px', marginBottom: 10,
+            display: 'flex', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: p.modo === 'online' ? '#1d4ed8' : pendentePresencial ? '#92400e' : '#15803d' }}>
+                  {i + 1}. {p.nome}
+                </p>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: p.modo === 'online' ? '#dbeafe' : '#dcfce7', color: p.modo === 'online' ? '#1d4ed8' : '#15803d' }}>
+                  {p.modo === 'online' ? '🔗 Online' : '✍️ Presencial'}
+                </span>
+              </div>
+              {p.matricula && <p style={{ fontSize: 12, color: '#64748b' }}>Mat: {p.matricula}</p>}
+              {p.assinatura && <p style={{ fontSize: 11, color: '#94a3b8' }}>✅ Assinado · {new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
+              {!p.assinatura && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb' }}>⏳ Assinará via link</p>}
+              {pendentePresencial && <p style={{ fontSize: 11, color: '#d97706', fontWeight: 600 }}>⚠️ Aguardando assinatura</p>}
+            </div>
+
+            {p.assinatura && <img src={p.assinatura} alt="assinatura" style={{ width: 80, height: 40, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />}
+
+            {/* Botão Assinar para presencial pendente */}
+            {pendentePresencial && (
+              <button onClick={() => assinarExistente(i)} style={{
+                padding: '8px 12px', borderRadius: 10, border: 'none',
+                background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 700,
+                cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap',
+              }}>✍️ Assinar</button>
+            )}
+
+            <button onClick={() => remover(i)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14, flexShrink: 0 }}>✕</button>
+          </div>
+        )
+      })}
 
       {/* Escolha do modo individual */}
       {adicionando && !modoAdd && (
@@ -589,7 +656,7 @@ export default function R3Participantes({ form, upd, next, prev }) {
         </div>
       )}
 
-      <button onClick={next} disabled={!podeProsseguir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: podeProsseguir ? '#1e3a5f' : '#e2e8f0', color: podeProsseguir ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700, cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10 }}>
+      <button onClick={tentarContinuar} disabled={!podeProsseguir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: podeProsseguir ? '#1e3a5f' : '#e2e8f0', color: podeProsseguir ? '#fff' : '#94a3b8', fontSize: 15, fontWeight: 700, cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10 }}>
         Continuar →
       </button>
       <button onClick={prev} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Voltar</button>
@@ -604,6 +671,37 @@ export default function R3Participantes({ form, upd, next, prev }) {
           onImportar={onImportarLote}
           onFechar={() => setModalImportar(false)}
         />
+      )}
+
+      {/* Modal de confirmação de pendências de assinatura */}
+      {confirmarPend && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2100, padding: 20 }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmarPend(false) }}>
+          <div style={{ background: '#fff', borderRadius: 18, padding: '26px 22px', width: '100%', maxWidth: 380, textAlign: 'center' }}>
+            <div style={{ fontSize: 44, marginBottom: 10 }}>✍️</div>
+            <h3 style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', marginBottom: 10 }}>
+              Assinaturas pendentes
+            </h3>
+            <p style={{ fontSize: 14, color: '#475569', lineHeight: 1.6, marginBottom: 6 }}>
+              {presenciaisPendentes === 1
+                ? 'Há 1 participante presencial que ainda não assinou.'
+                : `Há ${presenciaisPendentes} participantes presenciais que ainda não assinaram.`}
+            </p>
+            <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 22 }}>
+              Você pode coletar as assinaturas agora ou continuar mesmo assim. Se continuar, o registro será salvo com as assinaturas pendentes.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button onClick={() => setConfirmarPend(false)} style={{
+                width: '100%', padding: 13, borderRadius: 12, border: 'none',
+                background: '#16a34a', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+              }}>✍️ Voltar e coletar assinaturas</button>
+              <button onClick={() => { setConfirmarPend(false); next() }} style={{
+                width: '100%', padding: 13, borderRadius: 12, border: '1px solid #e2e8f0',
+                background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+              }}>Continuar mesmo assim →</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

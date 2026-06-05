@@ -116,6 +116,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
+            ${infoRow('Tipo de Serviço', CHECKLISTS[form.tipoServico]?.label)}
+            ${infoRow('Status do Serviço', form.produtivo ? 'Produtivo' : 'Improdutivo')}
             ${infoRow('Fiscal',         form.fiscal)}
             ${infoRow('Matrícula',      form.matricula)}
             ${infoRow('Equipe',         form.prefixo)}
@@ -186,7 +188,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>` : ''}
 
           <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
-            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+            <p style="font-size:13px;color:#64748b;margin:0;font-weight:700;">VérticeGP · Plataforma de Gestão Operacional</p>
             <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
           </div>
 
@@ -390,6 +392,8 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         <div className="card">
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
+          <InfoRow label="Tipo de Serviço"  value={CHECKLISTS[form.tipoServico]?.label} />
+          <InfoRow label="Status do Serviço" value={form.produtivo ? 'Produtivo' : 'Improdutivo'} />
           <InfoRow label="Fiscal"         value={form.fiscal} />
           <InfoRow label="Matrícula"      value={form.matricula} />
           <InfoRow label="Equipe"         value={form.prefixo} />
@@ -476,7 +480,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         )}
 
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginBottom: 8, textAlign: 'center' }}>
-          <p style={{ fontSize: 11, color: '#94a3b8' }}>DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>VérticeGP · Plataforma de Gestão Operacional</p>
           <p style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
         </div>
       </div>
