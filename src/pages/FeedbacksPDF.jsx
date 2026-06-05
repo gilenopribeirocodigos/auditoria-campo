@@ -108,7 +108,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
 
       {/* Header */}
       <div className="no-print" style={{
-        background: 'linear-gradient(135deg, #1e3a5f, #2563eb)',
+        background: '#7c3aed',
         padding: '18px 20px', color: '#fff',
       }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>

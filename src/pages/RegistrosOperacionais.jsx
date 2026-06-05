@@ -217,7 +217,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      <div style={{ background: 'linear-gradient(135deg, #0f172a, #1e3a5f)', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>
             ← Voltar para Home

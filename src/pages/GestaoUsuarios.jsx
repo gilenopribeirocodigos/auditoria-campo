@@ -183,7 +183,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #4c1d95, #7c3aed)', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: '#7c3aed', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 800, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',

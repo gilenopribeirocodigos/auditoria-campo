@@ -282,7 +282,7 @@ export default function App() {
     return (
       <div style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)',
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
         display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24,
       }}>
         <div style={{
@@ -342,7 +342,7 @@ export default function App() {
     return (
       <div style={{
         minHeight: '100vh',
-        background: 'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)',
+        background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
         justifyContent: 'center', padding: 24,
       }}>

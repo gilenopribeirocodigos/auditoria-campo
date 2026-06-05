@@ -282,7 +282,7 @@ export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #7c3aed, #4f46e5)', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 700, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
