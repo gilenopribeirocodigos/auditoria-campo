@@ -186,7 +186,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           </div>` : ''}
 
           <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
-            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+            <p style="font-size:13px;color:#64748b;margin:0;font-weight:700;">VérticeGP · Plataforma de Gestão Operacional</p>
             <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
           </div>
 
@@ -476,7 +476,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         )}
 
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginBottom: 8, textAlign: 'center' }}>
-          <p style={{ fontSize: 11, color: '#94a3b8' }}>DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700 }}>VérticeGP · Plataforma de Gestão Operacional</p>
           <p style={{ fontSize: 10, color: '#cbd5e1', marginTop: 2 }}>Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
         </div>
       </div>
