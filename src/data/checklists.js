@@ -31,12 +31,12 @@ export const CHECKLISTS = {
           { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
           { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
           { id: 3,  cat: 'DESEMPENHO',    p: 'Foi confirmada a unidade consumidora?' },
-          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true },
-          { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?' },
-          { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?' },
+          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true, conditionalGroup: 'nao_debito' },
+          { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?', conditionalGroup: 'nao_debito' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?', conditionalGroup: 'nao_debito' },
           { id: 7,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor, vizinhos, leitura, poste, placa trafo, etc)?' },
           { id: 8,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, fachada, mini toi, etc)?' },
-          { id: 9,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?' },
+          { id: 9,  cat: 'QUALIDADE',     p: 'Havendo necessidade, foi deixado folheto referente à atividade em execução?', conditionalGroup: 'nao_debito' },
           { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?', conditionalGroup: 'debito' },
           { id: 11, cat: 'DESEMPENHO',    p: 'Foi confirmado pagamento de todas as faturas apontadas na OS?',         conditionalGroup: 'debito' },
           { id: 12, cat: 'QUALIDADE',     p: 'Baixou a nota com o motivo correto?' },
@@ -65,9 +65,9 @@ export const CHECKLISTS = {
         peso: 12.5,
         items: [
           { id: 3,  cat: 'DESEMPENHO',    p: 'Foi cortada a unidade consumidora correta?' },
-          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true },
-          { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?' },
-          { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?' },
+          { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou o corte?', disqualify: true, conditionalGroup: 'nao_debito' },
+          { id: 5,  cat: 'DESEMPENHO',    p: 'O corte foi executado no local indicado na OS?', conditionalGroup: 'nao_debito' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'O local informado no corte condiz com o real?', conditionalGroup: 'nao_debito' },
           { id: 7,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA (medidor, vizinhos, leitura, poste, placa trafo, etc)?' },
           { id: 8,  cat: 'QUALIDADE',     p: 'Foi feito o registro com foto conforme diretriz (local do corte, fachada, mini toi, etc)?' },
           { id: 10, cat: 'DESEMPENHO',    p: 'Equipe solicitou comprovante de pagamento das faturas apontadas na OS?' },
@@ -267,9 +267,15 @@ export function getChecklist(tipoServico, tipoAuditoria, produtivo) {
 // ─────────────────────────────────────────────────────────────────────────────
 export function getItemsAtivos(items, form) {
   if (!items) return []
+  // débito NÃO → oculta itens do grupo 'debito' (10, 11)
   if (form?.debitoPago === false) {
     return items.filter(i => i.conditionalGroup !== 'debito')
   }
+  // débito SIM → oculta itens do grupo 'nao_debito' (4, 5, 6, 9)
+  if (form?.debitoPago === true) {
+    return items.filter(i => i.conditionalGroup !== 'nao_debito')
+  }
+  // débito ainda não respondido → mostra todos
   return items
 }
 
