@@ -31,7 +31,8 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
     setForm(f => {
       const novasRespostas = { ...f.respostas }
       if (val === false) {
-        cl.items.filter(i => i.conditionalGroup === 'debito').forEach(i => {
+        // limpa 'debito' (10,11) e 'so_debito' (14) — não se aplicam quando NÃO
+        cl.items.filter(i => i.conditionalGroup === 'debito' || i.conditionalGroup === 'so_debito').forEach(i => {
           delete novasRespostas[i.id]
         })
       } else if (val === true) {
