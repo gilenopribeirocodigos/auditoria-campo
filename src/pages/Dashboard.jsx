@@ -380,7 +380,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
       {/* ── Header ── */}
-      <div style={{ background: 'linear-gradient(135deg, #1e3a5f, #1d4ed8)', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', padding: '18px 20px', color: '#fff' }}>
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
