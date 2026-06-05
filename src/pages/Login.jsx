@@ -41,6 +41,8 @@ export default function Login({ onLogin }) {
             .vgp-nd{animation:vgp-wave 3.6s ease-in-out infinite}
             .vgp-d0{animation-delay:0s}.vgp-d1{animation-delay:.37s}.vgp-d2{animation-delay:.73s}
             .vgp-d3{animation-delay:1.1s}.vgp-d4{animation-delay:1.47s}.vgp-d5{animation-delay:1.83s}
+            @keyframes vgp-gp-glow{0%,100%{text-shadow:0 0 0px rgba(251,191,36,0)}50%{text-shadow:0 0 14px rgba(251,191,36,.85),0 0 28px rgba(251,191,36,.3)}}
+            .vgp-gp{color:#fbbf24;animation:vgp-gp-glow 2.6s ease-in-out infinite}
           `}</style>
           <div style={{ marginBottom: 10 }}>
             <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
@@ -67,7 +69,7 @@ export default function Login({ onLogin }) {
             </svg>
           </div>
           <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 4 }}>
-            VérticeGP
+            Vértice<span className="vgp-gp">GP</span>
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 13 }}>
             Plataforma de Gestão Operacional
