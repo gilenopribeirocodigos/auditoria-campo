@@ -382,7 +382,42 @@ export default function App() {
         )}
 
         <div style={{ textAlign: 'center', marginBottom: 40, marginTop: (msgSessao || !online || msgSync) ? 50 : 0 }}>
-          <div style={{ fontSize: 56, marginBottom: 12 }}>⚡</div>
+          <style>{`
+            @keyframes vgp-ef{0%{stroke-dashoffset:48;opacity:.45}50%{opacity:1}100%{stroke-dashoffset:0;opacity:.45}}
+            @keyframes vgp-sf{0%{stroke-dashoffset:32;opacity:.25}100%{stroke-dashoffset:0;opacity:.65}}
+            @keyframes vgp-glow{0%,100%{opacity:.18}50%{opacity:.52}}
+            @keyframes vgp-wave{0%,13%,100%{fill:#ffffff;opacity:.82}6.5%{fill:#fbbf24;opacity:1}}
+            .vgp-e{stroke:rgba(255,255,255,.72);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-dasharray:6 9;animation:vgp-ef 2.2s linear infinite}
+            .vgp-sp{stroke:rgba(255,255,255,.38);stroke-width:1.25;fill:none;stroke-linecap:round;stroke-dasharray:4 8;animation:vgp-sf 1.7s linear infinite}
+            .vgp-hl{fill:rgba(251,191,36,.24);animation:vgp-glow 2.8s ease-in-out infinite}
+            .vgp-nd{animation:vgp-wave 3.6s ease-in-out infinite}
+            .vgp-d0{animation-delay:0s}.vgp-d1{animation-delay:.37s}.vgp-d2{animation-delay:.73s}
+            .vgp-d3{animation-delay:1.1s}.vgp-d4{animation-delay:1.47s}.vgp-d5{animation-delay:1.83s}
+          `}</style>
+          <div style={{ marginBottom: 12 }}>
+            <svg viewBox="0 0 100 100" width="80" height="80" xmlns="http://www.w3.org/2000/svg">
+              <line className="vgp-e vgp-d0" x1="50" y1="7"  x2="87" y2="28"/>
+              <line className="vgp-e vgp-d1" x1="87" y1="28" x2="87" y2="72"/>
+              <line className="vgp-e vgp-d2" x1="87" y1="72" x2="50" y2="93"/>
+              <line className="vgp-e vgp-d3" x1="50" y1="93" x2="13" y2="72"/>
+              <line className="vgp-e vgp-d4" x1="13" y1="72" x2="13" y2="28"/>
+              <line className="vgp-e vgp-d5" x1="13" y1="28" x2="50" y2="7"/>
+              <line className="vgp-sp vgp-d0" x1="50" y1="50" x2="50" y2="7"/>
+              <line className="vgp-sp vgp-d1" x1="50" y1="50" x2="87" y2="28"/>
+              <line className="vgp-sp vgp-d2" x1="50" y1="50" x2="87" y2="72"/>
+              <line className="vgp-sp vgp-d3" x1="50" y1="50" x2="50" y2="93"/>
+              <line className="vgp-sp vgp-d4" x1="50" y1="50" x2="13" y2="72"/>
+              <line className="vgp-sp vgp-d5" x1="50" y1="50" x2="13" y2="28"/>
+              <circle className="vgp-hl" cx="50" cy="50" r="17"/>
+              <circle cx="50" cy="50" r="7.5" fill="#fbbf24"/>
+              <circle className="vgp-nd vgp-d0" cx="50" cy="7"  r="5.5" fill="#fff"/>
+              <circle className="vgp-nd vgp-d1" cx="87" cy="28" r="5.5" fill="#fff"/>
+              <circle className="vgp-nd vgp-d2" cx="87" cy="72" r="5.5" fill="#fff"/>
+              <circle className="vgp-nd vgp-d3" cx="50" cy="93" r="5.5" fill="#fff"/>
+              <circle className="vgp-nd vgp-d4" cx="13" cy="72" r="5.5" fill="#fff"/>
+              <circle className="vgp-nd vgp-d5" cx="13" cy="28" r="5.5" fill="#fff"/>
+            </svg>
+          </div>
           <h1 style={{ color: '#fff', fontSize: 22, fontWeight: 800, marginBottom: 6 }}>VérticeGP</h1>
           <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13 }}>Plataforma de Gestão Operacional</p>
         </div>
