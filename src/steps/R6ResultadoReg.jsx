@@ -50,14 +50,17 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     }
   }
 
-  // ── Status visual de cada participante ────────────────────────────────────
-  // p.modo === 'online'     → aguardando assinatura via link
-  // p.modo === 'presencial' → já assinou (tem assinatura no pad)
-  const statusParticipante = (p) => {
-    if (p.modo === 'online') {
-      return `<span style="font-size:13px;color:#2563eb;font-weight:700;">🔗 Aguardando (via link)</span>`
+  // ── Bloco de assinatura/status de cada participante na imagem WhatsApp ──────
+  // Mostra a imagem da assinatura quando houver (online ou presencial).
+  // Presencial sem assinatura → "Pendente". Online sem assinatura → "Aguardando via link".
+  const blocoAssinatura = (p) => {
+    if (p.assinatura) {
+      return `<img src="${p.assinatura}" style="height:46px;max-width:150px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
     }
-    return `<span style="font-size:13px;color:#16a34a;font-weight:700;">✓ Assinado</span>`
+    if (p.modo === 'online') {
+      return `<span style="font-size:13px;color:#2563eb;font-weight:800;background:#dbeafe;padding:3px 10px;border-radius:6px;">🔗 Aguardando (via link)</span>`
+    }
+    return `<span style="font-size:13px;color:#d97706;font-weight:800;background:#fef3c7;padding:3px 10px;border-radius:6px;border:1px solid #fcd34d;">⚠️ Pendente</span>`
   }
 
   const gerarImagemWhatsApp = async () => {
@@ -66,9 +69,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       const html2canvas = (await import('html2canvas')).default
 
       const infoRow = (label, value) => value ? `
-        <div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #f1f5f9;">
-          <span style="color:#94a3b8;font-weight:700;font-size:15px;min-width:120px;flex-shrink:0;">${label}</span>
-          <span style="color:#1e293b;font-weight:700;font-size:15px;text-align:right;flex:1;padding-left:10px;">${value}</span>
+        <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #e2e8f0;">
+          <span style="color:#64748b;font-weight:700;font-size:16px;min-width:120px;flex-shrink:0;">${label}</span>
+          <span style="color:#0f172a;font-weight:800;font-size:16px;text-align:right;flex:1;padding-left:10px;">${value}</span>
         </div>` : ''
 
       const html = `
@@ -92,7 +95,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           </div>
 
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 12px 0;">Dados do Registro</p>
+            <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados do Registro</p>
             ${infoRow('Fiscal',       form.fiscal)}
             ${infoRow('Matrícula',    form.matricula_fiscal)}
             ${infoRow('Data / Hora',  `${form.data} às ${form.hora}`)}
@@ -104,30 +107,36 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
 
           ${form.pauta ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#374151;margin:0 0 10px 0;">
+            <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 10px 0;">
               ${form.tipo === 'DISCIPLINAR' ? 'Descrição da Ocorrência' : 'Pauta / Conteúdo'}
             </p>
-            <p style="font-size:15px;color:#475569;line-height:1.6;margin:0;">${form.pauta}</p>
+            <p style="font-size:16px;color:#1e293b;font-weight:500;line-height:1.6;margin:0;">${form.pauta}</p>
           </div>` : ''}
 
-          <!-- Lista de frequência — status real por p.modo -->
+          ${form.observacoes ? `
+          <div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:16px;padding:18px;margin-bottom:16px;">
+            <p style="font-size:14px;font-weight:900;color:#92400e;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Observações:</p>
+            <p style="font-size:17px;color:#1e293b;font-weight:600;line-height:1.6;margin:0;">${form.observacoes}</p>
+          </div>` : ''}
+
+          <!-- Lista de frequência — mostra imagem da assinatura ou status -->
           <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:18px;margin-bottom:16px;">
-            <p style="font-size:15px;font-weight:800;color:#15803d;margin:0 0 12px 0;">
+            <p style="font-size:17px;font-weight:900;color:#15803d;margin:0 0 12px 0;">
               ✅ Lista de Frequência (${form.participantes.length})
             </p>
             ${form.participantes.map((p, i) => `
-              <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;${i < form.participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
-                <div>
-                  <span style="font-size:15px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;${i < form.participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+                <div style="flex:1;min-width:0;">
+                  <span style="font-size:16px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
                   ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
                 </div>
-                ${statusParticipante(p)}
+                <div style="flex-shrink:0;text-align:right;">${blocoAssinatura(p)}</div>
               </div>`).join('')}
           </div>
 
           ${!salvoOffline && form.fotos.length > 0 ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:16px;">
-            <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 12px 0;">
+            <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">
               📷 Fotos (${form.fotos.length})
             </p>
             <div style="display:grid;grid-template-columns:repeat(${Math.min(form.fotos.length, 3)},1fr);gap:8px;">
@@ -147,8 +156,8 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           </div>` : ''}
 
           <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
-            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:600;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-            <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">
+            <p style="font-size:13px;color:#64748b;margin:0;font-weight:700;">VérticeGP · Plataforma de Gestão Operacional</p>
+            <p style="font-size:12px;color:#94a3b8;margin:4px 0 0 0;">
               Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}
             </p>
           </div>
@@ -234,7 +243,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura / Status</th>
         </tr>
         ${form.participantes.map((p,i)=>`
-          <tr style="border-bottom:1px solid #f1f5f9;${p.modo==='online'?'background:#eff6ff;':''}">
+          <tr style="border-bottom:1px solid #f1f5f9;${p.modo==='online'&&!p.assinatura?'background:#eff6ff;':''}">
             <td style="padding:8px 10px;font-size:13px;">${i+1}</td>
             <td style="padding:8px 10px;font-size:13px;font-weight:600;">
               ${p.nome}
@@ -242,18 +251,18 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             </td>
             <td style="padding:8px 10px;font-size:13px;text-align:center;">${p.matricula||'—'}</td>
             <td style="padding:4px 8px;">
-              ${p.modo === 'online'
-                ? '<span style="font-size:11px;color:#f59e0b;background:#fef3c7;padding:2px 8px;border-radius:4px;border:1px solid #fcd34d;">⏳ Aguardando assinatura online</span>'
-                : p.assinatura
-                  ? `<img src="${p.assinatura}" style="height:40px;max-width:120px;object-fit:contain;"/>`
-                  : '<span style="font-size:11px;color:#94a3b8;">—</span>'
+              ${p.assinatura
+                ? `<img src="${p.assinatura}" style="height:40px;max-width:120px;object-fit:contain;"/>`
+                : p.modo === 'online'
+                  ? '<span style="font-size:11px;color:#f59e0b;background:#fef3c7;padding:2px 8px;border-radius:4px;border:1px solid #fcd34d;">⏳ Aguardando assinatura online</span>'
+                  : '<span style="font-size:11px;color:#d97706;background:#fef3c7;padding:2px 8px;border-radius:4px;border:1px solid #fcd34d;">⚠️ Pendente</span>'
               }
             </td>
           </tr>`).join('')}
       </table>
     </div>
     <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
-      <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+      <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional · DPL Construções — Contrato 1021/2024</p>
       <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})}</p>
     </div>
     <div class="no-print" style="text-align:center;margin-top:24px;">
