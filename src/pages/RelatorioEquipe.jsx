@@ -133,7 +133,7 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
 
       {/* Header */}
       <div className="no-print" style={{
-        background: 'linear-gradient(135deg, #7c2d12, #c2410c)',
+        background: '#c2410c',
         padding: '18px 20px', color: '#fff',
       }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
