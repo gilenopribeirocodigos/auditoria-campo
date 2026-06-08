@@ -146,15 +146,14 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
       {form.tipoAuditoria && (
         <>
           <p className="section-title">Tipo de Serviço</p>
-          {/* ─── Grid 2x2 — acomoda os 4 tipos: Corte, Anexo, Religação, Emergencial ─── */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 18 }}>
             {Object.entries(CHECKLISTS).map(([key, val]) => (
               <button key={key}
                 className={`type-card ${form.tipoServico === key ? 'selected-blue' : ''}`}
                 onClick={() => { upd('tipoServico', key); upd('produtivo', null); upd('respostas', {}); upd('debitoPago', null) }}
-                style={{ padding: '14px 8px' }}>
-                <div className="type-emoji" style={{ fontSize: 26 }}>{val.emoji}</div>
-                <div className="type-label" style={{ fontSize: 12, color: form.tipoServico === key ? '#1d4ed8' : '#374151', lineHeight: 1.3, marginTop: 6 }}>
+                style={{ padding: '14px 6px' }}>
+                <div className="type-emoji" style={{ fontSize: 24 }}>{val.emoji}</div>
+                <div className="type-label" style={{ fontSize: 11, color: form.tipoServico === key ? '#1d4ed8' : '#374151', lineHeight: 1.3, marginTop: 4 }}>
                   {val.label}
                 </div>
               </button>
