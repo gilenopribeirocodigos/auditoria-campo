@@ -10,9 +10,6 @@
 // ANEXO e RELIGA mantêm checklist único (2 dimensões) — o mesmo vale para
 // Desempenho e Pós Serviço. A função getChecklist() resolve isso.
 //
-// EMERGENCIAL usa o MESMO checklist em PRODUTIVO e IMPRODUTIVO (decisão do
-// negócio — emergência segue o mesmo padrão de avaliação).
-//
 // Lógica condicional (só CORTE.DESEMPENHO.PRODUTIVO):
 //   Pergunta "Foi débito pago?" (campo form.debitoPago)
 //     - SIM  → mostra perguntas 10 e 11 → 13 itens no cálculo
@@ -234,100 +231,6 @@ export const CHECKLISTS = {
           { id: 8,  cat: 'DESEMPENHO',    p: 'Embora sendo improdutivo, havia algo proativo que a equipe poderia fazer para resolver?' },
           { id: 9,  cat: 'QUALIDADE',     p: 'A nota foi baixada com o motivo correto?' },
           { id: 10, cat: 'DESEMPENHO',    p: 'A atividade foi executada em tempo adequado (12 min)?' },
-        ],
-      },
-    },
-  },
-
-  // ═══════════════════════════════════════════════════════════════════════════
-  // EMERGENCIAL — equipes de plantão / atendimento emergencial
-  // PRODUTIVO e IMPRODUTIVO usam o MESMO checklist (decisão do negócio).
-  // Vários itens são DESCLASSIFICADORES (resposta NÃO zera a nota).
-  // ═══════════════════════════════════════════════════════════════════════════
-  EMERGENCIAL: {
-    label: 'Emergencial',
-    emoji: '🚒',
-    // ── 3 dimensões: tem nível de tipoAuditoria ──
-    porAuditoria: true,
-    DESEMPENHO: {
-      PRODUTIVO: {
-        label: 'Produtivo',
-        peso: 6.7,
-        items: [
-          { id: 1,  cat: 'COMPORTAMENTO', p: 'Os eletricistas identificaram-se adequadamente para o cliente/morador caso estivesse presente no local?' },
-          { id: 2,  cat: 'COMPORTAMENTO', p: 'A postura verbal e corporal de todos os integrantes foi profissional, educada e segura?' },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe estava equipada com todas as ferramentas, equipamentos de proteção coletiva (EPCs) e individuais (EPIs) necessários para realizar a tarefa acompanhada e as demais de forma totalmente segura?', disqualify: true },
-          { id: 4,  cat: 'DESEMPENHO',    p: 'O veículo dispunha de um estoque mínimo e adequado de materiais (kit técnico: cabos de diversas bitolas, conectores, elos fusíveis variados, emendas automáticas, espaçadores, medidores etc.), garantindo autonomia para atendimento das ordens de serviços sem a necessidade de ressuprimento em campo ou abertura de nota de pendências?', disqualify: true },
-          { id: 5,  cat: 'DESEMPENHO',    p: 'A equipe atualizou o status de "Trabalhando/Iniciado" imediatamente no sistema assim que concluiu o deslocamento?' },
-          { id: 6,  cat: 'QUALIDADE',     p: 'O tempo total de deslocamento até o local foi condizente com a distância geográfica informada na ordem de serviço?' },
-          { id: 7,  cat: 'DESEMPENHO',    p: 'Diante de uma falta de energia coletiva, a equipe percorreu minuciosamente a rede de distribuição (RDS) para identificar visualmente a causa raiz (condutores partidos, árvores tocando, isolador quebrado, transformador queimado etc.) antes de qualquer tentativa de reenergização?', disqualify: true },
-          { id: 8,  cat: 'DESEMPENHO',    p: 'No restabelecimento coletivo, foi utilizado o elo fusível com a capacidade exata exigida para a potência do transformador ou ramal, garantindo a seletividade e a proteção correta do circuito?', disqualify: true },
-          { id: 9,  cat: 'DESEMPENHO',    p: 'Em chamados individuais, a equipe realizou todos os testes e inspeções adequadas no quadro de medição e no ramal (Procedimento 360º)?', disqualify: true },
-          { id: 10, cat: 'QUALIDADE',     p: 'O diagnóstico do problema (causa raiz) foi assertivo na primeira análise de campo?' },
-          { id: 11, cat: 'DESEMPENHO',    p: 'A equipe executou tudo o que estava ao seu alcance técnico imediato para proteger a rede no local (poda de galhos pequenos/médios em contato com os fios, instalação de espaçadores para evitar curto-circuito em vãos de BT, emendas padrão com conectores corretos)?' },
-          { id: 12, cat: 'QUALIDADE',     p: 'A equipe identificou e registrou de forma clara as vulnerabilidades que necessitam de intervenção planejada para evitar reincidências de falta de energia no curto prazo (Necessidade de Podas de Grande Porte, Necessidade de Troca de Transformador por indícios de Sobrecarga e Necessidade de Divisão de Área / Readequação de Circuitos ou troca de postes avariados)?' },
-          { id: 13, cat: 'QUALIDADE',     p: 'A equipe realizou os registros fotográficos obrigatórios de campo demonstrando de forma nítida e correta o "Antes", o "Durante" e o "Depois" (ponto de defeito, leitura de grandezas elétricas, foto legível do medidor, abertura e fechamento das chaves etc.)?' },
-          { id: 14, cat: 'COMPORTAMENTO', p: 'A equipe aplicou as diretrizes de atendimento verbal junto ao cliente, confirmando a normalização da energia, desculpando-se pelos transtornos causados e indicando o canal oficial para abertura de serviços (visita de despedida)?' },
-          { id: 15, cat: 'COMPORTAMENTO', p: 'Caso o problema fosse de responsabilidade interna do consumidor, a equipe fez todos os registros necessários e instruiu o cliente corretamente sobre o tratamento do problema com um profissional particular?' },
-        ],
-      },
-      IMPRODUTIVO: {
-        label: 'Improdutivo',
-        peso: 6.7,
-        // ─── MESMO checklist do PRODUTIVO (decisão do negócio) ───
-        items: [
-          { id: 1,  cat: 'COMPORTAMENTO', p: 'Os eletricistas identificaram-se adequadamente para o cliente/morador caso estivesse presente no local?' },
-          { id: 2,  cat: 'COMPORTAMENTO', p: 'A postura verbal e corporal de todos os integrantes foi profissional, educada e segura?' },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe estava equipada com todas as ferramentas, equipamentos de proteção coletiva (EPCs) e individuais (EPIs) necessários para realizar a tarefa acompanhada e as demais de forma totalmente segura?', disqualify: true },
-          { id: 4,  cat: 'DESEMPENHO',    p: 'O veículo dispunha de um estoque mínimo e adequado de materiais (kit técnico: cabos de diversas bitolas, conectores, elos fusíveis variados, emendas automáticas, espaçadores, medidores etc.), garantindo autonomia para atendimento das ordens de serviços sem a necessidade de ressuprimento em campo ou abertura de nota de pendências?', disqualify: true },
-          { id: 5,  cat: 'DESEMPENHO',    p: 'A equipe atualizou o status de "Trabalhando/Iniciado" imediatamente no sistema assim que concluiu o deslocamento?' },
-          { id: 6,  cat: 'QUALIDADE',     p: 'O tempo total de deslocamento até o local foi condizente com a distância geográfica informada na ordem de serviço?' },
-          { id: 7,  cat: 'DESEMPENHO',    p: 'Diante de uma falta de energia coletiva, a equipe percorreu minuciosamente a rede de distribuição (RDS) para identificar visualmente a causa raiz (condutores partidos, árvores tocando, isolador quebrado, transformador queimado etc.) antes de qualquer tentativa de reenergização?', disqualify: true },
-          { id: 8,  cat: 'DESEMPENHO',    p: 'No restabelecimento coletivo, foi utilizado o elo fusível com a capacidade exata exigida para a potência do transformador ou ramal, garantindo a seletividade e a proteção correta do circuito?', disqualify: true },
-          { id: 9,  cat: 'DESEMPENHO',    p: 'Em chamados individuais, a equipe realizou todos os testes e inspeções adequadas no quadro de medição e no ramal (Procedimento 360º)?', disqualify: true },
-          { id: 10, cat: 'QUALIDADE',     p: 'O diagnóstico do problema (causa raiz) foi assertivo na primeira análise de campo?' },
-          { id: 11, cat: 'DESEMPENHO',    p: 'A equipe executou tudo o que estava ao seu alcance técnico imediato para proteger a rede no local (poda de galhos pequenos/médios em contato com os fios, instalação de espaçadores para evitar curto-circuito em vãos de BT, emendas padrão com conectores corretos)?' },
-          { id: 12, cat: 'QUALIDADE',     p: 'A equipe identificou e registrou de forma clara as vulnerabilidades que necessitam de intervenção planejada para evitar reincidências de falta de energia no curto prazo (Necessidade de Podas de Grande Porte, Necessidade de Troca de Transformador por indícios de Sobrecarga e Necessidade de Divisão de Área / Readequação de Circuitos ou troca de postes avariados)?' },
-          { id: 13, cat: 'QUALIDADE',     p: 'A equipe realizou os registros fotográficos obrigatórios de campo demonstrando de forma nítida e correta o "Antes", o "Durante" e o "Depois" (ponto de defeito, leitura de grandezas elétricas, foto legível do medidor, abertura e fechamento das chaves etc.)?' },
-          { id: 14, cat: 'COMPORTAMENTO', p: 'A equipe aplicou as diretrizes de atendimento verbal junto ao cliente, confirmando a normalização da energia, desculpando-se pelos transtornos causados e indicando o canal oficial para abertura de serviços (visita de despedida)?' },
-          { id: 15, cat: 'COMPORTAMENTO', p: 'Caso o problema fosse de responsabilidade interna do consumidor, a equipe fez todos os registros necessários e instruiu o cliente corretamente sobre o tratamento do problema com um profissional particular?' },
-        ],
-      },
-    },
-    POS_SERVICO: {
-      PRODUTIVO: {
-        label: 'Produtivo',
-        peso: 9.1,
-        items: [
-          { id: 1,  cat: 'DESEMPENHO',    p: 'As emendas de condutores, conexões elétricas e amarrações em isoladores seguem o padrão construtivo homologado da distribuidora (Sem gambiarras ou emendas frouxas)?' },
-          { id: 2,  cat: 'DESEMPENHO',    p: 'O reparo executado resolveu o problema em definitivo?', disqualify: true },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'As vulnerabilidades estruturais encontradas na área que fogem do alcance da equipe emergencial foram cadastradas no sistema para programação planejada (solicitação de abertura de NDS para Necessidade de Podas de Grande Porte, Transformador com sinais visíveis de sobrecarga (vazamento de óleo/ruído excessivo) pendente de troca e/ou Estrutura com postes avariados, fiação desalinhada ou necessidade de divisão de área registrada)?' },
-          { id: 4,  cat: 'DESEMPENHO',    p: 'Caso a equipe tenha relatado a execução de ações mitigadoras no local, os galhos pequenos foram cortados corretamente e os espaçadores foram instalados de forma firme para evitar curtos em vãos de BT?', disqualify: true },
-          { id: 5,  cat: 'QUALIDADE',     p: 'A quantidade de cabo e o modelo de conector (cunha/perfurante) aplicados fisicamente na rede correspondem exatamente ao volume e tipo baixados pela equipe no encerramento da ordem de serviço?', disqualify: true },
-          { id: 6,  cat: 'QUALIDADE',     p: 'Em chaves de proteção aérea, o elo fusível deixado instalado possui a capacidade exata e adequada para a potência do transformador (Sem superdimensionamento)?', disqualify: true },
-          { id: 7,  cat: 'QUALIDADE',     p: 'A calçada, postes e vias públicas foram deixados limpos e livres de detritos, pedaços de fios decapados, isoladores velhos ou galhos provenientes de podas emergenciais?' },
-          { id: 8,  cat: 'QUALIDADE',     p: 'As fotografias anexadas pela equipe para o encerramento da OS no sistema são nítidas, comprovam as três etapas ("Antes", "Durante" e "Depois") e correspondem à realidade encontrada em campo?', disqualify: true },
-          { id: 9,  cat: 'COMPORTAMENTO', p: 'Se o cliente estiver presente, ele confirma que a energia voltou sem oscilações e que a equipe o instruiu corretamente (inclusive explicando sobre a contratação de profissional particular se o defeito fosse interno)?', disqualify: true },
-          { id: 10, cat: 'DESEMPENHO',    p: 'Em casos de substituição de medidor por queima ou avaria, o equipamento antigo foi recolhido e encaminhado para o almoxarifado?', disqualify: true },
-          { id: 11, cat: 'DESEMPENHO',    p: 'A sucata do ramal antigo (cobre ou alumínio) foi inteiramente retirada do local e registrada para devolução ao almoxarifado (Sem deixar sobras na calçada ou desvios de material)?', disqualify: true },
-        ],
-      },
-      IMPRODUTIVO: {
-        label: 'Improdutivo',
-        peso: 9.1,
-        // ─── MESMO checklist do PRODUTIVO (decisão do negócio) ───
-        items: [
-          { id: 1,  cat: 'DESEMPENHO',    p: 'As emendas de condutores, conexões elétricas e amarrações em isoladores seguem o padrão construtivo homologado da distribuidora (Sem gambiarras ou emendas frouxas)?' },
-          { id: 2,  cat: 'DESEMPENHO',    p: 'O reparo executado resolveu o problema em definitivo?', disqualify: true },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'As vulnerabilidades estruturais encontradas na área que fogem do alcance da equipe emergencial foram cadastradas no sistema para programação planejada (solicitação de abertura de NDS para Necessidade de Podas de Grande Porte, Transformador com sinais visíveis de sobrecarga (vazamento de óleo/ruído excessivo) pendente de troca e/ou Estrutura com postes avariados, fiação desalinhada ou necessidade de divisão de área registrada)?' },
-          { id: 4,  cat: 'DESEMPENHO',    p: 'Caso a equipe tenha relatado a execução de ações mitigadoras no local, os galhos pequenos foram cortados corretamente e os espaçadores foram instalados de forma firme para evitar curtos em vãos de BT?', disqualify: true },
-          { id: 5,  cat: 'QUALIDADE',     p: 'A quantidade de cabo e o modelo de conector (cunha/perfurante) aplicados fisicamente na rede correspondem exatamente ao volume e tipo baixados pela equipe no encerramento da ordem de serviço?', disqualify: true },
-          { id: 6,  cat: 'QUALIDADE',     p: 'Em chaves de proteção aérea, o elo fusível deixado instalado possui a capacidade exata e adequada para a potência do transformador (Sem superdimensionamento)?', disqualify: true },
-          { id: 7,  cat: 'QUALIDADE',     p: 'A calçada, postes e vias públicas foram deixados limpos e livres de detritos, pedaços de fios decapados, isoladores velhos ou galhos provenientes de podas emergenciais?' },
-          { id: 8,  cat: 'QUALIDADE',     p: 'As fotografias anexadas pela equipe para o encerramento da OS no sistema são nítidas, comprovam as três etapas ("Antes", "Durante" e "Depois") e correspondem à realidade encontrada em campo?', disqualify: true },
-          { id: 9,  cat: 'COMPORTAMENTO', p: 'Se o cliente estiver presente, ele confirma que a energia voltou sem oscilações e que a equipe o instruiu corretamente (inclusive explicando sobre a contratação de profissional particular se o defeito fosse interno)?', disqualify: true },
-          { id: 10, cat: 'DESEMPENHO',    p: 'Em casos de substituição de medidor por queima ou avaria, o equipamento antigo foi recolhido e encaminhado para o almoxarifado?', disqualify: true },
-          { id: 11, cat: 'DESEMPENHO',    p: 'A sucata do ramal antigo (cobre ou alumínio) foi inteiramente retirada do local e registrada para devolução ao almoxarifado (Sem deixar sobras na calçada ou desvios de material)?', disqualify: true },
         ],
       },
     },
