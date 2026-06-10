@@ -329,16 +329,22 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const buscar = async () => {
     setLoading(true)
     try {
-      // ─── 1) Se há filtros de supervisor, calcula a lista de fiscais elegíveis ───
-      let fiscaisPermitidos = null
+      // ─── 1) Se há filtros de supervisor, descobre quais nomes de fiscal "casam" ───
+      // Importante: registros.fiscal pode ter o NOME COMPLETO do usuário,
+      // enquanto estrutura_equipes.superv_campo pode ter só o primeiro nome.
+      // Por isso usamos matching fuzzy (substring + case-insensitive)
+      // ao invés de IN exato.
+      let supervisoresPermitidos = null
       if (filtros.supCampo.length > 0 || filtros.supOperacao.length > 0) {
         let qEstr = supabase.from('estrutura_equipes').select('superv_campo')
         if (filtros.supCampo.length > 0)    qEstr = qEstr.in('superv_campo',    filtros.supCampo)
         if (filtros.supOperacao.length > 0) qEstr = qEstr.in('superv_operacao', filtros.supOperacao)
         const { data: estrData, error: errEstr } = await qEstr
         if (errEstr) throw errEstr
-        fiscaisPermitidos = [...new Set((estrData || []).map(r => r.superv_campo).filter(Boolean))]
-        if (fiscaisPermitidos.length === 0) {
+        supervisoresPermitidos = [...new Set((estrData || [])
+          .map(r => (r.superv_campo || '').trim())
+          .filter(Boolean))]
+        if (supervisoresPermitidos.length === 0) {
           setRegistros([])
           setTokensAtivos({})
           setLoading(false)
@@ -346,24 +352,24 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         }
       }
 
-      // ─── 2) Mescla com o filtro de Fiscal/Usuário direto (interseção se ambos ativos) ───
-      let fiscaisFinal = filtros.fiscais
-      if (fiscaisPermitidos !== null) {
-        if (filtros.fiscais.length > 0) {
-          fiscaisFinal = filtros.fiscais.filter(f => fiscaisPermitidos.includes(f))
-          if (fiscaisFinal.length === 0) {
-            setRegistros([])
-            setTokensAtivos({})
-            setLoading(false)
-            return
-          }
-        } else {
-          fiscaisFinal = fiscaisPermitidos
-        }
+      // ─── 2) Chama listarRegistros com filtro de Fiscal/Usuário direto (sem mudança) ───
+      let data = await listarRegistros({ ...filtros, fiscais: filtros.fiscais }, usuarioLogado)
+
+      // ─── 3) Aplica filtro de supervisor no front-end (matching fuzzy) ───
+      // Regra: r.fiscal "casa" com um supervisor se uma string é substring da outra
+      // (caso o fiscal seja o nome completo e o supervisor só o primeiro nome,
+      // ou vice-versa). Tudo case-insensitive.
+      if (supervisoresPermitidos) {
+        const supLower = supervisoresPermitidos.map(s => s.toLowerCase())
+        data = data.filter(r => {
+          const fiscalLower = (r.fiscal || '').trim().toLowerCase()
+          if (!fiscalLower) return false
+          return supLower.some(s =>
+            fiscalLower.includes(s) || s.includes(fiscalLower)
+          )
+        })
       }
 
-      // ─── 3) Chama a busca de registros com a lista final ───
-      const data = await listarRegistros({ ...filtros, fiscais: fiscaisFinal }, usuarioLogado)
       setRegistros(data)
 
       // Busca tokens ativos para todos os registros de uma vez
