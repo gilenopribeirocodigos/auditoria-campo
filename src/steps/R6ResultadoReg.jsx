@@ -63,25 +63,25 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   // Presencial sem assinatura → "Pendente". Online sem assinatura → "Aguardando via link".
   const blocoAssinatura = (p) => {
     if (p.assinatura) {
-      return `<img src="${p.assinatura}" style="height:46px;max-width:150px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
+      return `<img src="${p.assinatura}" style="height:48px;max-width:160px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
     }
     if (p.modo === 'online') {
-      return `<span style="font-size:13px;color:#2563eb;font-weight:800;background:#dbeafe;padding:3px 10px;border-radius:6px;">🔗 Aguardando (via link)</span>`
+      return `<span style="font-size:14px;color:#1d4ed8;font-weight:900;background:#dbeafe;padding:5px 12px;border-radius:6px;border:1.5px solid #93c5fd;white-space:nowrap;">🔗 Aguardando</span>`
     }
-    return `<span style="font-size:13px;color:#d97706;font-weight:800;background:#fef3c7;padding:3px 10px;border-radius:6px;border:1px solid #fcd34d;">⚠️ Pendente</span>`
+    return `<span style="font-size:14px;color:#b45309;font-weight:900;background:#fef3c7;padding:5px 12px;border-radius:6px;border:1.5px solid #fcd34d;white-space:nowrap;">⚠️ Pendente</span>`
   }
 
   // ── HTML reutilizável: bloco de prefixos como chips (WhatsApp + PDF) ────────
   const blocoPrefixosHtml = (sizePx = 13) => {
     if (prefixosUnicos.length === 0) return ''
     return `
-      <div style="background:#f0fdfa;border:2px solid #99f6e4;border-radius:16px;padding:14px 18px;margin-bottom:16px;">
-        <p style="font-size:${sizePx + 1}px;font-weight:900;color:#0f766e;margin:0 0 10px 0;">
+      <div style="background:#f0fdfa;border:2px solid #99f6e4;border-radius:16px;padding:16px 18px;margin-bottom:16px;">
+        <p style="font-size:${sizePx + 4}px;font-weight:900;color:#0f766e;margin:0 0 12px 0;">
           🚧 Equipes / Prefixos (${prefixosUnicos.length})
         </p>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        <div style="display:flex;flex-wrap:wrap;gap:7px;">
           ${prefixosUnicos.map(p => `
-            <span style="font-size:${sizePx}px;font-weight:800;color:#0f766e;background:#fff;border:1.5px solid #5eead4;padding:4px 10px;border-radius:6px;font-family:'Courier New',monospace;letter-spacing:0.3px;">
+            <span style="font-size:${sizePx + 2}px;font-weight:900;color:#0f766e;background:#fff;border:2px solid #5eead4;padding:5px 12px;border-radius:6px;font-family:'Courier New',monospace;letter-spacing:0.5px;">
               ${p}
             </span>
           `).join('')}
@@ -98,13 +98,13 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       const htmlBlocoPrefixos = blocoPrefixosHtml(13)
 
       const infoRow = (label, value) => value ? `
-        <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #e2e8f0;">
-          <span style="color:#64748b;font-weight:700;font-size:16px;min-width:120px;flex-shrink:0;">${label}</span>
-          <span style="color:#0f172a;font-weight:800;font-size:16px;text-align:right;flex:1;padding-left:10px;">${value}</span>
+        <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e2e8f0;">
+          <span style="color:#475569;font-weight:800;font-size:17px;min-width:120px;flex-shrink:0;">${label}</span>
+          <span style="color:#0f172a;font-weight:800;font-size:17px;text-align:right;flex:1;padding-left:10px;">${value}</span>
         </div>` : ''
 
       const html = `
-        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
+        <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;background:#f0f4f8;padding:20px;box-sizing:border-box;width:520px;">
 
           ${salvoOffline ? `
           <div style="background:#fef3c7;border:2px solid #fcd34d;border-radius:12px;padding:10px 16px;margin-bottom:14px;font-size:14px;color:#92400e;font-weight:800;text-align:center;">
@@ -156,11 +156,11 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
               ✅ Lista de Frequência (${form.participantes.length})
             </p>
             ${form.participantes.map((p, i) => `
-              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;${i < form.participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;${i < form.participantes.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
                 <div style="flex:1;min-width:0;">
-                  <span style="font-size:16px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
-                  ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
-                  ${p.prefixo ? `<span style="font-size:11px;color:#0f766e;font-weight:800;background:#f0fdfa;border:1px solid #5eead4;padding:1px 6px;border-radius:4px;margin-left:6px;font-family:'Courier New',monospace;">${p.prefixo}</span>` : ''}
+                  <span style="font-size:17px;font-weight:900;color:#15803d;">${i+1}. ${p.nome}</span>
+                  ${p.matricula ? `<span style="font-size:14px;color:#475569;font-weight:700;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
+                  ${p.prefixo ? `<span style="font-size:13px;color:#0f766e;font-weight:900;background:#f0fdfa;border:1.5px solid #5eead4;padding:2px 8px;border-radius:5px;margin-left:6px;font-family:'Courier New',monospace;letter-spacing:0.3px;">${p.prefixo}</span>` : ''}
                 </div>
                 <div style="flex-shrink:0;text-align:right;">${blocoAssinatura(p)}</div>
               </div>`).join('')}
@@ -201,7 +201,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       document.body.appendChild(div)
 
       const canvas = await html2canvas(div.firstElementChild, {
-        scale:           5,
+        scale:           6,
         useCORS:         true,
         allowTaint:      true,
         backgroundColor: '#f0f4f8',
