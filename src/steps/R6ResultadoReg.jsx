@@ -16,6 +16,14 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   const modConfig  = MODALIDADES[form.modalidade]
   const online     = isOnline !== undefined ? isOnline : navigator.onLine
 
+  // ── Lista de prefixos únicos (vinda dos participantes) ──────────────────────
+  // Usamos isso tanto no card da tela quanto na imagem WhatsApp e no PDF.
+  const prefixosUnicos = [...new Set(
+    (form.participantes || [])
+      .map(p => p.prefixo?.trim())
+      .filter(Boolean)
+  )].sort()
+
   const TIPO_MEDIDA_LABEL = {
     FEEDBACK:            'Feedback',
     ADVERTENCIA_VERBAL:  'Advertência Verbal',
@@ -63,6 +71,24 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     return `<span style="font-size:13px;color:#d97706;font-weight:800;background:#fef3c7;padding:3px 10px;border-radius:6px;border:1px solid #fcd34d;">⚠️ Pendente</span>`
   }
 
+  // ── HTML reutilizável: bloco de prefixos como chips (WhatsApp + PDF) ────────
+  const blocoPrefixosHtml = (sizePx = 13) => {
+    if (prefixosUnicos.length === 0) return ''
+    return `
+      <div style="background:#f0fdfa;border:2px solid #99f6e4;border-radius:16px;padding:14px 18px;margin-bottom:16px;">
+        <p style="font-size:${sizePx + 1}px;font-weight:900;color:#0f766e;margin:0 0 10px 0;">
+          🚧 Equipes / Prefixos (${prefixosUnicos.length})
+        </p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${prefixosUnicos.map(p => `
+            <span style="font-size:${sizePx}px;font-weight:800;color:#0f766e;background:#fff;border:1.5px solid #5eead4;padding:4px 10px;border-radius:6px;font-family:'Courier New',monospace;letter-spacing:0.3px;">
+              ${p}
+            </span>
+          `).join('')}
+        </div>
+      </div>`
+  }
+
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
@@ -105,6 +131,8 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria) : ''}
           </div>
 
+          ${/* ── Bloco de Prefixos (só aparece se houver algum) ── */ blocoPrefixosHtml(13)}
+
           ${form.pauta ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
             <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 10px 0;">
@@ -129,6 +157,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
                 <div style="flex:1;min-width:0;">
                   <span style="font-size:16px;font-weight:800;color:#15803d;">${i+1}. ${p.nome}</span>
                   ${p.matricula ? `<span style="font-size:13px;color:#64748b;margin-left:8px;">Mat: ${p.matricula}</span>` : ''}
+                  ${p.prefixo ? `<span style="font-size:11px;color:#0f766e;font-weight:800;background:#f0fdfa;border:1px solid #5eead4;padding:1px 6px;border-radius:4px;margin-left:6px;font-family:'Courier New',monospace;">${p.prefixo}</span>` : ''}
                 </div>
                 <div style="flex-shrink:0;text-align:right;">${blocoAssinatura(p)}</div>
               </div>`).join('')}
@@ -226,6 +255,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           .join('')}
       </table>
     </div>
+    ${/* ── Bloco de Prefixos no PDF (só aparece se houver algum) ── */ blocoPrefixosHtml(12)}
     ${form.pauta ? `
     <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">${form.tipo==='DISCIPLINAR'?'Descrição da Ocorrência':'Pauta / Conteúdo'}</div>
@@ -240,6 +270,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           <th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;width:30px;">Nº</th>
           <th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;">Nome</th>
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Matrícula</th>
+          <th style="padding:8px 10px;color:#fff;font-size:12px;">Prefixo</th>
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura / Status</th>
         </tr>
         ${form.participantes.map((p,i)=>`
@@ -250,6 +281,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
               ${p.modo==='online'?'<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:4px;">🔗 online</span>':''}
             </td>
             <td style="padding:8px 10px;font-size:13px;text-align:center;">${p.matricula||'—'}</td>
+            <td style="padding:8px 10px;font-size:12px;text-align:center;font-family:'Courier New',monospace;color:#0f766e;font-weight:700;">${p.prefixo||'—'}</td>
             <td style="padding:4px 8px;">
               ${p.assinatura
                 ? `<img src="${p.assinatura}" style="height:40px;max-width:120px;object-fit:contain;"/>`
@@ -316,6 +348,44 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           </div>
         ))}
       </div>
+
+      {/* ── NOVO: Card de Prefixos (só aparece se houver) ──────────────────── */}
+      {/* Funciona com 1 ou N prefixos: chips compactos com wrap automático.
+          Cada chip mostra um prefixo único. Se houver 20 prefixos, eles
+          quebram em várias linhas mantendo a tela organizada. */}
+      {prefixosUnicos.length > 0 && (
+        <div className="card" style={{
+          marginBottom: 14,
+          background: '#f0fdfa',
+          border: '1.5px solid #99f6e4',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#0f766e', margin: 0 }}>
+              🚧 Equipes / Prefixos
+            </p>
+            <span style={{
+              fontSize: 11, fontWeight: 800, color: '#0f766e',
+              background: '#fff', border: '1px solid #5eead4',
+              padding: '2px 8px', borderRadius: 10,
+            }}>
+              {prefixosUnicos.length} {prefixosUnicos.length === 1 ? 'equipe' : 'equipes'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {prefixosUnicos.map(p => (
+              <span key={p} style={{
+                fontSize: 12, fontWeight: 800, color: '#0f766e',
+                background: '#fff', border: '1.5px solid #5eead4',
+                padding: '4px 10px', borderRadius: 6,
+                fontFamily: '"Courier New", monospace',
+                letterSpacing: 0.3,
+              }}>
+                {p}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {form.pauta && (
         <div className="card" style={{ marginBottom: 14 }}>
