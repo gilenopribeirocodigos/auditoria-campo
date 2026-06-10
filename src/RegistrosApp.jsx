@@ -15,11 +15,9 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
     fiscal:           usuarioLogado?.nome      || '',
     matricula_fiscal: usuarioLogado?.matricula || '',
   }))
-
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
   const prev = () => setStep(s => Math.max(0, s - 1))
-
   const reiniciar = () => {
     setStep(0)
     setForm({
@@ -28,28 +26,24 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
       matricula_fiscal: usuarioLogado?.matricula || '',
     })
   }
-
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const stepProps  = { form, upd, setForm, next, prev }
-
   return (
     <div className="app-shell">
-      {/* Header */}
+      {/* Header — padrão VérticeGP (idêntico ao header da Auditoria em App.jsx) */}
       <header className="app-header no-print">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            DPL Construções — Equatorial Energia
+            Plataforma de Gestão Operacional
           </div>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
           }}>🏠 Home</button>
         </div>
-
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>
           {tipoConfig ? `${tipoConfig.emoji} ${tipoConfig.label}` : '📝 Registros Operacionais'}
         </div>
-
         {/* Barra de progresso */}
         <div style={{ display: 'flex', gap: 3, marginBottom: 4 }}>
           {STEPS_REGISTRO.map((_, i) => (
@@ -66,7 +60,6 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
           </span>
         </div>
       </header>
-
       {/* Conteúdo */}
       <main className="app-content">
         {step === 0 && <R0TipoRegistro  {...stepProps} />}
