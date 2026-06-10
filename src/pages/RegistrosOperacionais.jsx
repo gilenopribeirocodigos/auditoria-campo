@@ -1,8 +1,25 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
+
+// ─── Padrão visual unificado dos campos de filtro ───
+const FIELD_HEIGHT = 38
+const INPUT_STYLE = {
+  height: FIELD_HEIGHT,
+  fontSize: 13,
+  padding: '0 10px',
+  border: '1.5px solid #e2e8f0',
+  borderRadius: 8,
+  background: '#fff',
+  color: '#1e293b',
+  boxSizing: 'border-box',
+  width: '100%',
+  outline: 'none',
+}
+const LABEL_STYLE = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }
 
 function calcMesAtual() {
   const hoje = new Date()
@@ -16,6 +33,113 @@ const TIPO_MEDIDA_LABEL = {
   ADVERTENCIA_VERBAL:  'Advertência Verbal',
   ADVERTENCIA_ESCRITA: 'Advertência Escrita',
   SUSPENSAO:           'Suspensão',
+}
+
+// ─── MultiSelect — dropdown com checkboxes (mesmo componente do Histórico) ───
+function MultiSelect({ label, options, value, onChange, placeholder, formatOption }) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Quando as opções mudam (ex: cascata sup_op → sup_campo),
+  // remove valores que não estão mais disponíveis.
+  useEffect(() => {
+    const validos = value.filter(v => options.includes(v))
+    if (validos.length !== value.length) onChange(validos)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [options])
+
+  const toggle = (opt) => {
+    if (value.includes(opt)) onChange(value.filter(v => v !== opt))
+    else onChange([...value, opt])
+  }
+  const limpar = (e) => { e.stopPropagation(); onChange([]) }
+
+  const filtered = busca
+    ? options.filter(o => o.toLowerCase().includes(busca.toLowerCase()))
+    : options
+  const display = formatOption || ((o) => o)
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <label style={LABEL_STYLE}>{label}</label>
+      <div onClick={() => setAberto(!aberto)} style={{
+        ...INPUT_STYLE,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 6,
+        overflow: 'hidden',
+      }}>
+        <div style={{ flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+          {value.length === 0 ? (
+            <span style={{ color: '#94a3b8' }}>{placeholder || 'Todos'}</span>
+          ) : value.length <= 2 ? (
+            <span style={{ color: '#1e293b' }}>{value.map(display).join(', ')}</span>
+          ) : (
+            <span style={{ color: '#1e293b' }}>{value.length} selecionados</span>
+          )}
+        </div>
+        {value.length > 0 && (
+          <button onClick={limpar} title="Limpar" style={{
+            background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer',
+            fontSize: 16, padding: 0, flexShrink: 0, lineHeight: 1,
+          }}>×</button>
+        )}
+        <span style={{ color: '#94a3b8', fontSize: 11, flexShrink: 0 }}>{aberto ? '▲' : '▼'}</span>
+      </div>
+
+      {aberto && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4,
+          background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 320, display: 'flex', flexDirection: 'column',
+        }}>
+          {options.length > 6 && (
+            <div style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>
+              <input
+                type="text" value={busca}
+                onChange={e => setBusca(e.target.value)}
+                placeholder="Buscar..."
+                autoFocus
+                style={{ width: '100%', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12, boxSizing: 'border-box' }}
+              />
+            </div>
+          )}
+          <div style={{ overflowY: 'auto', flex: 1 }}>
+            {filtered.length === 0 ? (
+              <div style={{ padding: 14, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
+                {options.length === 0 ? 'Nenhuma opção disponível' : 'Nenhum resultado'}
+              </div>
+            ) : filtered.map((o, i) => {
+              const sel = value.includes(o)
+              return (
+                <label key={o} style={{
+                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
+                  borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none',
+                  fontSize: 13, cursor: 'pointer',
+                  background: sel ? '#eff6ff' : '#fff',
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background = sel ? '#dbeafe' : '#f8fafc'}
+                  onMouseLeave={e => e.currentTarget.style.background = sel ? '#eff6ff' : '#fff'}
+                >
+                  <input type="checkbox" checked={sel} onChange={() => toggle(o)} style={{ accentColor: '#7c3aed' }} />
+                  <span style={{ color: '#1e293b' }}>{display(o)}</span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
@@ -128,30 +252,122 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [detalhe,       setDetalhe]       = useState(null)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
-  const [filtros,       setFiltros]       = useState({
-    dataIni: calcMesAtual().ini,
-    dataFim: calcMesAtual().fim,
-    tipo:    '',
-    fiscal:  '',
+
+  // ─── Estado de filtros consolidado (todos os multi-select como array) ───
+  const [filtros, setFiltros] = useState({
+    dataIni:     calcMesAtual().ini,
+    dataFim:     calcMesAtual().fim,
+    tipo:        '',
+    fiscais:     [],   // multi-select (Fiscal/Usuário)
+    supCampo:    [],   // multi-select — NOVO
+    supOperacao: [],   // multi-select — NOVO
   })
+
   const [tokensAtivos,  setTokensAtivos]  = useState({}) // { registroId: tokenData }
   const [encerrando,    setEncerrando]    = useState(null) // registroId sendo encerrado
-  const [fiscaisLista,  setFiscaisLista]  = useState([]) // usuários para filtro
-  const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
-  const [dropdownOpen,  setDropdownOpen]  = useState(false)
+  const [fiscaisLista,  setFiscaisLista]  = useState([]) // opções pro filtro Fiscal/Usuário
+
+  // ─── Opções dos filtros novos (carregadas 1x na inicialização) ───
+  const [supCampoOpcoes,    setSupCampoOpcoes]    = useState([])
+  const [supOperacaoOpcoes, setSupOperacaoOpcoes] = useState([])
+  const [relSupOpToCampo,   setRelSupOpToCampo]   = useState({})
+
   const [capturando,    setCapturando]    = useState(false)
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
-  const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
+
+  // ─── Cascata: Sup. Campo filtrado pelos Sup. Operacionais selecionados ───
+  const supCampoOpcoesFiltradas = useMemo(() => {
+    if (filtros.supOperacao.length === 0) return supCampoOpcoes
+    const set = new Set()
+    filtros.supOperacao.forEach(supOp => {
+      const filhos = relSupOpToCampo[supOp]
+      if (filhos) filhos.forEach(s => set.add(s))
+    })
+    return [...set].sort()
+  }, [filtros.supOperacao, supCampoOpcoes, relSupOpToCampo])
+
+  // ─── Carrega opções de supervisores da estrutura_equipes ───
+  const carregarOpcoesSupervisores = async () => {
+    try {
+      const todos = []
+      const PAGE = 1000
+      let from = 0
+      while (true) {
+        const { data, error } = await supabase
+          .from('estrutura_equipes')
+          .select('superv_campo, superv_operacao')
+          .range(from, from + PAGE - 1)
+        if (error) throw error
+        if (!data || data.length === 0) break
+        todos.push(...data)
+        if (data.length < PAGE) break
+        from += PAGE
+      }
+
+      const supCampoSet = new Set()
+      const supOpSet    = new Set()
+      const rel         = {}
+      todos.forEach(r => {
+        const sc = (r.superv_campo    || '').trim()
+        const so = (r.superv_operacao || '').trim()
+        if (sc) supCampoSet.add(sc)
+        if (so) supOpSet.add(so)
+        if (so && sc) {
+          if (!rel[so]) rel[so] = new Set()
+          rel[so].add(sc)
+        }
+      })
+      setSupCampoOpcoes([...supCampoSet].sort())
+      setSupOperacaoOpcoes([...supOpSet].sort())
+      setRelSupOpToCampo(rel)
+    } catch (e) {
+      console.error('Erro ao carregar supervisores:', e)
+    }
+  }
 
   const buscar = async () => {
     setLoading(true)
     try {
-      const data = await listarRegistros({ ...filtros, fiscais: fiscaisSel }, usuarioLogado)
+      // ─── 1) Se há filtros de supervisor, calcula a lista de fiscais elegíveis ───
+      let fiscaisPermitidos = null
+      if (filtros.supCampo.length > 0 || filtros.supOperacao.length > 0) {
+        let qEstr = supabase.from('estrutura_equipes').select('superv_campo')
+        if (filtros.supCampo.length > 0)    qEstr = qEstr.in('superv_campo',    filtros.supCampo)
+        if (filtros.supOperacao.length > 0) qEstr = qEstr.in('superv_operacao', filtros.supOperacao)
+        const { data: estrData, error: errEstr } = await qEstr
+        if (errEstr) throw errEstr
+        fiscaisPermitidos = [...new Set((estrData || []).map(r => r.superv_campo).filter(Boolean))]
+        if (fiscaisPermitidos.length === 0) {
+          setRegistros([])
+          setTokensAtivos({})
+          setLoading(false)
+          return
+        }
+      }
+
+      // ─── 2) Mescla com o filtro de Fiscal/Usuário direto (interseção se ambos ativos) ───
+      let fiscaisFinal = filtros.fiscais
+      if (fiscaisPermitidos !== null) {
+        if (filtros.fiscais.length > 0) {
+          fiscaisFinal = filtros.fiscais.filter(f => fiscaisPermitidos.includes(f))
+          if (fiscaisFinal.length === 0) {
+            setRegistros([])
+            setTokensAtivos({})
+            setLoading(false)
+            return
+          }
+        } else {
+          fiscaisFinal = fiscaisPermitidos
+        }
+      }
+
+      // ─── 3) Chama a busca de registros com a lista final ───
+      const data = await listarRegistros({ ...filtros, fiscais: fiscaisFinal }, usuarioLogado)
       setRegistros(data)
+
       // Busca tokens ativos para todos os registros de uma vez
       if (data.length > 0) {
-        const { supabase } = await import('../lib/supabase.js')
         const { data: tokens } = await supabase
           .from('assinaturas_pendentes')
           .select('id, token, registro_id, status, expires_at')
@@ -161,6 +377,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         const mapa = {}
         for (const t of (tokens || [])) mapa[t.registro_id] = t
         setTokensAtivos(mapa)
+      } else {
+        setTokensAtivos({})
       }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
@@ -168,23 +386,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
   useEffect(() => {
     buscar()
+    carregarOpcoesSupervisores()
     // Carrega lista de fiscais (usuários ativos exceto ADMIN)
-    import('../lib/supabase.js').then(({ supabase }) => {
-      supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
-        .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
-      // Versão do sistema vem do build (getVersaoApp), não precisa buscar do banco
-    })
-    // Fecha dropdown ao clicar fora
-    const fn = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false) }
-    document.addEventListener('mousedown', fn)
-    return () => document.removeEventListener('mousedown', fn)
+    supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
+      .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
   useEffect(() => {
     // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
     intervalRef.current = setInterval(() => {
       if (!detalhe) buscar()
     }, 300000)
     return () => clearInterval(intervalRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [detalhe])
 
   const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
@@ -243,63 +458,69 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           + Novo Registro Operacional
         </button>
 
+        {/* ── FILTROS ── */}
         <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 12 }}>Filtros</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>Filtros</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
-              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
+              <label style={LABEL_STYLE}>Data início</label>
+              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)} style={INPUT_STYLE} />
             </div>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
-              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
+              <label style={LABEL_STYLE}>Data fim</label>
+              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)} style={INPUT_STYLE} />
             </div>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tipo</label>
-              <select value={filtros.tipo} onChange={e => upd('tipo', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}>
+              <label style={LABEL_STYLE}>Tipo</label>
+              <select value={filtros.tipo} onChange={e => upd('tipo', e.target.value)} style={INPUT_STYLE}>
                 <option value="">Todos</option>
                 {Object.entries(TIPOS_REGISTRO).map(([k, t]) => (
                   <option key={k} value={k}>{t.emoji} {t.label}</option>
                 ))}
               </select>
             </div>
-            <div ref={dropdownRef} style={{ position: 'relative' }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Fiscal / Usuário</label>
-              <button onClick={() => setDropdownOpen(o => !o)} style={{
-                width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0',
-                background: '#fff', fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-              }}>
-                <span style={{ color: fiscaisSel.length ? '#1e293b' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
-                  {fiscaisSel.length === 0 ? 'Todos' : fiscaisSel.length === 1 ? fiscaisSel[0].split(' ')[0] : `${fiscaisSel.length} selecionados`}
-                </span>
-                <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>▼</span>
-              </button>
-              {dropdownOpen && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto', minWidth: 200 }}>
-                  <button onMouseDown={() => setFiscaisSel([])} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: fiscaisSel.length === 0 ? '#eff6ff' : 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#2563eb' }}>
-                    ✓ Todos os fiscais
-                  </button>
-                  {fiscaisLista.map((nome, i) => {
-                    const sel = fiscaisSel.includes(nome)
-                    return (
-                      <button key={i} onMouseDown={() => setFiscaisSel(prev => sel ? prev.filter(n => n !== nome) : [...prev, nome])}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 14px', textAlign: 'left', background: sel ? '#eff6ff' : 'none', border: 'none', borderBottom: i < fiscaisLista.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
-                        onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#f8fafc' }}
-                        onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
-                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${sel ? '#2563eb' : '#cbd5e1'}`, background: sel ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {sel && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800 }}>✓</span>}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 500, color: sel ? '#1d4ed8' : '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+
+            {/* ── NOVO: Supervisor Operacional ── */}
+            {isAdmin && (
+              <MultiSelect
+                label="Supervisor Operacional"
+                options={supOperacaoOpcoes}
+                value={filtros.supOperacao}
+                onChange={v => upd('supOperacao', v)}
+                placeholder="Todos"
+              />
+            )}
+
+            {/* ── NOVO: Supervisor de Campo (com cascata) ── */}
+            {isAdmin && (
+              <MultiSelect
+                label="Supervisor de Campo"
+                options={supCampoOpcoesFiltradas}
+                value={filtros.supCampo}
+                onChange={v => upd('supCampo', v)}
+                placeholder={filtros.supOperacao.length > 0 ? `Subordinados (${supCampoOpcoesFiltradas.length})` : 'Todos'}
+              />
+            )}
+
+            {/* ── Fiscal / Usuário (multi-select padronizado) ── */}
+            <MultiSelect
+              label="Fiscal / Usuário"
+              options={fiscaisLista}
+              value={filtros.fiscais}
+              onChange={v => upd('fiscais', v)}
+              placeholder="Todos"
+            />
           </div>
-          <button onClick={buscar} style={{ marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-            🔍 Buscar
-          </button>
+
+          <div style={{ marginTop: 14 }}>
+            <button onClick={buscar} style={{
+              height: FIELD_HEIGHT, padding: '0 22px',
+              background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10,
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>🔍 Buscar</button>
+          </div>
         </div>
 
         {loading ? (
