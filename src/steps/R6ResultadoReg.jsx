@@ -94,6 +94,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     try {
       const html2canvas = (await import('html2canvas')).default
 
+      // Bloco de prefixos pré-gerado (mais robusto que chamar inline dentro do template)
+      const htmlBlocoPrefixos = blocoPrefixosHtml(13)
+
       const infoRow = (label, value) => value ? `
         <div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #e2e8f0;">
           <span style="color:#64748b;font-weight:700;font-size:16px;min-width:120px;flex-shrink:0;">${label}</span>
@@ -131,7 +134,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria) : ''}
           </div>
 
-          ${/* ── Bloco de Prefixos (só aparece se houver algum) ── */ blocoPrefixosHtml(13)}
+          ${htmlBlocoPrefixos}
 
           ${form.pauta ? `
           <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
@@ -230,6 +233,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   }
 
   const imprimirPDF = () => {
+    // Bloco de prefixos pré-gerado (mais robusto que chamar inline dentro do template)
+    const htmlBlocoPrefixosPdf = blocoPrefixosHtml(12)
+
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
     <title>${tipoConfig?.label}</title>
     <style>*{box-sizing:border-box;margin:0;padding:0;}
@@ -255,7 +261,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           .join('')}
       </table>
     </div>
-    ${/* ── Bloco de Prefixos no PDF (só aparece se houver algum) ── */ blocoPrefixosHtml(12)}
+    ${htmlBlocoPrefixosPdf}
     ${form.pauta ? `
     <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">${form.tipo==='DISCIPLINAR'?'Descrição da Ocorrência':'Pauta / Conteúdo'}</div>
