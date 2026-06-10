@@ -11,6 +11,23 @@ const STATUS_COR = {
   'NÃO ATENDE':     { bg: '#fee2e2', color: '#dc2626' },
 }
 
+// Estilo padrão de todos os campos do filtro — mesma altura, mesmo border, mesmo padding.
+// Garante alinhamento perfeito entre inputs nativos (date, text, select) e MultiSelect.
+const FIELD_HEIGHT = 38
+const INPUT_STYLE = {
+  height: FIELD_HEIGHT,
+  fontSize: 13,
+  padding: '0 10px',
+  border: '1.5px solid #e2e8f0',
+  borderRadius: 8,
+  background: '#fff',
+  color: '#1e293b',
+  boxSizing: 'border-box',
+  width: '100%',
+  outline: 'none',
+}
+const LABEL_STYLE = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }
+
 // Tipos de serviço puxados DINAMICAMENTE de CHECKLISTS.
 // Qualquer novo tipo (EMERGENCIAL, etc.) aparece automaticamente nos filtros.
 const getTipoEmoji = (tipo) => CHECKLISTS[tipo]?.emoji || '📋'
@@ -70,14 +87,14 @@ function MultiSelect({ label, options, value, onChange, placeholder, formatOptio
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
-        {label}
-      </label>
+      <label style={LABEL_STYLE}>{label}</label>
       <div onClick={() => setAberto(!aberto)} style={{
-        fontSize: 13, padding: '7px 10px',
-        border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff',
-        minHeight: 38, cursor: 'pointer',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
+        ...INPUT_STYLE,
+        cursor: 'pointer',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 6,
         overflow: 'hidden',
       }}>
         <div style={{ flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
@@ -157,14 +174,13 @@ function DropdownInput({ label, value, onChange, onSelect, suggestions, placehol
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>{label}</label>
+      <label style={LABEL_STYLE}>{label}</label>
       <input
         type="text" value={value}
         onChange={e => { onChange(e.target.value); setAberto(true) }}
         onFocus={() => suggestions.length > 0 && setAberto(true)}
         placeholder={placeholder}
-        className="form-input"
-        style={{ fontSize: 13, padding: '8px 10px' }}
+        style={INPUT_STYLE}
       />
       {aberto && suggestions.length > 0 && (
         <div style={{
@@ -621,12 +637,12 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
-              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
+              <label style={LABEL_STYLE}>Data início</label>
+              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)} style={INPUT_STYLE} />
             </div>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
-              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
+              <label style={LABEL_STYLE}>Data fim</label>
+              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)} style={INPUT_STYLE} />
             </div>
 
             {/* ─── NOVO: Supervisor Operacional (multi) ─── */}
@@ -664,8 +680,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             />
 
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Resultado</label>
-              <select value={filtros.status} onChange={e => upd('status', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}>
+              <label style={LABEL_STYLE}>Resultado</label>
+              <select value={filtros.status} onChange={e => upd('status', e.target.value)} style={INPUT_STYLE}>
                 <option value="">Todos</option>
                 <option value="ATENDE">Atende</option>
                 <option value="ATENDE PARCIAL">Atende Parcial</option>
@@ -674,13 +690,20 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
-            <button onClick={buscar} style={{ padding: '10px 24px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>🔍 Buscar</button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+            <button onClick={buscar} style={{
+              height: FIELD_HEIGHT, padding: '0 22px',
+              background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10,
+              fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+            }}>🔍 Buscar</button>
             <button onClick={exportarExcel} disabled={exportando || auditorias.length === 0} style={{
-              padding: '10px 24px', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
+              height: FIELD_HEIGHT, padding: '0 22px',
+              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
               cursor: auditorias.length === 0 ? 'not-allowed' : 'pointer',
               background: exportando || auditorias.length === 0 ? '#e2e8f0' : '#16a34a',
               color: exportando || auditorias.length === 0 ? '#94a3b8' : '#fff',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
             }}>
               {exportando ? '⏳ Gerando...' : `📊 Exportar Excel (${auditorias.length})`}
             </button>
