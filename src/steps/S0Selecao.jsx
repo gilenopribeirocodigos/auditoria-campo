@@ -63,8 +63,8 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                 borderRadius: 14, padding: '14px 16px', textAlign: 'left', cursor: 'pointer',
                 transition: 'all 0.15s',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 16, fontWeight: 800, color: ativa ? '#1d4ed8' : '#1e293b', marginBottom: 4 }}>
                       {ativa ? '✅ ' : ''}{p.prefixo}
                     </p>
@@ -74,14 +74,40 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                         <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: 6 }}>⚠️ Vencida</span>
                       )}
                     </p>
-                    {p.observacao && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>💬 {p.observacao}</p>}
+
+                    {/* ─── Motivo Auditoria (destacado em laranja) ─── */}
+                    {p.motivo_auditoria && (
+                      <div style={{
+                        marginTop: 6, display: 'inline-block',
+                        background: '#fff7ed', border: '1px solid #fed7aa',
+                        color: '#c2410c', fontWeight: 700, fontSize: 11,
+                        padding: '3px 9px', borderRadius: 6,
+                      }}>
+                        🎯 Motivo: {p.motivo_auditoria}
+                      </div>
+                    )}
+
+                    {/* ─── Observação (destacada em azul, texto completo) ─── */}
+                    {p.observacao && (
+                      <div style={{
+                        marginTop: 5, background: '#f0f9ff', border: '1px solid #bae6fd',
+                        padding: '6px 10px', borderRadius: 6, lineHeight: 1.5,
+                      }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          💬 Observação:
+                        </span>
+                        <p style={{ fontSize: 11, color: '#0c4a6e', margin: '2px 0 0', wordBreak: 'break-word' }}>
+                          {p.observacao}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div style={{
                     width: 28, height: 28, borderRadius: '50%',
                     border: `2px solid ${ativa ? '#2563eb' : '#e2e8f0'}`,
                     background: ativa ? '#2563eb' : '#fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
+                    flexShrink: 0, marginTop: 2,
                   }}>
                     {ativa && <span style={{ color: '#fff', fontSize: 14 }}>✓</span>}
                   </div>
