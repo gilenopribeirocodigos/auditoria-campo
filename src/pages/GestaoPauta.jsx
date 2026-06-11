@@ -1,7 +1,12 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
+import {
+  useFiltrosOperacionais,
+  PainelFiltros,
+  FIELD_HEIGHT,
+} from '../components/PainelFiltros.jsx'
 
 const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
@@ -29,15 +34,14 @@ function calcStatus(p) {
   return 'PENDENTE'
 }
 
-// ── Detecta separador e parseia linhas ────────────────────────────────────────
+// ─── Detecta separador e parseia linhas ────────────────────────────────────────
 function parseCsvLinhas(texto) {
   const linhas = texto.trim().split('\n').filter(l => l.trim())
   if (linhas.length < 2) return []
   const header = linhas[0]
-  // detecta separador: ; ou , ou \t
   const sep = header.includes(';') ? ';' : header.includes('\t') ? '\t' : ','
   const cols = header.split(sep).map(c => c.trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '_')
   )
   return linhas.slice(1).map(row => {
@@ -46,21 +50,16 @@ function parseCsvLinhas(texto) {
   })
 }
 
-// ── Normaliza valores dos campos ──────────────────────────────────────────────
 function normalizarPauta(obj) {
-  // tipo_servico
   const ts = (obj.tipo_servico || '').toUpperCase().trim()
   const tipoServico = ['CORTE','ANEXO','RELIGA'].includes(ts) ? ts : 'CORTE'
 
-  // tipo_auditoria
   const ta = (obj.tipo_auditoria || '').toUpperCase().trim()
   const tipoAuditoria = ta.includes('POS') || ta.includes('PÓS') ? 'POS_SERVICO' : 'DESEMPENHO'
 
-  // recorrencia
   const rc = (obj.recorrencia || '').toUpperCase().trim()
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
 
-  // data — aceita DD/MM/AAAA ou AAAA-MM-DD
   let data = (obj.data_prevista || '').trim()
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
     const [d, m, a] = data.split('/')
@@ -75,7 +74,7 @@ function normalizarPauta(obj) {
     tipo_servico:   tipoServico,
     tipo_auditoria: tipoAuditoria,
     recorrencia,
-    observacao:     (obj.observacao || obj.observacao || '').trim(),
+    observacao:     (obj.observacao || '').trim(),
     os:             (obj.os || '').trim(),
     uc:             (obj.uc || '').trim(),
     status:         'PENDENTE',
@@ -83,6 +82,9 @@ function normalizarPauta(obj) {
 }
 
 export default function GestaoPauta({ usuarioLogado, onVoltar }) {
+  // ─── Hook do painel: Período (data_prevista) + Sup. Op + Sup. Campo + Prefixo ───
+  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+
   const [pautas,      setPautas]      = useState([])
   const [fiscais,     setFiscais]     = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -91,11 +93,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [formData,    setFormData]    = useState(FORM_VAZIO)
   const [salvando,    setSalvando]    = useState(false)
   const [erro,        setErro]        = useState('')
-  const [filtro,      setFiltro]      = useState('TODOS')
+  const [statusTab,   setStatusTab]   = useState('TODOS') // tab adicional in-memory
   const [csvModal,    setCsvModal]    = useState(false)
   const [csvTexto,    setCsvTexto]    = useState('')
   const [csvStatus,   setCsvStatus]   = useState('')
-  const [csvPreview,  setCsvPreview]  = useState([]) // preview das linhas lidas
+  const [csvPreview,  setCsvPreview]  = useState([])
   const [prefixoSugs, setPrefixoSugs] = useState([])
   const prefixoRef  = useRef(null)
   const intervalRef = useRef(null)
@@ -168,8 +170,47 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     catch (e) { alert(e.message) }
   }
 
+  // ─── Pautas filtradas pelo PAINEL (período + supervisor + prefixo) ───
+  const pautasFiltradasPainel = useMemo(() => {
+    const { ini, fim } = filtros.getDatasQuery()
+    return pautas.filter(p => {
+      // Filtro de período: data_prevista entre ini e fim
+      if (ini && p.data_prevista < ini) return false
+      if (fim && p.data_prevista > fim) return false
+      // Filtros hierárquicos via mapPrefixo
+      const filtroAtivo =
+        filtros.selSupOp.length    > 0 ||
+        filtros.selSupCampo.length > 0 ||
+        filtros.selPrefixos.length > 0
+      if (!filtroAtivo) return true
+      const info = filtros.mapPrefixo[p.prefixo]
+      if (!info) return false
+      if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(p.prefixo)) return false
+      if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))      return false
+      if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
+      return true
+    })
+  }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
+      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+
+  // ─── Aplica tab de status ───
+  const pautasExibidas = pautasFiltradasPainel.filter(p => {
+    const s = calcStatus(p)
+    if (statusTab === 'TODOS')   return true
+    if (statusTab === 'VENCIDA') return s === 'VENCIDA'
+    return p.status === statusTab
+  })
+
+  // ─── Contadores (baseados no filtro do painel) ───
+  const counts = {
+    PENDENTE:  pautasFiltradasPainel.filter(p => p.status === 'PENDENTE' && calcStatus(p) === 'PENDENTE').length,
+    VENCIDA:   pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA').length,
+    CONCLUIDA: pautasFiltradasPainel.filter(p => p.status === 'CONCLUIDA').length,
+    CANCELADA: pautasFiltradasPainel.filter(p => p.status === 'CANCELADA').length,
+  }
+
   const whatsappVencidas = () => {
-    const vencidas = pautas.filter(p => calcStatus(p) === 'VENCIDA')
+    const vencidas = pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA')
     if (vencidas.length === 0) { alert('Não há pautas vencidas!'); return }
     const linhas = vencidas.map(p =>
       `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}`
@@ -180,21 +221,19 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
-  // ── Lê arquivo CSV ou Excel ───────────────────────────────────────────────
+  // ─── Importação CSV/Excel (mantida igual) ─────────────────────────────────
   const lerArquivo = (file) => {
     setCsvStatus('')
     setCsvPreview([])
     const ext = file.name.split('.').pop().toLowerCase()
 
     if (ext === 'xlsx' || ext === 'xls') {
-      // Excel
       const reader = new FileReader()
       reader.onload = e => {
         try {
           const wb    = XLSX.read(e.target.result, { type: 'array' })
           const ws    = wb.Sheets[wb.SheetNames[0]]
           const dados = XLSX.utils.sheet_to_json(ws, { defval: '' })
-          // Converte para CSV string com ; para reutilizar o parser
           if (dados.length === 0) { setCsvStatus('❌ Planilha vazia.'); return }
           const cols = Object.keys(dados[0])
           const linhas = [
@@ -216,7 +255,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       }
       reader.readAsArrayBuffer(file)
     } else {
-      // CSV / TXT
       const reader = new FileReader()
       reader.onload = e => {
         const texto = e.target.result
@@ -234,10 +272,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const onFileChange = e => {
     const file = e.target.files?.[0]
     if (file) lerArquivo(file)
-    e.target.value = '' // permite reler o mesmo arquivo
+    e.target.value = ''
   }
 
-  // ── Importa pautas ────────────────────────────────────────────────────────
   const importarCsv = async () => {
     if (!csvTexto.trim()) { setCsvStatus('❌ Nenhum dado para importar.'); return }
     setCsvStatus('importando')
@@ -262,38 +299,24 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   const fecharCsvModal = () => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }
 
-  const pautasFiltradas = pautas.filter(p => {
-    const s = calcStatus(p)
-    if (filtro === 'TODOS')   return true
-    if (filtro === 'VENCIDA') return s === 'VENCIDA'
-    return p.status === filtro
-  })
-
-  const counts = {
-    PENDENTE:  pautas.filter(p => p.status === 'PENDENTE' && calcStatus(p) === 'PENDENTE').length,
-    VENCIDA:   pautas.filter(p => calcStatus(p) === 'VENCIDA').length,
-    CONCLUIDA: pautas.filter(p => p.status === 'CONCLUIDA').length,
-    CANCELADA: pautas.filter(p => p.status === 'CANCELADA').length,
-  }
-
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
       {/* Header */}
       <div style={{ background: '#d97706', padding: '18px 20px', color: '#fff' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
             padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📋 Pauta de Fiscalização</h1>
               <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Equipes obrigatórias para fiscalização</p>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['PENDENTE','VENCIDA','CONCLUIDA'].map(s => (
-                <div key={s} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
+                <div key={s} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 50 }}>
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{counts[s]}</div>
                   <div style={{ fontSize: 9, opacity: 0.8 }}>{s}</div>
                 </div>
@@ -303,8 +326,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         </div>
       </div>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 80px' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
+        {/* ═══ PAINEL DE FILTROS ═══ */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros das Pautas"
+          badge="período por data prevista"
+        />
+
+        {/* Ações */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <button onClick={abrirNovo} style={{
             background: '#d97706', color: '#fff', border: 'none',
@@ -322,27 +353,28 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           )}
         </div>
 
+        {/* Tabs de status (filtro adicional in-memory) */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {['TODOS','PENDENTE','VENCIDA','CONCLUIDA','CANCELADA'].map(f => (
-            <button key={f} onClick={() => setFiltro(f)} style={{
+            <button key={f} onClick={() => setStatusTab(f)} style={{
               padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-              background: filtro === f ? '#d97706' : '#e2e8f0',
-              color: filtro === f ? '#fff' : '#374151',
+              background: statusTab === f ? '#d97706' : '#e2e8f0',
+              color: statusTab === f ? '#fff' : '#374151',
             }}>{f}</button>
           ))}
         </div>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
-        ) : pautasFiltradas.length === 0 ? (
+        ) : pautasExibidas.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
-            <p>Nenhuma pauta encontrada</p>
+            <p>Nenhuma pauta encontrada para os filtros selecionados</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {pautasFiltradas.map(p => {
+            {pautasExibidas.map(p => {
               const s  = calcStatus(p)
               const sc = statusCor(s)
               return (
@@ -502,7 +534,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <button onClick={fecharCsvModal} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
-            {/* Info de colunas */}
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
               <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · os · uc<br /><br />
@@ -510,7 +541,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
             </div>
 
-            {/* Upload de arquivo */}
             <input
               ref={fileRef}
               type="file"
@@ -530,14 +560,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               📂 Selecionar arquivo CSV ou Excel
             </button>
 
-            {/* Separador "ou" */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
               <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ou cole o conteúdo abaixo</span>
               <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
             </div>
 
-            {/* Textarea */}
             <div className="form-group">
               <textarea
                 className="form-textarea"
@@ -549,7 +577,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               />
             </div>
 
-            {/* Preview */}
             {csvPreview.length > 0 && (
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 11 }}>
                 <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas):</p>
@@ -562,7 +589,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            {/* Status */}
             {csvStatus && csvStatus !== 'importando' && (
               <div style={{
                 marginBottom: 14, padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -574,7 +600,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            {/* Botão importar */}
             <button
               onClick={importarCsv}
               disabled={!csvTexto.trim() || csvStatus === 'importando'}
