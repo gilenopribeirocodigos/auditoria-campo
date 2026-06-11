@@ -4,6 +4,12 @@ import { reabrirAuditoria } from '../lib/supabase.js'
 import { CHECKLISTS, getItemsNaoConformes } from '../data/checklists.js'
 import { getVersaoApp } from '../lib/auth.js'
 import * as XLSX from 'xlsx'
+import {
+  useFiltrosOperacionais,
+  PainelFiltros,
+  MultiSelect,
+  FIELD_HEIGHT, LABEL_STYLE, INPUT_STYLE,
+} from '../components/PainelFiltros.jsx'
 
 const STATUS_COR = {
   'ATENDE':         { bg: '#dcfce7', color: '#15803d' },
@@ -11,36 +17,11 @@ const STATUS_COR = {
   'NÃO ATENDE':     { bg: '#fee2e2', color: '#dc2626' },
 }
 
-// Estilo padrão de todos os campos do filtro — mesma altura, mesmo border, mesmo padding.
-// Garante alinhamento perfeito entre inputs nativos (date, text, select) e MultiSelect.
-const FIELD_HEIGHT = 38
-const INPUT_STYLE = {
-  height: FIELD_HEIGHT,
-  fontSize: 13,
-  padding: '0 10px',
-  border: '1.5px solid #e2e8f0',
-  borderRadius: 8,
-  background: '#fff',
-  color: '#1e293b',
-  boxSizing: 'border-box',
-  width: '100%',
-  outline: 'none',
-}
-const LABEL_STYLE = { fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }
-
-// Tipos de serviço puxados DINAMICAMENTE de CHECKLISTS.
-// Qualquer novo tipo (EMERGENCIAL, etc.) aparece automaticamente nos filtros.
+// Tipos de serviço puxados DINAMICAMENTE de CHECKLISTS
 const getTipoEmoji = (tipo) => CHECKLISTS[tipo]?.emoji || '📋'
 const getTipoLabel = (tipo) => CHECKLISTS[tipo]?.label || tipo
 
-function calcMesAtual() {
-  const hoje = new Date()
-  const ini  = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
-  const fim  = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split('T')[0]
-  return { ini, fim }
-}
-
-// Calcula itens não conformes a partir dos dados salvos no banco
+// Calcula itens não conformes a partir dos dados salvos
 function calcNcItems(auditoria) {
   if (!auditoria?.respostas || !auditoria?.tipo_servico) return []
   return getItemsNaoConformes({
@@ -50,162 +31,7 @@ function calcNcItems(auditoria) {
   })
 }
 
-// ─── MultiSelect — dropdown com checkboxes ──────────────────────────────────
-// Usado pelos filtros que aceitam múltiplas escolhas:
-// Tipo de Serviço, Supervisor de Campo, Supervisor Operacional.
-function MultiSelect({ label, options, value, onChange, placeholder, formatOption }) {
-  const [aberto, setAberto] = useState(false)
-  const [busca, setBusca] = useState('')
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  // Quando as opções mudam (ex: cascata sup_op → sup_campo),
-  // remove valores que não estão mais disponíveis.
-  useEffect(() => {
-    const validos = value.filter(v => options.includes(v))
-    if (validos.length !== value.length) onChange(validos)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [options])
-
-  const toggle = (opt) => {
-    if (value.includes(opt)) onChange(value.filter(v => v !== opt))
-    else onChange([...value, opt])
-  }
-
-  const limpar = (e) => { e.stopPropagation(); onChange([]) }
-
-  const filtered = busca
-    ? options.filter(o => o.toLowerCase().includes(busca.toLowerCase()))
-    : options
-
-  const display = formatOption || ((o) => o)
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <label style={LABEL_STYLE}>{label}</label>
-      <div onClick={() => setAberto(!aberto)} style={{
-        ...INPUT_STYLE,
-        cursor: 'pointer',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: 6,
-        overflow: 'hidden',
-      }}>
-        <div style={{ flex: 1, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-          {value.length === 0 ? (
-            <span style={{ color: '#94a3b8' }}>{placeholder || 'Todos'}</span>
-          ) : value.length <= 2 ? (
-            <span style={{ color: '#1e293b' }}>{value.map(display).join(', ')}</span>
-          ) : (
-            <span style={{ color: '#1e293b' }}>{value.length} selecionados</span>
-          )}
-        </div>
-        {value.length > 0 && (
-          <button onClick={limpar} title="Limpar" style={{
-            background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer',
-            fontSize: 16, padding: 0, flexShrink: 0, lineHeight: 1,
-          }}>×</button>
-        )}
-        <span style={{ color: '#94a3b8', fontSize: 11, flexShrink: 0 }}>{aberto ? '▲' : '▼'}</span>
-      </div>
-
-      {aberto && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 4,
-          background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 320, display: 'flex', flexDirection: 'column',
-        }}>
-          {options.length > 6 && (
-            <div style={{ padding: 8, borderBottom: '1px solid #f1f5f9' }}>
-              <input
-                type="text" value={busca}
-                onChange={e => setBusca(e.target.value)}
-                placeholder="Buscar..."
-                autoFocus
-                style={{ width: '100%', padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, fontSize: 12 }}
-              />
-            </div>
-          )}
-          <div style={{ overflowY: 'auto', flex: 1 }}>
-            {filtered.length === 0 ? (
-              <div style={{ padding: 14, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>
-                {options.length === 0 ? 'Nenhuma opção disponível' : 'Nenhum resultado'}
-              </div>
-            ) : filtered.map((o, i) => {
-              const sel = value.includes(o)
-              return (
-                <label key={o} style={{
-                  display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-                  borderBottom: i < filtered.length - 1 ? '1px solid #f1f5f9' : 'none',
-                  fontSize: 13, cursor: 'pointer',
-                  background: sel ? '#eff6ff' : '#fff',
-                }}
-                  onMouseEnter={e => e.currentTarget.style.background = sel ? '#dbeafe' : '#f8fafc'}
-                  onMouseLeave={e => e.currentTarget.style.background = sel ? '#eff6ff' : '#fff'}
-                >
-                  <input type="checkbox" checked={sel} onChange={() => toggle(o)} style={{ accentColor: '#1e3a5f' }} />
-                  <span style={{ color: '#1e293b' }}>{display(o)}</span>
-                </label>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// DropdownInput — autocomplete simples (usado pelo filtro de Prefixo)
-function DropdownInput({ label, value, onChange, onSelect, suggestions, placeholder }) {
-  const [aberto, setAberto] = useState(false)
-  const ref = useRef(null)
-
-  useEffect(() => {
-    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <label style={LABEL_STYLE}>{label}</label>
-      <input
-        type="text" value={value}
-        onChange={e => { onChange(e.target.value); setAberto(true) }}
-        onFocus={() => suggestions.length > 0 && setAberto(true)}
-        placeholder={placeholder}
-        style={INPUT_STYLE}
-      />
-      {aberto && suggestions.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-          background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
-        }}>
-          {suggestions.map((s, i) => (
-            <button key={i} onClick={() => { onSelect(s); setAberto(false) }} style={{
-              display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
-              background: 'none', border: 'none',
-              borderBottom: i < suggestions.length - 1 ? '1px solid #f1f5f9' : 'none',
-              fontSize: 13, color: '#1e293b', cursor: 'pointer',
-            }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-              onMouseLeave={e => e.currentTarget.style.background = 'none'}
-            >{s}</button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── função de impressão ─────────────────────────────────────────────────────
+// ─── função de impressão (mantida igual) ─────────────────────────────────────
 function imprimirAuditoria(a, formatData, versaoApp = '') {
   const sc      = STATUS_COR[a.status] || { bg: '#f1f5f9', color: '#374151' }
   const ncItems = calcNcItems(a)
@@ -269,7 +95,6 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
     </table>
   </div>
 
-  <!-- Não Conformidades -->
   ${ncItems.length > 0 ? `
   <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:16px;margin-bottom:16px;">
     <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0 0 10px 0;">❌ Itens Não Conformes (${ncItems.length})</p>
@@ -329,29 +154,18 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
 }
 
 export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
-  const [auditorias,   setAuditorias]   = useState([])
-  const [loading,      setLoading]      = useState(true)
-  const [exportando,   setExportando]   = useState(false)
-  const [detalhe,      setDetalhe]      = useState(null)
-  const [filtros,      setFiltros]      = useState({
-    dataIni:      calcMesAtual().ini,
-    dataFim:      calcMesAtual().fim,
-    prefixo:      '',
-    tipoServico:  [],   // multi-select (era string, agora array)
-    status:       '',
-    supCampo:     [],   // multi-select — NOVO (substitui o antigo "Fiscal")
-    supOperacao:  [],   // multi-select — NOVO
-  })
-  const [totais,      setTotais]      = useState({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
-  const [prefixoSugs, setPrefixoSugs] = useState([])
+  // ─── Hook do painel: gerencia Período + Sup. Op + Sup. Campo + Prefixo ───
+  const filtros = useFiltrosOperacionais({ inicializarMes: true })
 
-  // ─── Opções dos novos filtros (carregadas 1x na inicialização) ───
-  const [supCampoOpcoes,    setSupCampoOpcoes]    = useState([])
-  const [supOperacaoOpcoes, setSupOperacaoOpcoes] = useState([])
-  // Relação: superv_operacao → Set(superv_campo) — pra cascata
-  const [relSupOpToCampo,   setRelSupOpToCampo]   = useState({})
-  // Mapa: prefixo → { supCampo, supOperacao } — pra enriquecer exportação Excel
-  const [mapaPrefixoSup,    setMapaPrefixoSup]    = useState({})
+  // ─── Filtros EXTRAS desta tela ───
+  const [tipoServico, setTipoServico] = useState([]) // multi
+  const [resultado,   setResultado]   = useState('') // single
+
+  const [auditorias, setAuditorias] = useState([])
+  const [loading,    setLoading]    = useState(true)
+  const [exportando, setExportando] = useState(false)
+  const [detalhe,    setDetalhe]    = useState(null)
+  const [totais,     setTotais]     = useState({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
 
   const [modalReabrir,      setModalReabrir]      = useState(false)
   const [fiscais,           setFiscais]           = useState([])
@@ -365,78 +179,35 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const intervalRef = useRef(null)
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
 
-  // ─── Cascata: opções de Sup. Campo filtradas pelos Sup. Operacionais selecionados ───
-  const supCampoOpcoesFiltradas = useMemo(() => {
-    if (filtros.supOperacao.length === 0) return supCampoOpcoes
-    const set = new Set()
-    filtros.supOperacao.forEach(supOp => {
-      const filhos = relSupOpToCampo[supOp]
-      if (filhos) filhos.forEach(s => set.add(s))
-    })
-    return [...set].sort()
-  }, [filtros.supOperacao, supCampoOpcoes, relSupOpToCampo])
-
-  // ─── Carregar opções dos supervisores na inicialização ───
-  const carregarOpcoesSupervisores = async () => {
-    try {
-      // Pagina caso a tabela cresça muito (Supabase limita a 1000 por padrão)
-      const todos = []
-      const PAGE = 1000
-      let from = 0
-      while (true) {
-        const { data, error } = await supabase
-          .from('estrutura_equipes')
-          .select('prefixo, superv_campo, superv_operacao')
-          .range(from, from + PAGE - 1)
-        if (error) throw error
-        if (!data || data.length === 0) break
-        todos.push(...data)
-        if (data.length < PAGE) break
-        from += PAGE
-      }
-
-      const supCampoSet = new Set()
-      const supOpSet    = new Set()
-      const rel         = {}
-      const mapaPref    = {}
-
-      todos.forEach(r => {
-        const sc = (r.superv_campo    || '').trim()
-        const so = (r.superv_operacao || '').trim()
-        const pf = (r.prefixo         || '').trim()
-        if (sc) supCampoSet.add(sc)
-        if (so) supOpSet.add(so)
-        if (so && sc) {
-          if (!rel[so]) rel[so] = new Set()
-          rel[so].add(sc)
-        }
-        if (pf && !mapaPref[pf]) {
-          mapaPref[pf] = { supCampo: sc, supOperacao: so }
-        }
-      })
-
-      setSupCampoOpcoes([...supCampoSet].sort())
-      setSupOperacaoOpcoes([...supOpSet].sort())
-      setRelSupOpToCampo(rel)
-      setMapaPrefixoSup(mapaPref)
-    } catch (e) {
-      console.error('Erro ao carregar supervisores:', e)
-    }
-  }
+  const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
   const buscar = async () => {
     setLoading(true)
     try {
-      // ─── 1) Se houver filtro por supervisor, descobre primeiro quais prefixos satisfazem ───
+      const { ini, fim } = filtros.getDatasQuery()
+      if (!ini || !fim) {
+        setAuditorias([])
+        setTotais({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
+        setLoading(false)
+        return
+      }
+
+      // ── 1) Combina os filtros hierárquicos em uma lista de prefixos permitidos ──
+      const filtroHierarquicoAtivo =
+        filtros.selSupOp.length    > 0 ||
+        filtros.selSupCampo.length > 0 ||
+        filtros.selPrefixos.length > 0
+
       let prefixosPermitidos = null
-      if (filtros.supCampo.length > 0 || filtros.supOperacao.length > 0) {
-        let qEstr = supabase.from('estrutura_equipes').select('prefixo')
-        if (filtros.supCampo.length > 0)    qEstr = qEstr.in('superv_campo',    filtros.supCampo)
-        if (filtros.supOperacao.length > 0) qEstr = qEstr.in('superv_operacao', filtros.supOperacao)
-        const { data: estrData, error: errEstr } = await qEstr
-        if (errEstr) throw errEstr
-        prefixosPermitidos = [...new Set((estrData || []).map(r => r.prefixo).filter(Boolean))]
-        // Se nenhum prefixo bate, já encerra
+      if (filtroHierarquicoAtivo) {
+        const set = new Set()
+        Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+          if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
+          if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
+          if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
+          set.add(pref)
+        })
+        prefixosPermitidos = [...set]
         if (prefixosPermitidos.length === 0) {
           setAuditorias([])
           setTotais({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
@@ -445,11 +216,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         }
       }
 
-      // ─── 2) Query principal das auditorias ───
+      // ── 2) Query principal ──
       let q = supabase
         .from('auditorias').select('*')
-        .gte('data_auditoria', filtros.dataIni)
-        .lte('data_auditoria', filtros.dataFim)
+        .gte('data_auditoria', ini).lte('data_auditoria', fim)
         .order('data_auditoria', { ascending: false })
         .order('hora_auditoria', { ascending: false })
 
@@ -457,11 +227,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                            usuarioLogado?.perfil === 'SUPERV. OPERAÇÃO' ||
                            usuarioLogado?.perfil === 'SUPERV. CAMPO'
 
-      if (!podeVerTodos)                  q = q.eq('matricula', usuarioLogado.matricula)
-      if (filtros.prefixo)                q = q.ilike('prefixo', `%${filtros.prefixo}%`)
-      if (filtros.tipoServico.length > 0) q = q.in('tipo_servico', filtros.tipoServico)
-      if (filtros.status)                 q = q.eq('status', filtros.status)
-      if (prefixosPermitidos)             q = q.in('prefixo', prefixosPermitidos)
+      if (!podeVerTodos)        q = q.eq('matricula', usuarioLogado.matricula)
+      if (tipoServico.length > 0) q = q.in('tipo_servico', tipoServico)
+      if (resultado)              q = q.eq('status', resultado)
+      if (prefixosPermitidos)     q = q.in('prefixo', prefixosPermitidos)
 
       const { data, error } = await q
       if (error) throw error
@@ -477,27 +246,20 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     finally { setLoading(false) }
   }
 
+  // Carrega na primeira renderização
   useEffect(() => {
-    carregarOpcoesSupervisores()
     buscar()
     setVersaoSistema(getVersaoApp())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Auto-refresh a cada 20s — usa ref pra sempre chamar a versão mais recente
+  const buscarRef = useRef(buscar)
+  useEffect(() => { buscarRef.current = buscar })
   useEffect(() => {
-    intervalRef.current = setInterval(() => { buscar() }, 20000)
+    intervalRef.current = setInterval(() => { buscarRef.current() }, 20000)
     return () => clearInterval(intervalRef.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros])
-
-  const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
-  const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
-
-  const onPrefixoChange = async v => {
-    upd('prefixo', v)
-    if (v.length < 2) { setPrefixoSugs([]); return }
-    const { data } = await supabase.from('estrutura_equipes').select('prefixo').ilike('prefixo', `%${v}%`).order('prefixo').limit(10)
-    if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
-  }
+  }, [])
 
   const abrirModalReabrir = async () => {
     setFiscalSelecionado(detalhe.fiscal || '')
@@ -524,15 +286,15 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     setExportando(true)
     try {
       const linhas = auditorias.map(a => {
-        const sup = mapaPrefixoSup[a.prefixo] || {}
+        const sup = filtros.mapPrefixo[a.prefixo] || {}
         return {
           'Data':                   formatData(a.data_auditoria),
           'Hora':                   a.hora_auditoria || '',
           'Fiscal (Sup. Campo)':    a.fiscal || '',
           'Matrícula':              a.matricula || '',
           'Equipe (Prefixo)':       a.prefixo || '',
-          'Supervisor de Campo':    sup.supCampo || '',
-          'Supervisor Operacional': sup.supOperacao || '',
+          'Supervisor de Campo':    sup.campo || '',
+          'Supervisor Operacional': sup.op || '',
           'OS':                     a.os || '',
           'UC':                     a.uc || '',
           'Tipo Auditoria':         a.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho Operacional' : 'Pós Serviço',
@@ -554,7 +316,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       const ws = XLSX.utils.json_to_sheet(linhas)
       ws['!cols'] = [
         { wch: 12 }, { wch: 8  }, { wch: 30 }, { wch: 12 }, { wch: 16 },
-        { wch: 22 }, { wch: 22 }, // Sup Campo + Sup Op
+        { wch: 22 }, { wch: 22 },
         { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 12 },
         { wch: 8  }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 12 },
         { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 40 }, { wch: 10 },
@@ -562,19 +324,20 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Auditorias')
 
+      const { ini, fim } = filtros.getDatasQuery()
       const resumo = [
         ['RELATÓRIO DE AUDITORIAS — DPL CONSTRUÇÕES'],
         ['Contrato Equatorial Energia 1021/2024'],
         [''],
-        ['Período', `${formatData(filtros.dataIni)} a ${formatData(filtros.dataFim)}`],
+        ['Período', `${formatData(ini)} a ${formatData(fim)}`],
         ['Gerado em', new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })],
         [''],
         ['FILTROS APLICADOS', ''],
-        ['Prefixo',                filtros.prefixo || '(todos)'],
-        ['Tipo de Serviço',        filtros.tipoServico.length > 0 ? filtros.tipoServico.join(', ') : '(todos)'],
-        ['Supervisor de Campo',    filtros.supCampo.length    > 0 ? filtros.supCampo.join(', ')    : '(todos)'],
-        ['Supervisor Operacional', filtros.supOperacao.length > 0 ? filtros.supOperacao.join(', ') : '(todos)'],
-        ['Resultado',              filtros.status || '(todos)'],
+        ['Prefixo(s)',             filtros.selPrefixos.length > 0 ? filtros.selPrefixos.join(', ') : '(todos)'],
+        ['Tipo de Serviço',        tipoServico.length > 0 ? tipoServico.join(', ') : '(todos)'],
+        ['Supervisor de Campo',    filtros.selSupCampo.length > 0 ? filtros.selSupCampo.join(', ') : '(todos)'],
+        ['Supervisor Operacional', filtros.selSupOp.length    > 0 ? filtros.selSupOp.join(', ')    : '(todos)'],
+        ['Resultado',              resultado || '(todos)'],
         [''],
         ['TOTALIZADORES', ''],
         ['Total de Auditorias', totais.total],
@@ -589,18 +352,44 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       wsResumo['!cols'] = [{ wch: 28 }, { wch: 40 }]
       XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo')
 
-      XLSX.writeFile(wb, `Auditorias_DPL_${filtros.dataIni}_${filtros.dataFim}.xlsx`)
+      XLSX.writeFile(wb, `Auditorias_DPL_${ini}_${fim}.xlsx`)
     } catch (e) {
       console.error('Erro ao exportar:', e)
       alert('Erro ao gerar Excel. Tente novamente.')
     } finally { setExportando(false) }
   }
 
-  // Não conformidades do detalhe atual
   const detalheNcItems = detalhe ? calcNcItems(detalhe) : []
-
-  // Opções pro filtro de Tipo Serviço (dinâmico de CHECKLISTS)
   const tiposServicoOpcoes = Object.keys(CHECKLISTS)
+
+  // ─── Filtros EXTRAS no painel: Tipo Serviço + Resultado ───
+  const extras = (
+    <>
+      <div>
+        <label style={LABEL_STYLE}>Tipo Serviço</label>
+        <MultiSelect
+          opcoes={tiposServicoOpcoes}
+          selecionados={tipoServico}
+          onChange={setTipoServico}
+          placeholder="Todos"
+          formatOption={(t) => `${getTipoEmoji(t)} ${getTipoLabel(t)}`}
+        />
+      </div>
+      <div>
+        <label style={LABEL_STYLE}>Resultado</label>
+        <select value={resultado} onChange={e => setResultado(e.target.value)} style={{
+          ...INPUT_STYLE, cursor: 'pointer', appearance: 'none',
+          backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' viewBox=\'0 0 10 6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E")',
+          backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32,
+        }}>
+          <option value="">Todos</option>
+          <option value="ATENDE">Atende</option>
+          <option value="ATENDE PARCIAL">Atende Parcial</option>
+          <option value="NÃO ATENDE">Não Atende</option>
+        </select>
+      </div>
+    </>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -632,82 +421,32 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>Filtros</p>
+        {/* ═══ PAINEL DE FILTROS (componente reutilizável) ═══ */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros"
+          badge="auditorias"
+          extras={extras}
+        />
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 10 }}>
-            <div>
-              <label style={LABEL_STYLE}>Data início</label>
-              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)} style={INPUT_STYLE} />
-            </div>
-            <div>
-              <label style={LABEL_STYLE}>Data fim</label>
-              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)} style={INPUT_STYLE} />
-            </div>
-
-            {/* ─── NOVO: Supervisor Operacional (multi) ─── */}
-            {isAdmin && (
-              <MultiSelect
-                label="Supervisor Operacional"
-                options={supOperacaoOpcoes}
-                value={filtros.supOperacao}
-                onChange={v => upd('supOperacao', v)}
-                placeholder="Todos"
-              />
-            )}
-
-            {/* ─── NOVO: Supervisor de Campo (multi, com cascata) ─── */}
-            {isAdmin && (
-              <MultiSelect
-                label="Supervisor de Campo"
-                options={supCampoOpcoesFiltradas}
-                value={filtros.supCampo}
-                onChange={v => upd('supCampo', v)}
-                placeholder={filtros.supOperacao.length > 0 ? `Subordinados (${supCampoOpcoesFiltradas.length})` : 'Todos'}
-              />
-            )}
-
-            <DropdownInput label="Prefixo" value={filtros.prefixo} onChange={onPrefixoChange} onSelect={v => { upd('prefixo', v); setPrefixoSugs([]) }} suggestions={prefixoSugs} placeholder="Ex: PI-THE" />
-
-            {/* ─── ATUALIZADO: Tipo Serviço dinâmico e multi ─── */}
-            <MultiSelect
-              label="Tipo Serviço"
-              options={tiposServicoOpcoes}
-              value={filtros.tipoServico}
-              onChange={v => upd('tipoServico', v)}
-              placeholder="Todos"
-              formatOption={(t) => `${getTipoEmoji(t)} ${getTipoLabel(t)}`}
-            />
-
-            <div>
-              <label style={LABEL_STYLE}>Resultado</label>
-              <select value={filtros.status} onChange={e => upd('status', e.target.value)} style={INPUT_STYLE}>
-                <option value="">Todos</option>
-                <option value="ATENDE">Atende</option>
-                <option value="ATENDE PARCIAL">Atende Parcial</option>
-                <option value="NÃO ATENDE">Não Atende</option>
-              </select>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-            <button onClick={buscar} style={{
-              height: FIELD_HEIGHT, padding: '0 22px',
-              background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10,
-              fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}>🔍 Buscar</button>
-            <button onClick={exportarExcel} disabled={exportando || auditorias.length === 0} style={{
-              height: FIELD_HEIGHT, padding: '0 22px',
-              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
-              cursor: auditorias.length === 0 ? 'not-allowed' : 'pointer',
-              background: exportando || auditorias.length === 0 ? '#e2e8f0' : '#16a34a',
-              color: exportando || auditorias.length === 0 ? '#94a3b8' : '#fff',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}>
-              {exportando ? '⏳ Gerando...' : `📊 Exportar Excel (${auditorias.length})`}
-            </button>
-          </div>
+        {/* Ações */}
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+          <button onClick={buscar} style={{
+            height: FIELD_HEIGHT, padding: '0 22px',
+            background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10,
+            fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>🔍 Buscar</button>
+          <button onClick={exportarExcel} disabled={exportando || auditorias.length === 0} style={{
+            height: FIELD_HEIGHT, padding: '0 22px',
+            border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700,
+            cursor: auditorias.length === 0 ? 'not-allowed' : 'pointer',
+            background: exportando || auditorias.length === 0 ? '#e2e8f0' : '#16a34a',
+            color: exportando || auditorias.length === 0 ? '#94a3b8' : '#fff',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            {exportando ? '⏳ Gerando...' : `📊 Exportar Excel (${auditorias.length})`}
+          </button>
         </div>
 
         {loading ? (
@@ -800,8 +539,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 ['Fiscal',         detalhe.fiscal],
                 ['Matrícula',      detalhe.matricula],
                 ['Equipe',         detalhe.prefixo],
-                ['Sup. Campo',     mapaPrefixoSup[detalhe.prefixo]?.supCampo],
-                ['Sup. Operacional', mapaPrefixoSup[detalhe.prefixo]?.supOperacao],
+                ['Sup. Campo',     filtros.mapPrefixo[detalhe.prefixo]?.campo],
+                ['Sup. Operacional', filtros.mapPrefixo[detalhe.prefixo]?.op],
                 ['OS',             detalhe.os],
                 ['UC',             detalhe.uc],
                 ['Endereço',       detalhe.endereco],
@@ -817,7 +556,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               ))}
             </div>
 
-            {/* ── NÃO CONFORMIDADES ── */}
             {detalheNcItems.length > 0 && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
                 <p style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', marginBottom: 10 }}>❌ Itens Não Conformes ({detalheNcItems.length})</p>
@@ -880,7 +618,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               🖨️ Imprimir / Salvar PDF
             </button>
 
-            {/* Botão compartilhar no WhatsApp — gera imagem */}
             <button onClick={async () => {
               setCapturando(true)
               try {
