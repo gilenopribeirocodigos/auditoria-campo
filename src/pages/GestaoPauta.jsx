@@ -12,10 +12,18 @@ const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
 
+// ─── Motivos pré-definidos para Motivo Auditoria ──────────────────────────────
+// Para adicionar novos motivos no futuro, basta incluir aqui.
+const MOTIVOS_AUDITORIA = [
+  'MATERIAL APLICADO EM CAMPO',
+  'RELIGA VINCULADA',
+]
+
 const FORM_VAZIO = {
   prefixo: '', fiscal_login: '', data_prevista: new Date().toISOString().split('T')[0],
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
   recorrencia: 'UNICA', observacao: '', os: '', uc: '',
+  motivo_auditoria: '', // novo campo
 }
 
 function statusCor(s) {
@@ -60,6 +68,10 @@ function normalizarPauta(obj) {
   const rc = (obj.recorrencia || '').toUpperCase().trim()
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
 
+  // ─── Motivo Auditoria — normaliza/valida ───
+  const ma = (obj.motivo_auditoria || '').toUpperCase().trim()
+  const motivoAuditoria = MOTIVOS_AUDITORIA.includes(ma) ? ma : ''
+
   let data = (obj.data_prevista || '').trim()
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
     const [d, m, a] = data.split('/')
@@ -68,16 +80,17 @@ function normalizarPauta(obj) {
   if (!data) data = new Date().toISOString().split('T')[0]
 
   return {
-    prefixo:        (obj.prefixo || '').trim().toUpperCase(),
-    fiscal_login:   (obj.fiscal_login || obj.fiscal || '').trim().toLowerCase(),
-    data_prevista:  data,
-    tipo_servico:   tipoServico,
-    tipo_auditoria: tipoAuditoria,
+    prefixo:          (obj.prefixo || '').trim().toUpperCase(),
+    fiscal_login:     (obj.fiscal_login || obj.fiscal || '').trim().toLowerCase(),
+    data_prevista:    data,
+    tipo_servico:     tipoServico,
+    tipo_auditoria:   tipoAuditoria,
     recorrencia,
-    observacao:     (obj.observacao || '').trim(),
-    os:             (obj.os || '').trim(),
-    uc:             (obj.uc || '').trim(),
-    status:         'PENDENTE',
+    observacao:       (obj.observacao || '').trim(),
+    motivo_auditoria: motivoAuditoria,
+    os:               (obj.os || '').trim(),
+    uc:               (obj.uc || '').trim(),
+    status:           'PENDENTE',
   }
 }
 
@@ -93,7 +106,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [formData,    setFormData]    = useState(FORM_VAZIO)
   const [salvando,    setSalvando]    = useState(false)
   const [erro,        setErro]        = useState('')
-  const [statusTab,   setStatusTab]   = useState('TODOS') // tab adicional in-memory
+  const [statusTab,   setStatusTab]   = useState('TODOS')
   const [csvModal,    setCsvModal]    = useState(false)
   const [csvTexto,    setCsvTexto]    = useState('')
   const [csvStatus,   setCsvStatus]   = useState('')
@@ -133,7 +146,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
   const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setPrefixoSugs([]); setModal(true) }
-  const abrirEditar = p  => { setEditando(p); setFormData({ ...p, os: p.os || '', uc: p.uc || '' }); setErro(''); setPrefixoSugs([]); setModal(true) }
+  const abrirEditar = p  => {
+    setEditando(p)
+    setFormData({
+      ...FORM_VAZIO,  // garante todos os campos padrão (inclusive motivo_auditoria)
+      ...p,
+      os: p.os || '', uc: p.uc || '',
+      motivo_auditoria: p.motivo_auditoria || '',
+    })
+    setErro(''); setPrefixoSugs([]); setModal(true)
+  }
   const fechar      = () => { setModal(false); setErro(''); setPrefixoSugs([]) }
 
   const onPrefixoChange = async v => {
@@ -174,10 +196,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const pautasFiltradasPainel = useMemo(() => {
     const { ini, fim } = filtros.getDatasQuery()
     return pautas.filter(p => {
-      // Filtro de período: data_prevista entre ini e fim
       if (ini && p.data_prevista < ini) return false
       if (fim && p.data_prevista > fim) return false
-      // Filtros hierárquicos via mapPrefixo
       const filtroAtivo =
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
@@ -193,7 +213,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
       filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
 
-  // ─── Aplica tab de status ───
   const pautasExibidas = pautasFiltradasPainel.filter(p => {
     const s = calcStatus(p)
     if (statusTab === 'TODOS')   return true
@@ -201,7 +220,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     return p.status === statusTab
   })
 
-  // ─── Contadores (baseados no filtro do painel) ───
   const counts = {
     PENDENTE:  pautasFiltradasPainel.filter(p => p.status === 'PENDENTE' && calcStatus(p) === 'PENDENTE').length,
     VENCIDA:   pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA').length,
@@ -213,7 +231,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     const vencidas = pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA')
     if (vencidas.length === 0) { alert('Não há pautas vencidas!'); return }
     const linhas = vencidas.map(p =>
-      `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}`
+      `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}${p.motivo_auditoria ? ` | Motivo: ${p.motivo_auditoria}` : ''}`
     ).join('\n')
     const msg = encodeURIComponent(
       `🚨 *PAUTAS DE FISCALIZAÇÃO VENCIDAS — DPL CONSTRUÇÕES*\n\n${linhas}\n\nFavor regularizar!`
@@ -221,7 +239,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
-  // ─── Importação CSV/Excel (mantida igual) ─────────────────────────────────
+  // ─── Importação CSV/Excel ────────────────────────────────────────────────
   const lerArquivo = (file) => {
     setCsvStatus('')
     setCsvPreview([])
@@ -328,7 +346,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ═══ PAINEL DE FILTROS ═══ */}
+        {/* PAINEL DE FILTROS */}
         <PainelFiltros
           filtros={filtros}
           titulo="🔍 Filtros das Pautas"
@@ -353,7 +371,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           )}
         </div>
 
-        {/* Tabs de status (filtro adicional in-memory) */}
+        {/* Tabs de status */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {['TODOS','PENDENTE','VENCIDA','CONCLUIDA','CANCELADA'].map(f => (
             <button key={f} onClick={() => setStatusTab(f)} style={{
@@ -384,7 +402,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   padding: '14px 16px', opacity: p.status === 'CANCELADA' ? 0.6 : 1,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{p.prefixo}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
@@ -408,7 +426,33 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                           {p.uc && <span>🏠 UC: <strong>{p.uc}</strong></span>}
                         </div>
                       )}
-                      {p.observacao && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>💬 {p.observacao}</p>}
+
+                      {/* ─── Motivo Auditoria (destacado em laranja) ─── */}
+                      {p.motivo_auditoria && (
+                        <div style={{
+                          marginTop: 8, display: 'inline-block',
+                          background: '#fff7ed', border: '1px solid #fed7aa',
+                          color: '#c2410c', fontWeight: 700, fontSize: 12,
+                          padding: '4px 10px', borderRadius: 6,
+                        }}>
+                          🎯 Motivo: {p.motivo_auditoria}
+                        </div>
+                      )}
+
+                      {/* ─── Observação (destacada em azul, texto completo) ─── */}
+                      {p.observacao && (
+                        <div style={{
+                          marginTop: 6, background: '#f0f9ff', border: '1px solid #bae6fd',
+                          padding: '8px 12px', borderRadius: 8, lineHeight: 1.5,
+                        }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            💬 Observação:
+                          </span>
+                          <p style={{ fontSize: 12, color: '#0c4a6e', margin: '3px 0 0', wordBreak: 'break-word' }}>
+                            {p.observacao}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     {p.status === 'PENDENTE' && (
                       <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
@@ -507,9 +551,26 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </select>
             </div>
 
+            {/* ─── NOVO CAMPO: Motivo da Auditoria ─── */}
             <div className="form-group">
-              <label className="form-label">Observação</label>
-              <input className="form-input" value={formData.observacao} onChange={e => upd('observacao', e.target.value)} placeholder="Opcional..." />
+              <label className="form-label">🎯 Motivo da Auditoria</label>
+              <select className="form-input" value={formData.motivo_auditoria} onChange={e => upd('motivo_auditoria', e.target.value)}>
+                <option value="">— Sem motivo específico —</option>
+                {MOTIVOS_AUDITORIA.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            {/* ─── Observação como TEXTAREA (espaço pra escrita) ─── */}
+            <div className="form-group">
+              <label className="form-label">💬 Observação</label>
+              <textarea
+                className="form-textarea"
+                value={formData.observacao}
+                onChange={e => upd('observacao', e.target.value)}
+                placeholder="Texto livre — aparecerá para o fiscal na hora da auditoria..."
+                rows={3}
+                style={{ resize: 'vertical', minHeight: 72, fontFamily: 'inherit' }}
+              />
             </div>
 
             {erro && (
@@ -536,7 +597,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
-              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · os · uc<br /><br />
+              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc<br /><br />
+              <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
               <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
             </div>
@@ -571,7 +633,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 className="form-textarea"
                 value={csvTexto}
                 onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
-                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-05-19;CORTE;DESEMPENHO;UNICA;;;`}
+                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;motivo_auditoria;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-06-19;CORTE;DESEMPENHO;UNICA;Verificar material aplicado;MATERIAL APLICADO EM CAMPO;1234;6789`}
                 rows={6}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
@@ -583,7 +645,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 {csvPreview.map((p, i) => (
                   <div key={i} style={{ color: '#475569', marginBottom: 4, lineHeight: 1.5 }}>
                     <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico} · {p.tipo_auditoria} · {p.recorrencia}
+                    {p.motivo_auditoria ? ` · 🎯 ${p.motivo_auditoria}` : ''}
                     {p.os ? ` · OS:${p.os}` : ''}{p.uc ? ` · UC:${p.uc}` : ''}
+                    {p.observacao ? ` · 💬 ${p.observacao}` : ''}
                   </div>
                 ))}
               </div>
