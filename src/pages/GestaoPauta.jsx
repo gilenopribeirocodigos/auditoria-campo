@@ -26,6 +26,22 @@ const FORM_VAZIO = {
   motivo_auditoria: '', // novo campo
 }
 
+// ─── Limpa caracteres especiais e acentos ─────────────────────────────────────
+// Remove: ç→c, ã→a, ó→o, é→e, caracteres inválidos de encoding (\uFFFD), etc.
+// Preserva: letras A-Z, dígitos, espaços, pontuação ASCII básica (- . , ; / etc).
+// Usado tanto na importação CSV/Excel quanto no cadastro manual.
+function limparTexto(texto) {
+  if (texto === null || texto === undefined) return ''
+  return String(texto)
+    .normalize('NFD')                       // separa letras de acentos
+    .replace(/[\u0300-\u036f]/g, '')        // remove diacríticos (acentos)
+    .replace(/[–—−]/g, '-')                 // normaliza dashes exóticos → hyphen ASCII
+    .replace(/[“”]/g, '"')                  // normaliza aspas exóticas
+    .replace(/[‘’]/g, "'")                  // normaliza apóstrofos exóticos
+    .replace(/[^\x20-\x7E]/g, '')           // remove qualquer outro caractere não-ASCII
+    .trim()
+}
+
 function statusCor(s) {
   return {
     PENDENTE:  { bg: '#fef3c7', color: '#92400e', label: '⏳ Pendente'  },
@@ -59,20 +75,26 @@ function parseCsvLinhas(texto) {
 }
 
 function normalizarPauta(obj) {
-  const ts = (obj.tipo_servico || '').toUpperCase().trim()
+  // Limpa TODOS os campos de uma vez (remove acentos e caracteres inválidos)
+  const c = Object.fromEntries(
+    Object.entries(obj || {}).map(([k, v]) => [k, limparTexto(v)])
+  )
+
+  const ts = (c.tipo_servico || '').toUpperCase()
   const tipoServico = ['CORTE','ANEXO','RELIGA'].includes(ts) ? ts : 'CORTE'
 
-  const ta = (obj.tipo_auditoria || '').toUpperCase().trim()
-  const tipoAuditoria = ta.includes('POS') || ta.includes('PÓS') ? 'POS_SERVICO' : 'DESEMPENHO'
+  const ta = (c.tipo_auditoria || '').toUpperCase()
+  // Após limparTexto, "PÓS" virou "POS", então só precisamos checar "POS"
+  const tipoAuditoria = ta.includes('POS') ? 'POS_SERVICO' : 'DESEMPENHO'
 
-  const rc = (obj.recorrencia || '').toUpperCase().trim()
+  const rc = (c.recorrencia || '').toUpperCase()
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
 
   // ─── Motivo Auditoria — normaliza/valida ───
-  const ma = (obj.motivo_auditoria || '').toUpperCase().trim()
+  const ma = (c.motivo_auditoria || '').toUpperCase()
   const motivoAuditoria = MOTIVOS_AUDITORIA.includes(ma) ? ma : ''
 
-  let data = (obj.data_prevista || '').trim()
+  let data = c.data_prevista || ''
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
     const [d, m, a] = data.split('/')
     data = `${a}-${m}-${d}`
@@ -80,16 +102,16 @@ function normalizarPauta(obj) {
   if (!data) data = new Date().toISOString().split('T')[0]
 
   return {
-    prefixo:          (obj.prefixo || '').trim().toUpperCase(),
-    fiscal_login:     (obj.fiscal_login || obj.fiscal || '').trim().toLowerCase(),
+    prefixo:          (c.prefixo || '').toUpperCase(),
+    fiscal_login:     (c.fiscal_login || c.fiscal || '').toLowerCase(),
     data_prevista:    data,
     tipo_servico:     tipoServico,
     tipo_auditoria:   tipoAuditoria,
     recorrencia,
-    observacao:       (obj.observacao || '').trim(),
+    observacao:       c.observacao || '',
     motivo_auditoria: motivoAuditoria,
-    os:               (obj.os || '').trim(),
-    uc:               (obj.uc || '').trim(),
+    os:               c.os || '',
+    uc:               c.uc || '',
     status:           'PENDENTE',
   }
 }
@@ -173,8 +195,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     }
     setSalvando(true); setErro('')
     try {
-      if (editando) await atualizarPauta(editando.id, formData)
-      else          await criarPauta({ ...formData, status: 'PENDENTE' })
+      // ─── Limpa caracteres especiais antes de salvar (digitação manual) ───
+      const payload = {
+        ...formData,
+        prefixo:    limparTexto(formData.prefixo).toUpperCase(),
+        observacao: limparTexto(formData.observacao),
+        os:         limparTexto(formData.os),
+        uc:         limparTexto(formData.uc),
+      }
+      if (editando) await atualizarPauta(editando.id, payload)
+      else          await criarPauta({ ...payload, status: 'PENDENTE' })
       await carregar(); fechar()
     } catch (e) { setErro(e.message) }
     finally { setSalvando(false) }
@@ -273,17 +303,29 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       }
       reader.readAsArrayBuffer(file)
     } else {
+      // ─── Leitura inteligente: tenta UTF-8 → se falhar, usa Windows-1252 ───
+      // Excel BR normalmente salva CSV em Windows-1252 (Latin-1), não em UTF-8.
+      // Isso é o que causava "POS SERVI�O" no preview.
       const reader = new FileReader()
       reader.onload = e => {
-        const texto = e.target.result
+        const buffer = e.target.result
+        let texto, encoding
+        try {
+          texto = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+          encoding = 'UTF-8'
+        } catch {
+          // Bytes não-UTF-8 detectados → cai pra Windows-1252 (Excel BR padrão)
+          texto = new TextDecoder('windows-1252').decode(buffer)
+          encoding = 'Windows-1252'
+        }
         setCsvTexto(texto)
         const objs = parseCsvLinhas(texto)
         if (objs.length === 0) { setCsvStatus('❌ Nenhuma linha encontrada. Verifique o arquivo.'); return }
         const preview = objs.slice(0, 3).map(normalizarPauta)
         setCsvPreview(preview)
-        setCsvStatus(`✅ Arquivo lido: ${objs.length} linha(s) encontrada(s). Clique em Importar para salvar.`)
+        setCsvStatus(`✅ Arquivo lido (${encoding}): ${objs.length} linha(s) encontrada(s). Acentos e caracteres especiais serão tratados automaticamente. Clique em Importar para salvar.`)
       }
-      reader.readAsText(file, 'UTF-8')
+      reader.readAsArrayBuffer(file)
     }
   }
 
@@ -562,7 +604,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             {/* ─── Observação como TEXTAREA (espaço pra escrita) ─── */}
             <div className="form-group">
-              <label className="form-label">💬 Observação</label>
+              <label className="form-label">
+                💬 Observação
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500, marginLeft: 6 }}>
+                  (acentos e caracteres especiais serão removidos)
+                </span>
+              </label>
               <textarea
                 className="form-textarea"
                 value={formData.observacao}
@@ -600,7 +647,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc<br /><br />
               <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
-              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
+              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br /><br />
+              <strong style={{ color: '#0369a1' }}>✨ Tratamento automático:</strong> acentos (ç, ã, õ, é...) e caracteres especiais são removidos automaticamente. Pode escrever normalmente no Excel.
             </div>
 
             <input
