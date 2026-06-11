@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
+import { getItemsNaoConformes } from '../data/checklists.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
@@ -134,6 +135,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [csvStatus,   setCsvStatus]   = useState('')
   const [csvPreview,  setCsvPreview]  = useState([])
   const [prefixoSugs, setPrefixoSugs] = useState([])
+  const [baixandoNcs, setBaixandoNcs] = useState(false)
   const prefixoRef  = useRef(null)
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
@@ -267,6 +269,131 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       `🚨 *PAUTAS DE FISCALIZAÇÃO VENCIDAS — DPL CONSTRUÇÕES*\n\n${linhas}\n\nFavor regularizar!`
     )
     window.open(`https://wa.me/?text=${msg}`, '_blank')
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RELATÓRIO DE NÃO CONFORMIDADES (Excel)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 1. Filtra pautas que TÊM auditoria_id (INNER JOIN com auditorias)
+  // 2. Para cada par pauta+auditoria, calcula NCs em runtime (mesmo método do Histórico)
+  // 3. Cada NC vira UMA linha do Excel (a auditoria com 3 NCs → 3 linhas)
+  // 4. UPSERT na tabela auditorias_nao_conformes (com ignoreDuplicates: preserva tratamentos)
+  // 5. Gera Excel e baixa
+  // ═══════════════════════════════════════════════════════════════════════════
+  const baixarRelatorioNCs = async () => {
+    setBaixandoNcs(true)
+    try {
+      // ── 1. Pautas com auditoria_id no período/filtros do painel ──
+      const pautasComAuditoria = pautasFiltradasPainel.filter(p => p.auditoria_id)
+
+      if (pautasComAuditoria.length === 0) {
+        alert('Nenhuma pauta com auditoria executada no período/filtros selecionados.')
+        return
+      }
+
+      // ── 2. Carrega as auditorias correspondentes ──
+      const auditoriaIds = pautasComAuditoria.map(p => p.auditoria_id)
+      const { data: auditorias, error: aErr } = await supabase
+        .from('auditorias').select('*').in('id', auditoriaIds)
+      if (aErr) throw aErr
+
+      const mapAuditorias = {}
+      ;(auditorias || []).forEach(a => { mapAuditorias[a.id] = a })
+
+      // ── 3. Calcula NCs e monta linhas ──
+      const linhas = []
+      const ncsParaSalvar = []
+
+      pautasComAuditoria.forEach(p => {
+        const a = mapAuditorias[p.auditoria_id]
+        if (!a) return
+
+        const ncs = getItemsNaoConformes({
+          tipoServico: a.tipo_servico,
+          produtivo:   a.produtivo,
+          respostas:   a.respostas || {},
+        })
+
+        if (!ncs || ncs.length === 0) return  // auditoria 100% conforme — pula
+
+        ncs.forEach(item => {
+          linhas.push({
+            auditoria_id:      a.id,
+            fiscal:            a.fiscal || '',
+            matricula:         a.matricula || '',
+            prefixo:           a.prefixo || '',
+            os:                a.os || '',
+            uc:                a.uc || '',
+            data_auditoria:    a.data_auditoria || '',
+            hora_auditoria:    a.hora_auditoria || '',
+            tipo_servico:      a.tipo_servico || '',
+            produtivo:         a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO',
+            status:            a.status || '',
+            status_2:          p.status || '',
+            feedback:          a.feedback || '',
+            observacao:        a.observacao || a.observacoes || '',
+            nome_eletricista:  a.nome_eletricista || '',
+            nome_eletricista2: a.nome_eletricista2 || '',
+            tipo_auditoria:    a.tipo_auditoria || '',
+            reaberta:          a.reaberta ? 'SIM' : 'NAO',
+            motivo_auditoria:  p.motivo_auditoria || '',
+            item_id:           String(item.id ?? ''),
+            item_nao_conforme: item.p || '',
+          })
+          ncsParaSalvar.push({
+            auditoria_id: a.id,
+            item_id:      String(item.id ?? ''),
+            item_texto:   item.p || '',
+          })
+        })
+      })
+
+      if (linhas.length === 0) {
+        alert('🎉 Nenhuma não conformidade encontrada nas auditorias do período! Todas conformes.')
+        return
+      }
+
+      // ── 4. UPSERT na tabela auditorias_nao_conformes ──
+      // ignoreDuplicates: true preserva tratamentos já feitos (não sobrescreve)
+      if (ncsParaSalvar.length > 0) {
+        try {
+          const { error: upErr } = await supabase
+            .from('auditorias_nao_conformes')
+            .upsert(ncsParaSalvar, {
+              onConflict:       'auditoria_id,item_id',
+              ignoreDuplicates: true,
+            })
+          if (upErr) console.warn('⚠️ Erro ao salvar NCs (tabela pode não existir ainda):', upErr.message)
+        } catch (e) {
+          console.warn('⚠️ Tabela auditorias_nao_conformes não encontrada — pulando UPSERT:', e.message)
+        }
+      }
+
+      // ── 5. Gerar Excel ──
+      const ws = XLSX.utils.json_to_sheet(linhas)
+
+      // Auto-fit das colunas
+      const colNames = Object.keys(linhas[0])
+      ws['!cols'] = colNames.map(col => {
+        const maxLen = Math.max(
+          col.length,
+          ...linhas.map(r => String(r[col] ?? '').length)
+        )
+        return { wch: Math.min(maxLen + 2, 60) }
+      })
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Nao Conformidades')
+
+      const hoje = new Date().toISOString().split('T')[0]
+      XLSX.writeFile(wb, `nao_conformidades_${hoje}.xlsx`)
+
+      alert(`✅ Relatório gerado: ${linhas.length} não conformidade(s) em ${pautasComAuditoria.length} auditoria(s).`)
+    } catch (e) {
+      alert('❌ Erro ao gerar relatório: ' + e.message)
+    } finally {
+      setBaixandoNcs(false)
+    }
   }
 
   // ─── Importação CSV/Excel ────────────────────────────────────────────────
@@ -405,6 +532,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             background: '#0f766e', color: '#fff', border: 'none',
             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}>📥 Importar CSV</button>
+          <button onClick={baixarRelatorioNCs} disabled={baixandoNcs} style={{
+            background: baixandoNcs ? '#94a3b8' : '#dc2626', color: '#fff', border: 'none',
+            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+            cursor: baixandoNcs ? 'not-allowed' : 'pointer',
+          }}>{baixandoNcs ? '⏳ Gerando...' : '📊 Relatório de NCs (Excel)'}</button>
           {counts.VENCIDA > 0 && (
             <button onClick={whatsappVencidas} style={{
               background: '#25d366', color: '#fff', border: 'none',
