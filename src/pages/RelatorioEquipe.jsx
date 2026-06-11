@@ -1,12 +1,10 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
-
-function calcMesAtual() {
-  const hoje = new Date()
-  const ini  = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
-  const fim  = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split('T')[0]
-  return { ini, fim }
-}
+import {
+  useFiltrosOperacionais,
+  PainelFiltros,
+  FIELD_HEIGHT,
+} from '../components/PainelFiltros.jsx'
 
 const STATUS_COR = {
   'ATENDE':         { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
@@ -16,67 +14,64 @@ const STATUS_COR = {
 
 function tendencia(auditorias) {
   if (auditorias.length < 2) return null
-  const metade = Math.floor(auditorias.length / 2)
+  const metade   = Math.floor(auditorias.length / 2)
   const mediaAnt = auditorias.slice(0, metade).reduce((a, b) => a + Number(b.nota), 0) / metade
   const mediaRec = auditorias.slice(metade).reduce((a, b) => a + Number(b.nota), 0) / (auditorias.length - metade)
   const diff = mediaRec - mediaAnt
   if (diff > 5)  return { label: '📈 Melhorando',  color: '#15803d', bg: '#dcfce7' }
   if (diff < -5) return { label: '📉 Piorando',    color: '#dc2626', bg: '#fee2e2' }
-  return             { label: '➡️ Estável',        color: '#92400e', bg: '#fef3c7' }
+  return             { label: '➡️ Estável',         color: '#92400e', bg: '#fef3c7' }
 }
 
 export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
-  const [filtros,     setFiltros]     = useState({
-    prefixo: '',
-    dataIni: calcMesAtual().ini,
-    dataFim: calcMesAtual().fim,
-  })
-  const [prefixoSugs, setPrefixoSugs] = useState([])
-  const [auditorias,  setAuditorias]  = useState([])
-  const [equipeInfo,  setEquipeInfo]  = useState(null)
-  const [loading,     setLoading]     = useState(false)
-  const [gerado,      setGerado]      = useState(false)
+  // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
+  const filtros = useFiltrosOperacionais({ inicializarMes: true })
 
-  const prefixoRef = useRef(null)
+  const [auditorias, setAuditorias] = useState([])
+  const [equipeInfo, setEquipeInfo] = useState([])
+  const [loading,    setLoading]    = useState(false)
+  const [gerado,     setGerado]     = useState(false)
 
-  useEffect(() => {
-    const handler = e => {
-      if (prefixoRef.current && !prefixoRef.current.contains(e.target)) setPrefixoSugs([])
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  // Computed: lista FINAL de prefixos a buscar (combina cascata)
+  const prefixosFiltrados = useMemo(() => {
+    const filtroAtivo =
+      filtros.selSupOp.length    > 0 ||
+      filtros.selSupCampo.length > 0 ||
+      filtros.selPrefixos.length > 0
+    if (!filtroAtivo) return []
 
-  const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
-
-  const onPrefixoChange = async v => {
-    upd('prefixo', v)
-    if (v.length < 2) { setPrefixoSugs([]); return }
-    const { data } = await supabase
-      .from('estrutura_equipes').select('prefixo')
-      .ilike('prefixo', `%${v}%`).order('prefixo').limit(10)
-    if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
-  }
+    const set = new Set()
+    Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+      if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
+      if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
+      if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
+      set.add(pref)
+    })
+    return [...set].sort()
+  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
 
   const buscar = async () => {
-    if (!filtros.prefixo) { alert('Selecione uma equipe (prefixo).'); return }
+    if (prefixosFiltrados.length === 0) {
+      alert('Selecione pelo menos uma equipe via os filtros (Sup. Operacional, Sup. Campo ou Prefixo).')
+      return
+    }
     setLoading(true)
     setGerado(false)
     try {
-      // Auditorias da equipe no período
+      const { ini, fim } = filtros.getDatasQuery()
+
+      // Auditorias das equipes no período
       const { data: auds, error } = await supabase
         .from('auditorias').select('*')
-        .eq('prefixo', filtros.prefixo)
-        .gte('data_auditoria', filtros.dataIni)
-        .lte('data_auditoria', filtros.dataFim)
-        .order('data_auditoria')
-        .order('hora_auditoria')
+        .in('prefixo', prefixosFiltrados)
+        .gte('data_auditoria', ini).lte('data_auditoria', fim)
+        .order('data_auditoria').order('hora_auditoria')
       if (error) throw error
 
-      // Info da equipe na tabela estrutura_equipes
+      // Info das equipes na estrutura_equipes
       const { data: eq } = await supabase
         .from('estrutura_equipes').select('*')
-        .eq('prefixo', filtros.prefixo).limit(10)
+        .in('prefixo', prefixosFiltrados).limit(500)
 
       setAuditorias(auds || [])
       setEquipeInfo(eq || [])
@@ -88,18 +83,23 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
     }
   }
 
-  const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
-  const formatPeriodo = () => `${formatData(filtros.dataIni)} a ${formatData(filtros.dataFim)}`
+  const formatData    = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+  const formatPeriodo = () => {
+    const { ini, fim } = filtros.getDatasQuery()
+    return `${formatData(ini)} a ${formatData(fim)}`
+  }
 
-  // Métricas consolidadas
-  const totalAuds    = auditorias.length
-  const notaMedia    = totalAuds > 0 ? (auditorias.reduce((a, b) => a + Number(b.nota), 0) / totalAuds).toFixed(1) : '—'
-  const atende       = auditorias.filter(a => a.status === 'ATENDE').length
-  const parcial      = auditorias.filter(a => a.status === 'ATENDE PARCIAL').length
-  const naoAtende    = auditorias.filter(a => a.status === 'NÃO ATENDE').length
-  const tend         = tendencia(auditorias)
+  // ── Métricas consolidadas ──
+  const totalAuds = auditorias.length
+  const notaMedia = totalAuds > 0
+    ? (auditorias.reduce((a, b) => a + Number(b.nota), 0) / totalAuds).toFixed(1)
+    : '—'
+  const atende    = auditorias.filter(a => a.status === 'ATENDE').length
+  const parcial   = auditorias.filter(a => a.status === 'ATENDE PARCIAL').length
+  const naoAtende = auditorias.filter(a => a.status === 'NÃO ATENDE').length
+  const tend      = tendencia(auditorias)
 
-  // Reincidências — itens NC que aparecem em mais de 1 auditoria
+  // ── Reincidências (itens NC em mais de 1 auditoria) ──
   const ncCount = {}
   auditorias.forEach(a => {
     if (!a.respostas) return
@@ -113,11 +113,31 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
     .filter(([, count]) => count > 1)
     .sort(([, a], [, b]) => b - a)
 
-  // Eletricistas únicos da equipe nas auditorias do período
+  // ── Eletricistas únicos ──
   const eletricistas = [...new Set([
     ...auditorias.map(a => a.nome_eletricista).filter(Boolean),
     ...auditorias.map(a => a.nome_eletricista2).filter(Boolean),
   ])]
+
+  // ── Ranking de equipes (para visão multi-equipe) ──
+  const rankingEquipes = useMemo(() => {
+    if (auditorias.length === 0) return []
+    const mapa = {}
+    auditorias.forEach(a => {
+      if (!a.prefixo) return
+      if (!mapa[a.prefixo]) mapa[a.prefixo] = { prefixo: a.prefixo, notas: [], total: 0, atende: 0, parcial: 0, nao: 0 }
+      mapa[a.prefixo].notas.push(Number(a.nota))
+      mapa[a.prefixo].total++
+      if (a.status === 'ATENDE')         mapa[a.prefixo].atende++
+      if (a.status === 'ATENDE PARCIAL') mapa[a.prefixo].parcial++
+      if (a.status === 'NÃO ATENDE')     mapa[a.prefixo].nao++
+    })
+    return Object.values(mapa).map(e => ({
+      ...e, media: (e.notas.reduce((s, n) => s + n, 0) / e.notas.length).toFixed(1),
+    })).sort((a, b) => Number(b.media) - Number(a.media))
+  }, [auditorias])
+
+  const isMulti = prefixosFiltrados.length > 1
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -143,95 +163,63 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
           }}>← Voltar para Home</button>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>🚗 Relatório por Equipe</h1>
           <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
-            Histórico completo de fiscalizações de uma equipe
+            Histórico consolidado de fiscalizações — selecione 1 ou mais equipes
           </p>
         </div>
       </div>
 
-      {/* Filtros */}
+      {/* Painel + Ações */}
       <div className="no-print" style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 0' }}>
-        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>
-            Selecione a Equipe e o Período
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
 
-            {/* PREFIXO COM AUTOCOMPLETE */}
-            <div ref={prefixoRef} style={{ position: 'relative' }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>
-                Prefixo da Equipe *
-              </label>
-              <input
-                type="text" value={filtros.prefixo}
-                onChange={e => onPrefixoChange(e.target.value)}
-                placeholder="Ex: PI-THE-C001M"
-                className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}
-              />
-              {filtros.prefixo && (
-                <button onClick={() => { upd('prefixo', ''); setPrefixoSugs([]); setGerado(false) }} style={{
-                  position: 'absolute', right: 8, top: 30, background: 'none',
-                  border: 'none', color: '#94a3b8', cursor: 'pointer', fontSize: 16,
-                }}>×</button>
-              )}
-              {prefixoSugs.length > 0 && (
-                <div style={{
-                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
-                  background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10,
-                  boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto',
-                }}>
-                  {prefixoSugs.map((s, i) => (
-                    <button key={i} onClick={() => { upd('prefixo', s); setPrefixoSugs([]) }} style={{
-                      display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
-                      background: 'none', border: 'none',
-                      borderBottom: i < prefixoSugs.length - 1 ? '1px solid #f1f5f9' : 'none',
-                      fontSize: 13, color: '#1e293b', cursor: 'pointer',
-                    }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    >{s}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros do Relatório"
+          badge="equipes / auditorias"
+        />
 
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
-              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)}
-                className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
-            </div>
-
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
-              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)}
-                className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
-            </div>
-
-          </div>
-
-          <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
-            <button onClick={buscar} disabled={loading || !filtros.prefixo} style={{
-              padding: '10px 24px', color: '#fff', border: 'none', borderRadius: 10,
-              fontSize: 14, fontWeight: 700, cursor: filtros.prefixo ? 'pointer' : 'not-allowed',
-              background: loading ? '#64748b' : !filtros.prefixo ? '#e2e8f0' : '#c2410c',
+        <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button onClick={buscar} disabled={loading} style={{
+            height: FIELD_HEIGHT, padding: '0 22px',
+            color: '#fff', border: 'none', borderRadius: 10,
+            fontSize: 14, fontWeight: 700,
+            cursor: loading ? 'wait' : 'pointer',
+            background: loading ? '#64748b' : '#c2410c',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>
+            {loading ? '⏳ Buscando...' : '🔍 Gerar Relatório'}
+          </button>
+          {gerado && totalAuds > 0 && (
+            <button onClick={() => window.print()} style={{
+              height: FIELD_HEIGHT, padding: '0 22px',
+              background: '#7c3aed', color: '#fff',
+              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              display: 'inline-flex', alignItems: 'center', gap: 6,
             }}>
-              {loading ? '⏳ Buscando...' : '🔍 Gerar Relatório'}
+              🖨️ Imprimir / Salvar PDF
             </button>
-            {gerado && totalAuds > 0 && (
-              <button onClick={() => window.print()} style={{
-                padding: '10px 24px', background: '#7c3aed', color: '#fff',
-                border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
-              }}>
-                🖨️ Imprimir / Salvar PDF
-              </button>
-            )}
-          </div>
-
-          {gerado && totalAuds === 0 && (
-            <div style={{ marginTop: 14, background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#c2410c', fontWeight: 600 }}>
-              ⚠️ Nenhuma auditoria encontrada para {filtros.prefixo} no período selecionado.
-            </div>
+          )}
+          {prefixosFiltrados.length > 0 && (
+            <span style={{
+              fontSize: 11, fontWeight: 700, color: '#c2410c',
+              background: '#ffedd5', padding: '4px 10px', borderRadius: 6,
+              border: '1px solid #fed7aa',
+            }}>
+              {prefixosFiltrados.length} equipe{prefixosFiltrados.length > 1 ? 's' : ''} selecionada{prefixosFiltrados.length > 1 ? 's' : ''}
+            </span>
           )}
         </div>
+
+        {prefixosFiltrados.length === 0 && (
+          <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: '#c2410c', fontWeight: 600, marginBottom: 16 }}>
+            ⚠️ Selecione pelo menos uma equipe via os filtros (Supervisor Operacional, de Campo ou Prefixo) para gerar o relatório.
+          </div>
+        )}
+
+        {gerado && totalAuds === 0 && prefixosFiltrados.length > 0 && (
+          <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#c2410c', fontWeight: 600, marginBottom: 16 }}>
+            ⚠️ Nenhuma auditoria encontrada para os filtros selecionados no período.
+          </div>
+        )}
       </div>
 
       {/* RELATÓRIO */}
@@ -246,14 +234,31 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>
-                  🚗 {filtros.prefixo}
+                  🚗 {isMulti
+                    ? `${prefixosFiltrados.length} equipes selecionadas`
+                    : prefixosFiltrados[0]}
                 </h2>
                 <p style={{ fontSize: 12, opacity: 0.8 }}>Relatório de Fiscalizações — DPL Construções</p>
                 <p style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>Contrato Equatorial Energia 1021/2024</p>
                 <p style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>Período: {formatPeriodo()}</p>
+                {filtros.selSupOp.length > 0 && (
+                  <p style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
+                    Sup. Operacional: {filtros.selSupOp.join(', ')}
+                  </p>
+                )}
+                {filtros.selSupCampo.length > 0 && (
+                  <p style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
+                    Sup. Campo: {filtros.selSupCampo.join(', ')}
+                  </p>
+                )}
+                {isMulti && (
+                  <p style={{ fontSize: 11, opacity: 0.8, marginTop: 4 }}>
+                    Prefixos: {prefixosFiltrados.join(' · ')}
+                  </p>
+                )}
                 {eletricistas.length > 0 && (
                   <p style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
-                    👷 {eletricistas.join(' · ')}
+                    👷 {eletricistas.slice(0, 8).join(' · ')}{eletricistas.length > 8 ? ` +${eletricistas.length - 8}` : ''}
                   </p>
                 )}
               </div>
@@ -264,9 +269,7 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                   <div style={{
                     marginTop: 8, background: 'rgba(255,255,255,0.15)',
                     padding: '4px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700,
-                  }}>
-                    {tend.label}
-                  </div>
+                  }}>{tend.label}</div>
                 )}
               </div>
             </div>
@@ -290,20 +293,69 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
             ))}
           </div>
 
+          {/* Ranking de equipes (só aparece se for multi-equipe) */}
+          {isMulti && rankingEquipes.length > 1 && (
+            <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden', marginBottom: 20 }}>
+              <div style={{ background: '#7c2d12', color: '#fff', padding: '12px 18px' }}>
+                <p style={{ fontSize: 13, fontWeight: 700 }}>🏆 Ranking das Equipes ({rankingEquipes.length})</p>
+              </div>
+              {rankingEquipes.map((e, idx) => {
+                const sc = e.media >= 90 ? STATUS_COR['ATENDE']
+                         : e.media >= 80 ? STATUS_COR['ATENDE PARCIAL']
+                         : STATUS_COR['NÃO ATENDE']
+                const pctConf = e.total > 0 ? Math.round((e.atende / e.total) * 100) : 0
+                return (
+                  <div key={e.prefixo} style={{
+                    display: 'flex', alignItems: 'center', gap: 14,
+                    padding: '12px 16px', borderBottom: idx < rankingEquipes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                    background: idx === 0 ? '#f0fdf4' : idx === rankingEquipes.length - 1 ? '#fff7f7' : '#fff',
+                  }}>
+                    <div style={{
+                      minWidth: 30, height: 30, borderRadius: '50%', display: 'flex',
+                      alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 13,
+                      background: idx === 0 ? '#fbbf24' : idx === 1 ? '#e2e8f0' : idx === 2 ? '#d97706' : '#f1f5f9',
+                      color:      idx === 0 ? '#7c2d12' : idx === 1 ? '#475569' : idx === 2 ? '#fff'    : '#64748b',
+                    }}>
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{e.prefixo}</div>
+                      <div style={{ display: 'flex', gap: 10, fontSize: 11, color: '#64748b', marginTop: 2, flexWrap: 'wrap' }}>
+                        <span>{e.total} aud.</span>
+                        <span style={{ color: '#15803d' }}>✅ {e.atende}</span>
+                        <span style={{ color: '#d97706' }}>⚠️ {e.parcial}</span>
+                        <span style={{ color: '#dc2626' }}>❌ {e.nao}</span>
+                        <span>· {pctConf}% conf.</span>
+                      </div>
+                    </div>
+                    <div style={{
+                      minWidth: 50, height: 44, borderRadius: 10,
+                      background: sc.bg, border: `1.5px solid ${sc.border}`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    }}>
+                      <span style={{ fontSize: 15, fontWeight: 900, color: sc.color, lineHeight: 1 }}>{e.media}</span>
+                      <span style={{ fontSize: 8, color: sc.color, opacity: 0.8 }}>média</span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {/* Evolução de notas — linha do tempo */}
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 20 }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
-              📊 Evolução das Notas
+              📊 Evolução das Notas (ordem cronológica)
             </p>
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, overflowX: 'auto', paddingBottom: 4 }}>
-              {auditorias.map((a, i) => {
+              {auditorias.map((a) => {
                 const nota = Number(a.nota)
                 const h    = Math.max(8, (nota / 100) * 80)
                 const cor  = nota >= 90 ? '#16a34a' : nota >= 80 ? '#d97706' : '#dc2626'
                 return (
                   <div key={a.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 36 }}>
                     <span style={{ fontSize: 9, color: '#64748b', marginBottom: 2 }}>{nota.toFixed(0)}</span>
-                    <div style={{ width: 28, height: h, background: cor, borderRadius: '4px 4px 0 0' }} title={`${formatData(a.data_auditoria)} — ${nota} pts`} />
+                    <div style={{ width: 28, height: h, background: cor, borderRadius: '4px 4px 0 0' }} title={`${a.prefixo} — ${formatData(a.data_auditoria)} — ${nota} pts`} />
                     <span style={{ fontSize: 8, color: '#94a3b8', marginTop: 3, textAlign: 'center' }}>
                       {formatData(a.data_auditoria).slice(0, 5)}
                     </span>
@@ -338,16 +390,12 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                     background: '#fff', borderRadius: 8, padding: '10px 14px',
                     border: '1px solid #fecaca',
                   }}>
-                    <span style={{ fontSize: 12, color: '#991b1b', flex: 1 }}>
-                      Item #{id}
-                    </span>
+                    <span style={{ fontSize: 12, color: '#991b1b', flex: 1 }}>Item #{id}</span>
                     <span style={{
                       background: '#dc2626', color: '#fff',
                       padding: '2px 10px', borderRadius: 20,
                       fontSize: 12, fontWeight: 700, flexShrink: 0,
-                    }}>
-                      {count}x não conforme
-                    </span>
+                    }}>{count}x não conforme</span>
                   </div>
                 ))}
               </div>
@@ -370,19 +418,16 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                   borderBottom: idx < auditorias.length - 1 ? '1px solid #f1f5f9' : 'none',
                   padding: '14px 18px',
                 }}>
-                  {/* Linha 1 */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>
-                        #{idx + 1} — {formatData(a.data_auditoria)} às {a.hora_auditoria}
+                        #{idx + 1} — {isMulti && <span style={{ color: '#c2410c' }}>{a.prefixo} · </span>}{formatData(a.data_auditoria)} às {a.hora_auditoria}
                       </span>
                       <span style={{
                         fontSize: 11, fontWeight: 700, padding: '2px 8px',
                         borderRadius: 20, background: sc.bg, color: sc.color,
                         border: `1px solid ${sc.border}`,
-                      }}>
-                        {a.status}
-                      </span>
+                      }}>{a.status}</span>
                       <span style={{ fontSize: 11, color: '#64748b' }}>
                         {a.tipo_servico} · {a.produtivo ? 'Produtivo' : 'Improdutivo'} ·{' '}
                         {a.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho Op.' : 'Pós Serviço'}
@@ -395,20 +440,16 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                         fontSize: 16, fontWeight: 900, color: sc.color,
                         background: sc.bg, padding: '2px 10px', borderRadius: 8,
                         border: `1px solid ${sc.border}`,
-                      }}>
-                        {Number(a.nota).toFixed(0)} pts
-                      </span>
+                      }}>{Number(a.nota).toFixed(0)} pts</span>
                     </div>
                   </div>
 
-                  {/* Eletricistas */}
                   {(a.nome_eletricista || a.nome_eletricista2) && (
                     <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: a.feedback ? 8 : 0 }}>
                       👷 {[a.nome_eletricista, a.nome_eletricista2].filter(Boolean).join(' · ')}
                     </div>
                   )}
 
-                  {/* Feedback */}
                   {a.feedback && (
                     <div style={{
                       background: '#fffbeb', border: '1px solid #fcd34d',
@@ -423,7 +464,6 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                     </div>
                   )}
 
-                  {/* Observações */}
                   {a.observacoes && (
                     <div style={{
                       background: '#f0f9ff', border: '1px solid #bae6fd',
@@ -442,23 +482,26 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
             })}
           </div>
 
-          {/* Info da equipe (eletricistas cadastrados) */}
+          {/* Info das equipes (cadastro) */}
           {equipeInfo.length > 0 && (
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 20 }}>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#374151', marginBottom: 12 }}>
-                👷 Composição da Equipe (Cadastro)
+                👷 Composição das Equipes (Cadastro) — {equipeInfo.length} registros
               </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                 {equipeInfo.map((e, i) => (
                   <div key={i} style={{
-                    display: 'flex', gap: 12, fontSize: 12, color: '#475569',
+                    display: 'grid', gridTemplateColumns: '90px 1fr 110px 130px 90px', gap: 10, fontSize: 12, color: '#475569',
                     padding: '8px 12px', background: i % 2 === 0 ? '#f8fafc' : '#fff',
-                    borderRadius: 8,
+                    borderRadius: 8, alignItems: 'center',
                   }}>
-                    <span style={{ fontWeight: 700, color: '#1e293b', minWidth: 80 }}>{e.matricula}</span>
-                    <span style={{ flex: 1 }}>{e.colaborador}</span>
-                    <span style={{ color: '#94a3b8' }}>{e.base}</span>
-                    <span style={{ color: '#94a3b8' }}>{e.placas}</span>
+                    <span style={{ fontWeight: 800, color: '#c2410c' }}>{e.prefixo}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <strong style={{ color: '#1e293b' }}>{e.matricula}</strong> · {e.colaborador}
+                    </span>
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>{e.base}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>{e.superv_campo}</span>
+                    <span style={{ color: '#94a3b8', fontSize: 11 }}>{e.placas}</span>
                   </div>
                 ))}
               </div>
