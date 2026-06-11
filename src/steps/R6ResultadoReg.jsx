@@ -243,9 +243,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style>
     </head><body>
     <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
-      <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
+      <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">Plataforma de Gestão Operacional</div>
       <div style="font-size:20px;font-weight:800;">${tipoConfig?.emoji} ${tipoConfig?.label}</div>
-      <div style="font-size:13px;opacity:0.8;margin-top:2px;">${modConfig?.label} · Contrato 1021/2024</div>
+      <div style="font-size:13px;opacity:0.8;margin-top:2px;">${modConfig?.label}</div>
     </div>
     ${form.tipo === 'DISCIPLINAR' && form.tipo_medida
       ? `<div style="background:${tipoConfig?.bg};border:2px solid ${tipoConfig?.color};border-radius:12px;padding:12px 16px;margin-bottom:16px;text-align:center;">
@@ -300,7 +300,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       </table>
     </div>
     <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
-      <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional · DPL Construções — Contrato 1021/2024</p>
+      <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
       <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})}</p>
     </div>
     <div class="no-print" style="text-align:center;margin-top:24px;">
@@ -355,10 +355,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         ))}
       </div>
 
-      {/* ── NOVO: Card de Prefixos (só aparece se houver) ──────────────────── */}
-      {/* Funciona com 1 ou N prefixos: chips compactos com wrap automático.
-          Cada chip mostra um prefixo único. Se houver 20 prefixos, eles
-          quebram em várias linhas mantendo a tela organizada. */}
+      {/* ── Card de Prefixos (só aparece se houver) ──────────────────── */}
       {prefixosUnicos.length > 0 && (
         <div className="card" style={{
           marginBottom: 14,
@@ -468,7 +465,6 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             {capturando ? '⏳ Gerando...' : '📸 Compartilhar no WhatsApp'}
           </button>
 
-          {/* FIX A: passa tipoLabel para o modal */}
           <button onClick={() => setMostrarModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
             🔗 Gerar Link + QR Code para Assinatura
           </button>
