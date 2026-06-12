@@ -192,16 +192,35 @@ function matchNomes(nomeUsuario, nomeEstrutura) {
   return false
 }
 
-// Calcula quais prefixos o usuário tem acesso baseado na estrutura_equipes.
-// Retorna null = sem restrição (vê tudo). Retorna array = restrição ativa.
+// ─── Helpers de processo (exportados pra UI usar) ───────────────────────────
+// Converte "LIGAÇÃO NOVA" → "processo_LIGACAO_NOVA" (chave da permissão).
+// Normalização: maiúscula + remove acentos + qualquer não-alfanumérico → underscore.
+export function processoToKey(processo) {
+  const norm = (processo || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return norm ? `processo_${norm}` : ''
+}
+
+// Calcula quais prefixos o usuário tem acesso baseado em:
+//   1. Cruzamento com estrutura_equipes (hierarquia natural)
+//   2. Processos liberados via permissões (chaves processo_XXX)
+//
+// Retorna null = sem restrição (vê tudo). Array = restrição ativa.
 function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
   // Sem usuário → não restringe (uso público/anônimo)
   if (!usuarioLogado) return null
   // ADMIN sempre vê tudo
   if (usuarioLogado.perfil === 'ADMIN') return null
-  // Permissão de override
-  if ((usuarioLogado.permissoes || []).includes('acesso_todos_processos')) return null
 
+  const perms = usuarioLogado.permissoes || []
+
+  // Override total
+  if (perms.includes('acesso_todos_processos')) return null
+
+  // ─── 1. Hierarquia natural (regra que já existia) ───
   const nome      = usuarioLogado.nome || ''
   const matricula = String(usuarioLogado.matricula || '')
 
@@ -213,11 +232,31 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
     return false
   })
 
-  // Sem cruzamento → padrão liberal (ANALISTA/ASSISTENTE veem tudo)
-  if (linhasMinhas.length === 0) return null
+  // ─── 2. Processos liberados via permissão (processo_XXX) ───
+  // Set com as chaves processo_XXX que o usuário tem. Comparação por chave
+  // (normalizada) pra ser tolerante a acentos/espaços/case.
+  const processosLiberados = new Set(
+    perms.filter(p => typeof p === 'string' && p.startsWith('processo_'))
+  )
 
-  return [...new Set(linhasMinhas.map(r => r.prefixo).filter(Boolean))]
+  const linhasDosProcessos = processosLiberados.size > 0
+    ? (estruturaData || []).filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
+    : []
+
+  // ─── 3. Padrão liberal: SEM cruzamento natural E SEM processos liberados → vê tudo ───
+  // (Mantém compatibilidade pra ANALISTA/ASSISTENTE que não estão na estrutura)
+  if (linhasMinhas.length === 0 && processosLiberados.size === 0) return null
+
+  // ─── 4. União dos prefixos das duas fontes ───
+  const todosPrefixos = new Set()
+  ;[...linhasMinhas, ...linhasDosProcessos].forEach(r => {
+    if (r.prefixo) todosPrefixos.add(r.prefixo)
+  })
+
+  return [...todosPrefixos]
 }
+
+
 
 
 // Carrega a estrutura_equipes uma vez e gerencia todos os estados de filtro.
@@ -256,7 +295,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   // os filtros visíveis são limitados aos prefixos onde o usuário aparece.
   useEffect(() => {
     supabase.from('estrutura_equipes')
-      .select('prefixo, superv_campo, superv_operacao, coordenador, matricula, colaborador')
+      .select('prefixo, superv_campo, superv_operacao, coordenador, matricula, colaborador, processo_equipe')
       .then(({ data }) => {
         // ─── 1) Calcula prefixos permitidos pelo usuário logado ───
         const prefixosPermitidos = calcularPrefixosPermitidos(data, usuarioLogado)
