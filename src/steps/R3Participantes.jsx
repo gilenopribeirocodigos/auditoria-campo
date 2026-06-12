@@ -52,6 +52,96 @@ function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
   )
 }
 
+// ── PrefixoInput — campo editável com autocomplete de prefixos ────────────────
+// Pré-preenchido a partir do que veio em estrutura_equipes pelo participante,
+// mas o usuário pode apagar e digitar outro — as sugestões aparecem conforme
+// digita (mínimo 1 caractere).
+function PrefixoInput({ value, onChange, color = '#0f172a' }) {
+  const [sugestoes, setSugestoes] = useState([])
+  const [aberto,    setAberto]    = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const buscar = async (v) => {
+    if (!v || v.length < 1) { setSugestoes([]); setAberto(false); return }
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select('prefixo')
+        .ilike('prefixo', `%${v}%`)
+        .not('prefixo', 'is', null)
+        .neq('prefixo', '')
+        .order('prefixo')
+        .limit(15)
+      const unicos = [...new Set((data || []).map(r => r.prefixo?.trim()).filter(Boolean))]
+      setSugestoes(unicos)
+      setAberto(unicos.length > 0)
+    } catch { setSugestoes([]); setAberto(false) }
+  }
+
+  const handleChange = (e) => {
+    const v = e.target.value.toUpperCase()
+    onChange(v)
+    buscar(v)
+  }
+
+  const selecionar = (s) => {
+    onChange(s)
+    setSugestoes([])
+    setAberto(false)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', flex: 1, minWidth: 0 }}>
+      <input
+        type="text"
+        value={value || ''}
+        onChange={handleChange}
+        onFocus={() => value && buscar(value)}
+        placeholder="—"
+        autoComplete="off"
+        style={{
+          width: '100%',
+          padding: '4px 8px',
+          fontSize: 12,
+          fontWeight: 600,
+          color,
+          background: '#fff',
+          border: '1px solid #cbd5e1',
+          borderRadius: 6,
+          outline: 'none',
+          boxSizing: 'border-box',
+          fontFamily: 'inherit',
+        }}
+      />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} onMouseDown={() => selecionar(s)}
+              style={{
+                display: 'block', width: '100%', padding: '7px 12px',
+                textAlign: 'left', background: 'none', border: 'none',
+                borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 12, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Modal: importar em lote por supervisor ────────────────────────────────────
 function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFechar }) {
   const [aba,             setAba]             = useState('supervisor') // 'supervisor' | 'usuarios'
@@ -87,13 +177,13 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
       .then(({ data }) => { setUsuarios(data || []); setLoadingUs(false) })
   }, [aba])
 
-  // Preview supervisores
+  // Preview supervisores — agora puxa também o PREFIXO de cada colaborador
   useEffect(() => {
     if (aba !== 'supervisor') return
     if (selecionados.length === 0) { setPreview([]); return }
     setLoadingPreview(true)
     supabase.from('estrutura_equipes')
-      .select('colaborador, matricula, superv_campo')
+      .select('colaborador, matricula, superv_campo, prefixo')   // ← prefixo incluído
       .in('superv_campo', selecionados).order('superv_campo').order('colaborador')
       .then(({ data }) => {
         const vistos = new Set()
@@ -129,7 +219,8 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
       onImportar(preview, modoImport)
     } else {
       if (previewUsuarios.length === 0) return
-      const lista = previewUsuarios.map(u => ({ colaborador: u.nome, matricula: u.matricula || '' }))
+      // Usuários do sistema NÃO têm prefixo associado direto — vem vazio (editável depois)
+      const lista = previewUsuarios.map(u => ({ colaborador: u.nome, matricula: u.matricula || '', prefixo: '' }))
       onImportar(lista, modoImport)
     }
   }
@@ -218,9 +309,11 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✅ {preview.length} participante(s) serão adicionados:</p>
                     <div style={{ maxHeight: 180, overflowY: 'auto' }}>
                       {preview.map((p, i) => (
-                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < preview.length - 1 ? '1px solid #bbf7d0' : 'none', fontSize: 13 }}>
-                          <span style={{ color: '#15803d', fontWeight: 600 }}>{i + 1}. {p.colaborador}</span>
-                          <span style={{ color: '#94a3b8', fontSize: 11 }}>{p.superv_campo}</span>
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: i < preview.length - 1 ? '1px solid #bbf7d0' : 'none', fontSize: 13, gap: 8 }}>
+                          <span style={{ color: '#15803d', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i + 1}. {p.colaborador}</span>
+                          <span style={{ color: '#94a3b8', fontSize: 11, flexShrink: 0 }}>
+                            {p.prefixo ? <span style={{ color: '#0f766e', fontWeight: 700 }}>{p.prefixo}</span> : p.superv_campo}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -305,12 +398,14 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
 }
 
 // ── Autocomplete: busca em estrutura_equipes + usuarios (exceto ADMIN) ────────
+// Agora também devolve o PREFIXO associado ao colaborador (quando vem de estrutura_equipes).
 function AutocompleteEletricista({ onSelect }) {
   const [termo,     setTermo]     = useState('')
   const [sugestoes, setSugestoes] = useState([])
   const [aberto,    setAberto]    = useState(false)
   const [mat,       setMat]       = useState('')
   const [nomeFinal, setNomeFinal] = useState('')
+  const [prefAtual, setPrefAtual] = useState('')
   const ref = useRef(null)
 
   useEffect(() => {
@@ -320,11 +415,11 @@ function AutocompleteEletricista({ onSelect }) {
   }, [])
 
   const buscar = async (v) => {
-    setTermo(v); setNomeFinal(v); setMat('')
+    setTermo(v); setNomeFinal(v); setMat(''); setPrefAtual('')
     if (v.length < 2) { setSugestoes([]); setAberto(false); return }
     try {
       const { data: dataEq } = await supabase.from('estrutura_equipes')
-        .select('colaborador, matricula').ilike('colaborador', `%${v}%`).order('colaborador').limit(15)
+        .select('colaborador, matricula, prefixo').ilike('colaborador', `%${v}%`).order('colaborador').limit(15)
       const { data: dataUs } = await supabase.from('usuarios')
         .select('nome, matricula').ilike('nome', `%${v}%`).neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome').limit(10)
 
@@ -332,11 +427,11 @@ function AutocompleteEletricista({ onSelect }) {
       const unicos = []
       for (const r of (dataEq || [])) {
         const k = r.colaborador?.trim().toLowerCase()
-        if (k && !vistos.has(k)) { vistos.add(k); unicos.push({ colaborador: r.colaborador, matricula: r.matricula || '' }) }
+        if (k && !vistos.has(k)) { vistos.add(k); unicos.push({ colaborador: r.colaborador, matricula: r.matricula || '', prefixo: r.prefixo || '' }) }
       }
       for (const r of (dataUs || [])) {
         const k = r.nome?.trim().toLowerCase()
-        if (k && !vistos.has(k)) { vistos.add(k); unicos.push({ colaborador: r.nome, matricula: r.matricula || '' }) }
+        if (k && !vistos.has(k)) { vistos.add(k); unicos.push({ colaborador: r.nome, matricula: r.matricula || '', prefixo: '' }) }
       }
       if (unicos.length > 0) { setSugestoes(unicos); setAberto(true) }
       else { setSugestoes([]); setAberto(false) }
@@ -344,9 +439,10 @@ function AutocompleteEletricista({ onSelect }) {
   }
 
   const selecionar = (item) => {
-    setTermo(item.colaborador); setNomeFinal(item.colaborador); setMat(item.matricula || '')
+    setTermo(item.colaborador); setNomeFinal(item.colaborador)
+    setMat(item.matricula || ''); setPrefAtual(item.prefixo || '')
     setSugestoes([]); setAberto(false)
-    onSelect(item.colaborador, item.matricula || '')
+    onSelect(item.colaborador, item.matricula || '', item.prefixo || '')
   }
 
   return (
@@ -364,7 +460,10 @@ function AutocompleteEletricista({ onSelect }) {
                 onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
                 onMouseLeave={e => e.currentTarget.style.background = 'none'}>
                 <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{s.colaborador}</span>
-                {s.matricula && <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 700, background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>Mat: {s.matricula}</span>}
+                <span style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                  {s.prefixo && <span style={{ fontSize: 11, color: '#0f766e', fontWeight: 700, background: '#f0fdfa', padding: '2px 7px', borderRadius: 6 }}>{s.prefixo}</span>}
+                  {s.matricula && <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 700, background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>Mat: {s.matricula}</span>}
+                </span>
               </button>
             ))}
           </div>
@@ -372,7 +471,7 @@ function AutocompleteEletricista({ onSelect }) {
       </div>
       <div className="form-group">
         <label className="form-label">Matrícula</label>
-        <input className="form-input" value={mat} onChange={e => { setMat(e.target.value); onSelect(nomeFinal, e.target.value) }}
+        <input className="form-input" value={mat} onChange={e => { setMat(e.target.value); onSelect(nomeFinal, e.target.value, prefAtual) }}
           placeholder="Preenchida automaticamente" inputMode="numeric"
           style={{ background: mat ? '#f0fdf4' : '#fff', borderColor: mat ? '#86efac' : undefined }} />
         {mat && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 3 }}>✅ Preenchida automaticamente</p>}
@@ -385,13 +484,14 @@ function AutocompleteEletricista({ onSelect }) {
 function FormParticipante({ onSolicitar, onCancelar }) {
   const [nome, setNome] = useState('')
   const [mat,  setMat]  = useState('')
+  const [pref, setPref] = useState('')
   return (
     <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>Novo participante presencial</p>
-      <AutocompleteEletricista onSelect={(n, m) => { setNome(n); setMat(m) }} />
+      <AutocompleteEletricista onSelect={(n, m, p) => { setNome(n); setMat(m); setPref(p) }} />
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
-        <button onClick={() => onSolicitar(nome.trim(), mat.trim())} disabled={!nome.trim()}
+        <button onClick={() => onSolicitar(nome.trim(), mat.trim(), pref.trim())} disabled={!nome.trim()}
           style={{ flex: 2, padding: 11, borderRadius: 10, border: 'none', background: nome.trim() ? '#1e3a5f' : '#e2e8f0', color: nome.trim() ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: 700, cursor: nome.trim() ? 'pointer' : 'not-allowed' }}>
           ✍️ Solicitar Assinatura
         </button>
@@ -404,14 +504,15 @@ function FormParticipante({ onSolicitar, onCancelar }) {
 function FormParticipanteOnline({ onAdicionar, onCancelar }) {
   const [nome, setNome] = useState('')
   const [mat,  setMat]  = useState('')
+  const [pref, setPref] = useState('')
   return (
     <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8', marginBottom: 4 }}>Participante online</p>
       <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Irá assinar via link/QR Code — sem assinatura agora</p>
-      <AutocompleteEletricista onSelect={(n, m) => { setNome(n); setMat(m) }} />
+      <AutocompleteEletricista onSelect={(n, m, p) => { setNome(n); setMat(m); setPref(p) }} />
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
-        <button onClick={() => onAdicionar(nome.trim(), mat.trim())} disabled={!nome.trim()}
+        <button onClick={() => onAdicionar(nome.trim(), mat.trim(), pref.trim())} disabled={!nome.trim()}
           style={{ flex: 2, padding: 11, borderRadius: 10, border: 'none', background: nome.trim() ? '#2563eb' : '#e2e8f0', color: nome.trim() ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: 700, cursor: nome.trim() ? 'pointer' : 'not-allowed' }}>
           + Adicionar à lista
         </button>
@@ -449,7 +550,7 @@ async function capturarLocalizacao() {
 export default function R3Participantes({ form, upd, next, prev }) {
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const modConfig  = MODALIDADES[form.modalidade]
-  const [assinandoPart,    setAssinandoPart]    = useState(null) // { nome, matricula } (novo) OU { nome, idx } (existente)
+  const [assinandoPart,    setAssinandoPart]    = useState(null) // { nome, matricula, prefixo } (novo) OU { nome, idx } (existente)
   const [adicionando,      setAdicionando]      = useState(false)
   const [modoAdd,          setModoAdd]          = useState(null) // 'presencial' | 'online' | null
   const [modalImportar,    setModalImportar]    = useState(false)
@@ -465,10 +566,10 @@ export default function R3Participantes({ form, upd, next, prev }) {
     if (form.participantes.length === 0 && !adicionando) setAdicionando(true)
   }, [])
 
-  const onSolicitarAssinatura = (nome, mat) => {
+  const onSolicitarAssinatura = (nome, mat, pref) => {
     if (!nome) return
     setAdicionando(false); setModoAdd(null)
-    setAssinandoPart({ nome, matricula: mat }) // sem idx = participante novo
+    setAssinandoPart({ nome, matricula: mat, prefixo: pref || '' })
   }
 
   // Abre o canvas para um participante JÁ existente na lista (ex.: importado em lote)
@@ -495,6 +596,7 @@ export default function R3Participantes({ form, upd, next, prev }) {
     // Caso 2: participante NOVO — adiciona à lista
     upd('participantes', [...form.participantes, {
       nome: assinandoPart.nome, matricula: assinandoPart.matricula,
+      prefixo: assinandoPart.prefixo || '',
       assinatura: png, assinado_em: new Date().toISOString(), modo: 'presencial',
       lat, lng, endereco_assinatura,
     }])
@@ -502,19 +604,21 @@ export default function R3Participantes({ form, upd, next, prev }) {
     if (form.modalidade === 'DUPLA' && form.participantes.length + 1 < 2) setAdicionando(true)
   }
 
-  const onAdicionarOnline = (nome, mat) => {
+  const onAdicionarOnline = (nome, mat, pref) => {
     if (!nome) return
     upd('participantes', [...form.participantes, {
-      nome, matricula: mat, assinatura: null, assinado_em: null, modo: 'online',
+      nome, matricula: mat, prefixo: pref || '',
+      assinatura: null, assinado_em: null, modo: 'online',
     }])
     setAdicionando(false); setModoAdd(null)
     if (form.modalidade === 'DUPLA' && form.participantes.length + 1 < 2) setAdicionando(true)
   }
 
-  // ── Importação em lote por supervisor ──────────────────────────────────────
+  // ── Importação em lote por supervisor — agora leva o prefixo junto ─────────
   const onImportarLote = (lista, modo) => {
     const novos = lista.map(p => ({
       nome: p.colaborador, matricula: p.matricula || '',
+      prefixo: p.prefixo || '',
       assinatura: null, assinado_em: null, modo,
     }))
     upd('participantes', [...form.participantes, ...novos])
@@ -523,6 +627,14 @@ export default function R3Participantes({ form, upd, next, prev }) {
   }
 
   const remover = (idx) => upd('participantes', form.participantes.filter((_, i) => i !== idx))
+
+  // Atualiza apenas o prefixo de um participante (chamado pelo PrefixoInput de cada card)
+  const atualizarPrefixo = (idx, novoPrefixo) => {
+    const novos = form.participantes.map((p, i) =>
+      i === idx ? { ...p, prefixo: novoPrefixo } : p
+    )
+    upd('participantes', novos)
+  }
 
   // Intercepta o Continuar: se houver presenciais sem assinar, pede confirmação
   const tentarContinuar = () => {
@@ -569,29 +681,41 @@ export default function R3Participantes({ form, upd, next, prev }) {
       {/* Lista de participantes já adicionados */}
       {form.participantes.map((p, i) => {
         const pendentePresencial = p.modo === 'presencial' && !p.assinatura
+        const nomeColor = p.modo === 'online' ? '#1d4ed8' : pendentePresencial ? '#92400e' : '#15803d'
         return (
           <div key={i} style={{
             background: p.modo === 'online' ? '#eff6ff' : pendentePresencial ? '#fffbeb' : '#f0fdf4',
             border: `1.5px solid ${p.modo === 'online' ? '#bfdbfe' : pendentePresencial ? '#fcd34d' : '#86efac'}`,
             borderRadius: 12, padding: '12px 14px', marginBottom: 10,
-            display: 'flex', alignItems: 'center', gap: 12,
+            display: 'flex', alignItems: 'flex-start', gap: 12,
           }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2, flexWrap: 'wrap' }}>
-                <p style={{ fontSize: 14, fontWeight: 700, color: p.modo === 'online' ? '#1d4ed8' : pendentePresencial ? '#92400e' : '#15803d' }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: nomeColor }}>
                   {i + 1}. {p.nome}
                 </p>
                 <span style={{ fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 6, background: p.modo === 'online' ? '#dbeafe' : '#dcfce7', color: p.modo === 'online' ? '#1d4ed8' : '#15803d' }}>
                   {p.modo === 'online' ? '🔗 Online' : '✍️ Presencial'}
                 </span>
               </div>
-              {p.matricula && <p style={{ fontSize: 12, color: '#64748b' }}>Mat: {p.matricula}</p>}
-              {p.assinatura && <p style={{ fontSize: 11, color: '#94a3b8' }}>✅ Assinado · {new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
-              {!p.assinatura && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb' }}>⏳ Assinará via link</p>}
-              {pendentePresencial && <p style={{ fontSize: 11, color: '#d97706', fontWeight: 600 }}>⚠️ Aguardando assinatura</p>}
+              {p.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 6px' }}>Mat: {p.matricula}</p>}
+
+              {/* ─── PREFIXO editável com autocomplete ─── */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <span style={{ fontSize: 12, color: '#64748b', fontWeight: 600, flexShrink: 0 }}>Prefixo:</span>
+                <PrefixoInput
+                  value={p.prefixo}
+                  onChange={(v) => atualizarPrefixo(i, v)}
+                  color={nomeColor}
+                />
+              </div>
+
+              {p.assinatura && <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>✅ Assinado · {new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
+              {!p.assinatura && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb', margin: 0 }}>⏳ Assinará via link</p>}
+              {pendentePresencial && <p style={{ fontSize: 11, color: '#d97706', fontWeight: 600, margin: 0 }}>⚠️ Aguardando assinatura</p>}
             </div>
 
-            {p.assinatura && <img src={p.assinatura} alt="assinatura" style={{ width: 80, height: 40, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />}
+            {p.assinatura && <img src={p.assinatura} alt="assinatura" style={{ width: 80, height: 40, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0', flexShrink: 0 }} />}
 
             {/* Botão Assinar para presencial pendente */}
             {pendentePresencial && (

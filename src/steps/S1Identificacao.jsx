@@ -117,11 +117,20 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
 
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat
 
-  // Pré-preenche OS e UC da pauta ativa se estiverem vazios no form
+  // Pré-preenche OS, UC e eletricistas da pauta ativa se estiverem vazios no form
   useEffect(() => {
     if (!pautaAtiva) return
-    if (pautaAtiva.os  && !form.os)  upd('os',  pautaAtiva.os)
-    if (pautaAtiva.uc  && !form.uc)  upd('uc',  pautaAtiva.uc)
+    if (pautaAtiva.os && !form.os) upd('os', pautaAtiva.os)
+    if (pautaAtiva.uc && !form.uc) upd('uc', pautaAtiva.uc)
+    // Eletricistas da pauta (vindos do CSV via lookup em estrutura_equipes)
+    if (pautaAtiva.nome_eletricista && !form.nomeEletricista) {
+      upd('nomeEletricista', pautaAtiva.nome_eletricista)
+      if (pautaAtiva.matricula_eletricista1) upd('matriculaEletricista1', pautaAtiva.matricula_eletricista1)
+    }
+    if (pautaAtiva.nome_eletricista2 && !form.nomeEletricista2) {
+      upd('nomeEletricista2', pautaAtiva.nome_eletricista2)
+      if (pautaAtiva.matricula_eletricista2) upd('matriculaEletricista2', pautaAtiva.matricula_eletricista2)
+    }
   }, [pautaAtiva])
 
   useEffect(() => {
@@ -201,6 +210,9 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     )
   }
 
+  // ── Tem alguma info de pauta pra exibir? ──
+  const temInfoPauta = pautaAtiva && (pautaAtiva.motivo_auditoria || pautaAtiva.observacao)
+
   return (
     <div>
       <p className="section-title">Dados do Fiscal</p>
@@ -256,6 +268,64 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
           <input className="form-input" value={form.uc} onChange={e => upd('uc', e.target.value)} placeholder="Unidade Consumidora" />
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════════
+          INFORMAÇÕES DA PAUTA — Motivo Auditoria + Observação (somente leitura)
+          Aparece quando a auditoria foi iniciada a partir de uma pauta.
+      ═══════════════════════════════════════════════════════════════════════ */}
+      {temInfoPauta && (
+        <div style={{
+          background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12,
+          padding: '14px', marginTop: 6, marginBottom: 14,
+        }}>
+          <p style={{
+            fontSize: 11, fontWeight: 800, color: '#9a3412',
+            textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 10,
+            display: 'flex', alignItems: 'center', gap: 6,
+          }}>
+            📋 Informações da Pauta
+            <span style={{
+              fontSize: 9, fontWeight: 700, color: '#fff',
+              background: '#c2410c', padding: '2px 7px', borderRadius: 4,
+              letterSpacing: 0.5,
+            }}>somente leitura</span>
+          </p>
+
+          {/* ─── 1) MOTIVO DA AUDITORIA ─── */}
+          {pautaAtiva.motivo_auditoria && (
+            <div style={{
+              display: 'inline-block',
+              background: '#fff', border: '1.5px solid #fed7aa',
+              color: '#c2410c', fontWeight: 800, fontSize: 13,
+              padding: '6px 12px', borderRadius: 8,
+              marginBottom: pautaAtiva.observacao ? 10 : 0,
+            }}>
+              🎯 Motivo: {pautaAtiva.motivo_auditoria}
+            </div>
+          )}
+
+          {/* ─── 2) OBSERVAÇÃO (texto livre, com espaço pra ser lida) ─── */}
+          {pautaAtiva.observacao && (
+            <div style={{
+              background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 8,
+              padding: '10px 12px', lineHeight: 1.6,
+            }}>
+              <p style={{
+                fontSize: 10, fontWeight: 800, color: '#0369a1',
+                textTransform: 'uppercase', letterSpacing: 0.5, margin: 0,
+              }}>
+                💬 Observação:
+              </p>
+              <p style={{
+                fontSize: 13, color: '#0c4a6e', margin: '5px 0 0',
+                wordBreak: 'break-word', whiteSpace: 'pre-wrap',
+              }}>
+                {pautaAtiva.observacao}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       <p className="section-title" style={{ marginTop: 18 }}>Eletricistas da Equipe</p>
 

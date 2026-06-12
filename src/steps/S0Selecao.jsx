@@ -63,8 +63,8 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                 borderRadius: 14, padding: '14px 16px', textAlign: 'left', cursor: 'pointer',
                 transition: 'all 0.15s',
               }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <p style={{ fontSize: 16, fontWeight: 800, color: ativa ? '#1d4ed8' : '#1e293b', marginBottom: 4 }}>
                       {ativa ? '✅ ' : ''}{p.prefixo}
                     </p>
@@ -74,14 +74,47 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                         <span style={{ color: '#dc2626', fontWeight: 700, marginLeft: 6 }}>⚠️ Vencida</span>
                       )}
                     </p>
-                    {p.observacao && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>💬 {p.observacao}</p>}
+
+                    {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
+                    {(p.nome_eletricista || p.nome_eletricista2) && (
+                      <p style={{ fontSize: 12, color: '#0c4a6e', fontWeight: 600, marginTop: 3 }}>
+                        👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
+                      </p>
+                    )}
+
+                    {/* ─── Motivo Auditoria (destacado em laranja) ─── */}
+                    {p.motivo_auditoria && (
+                      <div style={{
+                        marginTop: 6, display: 'inline-block',
+                        background: '#fff7ed', border: '1px solid #fed7aa',
+                        color: '#c2410c', fontWeight: 700, fontSize: 11,
+                        padding: '3px 9px', borderRadius: 6,
+                      }}>
+                        🎯 Motivo: {p.motivo_auditoria}
+                      </div>
+                    )}
+
+                    {/* ─── Observação (destacada em azul, texto completo) ─── */}
+                    {p.observacao && (
+                      <div style={{
+                        marginTop: 5, background: '#f0f9ff', border: '1px solid #bae6fd',
+                        padding: '6px 10px', borderRadius: 6, lineHeight: 1.5,
+                      }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                          💬 Observação:
+                        </span>
+                        <p style={{ fontSize: 11, color: '#0c4a6e', margin: '2px 0 0', wordBreak: 'break-word' }}>
+                          {p.observacao}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div style={{
                     width: 28, height: 28, borderRadius: '50%',
                     border: `2px solid ${ativa ? '#2563eb' : '#e2e8f0'}`,
                     background: ativa ? '#2563eb' : '#fff',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    flexShrink: 0,
+                    flexShrink: 0, marginTop: 2,
                   }}>
                     {ativa && <span style={{ color: '#fff', fontSize: 14 }}>✓</span>}
                   </div>
@@ -146,14 +179,15 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
       {form.tipoAuditoria && (
         <>
           <p className="section-title">Tipo de Serviço</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 18 }}>
+          {/* ─── Grid 2x2 — acomoda os 4 tipos: Corte, Anexo, Religação, Emergencial ─── */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 18 }}>
             {Object.entries(CHECKLISTS).map(([key, val]) => (
               <button key={key}
                 className={`type-card ${form.tipoServico === key ? 'selected-blue' : ''}`}
                 onClick={() => { upd('tipoServico', key); upd('produtivo', null); upd('respostas', {}); upd('debitoPago', null) }}
-                style={{ padding: '14px 6px' }}>
-                <div className="type-emoji" style={{ fontSize: 24 }}>{val.emoji}</div>
-                <div className="type-label" style={{ fontSize: 11, color: form.tipoServico === key ? '#1d4ed8' : '#374151', lineHeight: 1.3, marginTop: 4 }}>
+                style={{ padding: '14px 8px' }}>
+                <div className="type-emoji" style={{ fontSize: 26 }}>{val.emoji}</div>
+                <div className="type-label" style={{ fontSize: 12, color: form.tipoServico === key ? '#1d4ed8' : '#374151', lineHeight: 1.3, marginTop: 6 }}>
                   {val.label}
                 </div>
               </button>

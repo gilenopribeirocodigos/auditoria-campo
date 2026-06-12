@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
-
-function calcMesAtual() {
-  const hoje = new Date()
-  const ini  = new Date(hoje.getFullYear(), hoje.getMonth(), 1).toISOString().split('T')[0]
-  const fim  = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).toISOString().split('T')[0]
-  return { ini, fim }
-}
+import {
+  useFiltrosOperacionais,
+  PainelFiltros,
+  MultiSelect,
+  FIELD_HEIGHT, LABEL_STYLE, INPUT_STYLE,
+} from '../components/PainelFiltros.jsx'
 
 const TIPO_MEDIDA_LABEL = {
   FEEDBACK:            'Feedback',
@@ -18,6 +18,7 @@ const TIPO_MEDIDA_LABEL = {
   SUSPENSAO:           'Suspensão',
 }
 
+// ─── função de impressão (mantida igual) ─────────────────────────────────────
 function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
   const tipoConfig = TIPOS_REGISTRO[r.tipo]
   const modConfig  = MODALIDADES[r.modalidade]
@@ -27,7 +28,6 @@ function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
     const assinaturaOnline = assinaturasOnline.find(
       a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
     )
-    // isOnline: campo modo presente, OU tem assinatura coletada online sem assinatura presencial
     const isOnline = p.modo === 'online' || (!!assinaturaOnline && !p.assinatura_url)
     return {
       ...p,
@@ -123,35 +123,90 @@ function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
 }
 
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
+  // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
+  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+
+  // ─── Filtros EXTRAS desta tela ───
+  const [tipo,       setTipo]       = useState('')   // single select
+  const [fiscaisSel, setFiscaisSel] = useState([])   // multi select
+
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [detalhe,       setDetalhe]       = useState(null)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
-  const [filtros,       setFiltros]       = useState({
-    dataIni: calcMesAtual().ini,
-    dataFim: calcMesAtual().fim,
-    tipo:    '',
-    fiscal:  '',
-  })
-  const [tokensAtivos,  setTokensAtivos]  = useState({}) // { registroId: tokenData }
-  const [encerrando,    setEncerrando]    = useState(null) // registroId sendo encerrado
-  const [fiscaisLista,  setFiscaisLista]  = useState([]) // usuários para filtro
-  const [fiscaisSel,    setFiscaisSel]    = useState([]) // fiscais selecionados
-  const [dropdownOpen,  setDropdownOpen]  = useState(false)
+  const [tokensAtivos,  setTokensAtivos]  = useState({})
+  const [encerrando,    setEncerrando]    = useState(null)
+  const [fiscaisLista,  setFiscaisLista]  = useState([])
   const [capturando,    setCapturando]    = useState(false)
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
-  const dropdownRef = useRef(null)
   const intervalRef = useRef(null)
+
+  const isAdmin = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
 
   const buscar = async () => {
     setLoading(true)
     try {
-      const data = await listarRegistros({ ...filtros, fiscais: fiscaisSel }, usuarioLogado)
+      const { ini, fim } = filtros.getDatasQuery()
+      if (!ini || !fim) {
+        setRegistros([])
+        setTokensAtivos({})
+        setLoading(false)
+        return
+      }
+
+      // ─── 1) Se há filtros hierárquicos, descobre quais supervisores "casam" ───
+      // Combina selSupOp + selSupCampo + selPrefixos → conjunto de Sup. Campo permitidos.
+      // O matching com registros.fiscal é fuzzy (substring case-insensitive)
+      // porque registros.fiscal tem nome completo enquanto superv_campo
+      // pode ter só o primeiro nome.
+      const filtroHierarquicoAtivo =
+        filtros.selSupOp.length    > 0 ||
+        filtros.selSupCampo.length > 0 ||
+        filtros.selPrefixos.length > 0
+
+      let supervisoresPermitidos = null
+      if (filtroHierarquicoAtivo) {
+        const sups = new Set()
+        Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+          if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
+          if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
+          if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
+          if (info.campo) sups.add(info.campo)
+        })
+        supervisoresPermitidos = [...sups]
+        if (supervisoresPermitidos.length === 0) {
+          setRegistros([])
+          setTokensAtivos({})
+          setLoading(false)
+          return
+        }
+      }
+
+      // ─── 2) Chama listarRegistros com filtros básicos (data + tipo + fiscais) ───
+      let data = await listarRegistros({
+        dataIni: ini,
+        dataFim: fim,
+        tipo:    tipo,
+        fiscais: fiscaisSel,
+      }, usuarioLogado)
+
+      // ─── 3) Aplica filtro de supervisor no front-end (matching fuzzy) ───
+      if (supervisoresPermitidos) {
+        const supLower = supervisoresPermitidos.map(s => s.toLowerCase())
+        data = data.filter(r => {
+          const fiscalLower = (r.fiscal || '').trim().toLowerCase()
+          if (!fiscalLower) return false
+          return supLower.some(s =>
+            fiscalLower.includes(s) || s.includes(fiscalLower)
+          )
+        })
+      }
+
       setRegistros(data)
-      // Busca tokens ativos para todos os registros de uma vez
+
+      // ─── 4) Busca tokens ativos para todos os registros ───
       if (data.length > 0) {
-        const { supabase } = await import('../lib/supabase.js')
         const { data: tokens } = await supabase
           .from('assinaturas_pendentes')
           .select('id, token, registro_id, status, expires_at')
@@ -161,6 +216,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         const mapa = {}
         for (const t of (tokens || [])) mapa[t.registro_id] = t
         setTokensAtivos(mapa)
+      } else {
+        setTokensAtivos({})
       }
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
@@ -168,28 +225,23 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
   useEffect(() => {
     buscar()
-    // Carrega lista de fiscais (usuários ativos exceto ADMIN)
-    import('../lib/supabase.js').then(({ supabase }) => {
-      supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
-        .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
-      // Versão do sistema vem do build (getVersaoApp), não precisa buscar do banco
-    })
-    // Fecha dropdown ao clicar fora
-    const fn = e => { if (dropdownRef.current && !dropdownRef.current.contains(e.target)) setDropdownOpen(false) }
-    document.addEventListener('mousedown', fn)
-    return () => document.removeEventListener('mousedown', fn)
+    // Lista de fiscais (usuários ativos exceto ADMIN)
+    supabase.from('usuarios').select('nome').neq('perfil', 'ADMIN').eq('status', 'ATIVO').order('nome')
+      .then(({ data }) => setFiscaisLista((data || []).map(u => u.nome)))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Auto-refresh a cada 5 min — usa ref pra sempre chamar a versão mais recente
+  const buscarRef = useRef(buscar)
+  useEffect(() => { buscarRef.current = buscar })
   useEffect(() => {
-    // Atualiza a cada 5 minutos E apenas se não houver modal de detalhe aberto
     intervalRef.current = setInterval(() => {
-      if (!detalhe) buscar()
+      if (!detalhe) buscarRef.current()
     }, 300000)
     return () => clearInterval(intervalRef.current)
   }, [detalhe])
 
-  const upd = (k, v) => setFiltros(f => ({ ...f, [k]: v }))
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
-  const isAdmin = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
 
   const fetchAssinaturasOnline = async (registroId) => {
     setLoadingOnline(true)
@@ -213,6 +265,34 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     setAssinOnline([])
     fetchAssinaturasOnline(r.id)
   }
+
+  // ─── Filtros EXTRAS no painel: Tipo + Fiscal/Usuário ───
+  const extras = (
+    <>
+      <div>
+        <label style={LABEL_STYLE}>Tipo</label>
+        <select value={tipo} onChange={e => setTipo(e.target.value)} style={{
+          ...INPUT_STYLE, cursor: 'pointer', appearance: 'none',
+          backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' viewBox=\'0 0 10 6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E")',
+          backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32,
+        }}>
+          <option value="">Todos</option>
+          {Object.entries(TIPOS_REGISTRO).map(([k, t]) => (
+            <option key={k} value={k}>{t.emoji} {t.label}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <label style={LABEL_STYLE}>Fiscal / Usuário</label>
+        <MultiSelect
+          opcoes={fiscaisLista}
+          selecionados={fiscaisSel}
+          onChange={setFiscaisSel}
+          placeholder="Todos"
+        />
+      </div>
+    </>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -243,63 +323,21 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           + Novo Registro Operacional
         </button>
 
-        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', marginBottom: 12 }}>Filtros</p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data início</label>
-              <input type="date" value={filtros.dataIni} onChange={e => upd('dataIni', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Data fim</label>
-              <input type="date" value={filtros.dataFim} onChange={e => upd('dataFim', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tipo</label>
-              <select value={filtros.tipo} onChange={e => upd('tipo', e.target.value)} className="form-input" style={{ fontSize: 13, padding: '8px 10px' }}>
-                <option value="">Todos</option>
-                {Object.entries(TIPOS_REGISTRO).map(([k, t]) => (
-                  <option key={k} value={k}>{t.emoji} {t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div ref={dropdownRef} style={{ position: 'relative' }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Fiscal / Usuário</label>
-              <button onClick={() => setDropdownOpen(o => !o)} style={{
-                width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0',
-                background: '#fff', fontSize: 13, textAlign: 'left', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-              }}>
-                <span style={{ color: fiscaisSel.length ? '#1e293b' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 120 }}>
-                  {fiscaisSel.length === 0 ? 'Todos' : fiscaisSel.length === 1 ? fiscaisSel[0].split(' ')[0] : `${fiscaisSel.length} selecionados`}
-                </span>
-                <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 4 }}>▼</span>
-              </button>
-              {dropdownOpen && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto', minWidth: 200 }}>
-                  <button onMouseDown={() => setFiscaisSel([])} style={{ display: 'block', width: '100%', padding: '9px 14px', textAlign: 'left', background: fiscaisSel.length === 0 ? '#eff6ff' : 'none', border: 'none', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#2563eb' }}>
-                    ✓ Todos os fiscais
-                  </button>
-                  {fiscaisLista.map((nome, i) => {
-                    const sel = fiscaisSel.includes(nome)
-                    return (
-                      <button key={i} onMouseDown={() => setFiscaisSel(prev => sel ? prev.filter(n => n !== nome) : [...prev, nome])}
-                        style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '9px 14px', textAlign: 'left', background: sel ? '#eff6ff' : 'none', border: 'none', borderBottom: i < fiscaisLista.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
-                        onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#f8fafc' }}
-                        onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}>
-                        <div style={{ width: 16, height: 16, borderRadius: 4, border: `2px solid ${sel ? '#2563eb' : '#cbd5e1'}`, background: sel ? '#2563eb' : '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                          {sel && <span style={{ color: '#fff', fontSize: 10, fontWeight: 800 }}>✓</span>}
-                        </div>
-                        <span style={{ fontSize: 13, fontWeight: sel ? 700 : 500, color: sel ? '#1d4ed8' : '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-          <button onClick={buscar} style={{ marginTop: 12, padding: '10px 24px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-            🔍 Buscar
-          </button>
+        {/* ═══ PAINEL DE FILTROS (componente reutilizável) ═══ */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros"
+          badge="registros"
+          extras={extras}
+        />
+
+        <div style={{ marginBottom: 16 }}>
+          <button onClick={buscar} style={{
+            height: FIELD_HEIGHT, padding: '0 22px',
+            background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10,
+            fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+          }}>🔍 Buscar</button>
         </div>
 
         {loading ? (
@@ -343,7 +381,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             <span style={{ margin: '0 8px' }}>·</span>
                             <span>👥 {Array.isArray(r.participantes) ? r.participantes.length : 0} participante(s)</span>
                           </div>
-                          {/* Badge de link ativo */}
                           {tokenAtivo && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}
                               onClick={e => e.stopPropagation()}>
@@ -387,16 +424,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               const mc           = MODALIDADES[detalhe.modalidade] || {}
               const participantes = detalhe.participantes || []
 
-              // ── Enriquece cada participante ──────────────────────────────────────────
-              // Lógica dupla: usa p.modo quando disponível (registros novos),
-              // e sempre cruza com assinOnline para capturar assinaturas já realizadas
-              // (cobre também registros antigos sem o campo modo)
               const participantesEnriquecidos = participantes.map(p => {
-                // Busca assinatura online independente do modo
                 const assinaturaOnline = assinOnline.find(
                   a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
                 )
-                // É online se: campo modo diz 'online', OU tem assinatura em assinOnline sem assinatura presencial
                 const isOnline = p.modo === 'online' || (!!assinaturaOnline && !p.assinatura_url)
                 return {
                   ...p,
@@ -406,7 +437,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 }
               })
 
-              // Pessoas que assinaram online mas não estavam na lista original
               const apenasOnline = assinOnline.filter(
                 a => !participantes.some(p => p.nome?.trim().toLowerCase() === a.nome?.trim().toLowerCase())
               )
@@ -464,7 +494,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
-                  {/* Lista de Frequência unificada */}
                   <div style={{ marginBottom: 14 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                       <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', margin: 0 }}>
@@ -497,7 +526,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                               </div>
                               {p.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Mat: {p.matricula}</p>}
 
-                              {/* Localização — presencial (salvo no JSON do participante) */}
                               {!p.isOnline && p.assinaturaFinal && (p.endereco_assinatura || p.lat) && (
                                 <div style={{ marginTop: 5 }}>
                                   {p.endereco_assinatura && (
@@ -514,7 +542,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                                 </div>
                               )}
 
-                              {/* Localização — online (salvo em assinaturas_coletadas) */}
                               {p.isOnline && p.assinouOnline && (() => {
                                 const assinOnlineData = assinOnline.find(
                                   a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()
@@ -536,7 +563,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                                 ) : null
                               })()}
 
-                              {/* Aguardando assinatura online */}
                               {p.isOnline && !p.assinaturaFinal && !loadingOnline && (
                                 <p style={{ fontSize: 11, color: '#f59e0b', fontWeight: 700, margin: '4px 0 0' }}>
                                   ⏳ Aguardando assinatura via link
@@ -617,7 +643,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     🖨️ Imprimir / Salvar PDF
                   </button>
 
-                  {/* Botão compartilhar no WhatsApp — gera imagem igual ao R6 */}
                   <button onClick={async () => {
                     setCapturando(true)
                     try {
@@ -626,7 +651,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       const mc2 = MODALIDADES[detalhe.modalidade] || {}
                       const formatD = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
                       const participantes = detalhe.participantes || []
-                      // Cruza participantes com assinaturas online (igual ao modal)
                       const participantesComAssinatura = participantes.map(p => {
                         const assinaturaOnline = assinOnline.find(
                           a => a.nome?.trim().toLowerCase() === p.nome?.trim().toLowerCase()

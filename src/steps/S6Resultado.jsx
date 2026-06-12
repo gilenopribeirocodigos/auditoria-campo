@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react'
 import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
-import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
+import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, supabase } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 
 export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
@@ -274,6 +274,50 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     nome_eletricista2: form.nomeEletricista2 || null,
   })
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Sincroniza as Não Conformidades da auditoria com a tabela auditorias_nao_conformes
+  // - Nova auditoria: só INSERT
+  // - Reabertura (modoEdicao=true): DELETE das antigas + INSERT das atuais
+  //   (porque as respostas podem ter mudado e NCs antigas podem não ser mais NCs)
+  // - Falhas são silenciosas (console.warn) pra não bloquear o salvar da auditoria
+  // ═══════════════════════════════════════════════════════════════════════════
+  const sincronizarNCs = async (auditoriaId, ncs, isEdicao) => {
+    try {
+      // Em modo edição: limpa NCs antigas antes de inserir as novas
+      if (isEdicao) {
+        const { error: delErr } = await supabase
+          .from('auditorias_nao_conformes')
+          .delete()
+          .eq('auditoria_id', auditoriaId)
+        if (delErr) {
+          console.warn('⚠️ Erro ao limpar NCs antigas:', delErr.message)
+        }
+      }
+
+      // Insere as NCs atuais (se houver)
+      if (ncs && ncs.length > 0) {
+        const linhas = ncs.map(item => ({
+          auditoria_id: auditoriaId,
+          item_id:      String(item.id ?? ''),
+          item_texto:   item.p || '',
+        }))
+        const { error: insErr } = await supabase
+          .from('auditorias_nao_conformes')
+          .upsert(linhas, {
+            onConflict:       'auditoria_id,item_id',
+            ignoreDuplicates: true,
+          })
+        if (insErr) {
+          console.warn('⚠️ Erro ao salvar NCs na tabela auditorias_nao_conformes:', insErr.message)
+        } else {
+          console.log(`✅ ${linhas.length} NC(s) salvas em auditorias_nao_conformes`)
+        }
+      }
+    } catch (e) {
+      console.warn('⚠️ Erro ao sincronizar NCs (tabela pode não existir):', e.message)
+    }
+  }
+
   const salvar = async () => {
     setSaveStatus('saving')
     setSaveError('')
@@ -325,6 +369,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         saved = await atualizarAuditoriaBD(auditoriaEditandoId, payload)
       } else {
         saved = await salvarAuditoriaBD(payload)
+      }
+
+      // ─── Sincroniza Não Conformidades na tabela auxiliar ───
+      // (Falha silenciosa: não bloqueia o sucesso do salvar da auditoria)
+      if (saved?.id) {
+        await sincronizarNCs(saved.id, ncItems, modoEdicao)
       }
 
       setSaveStatus('saved')

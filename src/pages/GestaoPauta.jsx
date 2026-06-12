@@ -1,16 +1,47 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
+import {
+  useFiltrosOperacionais,
+  PainelFiltros,
+  FIELD_HEIGHT,
+} from '../components/PainelFiltros.jsx'
 
-const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA']
+const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
+
+// ─── Motivos pré-definidos para Motivo Auditoria ──────────────────────────────
+// Para adicionar novos motivos no futuro, basta incluir aqui.
+const MOTIVOS_AUDITORIA = [
+  'MATERIAL APLICADO EM CAMPO',
+  'RELIGA VINCULADA',
+]
 
 const FORM_VAZIO = {
   prefixo: '', fiscal_login: '', data_prevista: new Date().toISOString().split('T')[0],
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
   recorrencia: 'UNICA', observacao: '', os: '', uc: '',
+  motivo_auditoria: '',
+  matricula_eletricista1: '', matricula_eletricista2: '',
+  nome_eletricista: '', nome_eletricista2: '',
+}
+
+// ─── Limpa caracteres especiais e acentos ─────────────────────────────────────
+// Remove: ç→c, ã→a, ó→o, é→e, caracteres inválidos de encoding (\uFFFD), etc.
+// Preserva: letras A-Z, dígitos, espaços, pontuação ASCII básica (- . , ; / etc).
+// Usado tanto na importação CSV/Excel quanto no cadastro manual.
+function limparTexto(texto) {
+  if (texto === null || texto === undefined) return ''
+  return String(texto)
+    .normalize('NFD')                       // separa letras de acentos
+    .replace(/[\u0300-\u036f]/g, '')        // remove diacríticos (acentos)
+    .replace(/[–—−]/g, '-')                 // normaliza dashes exóticos → hyphen ASCII
+    .replace(/[“”]/g, '"')                  // normaliza aspas exóticas
+    .replace(/[‘’]/g, "'")                  // normaliza apóstrofos exóticos
+    .replace(/[^\x20-\x7E]/g, '')           // remove qualquer outro caractere não-ASCII
+    .trim()
 }
 
 function statusCor(s) {
@@ -29,15 +60,14 @@ function calcStatus(p) {
   return 'PENDENTE'
 }
 
-// ── Detecta separador e parseia linhas ────────────────────────────────────────
+// ─── Detecta separador e parseia linhas ────────────────────────────────────────
 function parseCsvLinhas(texto) {
   const linhas = texto.trim().split('\n').filter(l => l.trim())
   if (linhas.length < 2) return []
   const header = linhas[0]
-  // detecta separador: ; ou , ou \t
   const sep = header.includes(';') ? ';' : header.includes('\t') ? '\t' : ','
   const cols = header.split(sep).map(c => c.trim().toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '_')
   )
   return linhas.slice(1).map(row => {
@@ -46,22 +76,27 @@ function parseCsvLinhas(texto) {
   })
 }
 
-// ── Normaliza valores dos campos ──────────────────────────────────────────────
 function normalizarPauta(obj) {
-  // tipo_servico
-  const ts = (obj.tipo_servico || '').toUpperCase().trim()
-  const tipoServico = ['CORTE','ANEXO','RELIGA'].includes(ts) ? ts : 'CORTE'
+  // Limpa TODOS os campos de uma vez (remove acentos e caracteres inválidos)
+  const c = Object.fromEntries(
+    Object.entries(obj || {}).map(([k, v]) => [k, limparTexto(v)])
+  )
 
-  // tipo_auditoria
-  const ta = (obj.tipo_auditoria || '').toUpperCase().trim()
-  const tipoAuditoria = ta.includes('POS') || ta.includes('PÓS') ? 'POS_SERVICO' : 'DESEMPENHO'
+  const ts = (c.tipo_servico || '').toUpperCase()
+  const tipoServico = TIPOS_SERVICO.includes(ts) ? ts : 'CORTE'
 
-  // recorrencia
-  const rc = (obj.recorrencia || '').toUpperCase().trim()
+  const ta = (c.tipo_auditoria || '').toUpperCase()
+  // Após limparTexto, "PÓS" virou "POS", então só precisamos checar "POS"
+  const tipoAuditoria = ta.includes('POS') ? 'POS_SERVICO' : 'DESEMPENHO'
+
+  const rc = (c.recorrencia || '').toUpperCase()
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
 
-  // data — aceita DD/MM/AAAA ou AAAA-MM-DD
-  let data = (obj.data_prevista || '').trim()
+  // ─── Motivo Auditoria — normaliza/valida ───
+  const ma = (c.motivo_auditoria || '').toUpperCase()
+  const motivoAuditoria = MOTIVOS_AUDITORIA.includes(ma) ? ma : ''
+
+  let data = c.data_prevista || ''
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
     const [d, m, a] = data.split('/')
     data = `${a}-${m}-${d}`
@@ -69,20 +104,29 @@ function normalizarPauta(obj) {
   if (!data) data = new Date().toISOString().split('T')[0]
 
   return {
-    prefixo:        (obj.prefixo || '').trim().toUpperCase(),
-    fiscal_login:   (obj.fiscal_login || obj.fiscal || '').trim().toLowerCase(),
-    data_prevista:  data,
-    tipo_servico:   tipoServico,
-    tipo_auditoria: tipoAuditoria,
+    prefixo:                (c.prefixo || '').toUpperCase(),
+    fiscal_login:           (c.fiscal_login || c.fiscal || '').toLowerCase(),
+    data_prevista:          data,
+    tipo_servico:           tipoServico,
+    tipo_auditoria:         tipoAuditoria,
     recorrencia,
-    observacao:     (obj.observacao || obj.observacao || '').trim(),
-    os:             (obj.os || '').trim(),
-    uc:             (obj.uc || '').trim(),
-    status:         'PENDENTE',
+    observacao:             c.observacao || '',
+    motivo_auditoria:       motivoAuditoria,
+    os:                     c.os || '',
+    uc:                     c.uc || '',
+    // Matrículas vêm do CSV — os nomes serão preenchidos depois via lookup
+    matricula_eletricista1: (c.matricula_eletricista1 || c.matricula_eletricista || '').replace(/\D/g, ''),
+    matricula_eletricista2: (c.matricula_eletricista2 || '').replace(/\D/g, ''),
+    nome_eletricista:       '',
+    nome_eletricista2:      '',
+    status:                 'PENDENTE',
   }
 }
 
 export default function GestaoPauta({ usuarioLogado, onVoltar }) {
+  // ─── Hook do painel: Período (data_prevista) + Sup. Op + Sup. Campo + Prefixo ───
+  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+
   const [pautas,      setPautas]      = useState([])
   const [fiscais,     setFiscais]     = useState([])
   const [loading,     setLoading]     = useState(true)
@@ -91,12 +135,13 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [formData,    setFormData]    = useState(FORM_VAZIO)
   const [salvando,    setSalvando]    = useState(false)
   const [erro,        setErro]        = useState('')
-  const [filtro,      setFiltro]      = useState('TODOS')
+  const [statusTab,   setStatusTab]   = useState('TODOS')
   const [csvModal,    setCsvModal]    = useState(false)
   const [csvTexto,    setCsvTexto]    = useState('')
   const [csvStatus,   setCsvStatus]   = useState('')
-  const [csvPreview,  setCsvPreview]  = useState([]) // preview das linhas lidas
+  const [csvPreview,  setCsvPreview]  = useState([])
   const [prefixoSugs, setPrefixoSugs] = useState([])
+  const [baixandoNcs, setBaixandoNcs] = useState(false)
   const prefixoRef  = useRef(null)
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
@@ -131,7 +176,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
   const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setPrefixoSugs([]); setModal(true) }
-  const abrirEditar = p  => { setEditando(p); setFormData({ ...p, os: p.os || '', uc: p.uc || '' }); setErro(''); setPrefixoSugs([]); setModal(true) }
+  const abrirEditar = p  => {
+    setEditando(p)
+    setFormData({
+      ...FORM_VAZIO,  // garante todos os campos padrão (inclusive motivo_auditoria)
+      ...p,
+      os: p.os || '', uc: p.uc || '',
+      motivo_auditoria: p.motivo_auditoria || '',
+    })
+    setErro(''); setPrefixoSugs([]); setModal(true)
+  }
   const fechar      = () => { setModal(false); setErro(''); setPrefixoSugs([]) }
 
   const onPrefixoChange = async v => {
@@ -149,8 +203,24 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     }
     setSalvando(true); setErro('')
     try {
-      if (editando) await atualizarPauta(editando.id, formData)
-      else          await criarPauta({ ...formData, status: 'PENDENTE' })
+      // Limpa caracteres especiais
+      const baseLimpo = {
+        ...formData,
+        prefixo:                limparTexto(formData.prefixo).toUpperCase(),
+        observacao:             limparTexto(formData.observacao),
+        os:                     limparTexto(formData.os),
+        uc:                     limparTexto(formData.uc),
+        matricula_eletricista1: (formData.matricula_eletricista1 || '').replace(/\D/g, ''),
+        matricula_eletricista2: (formData.matricula_eletricista2 || '').replace(/\D/g, ''),
+      }
+
+      // Enriquece com nomes dos eletricistas (silencioso se matrícula não bater)
+      const [enriquecido] = await enriquecerComEletricistas([baseLimpo])
+
+      const payload = enriquecido
+
+      if (editando) await atualizarPauta(editando.id, payload)
+      else          await criarPauta({ ...payload, status: 'PENDENTE' })
       await carregar(); fechar()
     } catch (e) { setErro(e.message) }
     finally { setSalvando(false) }
@@ -168,11 +238,46 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     catch (e) { alert(e.message) }
   }
 
+  // ─── Pautas filtradas pelo PAINEL (período + supervisor + prefixo) ───
+  const pautasFiltradasPainel = useMemo(() => {
+    const { ini, fim } = filtros.getDatasQuery()
+    return pautas.filter(p => {
+      if (ini && p.data_prevista < ini) return false
+      if (fim && p.data_prevista > fim) return false
+      const filtroAtivo =
+        filtros.selSupOp.length    > 0 ||
+        filtros.selSupCampo.length > 0 ||
+        filtros.selPrefixos.length > 0
+      if (!filtroAtivo) return true
+      const info = filtros.mapPrefixo[p.prefixo]
+      if (!info) return false
+      if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(p.prefixo)) return false
+      if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))      return false
+      if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
+      return true
+    })
+  }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
+      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+
+  const pautasExibidas = pautasFiltradasPainel.filter(p => {
+    const s = calcStatus(p)
+    if (statusTab === 'TODOS')   return true
+    if (statusTab === 'VENCIDA') return s === 'VENCIDA'
+    return p.status === statusTab
+  })
+
+  const counts = {
+    PENDENTE:  pautasFiltradasPainel.filter(p => p.status === 'PENDENTE' && calcStatus(p) === 'PENDENTE').length,
+    VENCIDA:   pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA').length,
+    CONCLUIDA: pautasFiltradasPainel.filter(p => p.status === 'CONCLUIDA').length,
+    CANCELADA: pautasFiltradasPainel.filter(p => p.status === 'CANCELADA').length,
+  }
+
   const whatsappVencidas = () => {
-    const vencidas = pautas.filter(p => calcStatus(p) === 'VENCIDA')
+    const vencidas = pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA')
     if (vencidas.length === 0) { alert('Não há pautas vencidas!'); return }
     const linhas = vencidas.map(p =>
-      `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}`
+      `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}${p.motivo_auditoria ? ` | Motivo: ${p.motivo_auditoria}` : ''}`
     ).join('\n')
     const msg = encodeURIComponent(
       `🚨 *PAUTAS DE FISCALIZAÇÃO VENCIDAS — DPL CONSTRUÇÕES*\n\n${linhas}\n\nFavor regularizar!`
@@ -180,21 +285,233 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
-  // ── Lê arquivo CSV ou Excel ───────────────────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+  // RELATÓRIO DE NÃO CONFORMIDADES (Excel)
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Arquitetura atual (refatorada):
+  // 1. Valida limite de 90 dias entre data_ini e data_fim
+  // 2. Carrega auditorias do período (com filtros hierárquicos do painel)
+  // 3. SELECT direto na auditorias_nao_conformes (preenchida automaticamente
+  //    ao salvar a auditoria no S6Resultado)
+  // 4. JOIN em memória: NCs + auditorias + pautas
+  // 5. Gera Excel
+  //
+  // OBS: não popula mais a tabela aqui — quem popula é o S6Resultado ao salvar.
+  // ═══════════════════════════════════════════════════════════════════════════
+  const LIMITE_DIAS_NCS = 90  // máximo de 90 dias por exportação
+
+  const baixarRelatorioNCs = async () => {
+    setBaixandoNcs(true)
+    try {
+      const { ini, fim } = filtros.getDatasQuery()
+
+      // ── 1. Validação do período ──
+      if (!ini || !fim) {
+        alert(`⚠️ Selecione um período válido no filtro (início e fim) com no máximo ${LIMITE_DIAS_NCS} dias.`)
+        return
+      }
+      const diffDias = Math.ceil((new Date(fim) - new Date(ini)) / (1000 * 60 * 60 * 24)) + 1
+      if (diffDias > LIMITE_DIAS_NCS) {
+        alert(
+          `⚠️ Período de ${diffDias} dias é grande demais.\n\n` +
+          `Limite máximo: ${LIMITE_DIAS_NCS} dias (3 meses).\n\n` +
+          `Reduza o período no filtro e tente novamente.`
+        )
+        return
+      }
+
+      // ── 2. Determina prefixos permitidos pelos filtros hierárquicos ──
+      const filtroHierarquicoAtivo =
+        filtros.selSupOp.length    > 0 ||
+        filtros.selSupCampo.length > 0 ||
+        filtros.selPrefixos.length > 0
+
+      let prefixosPermitidos = null
+      if (filtroHierarquicoAtivo) {
+        prefixosPermitidos = Object.entries(filtros.mapPrefixo)
+          .filter(([pref, info]) => {
+            if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))     return false
+            if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))     return false
+            if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
+            return true
+          })
+          .map(([pref]) => pref)
+
+        if (prefixosPermitidos.length === 0) {
+          alert('Nenhum prefixo bate com os filtros hierárquicos selecionados.')
+          return
+        }
+      }
+
+      // ── 3. Busca auditorias do período ──
+      let qA = supabase.from('auditorias').select('*')
+        .gte('data_auditoria', ini)
+        .lte('data_auditoria', fim)
+      if (prefixosPermitidos !== null) qA = qA.in('prefixo', prefixosPermitidos)
+
+      const { data: auditorias, error: aErr } = await qA
+      if (aErr) throw aErr
+
+      if (!auditorias || auditorias.length === 0) {
+        alert('Nenhuma auditoria encontrada no período/filtros selecionados.')
+        return
+      }
+
+      const auditoriaIds = auditorias.map(a => a.id)
+      const mapAuditorias = {}
+      auditorias.forEach(a => { mapAuditorias[a.id] = a })
+
+      // ── 4. SELECT direto na auditorias_nao_conformes ──
+      const { data: ncs, error: ncErr } = await supabase
+        .from('auditorias_nao_conformes')
+        .select('*')
+        .in('auditoria_id', auditoriaIds)
+      if (ncErr) throw ncErr
+
+      if (!ncs || ncs.length === 0) {
+        alert(
+          '🎉 Nenhuma não conformidade encontrada no período!\n\n' +
+          'Possíveis razões:\n' +
+          '• Todas as auditorias do período foram 100% conformes\n' +
+          '• As auditorias antigas (antes do sistema novo) ainda não foram processadas\n' +
+          '  → Para processar antigas, simule uma nova auditoria ou peça pra rodar o catch-up manual'
+        )
+        return
+      }
+
+      // ── 5. Busca pautas vinculadas (pra trazer motivo_auditoria e status_2) ──
+      const { data: pautasRel, error: pErr } = await supabase
+        .from('pautas').select('*')
+        .in('auditoria_id', auditoriaIds)
+      if (pErr) console.warn('⚠️ Erro ao buscar pautas:', pErr.message)
+
+      const mapPautas = {}
+      ;(pautasRel || []).forEach(p => { mapPautas[p.auditoria_id] = p })
+
+      // ── 6. Combina tudo em linhas pra Excel ──
+      const linhas = ncs.map(nc => {
+        const a = mapAuditorias[nc.auditoria_id] || {}
+        const p = mapPautas[nc.auditoria_id] || {}
+        return {
+          auditoria_id:      nc.auditoria_id,
+          fiscal:            a.fiscal || '',
+          matricula:         a.matricula || '',
+          prefixo:           a.prefixo || '',
+          os:                a.os || '',
+          uc:                a.uc || '',
+          data_auditoria:    a.data_auditoria || '',
+          hora_auditoria:    a.hora_auditoria || '',
+          tipo_servico:      a.tipo_servico || '',
+          produtivo:         a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO',
+          status:            a.status || '',
+          status_2:          p.status || '',
+          feedback:          a.feedback || '',
+          observacao:        a.observacao || a.observacoes || '',
+          nome_eletricista:  a.nome_eletricista || '',
+          nome_eletricista2: a.nome_eletricista2 || '',
+          tipo_auditoria:    a.tipo_auditoria || '',
+          reaberta:          a.reaberta ? 'SIM' : 'NAO',
+          motivo_auditoria:  p.motivo_auditoria || '',
+          item_id:           nc.item_id || '',
+          item_nao_conforme: nc.item_texto || '',
+          status_tratamento: nc.status_tratamento || 'PENDENTE',
+        }
+      })
+
+      // Ordena: data_auditoria DESC, depois prefixo
+      linhas.sort((x, y) => {
+        if (x.data_auditoria !== y.data_auditoria) return y.data_auditoria.localeCompare(x.data_auditoria)
+        return (x.prefixo || '').localeCompare(y.prefixo || '')
+      })
+
+      // ── 7. Gera Excel com auto-fit ──
+      const ws = XLSX.utils.json_to_sheet(linhas)
+      const colNames = Object.keys(linhas[0])
+      ws['!cols'] = colNames.map(col => {
+        const maxLen = Math.max(
+          col.length,
+          ...linhas.map(r => String(r[col] ?? '').length)
+        )
+        return { wch: Math.min(maxLen + 2, 60) }
+      })
+
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Nao Conformidades')
+
+      const hoje = new Date().toISOString().split('T')[0]
+      XLSX.writeFile(wb, `nao_conformidades_${ini}_a_${fim}_gerado_${hoje}.xlsx`)
+
+      const auditoriasComNc = new Set(ncs.map(n => n.auditoria_id)).size
+      alert(`✅ Relatório gerado: ${linhas.length} não conformidade(s) em ${auditoriasComNc} auditoria(s).`)
+    } catch (e) {
+      alert('❌ Erro ao gerar relatório: ' + e.message)
+    } finally {
+      setBaixandoNcs(false)
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Enriquece pautas com nomes dos eletricistas a partir das matrículas
+  // - Faz UMA query em estrutura_equipes pegando todas as matrículas únicas
+  // - Pra cada pauta, busca os nomes correspondentes
+  // - Se matrícula não bate, deixa nome vazio (silenciosamente — sem erro)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const enriquecerComEletricistas = async (pautas) => {
+    // Coleta matrículas únicas que precisam de lookup
+    const matriculas = [...new Set(
+      pautas.flatMap(p => [p.matricula_eletricista1, p.matricula_eletricista2])
+        .filter(m => m && m.length > 0)
+    )]
+
+    if (matriculas.length === 0) return pautas
+
+    // Busca todos os nomes de uma vez
+    const { data: eletricistas, error } = await supabase
+      .from('estrutura_equipes')
+      .select('matricula, colaborador')
+      .in('matricula', matriculas)
+
+    if (error) {
+      console.warn('⚠️ Erro ao buscar eletricistas:', error.message)
+      return pautas
+    }
+
+    // Mapeia matricula → nome (primeiro encontrado prevalece)
+    const mapNomes = {}
+    ;(eletricistas || []).forEach(e => {
+      if (!mapNomes[String(e.matricula)]) {
+        mapNomes[String(e.matricula)] = (e.colaborador || '').trim().toUpperCase()
+      }
+    })
+
+    // Enriquece cada pauta. Se a matrícula não foi encontrada, descarta-a também
+    // (assim o registro fica como se a matrícula não tivesse sido informada).
+    return pautas.map(p => {
+      const nome1 = p.matricula_eletricista1 ? mapNomes[p.matricula_eletricista1] : ''
+      const nome2 = p.matricula_eletricista2 ? mapNomes[p.matricula_eletricista2] : ''
+      return {
+        ...p,
+        matricula_eletricista1: nome1 ? p.matricula_eletricista1 : '',
+        matricula_eletricista2: nome2 ? p.matricula_eletricista2 : '',
+        nome_eletricista:       nome1 || '',
+        nome_eletricista2:      nome2 || '',
+      }
+    })
+  }
+
+  // ─── Importação CSV/Excel ────────────────────────────────────────────────
   const lerArquivo = (file) => {
     setCsvStatus('')
     setCsvPreview([])
     const ext = file.name.split('.').pop().toLowerCase()
 
     if (ext === 'xlsx' || ext === 'xls') {
-      // Excel
       const reader = new FileReader()
       reader.onload = e => {
         try {
           const wb    = XLSX.read(e.target.result, { type: 'array' })
           const ws    = wb.Sheets[wb.SheetNames[0]]
           const dados = XLSX.utils.sheet_to_json(ws, { defval: '' })
-          // Converte para CSV string com ; para reutilizar o parser
           if (dados.length === 0) { setCsvStatus('❌ Planilha vazia.'); return }
           const cols = Object.keys(dados[0])
           const linhas = [
@@ -216,45 +533,61 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       }
       reader.readAsArrayBuffer(file)
     } else {
-      // CSV / TXT
+      // ─── Leitura inteligente: tenta UTF-8 → se falhar, usa Windows-1252 ───
+      // Excel BR normalmente salva CSV em Windows-1252 (Latin-1), não em UTF-8.
+      // Isso é o que causava "POS SERVI�O" no preview.
       const reader = new FileReader()
       reader.onload = e => {
-        const texto = e.target.result
+        const buffer = e.target.result
+        let texto, encoding
+        try {
+          texto = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+          encoding = 'UTF-8'
+        } catch {
+          // Bytes não-UTF-8 detectados → cai pra Windows-1252 (Excel BR padrão)
+          texto = new TextDecoder('windows-1252').decode(buffer)
+          encoding = 'Windows-1252'
+        }
         setCsvTexto(texto)
         const objs = parseCsvLinhas(texto)
         if (objs.length === 0) { setCsvStatus('❌ Nenhuma linha encontrada. Verifique o arquivo.'); return }
         const preview = objs.slice(0, 3).map(normalizarPauta)
         setCsvPreview(preview)
-        setCsvStatus(`✅ Arquivo lido: ${objs.length} linha(s) encontrada(s). Clique em Importar para salvar.`)
+        setCsvStatus(`✅ Arquivo lido (${encoding}): ${objs.length} linha(s) encontrada(s). Acentos e caracteres especiais serão tratados automaticamente. Clique em Importar para salvar.`)
       }
-      reader.readAsText(file, 'UTF-8')
+      reader.readAsArrayBuffer(file)
     }
   }
 
   const onFileChange = e => {
     const file = e.target.files?.[0]
     if (file) lerArquivo(file)
-    e.target.value = '' // permite reler o mesmo arquivo
+    e.target.value = ''
   }
 
-  // ── Importa pautas ────────────────────────────────────────────────────────
   const importarCsv = async () => {
     if (!csvTexto.trim()) { setCsvStatus('❌ Nenhum dado para importar.'); return }
     setCsvStatus('importando')
     try {
       const objs = parseCsvLinhas(csvTexto)
-      const pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
+      let pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
 
       if (pautasNovas.length === 0) {
         setCsvStatus('❌ Nenhuma linha válida encontrada. Verifique se prefixo e fiscal_login estão preenchidos.')
         return
       }
 
+      // ─── Enriquece com nomes dos eletricistas via lookup em estrutura_equipes ───
+      pautasNovas = await enriquecerComEletricistas(pautasNovas)
+
       for (const p of pautasNovas) await criarPauta(p)
 
-      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s) com sucesso!`)
+      // Conta quantas pautas tiveram pelo menos 1 eletricista preenchido
+      const comEletricistas = pautasNovas.filter(p => p.nome_eletricista || p.nome_eletricista2).length
+
+      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s) com sucesso!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas vinculados.` : ''}`)
       await carregar()
-      setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2000)
+      setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2500)
     } catch (e) {
       setCsvStatus('❌ Erro: ' + e.message)
     }
@@ -262,38 +595,24 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
   const fecharCsvModal = () => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }
 
-  const pautasFiltradas = pautas.filter(p => {
-    const s = calcStatus(p)
-    if (filtro === 'TODOS')   return true
-    if (filtro === 'VENCIDA') return s === 'VENCIDA'
-    return p.status === filtro
-  })
-
-  const counts = {
-    PENDENTE:  pautas.filter(p => p.status === 'PENDENTE' && calcStatus(p) === 'PENDENTE').length,
-    VENCIDA:   pautas.filter(p => calcStatus(p) === 'VENCIDA').length,
-    CONCLUIDA: pautas.filter(p => p.status === 'CONCLUIDA').length,
-    CANCELADA: pautas.filter(p => p.status === 'CANCELADA').length,
-  }
-
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
       {/* Header */}
       <div style={{ background: '#d97706', padding: '18px 20px', color: '#fff' }}>
-        <div style={{ maxWidth: 800, margin: '0 auto' }}>
+        <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
             padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📋 Pauta de Fiscalização</h1>
               <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Equipes obrigatórias para fiscalização</p>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['PENDENTE','VENCIDA','CONCLUIDA'].map(s => (
-                <div key={s} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center' }}>
+                <div key={s} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 50 }}>
                   <div style={{ fontSize: 16, fontWeight: 800 }}>{counts[s]}</div>
                   <div style={{ fontSize: 9, opacity: 0.8 }}>{s}</div>
                 </div>
@@ -303,8 +622,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         </div>
       </div>
 
-      <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 80px' }}>
+      <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
+        {/* PAINEL DE FILTROS */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros das Pautas"
+          badge="período por data prevista"
+        />
+
+        {/* Ações */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <button onClick={abrirNovo} style={{
             background: '#d97706', color: '#fff', border: 'none',
@@ -314,6 +641,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             background: '#0f766e', color: '#fff', border: 'none',
             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}>📥 Importar CSV</button>
+          <button onClick={baixarRelatorioNCs} disabled={baixandoNcs} style={{
+            background: baixandoNcs ? '#94a3b8' : '#dc2626', color: '#fff', border: 'none',
+            padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
+            cursor: baixandoNcs ? 'not-allowed' : 'pointer',
+          }}>{baixandoNcs ? '⏳ Gerando...' : '📊 Relatório de NCs (Excel)'}</button>
           {counts.VENCIDA > 0 && (
             <button onClick={whatsappVencidas} style={{
               background: '#25d366', color: '#fff', border: 'none',
@@ -322,27 +654,28 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           )}
         </div>
 
+        {/* Tabs de status */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {['TODOS','PENDENTE','VENCIDA','CONCLUIDA','CANCELADA'].map(f => (
-            <button key={f} onClick={() => setFiltro(f)} style={{
+            <button key={f} onClick={() => setStatusTab(f)} style={{
               padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-              background: filtro === f ? '#d97706' : '#e2e8f0',
-              color: filtro === f ? '#fff' : '#374151',
+              background: statusTab === f ? '#d97706' : '#e2e8f0',
+              color: statusTab === f ? '#fff' : '#374151',
             }}>{f}</button>
           ))}
         </div>
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
-        ) : pautasFiltradas.length === 0 ? (
+        ) : pautasExibidas.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>
-            <p>Nenhuma pauta encontrada</p>
+            <p>Nenhuma pauta encontrada para os filtros selecionados</p>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {pautasFiltradas.map(p => {
+            {pautasExibidas.map(p => {
               const s  = calcStatus(p)
               const sc = statusCor(s)
               return (
@@ -352,7 +685,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   padding: '14px 16px', opacity: p.status === 'CANCELADA' ? 0.6 : 1,
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{p.prefixo}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
@@ -376,7 +709,40 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                           {p.uc && <span>🏠 UC: <strong>{p.uc}</strong></span>}
                         </div>
                       )}
-                      {p.observacao && <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>💬 {p.observacao}</p>}
+
+                      {/* ─── Eletricistas vinculados (se houver) ─── */}
+                      {(p.nome_eletricista || p.nome_eletricista2) && (
+                        <div style={{ fontSize: 12, color: '#0c4a6e', lineHeight: 1.6, marginTop: 2, fontWeight: 600 }}>
+                          👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
+                        </div>
+                      )}
+
+                      {/* ─── Motivo Auditoria (destacado em laranja) ─── */}
+                      {p.motivo_auditoria && (
+                        <div style={{
+                          marginTop: 8, display: 'inline-block',
+                          background: '#fff7ed', border: '1px solid #fed7aa',
+                          color: '#c2410c', fontWeight: 700, fontSize: 12,
+                          padding: '4px 10px', borderRadius: 6,
+                        }}>
+                          🎯 Motivo: {p.motivo_auditoria}
+                        </div>
+                      )}
+
+                      {/* ─── Observação (destacada em azul, texto completo) ─── */}
+                      {p.observacao && (
+                        <div style={{
+                          marginTop: 6, background: '#f0f9ff', border: '1px solid #bae6fd',
+                          padding: '8px 12px', borderRadius: 8, lineHeight: 1.5,
+                        }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            💬 Observação:
+                          </span>
+                          <p style={{ fontSize: 12, color: '#0c4a6e', margin: '3px 0 0', wordBreak: 'break-word' }}>
+                            {p.observacao}
+                          </p>
+                        </div>
+                      )}
                     </div>
                     {p.status === 'PENDENTE' && (
                       <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
@@ -475,9 +841,73 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </select>
             </div>
 
+            {/* ─── NOVO CAMPO: Motivo da Auditoria ─── */}
             <div className="form-group">
-              <label className="form-label">Observação</label>
-              <input className="form-input" value={formData.observacao} onChange={e => upd('observacao', e.target.value)} placeholder="Opcional..." />
+              <label className="form-label">🎯 Motivo da Auditoria</label>
+              <select className="form-input" value={formData.motivo_auditoria} onChange={e => upd('motivo_auditoria', e.target.value)}>
+                <option value="">— Sem motivo específico —</option>
+                {MOTIVOS_AUDITORIA.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
+            </div>
+
+            {/* ─── Observação como TEXTAREA (espaço pra escrita) ─── */}
+            <div className="form-group">
+              <label className="form-label">
+                💬 Observação
+                <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 500, marginLeft: 6 }}>
+                  (acentos e caracteres especiais serão removidos)
+                </span>
+              </label>
+              <textarea
+                className="form-textarea"
+                value={formData.observacao}
+                onChange={e => upd('observacao', e.target.value)}
+                placeholder="Texto livre — aparecerá para o fiscal na hora da auditoria..."
+                rows={3}
+                style={{ resize: 'vertical', minHeight: 72, fontFamily: 'inherit' }}
+              />
+            </div>
+
+            {/* ─── Matrículas dos Eletricistas (opcional) ─── */}
+            <div style={{
+              background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10,
+              padding: '12px 14px', marginBottom: 14,
+            }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                👷 Eletricistas da Equipe (opcional)
+              </p>
+              <p style={{ fontSize: 11, color: '#475569', marginBottom: 10, lineHeight: 1.4 }}>
+                Informe as matrículas. O sistema busca os nomes automaticamente em <strong>estrutura_equipes</strong>.
+                Se a matrícula não existir, será ignorada.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Matrícula 1</label>
+                  <input
+                    className="form-input"
+                    value={formData.matricula_eletricista1}
+                    onChange={e => upd('matricula_eletricista1', e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ex: 74894"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Matrícula 2</label>
+                  <input
+                    className="form-input"
+                    value={formData.matricula_eletricista2}
+                    onChange={e => upd('matricula_eletricista2', e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ex: 12345"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              {/* Mostra nomes vinculados (se houver — após editar) */}
+              {(formData.nome_eletricista || formData.nome_eletricista2) && (
+                <div style={{ marginTop: 8, fontSize: 11, color: '#0c4a6e', fontWeight: 600 }}>
+                  ✅ Vinculados: {[formData.nome_eletricista, formData.nome_eletricista2].filter(Boolean).join(' | ')}
+                </div>
+              )}
             </div>
 
             {erro && (
@@ -502,15 +932,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <button onClick={fecharCsvModal} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
-            {/* Info de colunas */}
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
-              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · os · uc<br /><br />
+              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
+              <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
-              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
+              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br /><br />
+              <strong style={{ color: '#0369a1' }}>✨ Eletricistas:</strong> as matrículas são opcionais. Se informadas, o sistema busca os nomes automaticamente em <strong>estrutura_equipes</strong>. Matrículas não encontradas são ignoradas (sem erro).<br /><br />
+              <strong style={{ color: '#0369a1' }}>✨ Tratamento automático:</strong> acentos (ç, ã, õ, é...) e caracteres especiais são removidos automaticamente. Pode escrever normalmente no Excel.
             </div>
 
-            {/* Upload de arquivo */}
             <input
               ref={fileRef}
               type="file"
@@ -530,39 +961,39 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               📂 Selecionar arquivo CSV ou Excel
             </button>
 
-            {/* Separador "ou" */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
               <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ou cole o conteúdo abaixo</span>
               <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
             </div>
 
-            {/* Textarea */}
             <div className="form-group">
               <textarea
                 className="form-textarea"
                 value={csvTexto}
                 onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
-                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-05-19;CORTE;DESEMPENHO;UNICA;;;`}
+                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;motivo_auditoria;os;uc;matricula_eletricista1;matricula_eletricista2\nPI-THE-C001M;gileno.ribeiro;2026-06-19;CORTE;DESEMPENHO;UNICA;Verificar material aplicado;MATERIAL APLICADO EM CAMPO;1234;6789;74894;12345`}
                 rows={6}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
             </div>
 
-            {/* Preview */}
             {csvPreview.length > 0 && (
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 11 }}>
-                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas):</p>
+                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas — eletricistas serão buscados ao importar):</p>
                 {csvPreview.map((p, i) => (
                   <div key={i} style={{ color: '#475569', marginBottom: 4, lineHeight: 1.5 }}>
                     <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico} · {p.tipo_auditoria} · {p.recorrencia}
+                    {p.motivo_auditoria ? ` · 🎯 ${p.motivo_auditoria}` : ''}
                     {p.os ? ` · OS:${p.os}` : ''}{p.uc ? ` · UC:${p.uc}` : ''}
+                    {p.matricula_eletricista1 ? ` · 👷 Mat1:${p.matricula_eletricista1}` : ''}
+                    {p.matricula_eletricista2 ? ` · Mat2:${p.matricula_eletricista2}` : ''}
+                    {p.observacao ? ` · 💬 ${p.observacao}` : ''}
                   </div>
                 ))}
               </div>
             )}
 
-            {/* Status */}
             {csvStatus && csvStatus !== 'importando' && (
               <div style={{
                 marginBottom: 14, padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -574,7 +1005,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            {/* Botão importar */}
             <button
               onClick={importarCsv}
               disabled={!csvTexto.trim() || csvStatus === 'importando'}
