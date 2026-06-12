@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
+import { processoToKey } from '../components/PainelFiltros.jsx'
 
 const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 
@@ -62,6 +63,9 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const [msgPerms,         setMsgPerms]         = useState('')
   const [perfilSelecionado, setPerfilSelecionado] = useState('SUPERV. CAMPO')
 
+  // Processos distintos da estrutura_equipes (pra gerar toggles dinâmicos)
+  const [processosDisponiveis, setProcessosDisponiveis] = useState([]) // [{ label, key }]
+
   const carregar = async () => {
     setLoading(true)
     try { setUsuarios(await listarUsuarios()) }
@@ -77,6 +81,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const carregarPermissoes = async () => {
     setLoadingPerms(true)
     try {
+      // ─── Permissões cadastradas por perfil ───
       const { data } = await supabase.from('perfis_permissoes').select('*')
       const mapa = {}
       PERFIS.forEach(p => { mapa[p] = [] })
@@ -85,6 +90,20 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
         mapa[r.perfil].push(r.permissao)
       })
       setPermissoes(mapa)
+
+      // ─── Processos distintos da estrutura_equipes (toggles dinâmicos) ───
+      const { data: estrut } = await supabase.from('estrutura_equipes')
+        .select('processo_equipe')
+      const processosSet = new Set()
+      ;(estrut || []).forEach(r => {
+        const p = (r.processo_equipe || '').trim()
+        if (p) processosSet.add(p)
+      })
+      const processosOrdenados = [...processosSet].sort().map(label => ({
+        label,
+        key: processoToKey(label),  // ex: "LIGAÇÃO NOVA" → "processo_LIGACAO_NOVA"
+      })).filter(p => p.key)  // descarta processos sem chave válida
+      setProcessosDisponiveis(processosOrdenados)
     } finally {
       setLoadingPerms(false)
     }
@@ -393,6 +412,52 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                     )
                   })}
                 </div>
+
+                {/* ─── Processos da Estrutura (toggles dinâmicos vindos da estrutura_equipes) ─── */}
+                {processosDisponiveis.length > 0 && (
+                  <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1.5px dashed #c4b5fd' }}>
+                    <p style={{ fontSize: 13, fontWeight: 800, color: '#4c1d95', marginBottom: 6 }}>
+                      🌐 Processos da Estrutura
+                    </p>
+                    <p style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
+                      Libere quais <strong>processos</strong> esse perfil pode acessar (vê TODOS os prefixos do processo).
+                      Soma com o acesso natural pela hierarquia.
+                      Se "🌐 Acesso a TODOS os processos" estiver ativo, isso é ignorado.
+                    </p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {processosDisponiveis.map(proc => {
+                        const ativo = (permissoes[perfilSelecionado] || []).includes(proc.key)
+                        return (
+                          <div key={proc.key} onClick={() => togglePermissao(perfilSelecionado, proc.key)} style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
+                            background: ativo ? '#ecfdf5' : '#f8fafc',
+                            border: `1.5px solid ${ativo ? '#10b981' : '#e2e8f0'}`,
+                            transition: 'all 0.2s',
+                          }}>
+                            <span style={{ fontSize: 14, fontWeight: 700, color: ativo ? '#065f46' : '#64748b' }}>
+                              ⚙️ {proc.label}
+                            </span>
+                            <div style={{
+                              width: 44, height: 24, borderRadius: 12,
+                              background: ativo ? '#10b981' : '#cbd5e1',
+                              position: 'relative', transition: 'background 0.2s',
+                            }}>
+                              <div style={{
+                                position: 'absolute', top: 3,
+                                left: ativo ? 23 : 3,
+                                width: 18, height: 18, borderRadius: '50%',
+                                background: '#fff', transition: 'left 0.2s',
+                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                              }} />
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {msgPerms && (
                   <p style={{ marginTop: 14, fontSize: 13, fontWeight: 700, color: msgPerms.startsWith('✅') ? '#15803d' : '#dc2626' }}>
