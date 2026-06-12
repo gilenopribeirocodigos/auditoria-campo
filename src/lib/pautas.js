@@ -59,14 +59,18 @@ export async function criarProximaRecorrencia(pauta) {
   if (pauta.recorrencia === 'DIARIA')  proxData.setDate(dataAtual.getDate() + 1)
   if (pauta.recorrencia === 'SEMANAL') proxData.setDate(dataAtual.getDate() + 7)
   await criarPauta({
-    prefixo:          pauta.prefixo,
-    fiscal_login:     pauta.fiscal_login,
-    data_prevista:    proxData.toISOString().split('T')[0],
-    tipo_servico:     pauta.tipo_servico,
-    tipo_auditoria:   pauta.tipo_auditoria,
-    recorrencia:      pauta.recorrencia,
-    observacao:       pauta.observacao,
-    motivo_auditoria: pauta.motivo_auditoria,  // NOVO: propaga motivo nas recorrências
-    status:           'PENDENTE',
+    prefixo:                pauta.prefixo,
+    fiscal_login:           pauta.fiscal_login,
+    data_prevista:          proxData.toISOString().split('T')[0],
+    tipo_servico:           pauta.tipo_servico,
+    tipo_auditoria:         pauta.tipo_auditoria,
+    recorrencia:            pauta.recorrencia,
+    observacao:             pauta.observacao,
+    motivo_auditoria:       pauta.motivo_auditoria,
+    matricula_eletricista1: pauta.matricula_eletricista1,
+    matricula_eletricista2: pauta.matricula_eletricista2,
+    nome_eletricista:       pauta.nome_eletricista,
+    nome_eletricista2:      pauta.nome_eletricista2,
+    status:                 'PENDENTE',
   })
 }
