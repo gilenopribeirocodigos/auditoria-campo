@@ -43,7 +43,8 @@ const situacaoPermitida = s => SITUACOES_PERMITIDAS.includes(norm(s).toUpperCase
 // Campos que, se mudarem, caracterizam "movimentação"
 const CAMPOS_CONFIG = [
   'regional', 'polo', 'base', 'prefixo', 'placas',
-  'tipo_equipe', 'superv_campo', 'superv_operacao',
+  'tipo_equipe', 'processo_equipe',
+  'superv_campo', 'superv_operacao',
   'coordenador', 'descr_situacao',
 ]
 
@@ -64,6 +65,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     descr_situacao:  r.descr_situacao  || '',
     placas:          r.placas          || '',
     tipo_equipe:     r.tipo_equipe     || '',
+    processo_equipe: r.processo_equipe || '',
     superv_campo:    r.superv_campo    || '',
     superv_operacao: r.superv_operacao || '',
     coordenador:     r.coordenador     || '',
@@ -84,6 +86,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     descr_situacao:  linhaAtual.descr_situacao,
     placas:          linhaAtual.placas,
     tipo_equipe:     linhaAtual.tipo_equipe,
+    processo_equipe: linhaAtual.processo_equipe,
     superv_campo:    linhaAtual.superv_campo,
     superv_operacao: linhaAtual.superv_operacao,
     coordenador:     linhaAtual.coordenador,
@@ -509,6 +512,9 @@ export default function ImportarEquipes({ onVoltar }) {
                 borderBottom: i < preview.length - 1 ? '1px solid #f1f5f9' : 'none',
               }}>
                 <strong>{r.prefixo}</strong> · {r.matricula} · {r.colaborador} · {r.base} · {r.descr_situacao}
+                {r.processo_equipe && (
+                  <span style={{ color: '#0f766e', fontWeight: 700 }}> · ⚙️ {r.processo_equipe}</span>
+                )}
               </div>
             ))}
           </div>
