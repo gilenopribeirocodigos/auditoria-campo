@@ -177,7 +177,13 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const [capturando,    setCapturando]    = useState(false)
   const intervalRef = useRef(null)
-  const isAdmin = usuarioLogado?.perfil === 'ADMIN'
+
+  // ─── Permissões do perfil ───
+  // ADMIN sempre passa. Outros perfis controlados pela tabela perfis_permissoes
+  // (chaves: historico_ver_todas e historico_reabrir)
+  const isAdmin      = usuarioLogado?.perfil === 'ADMIN'
+  const podeVerTodas = isAdmin || (usuarioLogado?.permissoes || []).includes('historico_ver_todas')
+  const podeReabrir  = isAdmin || (usuarioLogado?.permissoes || []).includes('historico_reabrir')
 
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
@@ -223,9 +229,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         .order('data_auditoria', { ascending: false })
         .order('hora_auditoria', { ascending: false })
 
-      const podeVerTodos = usuarioLogado?.perfil === 'ADMIN' ||
-                           usuarioLogado?.perfil === 'SUPERV. OPERAÇÃO' ||
-                           usuarioLogado?.perfil === 'SUPERV. CAMPO'
+      const podeVerTodos = podeVerTodas
 
       if (!podeVerTodos)        q = q.eq('matricula', usuarioLogado.matricula)
       if (tipoServico.length > 0) q = q.in('tipo_servico', tipoServico)
@@ -400,7 +404,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📁 Histórico de Auditorias</h1>
-              <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>{isAdmin ? 'Todas as auditorias' : `Suas auditorias — ${usuarioLogado.nome}`}</p>
+              <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>{podeVerTodas ? 'Todas as auditorias' : `Suas auditorias — ${usuarioLogado.nome}`}</p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
@@ -606,7 +610,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               </div>
             )}
 
-            {isAdmin && !detalhe.reaberta && (
+            {podeReabrir && !detalhe.reaberta && (
               <button onClick={abrirModalReabrir} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>🔓 Reabrir para Correção</button>
             )}
 
