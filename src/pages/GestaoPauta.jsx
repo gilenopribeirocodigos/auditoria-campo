@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
 import * as XLSX from 'xlsx'
-import { getItemsNaoConformes } from '../data/checklists.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
@@ -274,105 +273,144 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   // ═══════════════════════════════════════════════════════════════════════════
   // RELATÓRIO DE NÃO CONFORMIDADES (Excel)
   // ═══════════════════════════════════════════════════════════════════════════
-  // 1. Filtra pautas que TÊM auditoria_id (INNER JOIN com auditorias)
-  // 2. Para cada par pauta+auditoria, calcula NCs em runtime (mesmo método do Histórico)
-  // 3. Cada NC vira UMA linha do Excel (a auditoria com 3 NCs → 3 linhas)
-  // 4. UPSERT na tabela auditorias_nao_conformes (com ignoreDuplicates: preserva tratamentos)
-  // 5. Gera Excel e baixa
+  // Arquitetura atual (refatorada):
+  // 1. Valida limite de 90 dias entre data_ini e data_fim
+  // 2. Carrega auditorias do período (com filtros hierárquicos do painel)
+  // 3. SELECT direto na auditorias_nao_conformes (preenchida automaticamente
+  //    ao salvar a auditoria no S6Resultado)
+  // 4. JOIN em memória: NCs + auditorias + pautas
+  // 5. Gera Excel
+  //
+  // OBS: não popula mais a tabela aqui — quem popula é o S6Resultado ao salvar.
   // ═══════════════════════════════════════════════════════════════════════════
+  const LIMITE_DIAS_NCS = 90  // máximo de 90 dias por exportação
+
   const baixarRelatorioNCs = async () => {
     setBaixandoNcs(true)
     try {
-      // ── 1. Pautas com auditoria_id no período/filtros do painel ──
-      const pautasComAuditoria = pautasFiltradasPainel.filter(p => p.auditoria_id)
+      const { ini, fim } = filtros.getDatasQuery()
 
-      if (pautasComAuditoria.length === 0) {
-        alert('Nenhuma pauta com auditoria executada no período/filtros selecionados.')
+      // ── 1. Validação do período ──
+      if (!ini || !fim) {
+        alert(`⚠️ Selecione um período válido no filtro (início e fim) com no máximo ${LIMITE_DIAS_NCS} dias.`)
+        return
+      }
+      const diffDias = Math.ceil((new Date(fim) - new Date(ini)) / (1000 * 60 * 60 * 24)) + 1
+      if (diffDias > LIMITE_DIAS_NCS) {
+        alert(
+          `⚠️ Período de ${diffDias} dias é grande demais.\n\n` +
+          `Limite máximo: ${LIMITE_DIAS_NCS} dias (3 meses).\n\n` +
+          `Reduza o período no filtro e tente novamente.`
+        )
         return
       }
 
-      // ── 2. Carrega as auditorias correspondentes ──
-      const auditoriaIds = pautasComAuditoria.map(p => p.auditoria_id)
-      const { data: auditorias, error: aErr } = await supabase
-        .from('auditorias').select('*').in('id', auditoriaIds)
-      if (aErr) throw aErr
+      // ── 2. Determina prefixos permitidos pelos filtros hierárquicos ──
+      const filtroHierarquicoAtivo =
+        filtros.selSupOp.length    > 0 ||
+        filtros.selSupCampo.length > 0 ||
+        filtros.selPrefixos.length > 0
 
-      const mapAuditorias = {}
-      ;(auditorias || []).forEach(a => { mapAuditorias[a.id] = a })
-
-      // ── 3. Calcula NCs e monta linhas ──
-      const linhas = []
-      const ncsParaSalvar = []
-
-      pautasComAuditoria.forEach(p => {
-        const a = mapAuditorias[p.auditoria_id]
-        if (!a) return
-
-        const ncs = getItemsNaoConformes({
-          tipoServico: a.tipo_servico,
-          produtivo:   a.produtivo,
-          respostas:   a.respostas || {},
-        })
-
-        if (!ncs || ncs.length === 0) return  // auditoria 100% conforme — pula
-
-        ncs.forEach(item => {
-          linhas.push({
-            auditoria_id:      a.id,
-            fiscal:            a.fiscal || '',
-            matricula:         a.matricula || '',
-            prefixo:           a.prefixo || '',
-            os:                a.os || '',
-            uc:                a.uc || '',
-            data_auditoria:    a.data_auditoria || '',
-            hora_auditoria:    a.hora_auditoria || '',
-            tipo_servico:      a.tipo_servico || '',
-            produtivo:         a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO',
-            status:            a.status || '',
-            status_2:          p.status || '',
-            feedback:          a.feedback || '',
-            observacao:        a.observacao || a.observacoes || '',
-            nome_eletricista:  a.nome_eletricista || '',
-            nome_eletricista2: a.nome_eletricista2 || '',
-            tipo_auditoria:    a.tipo_auditoria || '',
-            reaberta:          a.reaberta ? 'SIM' : 'NAO',
-            motivo_auditoria:  p.motivo_auditoria || '',
-            item_id:           String(item.id ?? ''),
-            item_nao_conforme: item.p || '',
+      let prefixosPermitidos = null
+      if (filtroHierarquicoAtivo) {
+        prefixosPermitidos = Object.entries(filtros.mapPrefixo)
+          .filter(([pref, info]) => {
+            if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))     return false
+            if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))     return false
+            if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
+            return true
           })
-          ncsParaSalvar.push({
-            auditoria_id: a.id,
-            item_id:      String(item.id ?? ''),
-            item_texto:   item.p || '',
-          })
-        })
-      })
+          .map(([pref]) => pref)
 
-      if (linhas.length === 0) {
-        alert('🎉 Nenhuma não conformidade encontrada nas auditorias do período! Todas conformes.')
-        return
-      }
-
-      // ── 4. UPSERT na tabela auditorias_nao_conformes ──
-      // ignoreDuplicates: true preserva tratamentos já feitos (não sobrescreve)
-      if (ncsParaSalvar.length > 0) {
-        try {
-          const { error: upErr } = await supabase
-            .from('auditorias_nao_conformes')
-            .upsert(ncsParaSalvar, {
-              onConflict:       'auditoria_id,item_id',
-              ignoreDuplicates: true,
-            })
-          if (upErr) console.warn('⚠️ Erro ao salvar NCs (tabela pode não existir ainda):', upErr.message)
-        } catch (e) {
-          console.warn('⚠️ Tabela auditorias_nao_conformes não encontrada — pulando UPSERT:', e.message)
+        if (prefixosPermitidos.length === 0) {
+          alert('Nenhum prefixo bate com os filtros hierárquicos selecionados.')
+          return
         }
       }
 
-      // ── 5. Gerar Excel ──
-      const ws = XLSX.utils.json_to_sheet(linhas)
+      // ── 3. Busca auditorias do período ──
+      let qA = supabase.from('auditorias').select('*')
+        .gte('data_auditoria', ini)
+        .lte('data_auditoria', fim)
+      if (prefixosPermitidos !== null) qA = qA.in('prefixo', prefixosPermitidos)
 
-      // Auto-fit das colunas
+      const { data: auditorias, error: aErr } = await qA
+      if (aErr) throw aErr
+
+      if (!auditorias || auditorias.length === 0) {
+        alert('Nenhuma auditoria encontrada no período/filtros selecionados.')
+        return
+      }
+
+      const auditoriaIds = auditorias.map(a => a.id)
+      const mapAuditorias = {}
+      auditorias.forEach(a => { mapAuditorias[a.id] = a })
+
+      // ── 4. SELECT direto na auditorias_nao_conformes ──
+      const { data: ncs, error: ncErr } = await supabase
+        .from('auditorias_nao_conformes')
+        .select('*')
+        .in('auditoria_id', auditoriaIds)
+      if (ncErr) throw ncErr
+
+      if (!ncs || ncs.length === 0) {
+        alert(
+          '🎉 Nenhuma não conformidade encontrada no período!\n\n' +
+          'Possíveis razões:\n' +
+          '• Todas as auditorias do período foram 100% conformes\n' +
+          '• As auditorias antigas (antes do sistema novo) ainda não foram processadas\n' +
+          '  → Para processar antigas, simule uma nova auditoria ou peça pra rodar o catch-up manual'
+        )
+        return
+      }
+
+      // ── 5. Busca pautas vinculadas (pra trazer motivo_auditoria e status_2) ──
+      const { data: pautasRel, error: pErr } = await supabase
+        .from('pautas').select('*')
+        .in('auditoria_id', auditoriaIds)
+      if (pErr) console.warn('⚠️ Erro ao buscar pautas:', pErr.message)
+
+      const mapPautas = {}
+      ;(pautasRel || []).forEach(p => { mapPautas[p.auditoria_id] = p })
+
+      // ── 6. Combina tudo em linhas pra Excel ──
+      const linhas = ncs.map(nc => {
+        const a = mapAuditorias[nc.auditoria_id] || {}
+        const p = mapPautas[nc.auditoria_id] || {}
+        return {
+          auditoria_id:      nc.auditoria_id,
+          fiscal:            a.fiscal || '',
+          matricula:         a.matricula || '',
+          prefixo:           a.prefixo || '',
+          os:                a.os || '',
+          uc:                a.uc || '',
+          data_auditoria:    a.data_auditoria || '',
+          hora_auditoria:    a.hora_auditoria || '',
+          tipo_servico:      a.tipo_servico || '',
+          produtivo:         a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO',
+          status:            a.status || '',
+          status_2:          p.status || '',
+          feedback:          a.feedback || '',
+          observacao:        a.observacao || a.observacoes || '',
+          nome_eletricista:  a.nome_eletricista || '',
+          nome_eletricista2: a.nome_eletricista2 || '',
+          tipo_auditoria:    a.tipo_auditoria || '',
+          reaberta:          a.reaberta ? 'SIM' : 'NAO',
+          motivo_auditoria:  p.motivo_auditoria || '',
+          item_id:           nc.item_id || '',
+          item_nao_conforme: nc.item_texto || '',
+          status_tratamento: nc.status_tratamento || 'PENDENTE',
+        }
+      })
+
+      // Ordena: data_auditoria DESC, depois prefixo
+      linhas.sort((x, y) => {
+        if (x.data_auditoria !== y.data_auditoria) return y.data_auditoria.localeCompare(x.data_auditoria)
+        return (x.prefixo || '').localeCompare(y.prefixo || '')
+      })
+
+      // ── 7. Gera Excel com auto-fit ──
+      const ws = XLSX.utils.json_to_sheet(linhas)
       const colNames = Object.keys(linhas[0])
       ws['!cols'] = colNames.map(col => {
         const maxLen = Math.max(
@@ -386,9 +424,10 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       XLSX.utils.book_append_sheet(wb, ws, 'Nao Conformidades')
 
       const hoje = new Date().toISOString().split('T')[0]
-      XLSX.writeFile(wb, `nao_conformidades_${hoje}.xlsx`)
+      XLSX.writeFile(wb, `nao_conformidades_${ini}_a_${fim}_gerado_${hoje}.xlsx`)
 
-      alert(`✅ Relatório gerado: ${linhas.length} não conformidade(s) em ${pautasComAuditoria.length} auditoria(s).`)
+      const auditoriasComNc = new Set(ncs.map(n => n.auditoria_id)).size
+      alert(`✅ Relatório gerado: ${linhas.length} não conformidade(s) em ${auditoriasComNc} auditoria(s).`)
     } catch (e) {
       alert('❌ Erro ao gerar relatório: ' + e.message)
     } finally {
