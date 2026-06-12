@@ -27,11 +27,36 @@ function parseCsv(text) {
   const linhas = text.replace(/\r/g, '').split('\n').filter(l => l.trim())
   const [header, ...rows] = linhas
   const cols = header.split(';').map(c => c.trim().toLowerCase())
-  return rows.map(row => {
-    const vals = row.split(';')
-    return cols.reduce((obj, col, i) => ({ ...obj, [col]: (vals[i] || '').trim() }), {})
-  })
+  console.log('🔍 [ImportarEquipes] Colunas detectadas no CSV:', cols)
+  return {
+    colunas: cols,
+    rows: rows.map(row => {
+      const vals = row.split(';')
+      return cols.reduce((obj, col, i) => ({ ...obj, [col]: (vals[i] || '').trim() }), {})
+    }),
+  }
 }
+
+// ─── Detecção automática de encoding ──────────────────────────────────
+// Tenta UTF-8 primeiro (com fatal:true → falha se houver byte inválido).
+// Se falhar, faz fallback pra Windows-1252 (encoding padrão do Excel BR).
+// Retorna { text, encoding } pra mostrar ao usuário qual foi detectado.
+function decodeArrayBuffer(buffer) {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
+    return { text, encoding: 'UTF-8' }
+  } catch {
+    const text = new TextDecoder('windows-1252').decode(buffer)
+    return { text, encoding: 'Windows-1252 (Excel BR)' }
+  }
+}
+
+// Colunas obrigatórias/esperadas pra validar o CSV
+const COLUNAS_ESPERADAS = [
+  'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
+  'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
+  'superv_campo', 'superv_operacao', 'coordenador',
+]
 
 const norm = s => (s || '').trim()
 const hojeISO   = () => new Date().toISOString().split('T')[0]
@@ -99,15 +124,17 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
 // ─── Componente ───────────────────────────────────────────────────────
 
 export default function ImportarEquipes({ onVoltar }) {
-  const [arquivo,    setArquivo]    = useState(null)
-  const [preview,    setPreview]    = useState([])
-  const [status,     setStatus]     = useState('idle') // idle | loading | success | error
-  const [msg,        setMsg]        = useState('')
-  const [progresso,  setProgresso]  = useState(0)
-  const [etapa,      setEtapa]      = useState('')
-  const [relatorio,  setRelatorio]  = useState(null)
-  const [duplicadas, setDuplicadas] = useState([])
-  const [abertos,    setAbertos]    = useState({}) // controla quais cards estão expandidos
+  const [arquivo,        setArquivo]        = useState(null)
+  const [preview,        setPreview]        = useState([])
+  const [colunasCsv,     setColunasCsv]     = useState([])  // colunas detectadas no CSV
+  const [encoding,       setEncoding]       = useState('')  // encoding detectado
+  const [status,         setStatus]         = useState('idle')
+  const [msg,            setMsg]            = useState('')
+  const [progresso,      setProgresso]      = useState(0)
+  const [etapa,          setEtapa]          = useState('')
+  const [relatorio,      setRelatorio]      = useState(null)
+  const [duplicadas,     setDuplicadas]     = useState([])
+  const [abertos,        setAbertos]        = useState({})
 
   const toggleAberto = k => setAbertos(a => ({ ...a, [k]: !a[k] }))
 
@@ -119,13 +146,19 @@ export default function ImportarEquipes({ onVoltar }) {
     setMsg('')
     setRelatorio(null)
     setDuplicadas([])
+    setColunasCsv([])
+    setEncoding('')
     const reader = new FileReader()
     reader.onload = ev => {
-      const text = ev.target.result
-      const rows = parseCsv(text)
+      // Detecta encoding (UTF-8 → Windows-1252 fallback)
+      const { text, encoding: enc } = decodeArrayBuffer(ev.target.result)
+      setEncoding(enc)
+      console.log(`📝 [ImportarEquipes] Encoding detectado: ${enc}`)
+      const { colunas, rows } = parseCsv(text)
+      setColunasCsv(colunas)
       setPreview(rows.slice(0, 5))
     }
-    reader.readAsText(file, 'latin1')
+    reader.readAsArrayBuffer(file)
   }
 
   const importar = async () => {
@@ -149,8 +182,11 @@ export default function ImportarEquipes({ onVoltar }) {
     try {
       // ─── 1. LER CSV ─────────────────────────────────────────────────
       setEtapa('📂 Lendo arquivo...')
-      const text = await arquivo.text()
-      const rows = parseCsv(text)
+      const buffer = await arquivo.arrayBuffer()
+      const { text, encoding: enc } = decodeArrayBuffer(buffer)
+      setEncoding(enc)
+      const { colunas, rows } = parseCsv(text)
+      setColunasCsv(colunas)
       setProgresso(10)
 
       // ─── 2. FILTRAR LINHAS-FANTASMA E SITUAÇÕES NÃO PERMITIDAS ──────
@@ -495,10 +531,84 @@ export default function ImportarEquipes({ onVoltar }) {
               {arquivo ? arquivo.name : 'Clique para selecionar o arquivo CSV'}
             </p>
             <p style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
-              Formato: separado por ponto-e-vírgula (;) — codificação Latin-1
+              Formato: separado por ponto-e-vírgula (;) — UTF-8 ou Windows-1252 (auto)
             </p>
           </div>
         </label>
+
+        {/* DIAGNÓSTICO DE COLUNAS DO CSV */}
+        {colunasCsv.length > 0 && !relatorio && (() => {
+          const detectadas = new Set(colunasCsv)
+          const faltando   = COLUNAS_ESPERADAS.filter(c => !detectadas.has(c))
+          const extras     = colunasCsv.filter(c => !COLUNAS_ESPERADAS.includes(c))
+          const tudoOk     = faltando.length === 0
+
+          return (
+            <div style={{
+              background: tudoOk ? '#f0fdf4' : '#fef3c7',
+              border: `1.5px solid ${tudoOk ? '#86efac' : '#fcd34d'}`,
+              borderRadius: 12, padding: '12px 16px', marginBottom: 16,
+            }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: tudoOk ? '#15803d' : '#b45309', marginBottom: 8 }}>
+                {tudoOk ? '✅ Colunas do CSV — Todas detectadas' : '⚠️ Colunas do CSV — Faltando ou diferentes!'}
+              </p>
+
+              {encoding && (
+                <div style={{ marginBottom: 10 }}>
+                  <span style={{
+                    fontSize: 10, padding: '3px 10px', borderRadius: 12, fontWeight: 700,
+                    background: '#dbeafe', color: '#1e3a8a',
+                  }}>
+                    📝 Encoding detectado: {encoding}
+                  </span>
+                </div>
+              )}
+
+              <p style={{ fontSize: 11, color: '#374151', marginBottom: 6, fontWeight: 600 }}>
+                Colunas no seu arquivo ({colunasCsv.length}):
+              </p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
+                {colunasCsv.map(c => (
+                  <span key={c} style={{
+                    fontSize: 10, padding: '2px 8px', borderRadius: 12, fontWeight: 700,
+                    background: COLUNAS_ESPERADAS.includes(c) ? '#dcfce7' : '#e0e7ff',
+                    color:      COLUNAS_ESPERADAS.includes(c) ? '#15803d' : '#3730a3',
+                  }}>
+                    {COLUNAS_ESPERADAS.includes(c) ? '✓' : 'ℹ️'} {c}
+                  </span>
+                ))}
+              </div>
+
+              {faltando.length > 0 && (
+                <div style={{ marginTop: 8, padding: 10, background: '#fee2e2', borderRadius: 8 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#b91c1c', marginBottom: 4 }}>
+                    ❌ Colunas esperadas que NÃO foram encontradas:
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {faltando.map(c => (
+                      <span key={c} style={{
+                        fontSize: 10, padding: '2px 8px', borderRadius: 12, fontWeight: 700,
+                        background: '#fecaca', color: '#7f1d1d',
+                      }}>
+                        ✗ {c}
+                      </span>
+                    ))}
+                  </div>
+                  <p style={{ fontSize: 10, color: '#7f1d1d', marginTop: 6, lineHeight: 1.5 }}>
+                    Essas colunas serão importadas como vazio. Verifique se o nome no
+                    cabeçalho do CSV bate exatamente (sem espaços, hífens ou acentos).
+                  </p>
+                </div>
+              )}
+
+              {extras.length > 0 && (
+                <p style={{ fontSize: 10, color: '#475569', marginTop: 6 }}>
+                  ℹ️ Colunas extras no CSV (não serão usadas): {extras.join(', ')}
+                </p>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Preview */}
         {preview.length > 0 && !relatorio && (
