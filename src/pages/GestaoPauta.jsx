@@ -8,7 +8,7 @@ import {
   FIELD_HEIGHT,
 } from '../components/PainelFiltros.jsx'
 
-const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA']
+const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
 
@@ -81,7 +81,7 @@ function normalizarPauta(obj) {
   )
 
   const ts = (c.tipo_servico || '').toUpperCase()
-  const tipoServico = ['CORTE','ANEXO','RELIGA'].includes(ts) ? ts : 'CORTE'
+  const tipoServico = TIPOS_SERVICO.includes(ts) ? ts : 'CORTE'
 
   const ta = (c.tipo_auditoria || '').toUpperCase()
   // Após limparTexto, "PÓS" virou "POS", então só precisamos checar "POS"
