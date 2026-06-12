@@ -21,8 +21,9 @@ const TODAS_PERMISSOES = [
   { id: 'pauta',            label: '📋 Pauta de Fiscalização'  },
   { id: 'gestao_usuarios',  label: '👥 Gestão de Usuários'     },
   { id: 'importar_equipes', label: '📥 Importar Equipes (CSV)' },
-  { id: 'historico_ver_todas',  label: '📂 Histórico — ver todas as auditorias' },
-  { id: 'historico_reabrir',    label: '🔓 Histórico — reabrir auditorias'      },
+  { id: 'historico_ver_todas',     label: '📂 Histórico — ver todas as auditorias' },
+  { id: 'historico_reabrir',       label: '🔓 Histórico — reabrir auditorias'      },
+  { id: 'acesso_todos_processos',  label: '🌐 Acesso a TODOS os processos (ignora segregação por estrutura)' },
 ]
 
 const FORM_VAZIO = {
