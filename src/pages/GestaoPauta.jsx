@@ -125,7 +125,8 @@ function normalizarPauta(obj) {
 
 export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   // ─── Hook do painel: Período (data_prevista) + Sup. Op + Sup. Campo + Prefixo ───
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+  // Passa `usuarioLogado` para ativar segregação por estrutura quando aplicável.
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   const [pautas,      setPautas]      = useState([])
   const [fiscais,     setFiscais]     = useState([])
@@ -239,9 +240,18 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   }
 
   // ─── Pautas filtradas pelo PAINEL (período + supervisor + prefixo) ───
+  // Também aplica SEGREGAÇÃO POR ESTRUTURA: se o usuário tem restrição
+  // (prefixosPermitidos != null), só vê pautas dos prefixos onde ele aparece.
   const pautasFiltradasPainel = useMemo(() => {
     const { ini, fim } = filtros.getDatasQuery()
+    const setPermitidos = filtros.prefixosPermitidos
+      ? new Set(filtros.prefixosPermitidos)
+      : null
+
     return pautas.filter(p => {
+      // Segregação por estrutura (invisível ao usuário)
+      if (setPermitidos && !setPermitidos.has(p.prefixo)) return false
+
       if (ini && p.data_prevista < ini) return false
       if (fim && p.data_prevista > fim) return false
       const filtroAtivo =
@@ -257,7 +267,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       return true
     })
   }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
-      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
+      filtros.prefixosPermitidos])
 
   const pautasExibidas = pautasFiltradasPainel.filter(p => {
     const s = calcStatus(p)
@@ -608,7 +619,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📋 Pauta de Fiscalização</h1>
-              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Equipes obrigatórias para fiscalização</p>
+              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
+                Equipes obrigatórias para fiscalização
+                {filtros.temSegregacao && (
+                  <span style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+                  }}>
+                    🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+                  </span>
+                )}
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['PENDENTE','VENCIDA','CONCLUIDA'].map(s => (
