@@ -75,6 +75,13 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                       )}
                     </p>
 
+                    {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
+                    {(p.nome_eletricista || p.nome_eletricista2) && (
+                      <p style={{ fontSize: 12, color: '#0c4a6e', fontWeight: 600, marginTop: 3 }}>
+                        👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
+                      </p>
+                    )}
+
                     {/* ─── Motivo Auditoria (destacado em laranja) ─── */}
                     {p.motivo_auditoria && (
                       <div style={{
