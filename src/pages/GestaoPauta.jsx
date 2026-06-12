@@ -23,7 +23,9 @@ const FORM_VAZIO = {
   prefixo: '', fiscal_login: '', data_prevista: new Date().toISOString().split('T')[0],
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
   recorrencia: 'UNICA', observacao: '', os: '', uc: '',
-  motivo_auditoria: '', // novo campo
+  motivo_auditoria: '',
+  matricula_eletricista1: '', matricula_eletricista2: '',
+  nome_eletricista: '', nome_eletricista2: '',
 }
 
 // ─── Limpa caracteres especiais e acentos ─────────────────────────────────────
@@ -102,17 +104,22 @@ function normalizarPauta(obj) {
   if (!data) data = new Date().toISOString().split('T')[0]
 
   return {
-    prefixo:          (c.prefixo || '').toUpperCase(),
-    fiscal_login:     (c.fiscal_login || c.fiscal || '').toLowerCase(),
-    data_prevista:    data,
-    tipo_servico:     tipoServico,
-    tipo_auditoria:   tipoAuditoria,
+    prefixo:                (c.prefixo || '').toUpperCase(),
+    fiscal_login:           (c.fiscal_login || c.fiscal || '').toLowerCase(),
+    data_prevista:          data,
+    tipo_servico:           tipoServico,
+    tipo_auditoria:         tipoAuditoria,
     recorrencia,
-    observacao:       c.observacao || '',
-    motivo_auditoria: motivoAuditoria,
-    os:               c.os || '',
-    uc:               c.uc || '',
-    status:           'PENDENTE',
+    observacao:             c.observacao || '',
+    motivo_auditoria:       motivoAuditoria,
+    os:                     c.os || '',
+    uc:                     c.uc || '',
+    // Matrículas vêm do CSV — os nomes serão preenchidos depois via lookup
+    matricula_eletricista1: (c.matricula_eletricista1 || c.matricula_eletricista || '').replace(/\D/g, ''),
+    matricula_eletricista2: (c.matricula_eletricista2 || '').replace(/\D/g, ''),
+    nome_eletricista:       '',
+    nome_eletricista2:      '',
+    status:                 'PENDENTE',
   }
 }
 
@@ -196,14 +203,22 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     }
     setSalvando(true); setErro('')
     try {
-      // ─── Limpa caracteres especiais antes de salvar (digitação manual) ───
-      const payload = {
+      // Limpa caracteres especiais
+      const baseLimpo = {
         ...formData,
-        prefixo:    limparTexto(formData.prefixo).toUpperCase(),
-        observacao: limparTexto(formData.observacao),
-        os:         limparTexto(formData.os),
-        uc:         limparTexto(formData.uc),
+        prefixo:                limparTexto(formData.prefixo).toUpperCase(),
+        observacao:             limparTexto(formData.observacao),
+        os:                     limparTexto(formData.os),
+        uc:                     limparTexto(formData.uc),
+        matricula_eletricista1: (formData.matricula_eletricista1 || '').replace(/\D/g, ''),
+        matricula_eletricista2: (formData.matricula_eletricista2 || '').replace(/\D/g, ''),
       }
+
+      // Enriquece com nomes dos eletricistas (silencioso se matrícula não bater)
+      const [enriquecido] = await enriquecerComEletricistas([baseLimpo])
+
+      const payload = enriquecido
+
       if (editando) await atualizarPauta(editando.id, payload)
       else          await criarPauta({ ...payload, status: 'PENDENTE' })
       await carregar(); fechar()
@@ -435,6 +450,55 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Enriquece pautas com nomes dos eletricistas a partir das matrículas
+  // - Faz UMA query em estrutura_equipes pegando todas as matrículas únicas
+  // - Pra cada pauta, busca os nomes correspondentes
+  // - Se matrícula não bate, deixa nome vazio (silenciosamente — sem erro)
+  // ═══════════════════════════════════════════════════════════════════════════
+  const enriquecerComEletricistas = async (pautas) => {
+    // Coleta matrículas únicas que precisam de lookup
+    const matriculas = [...new Set(
+      pautas.flatMap(p => [p.matricula_eletricista1, p.matricula_eletricista2])
+        .filter(m => m && m.length > 0)
+    )]
+
+    if (matriculas.length === 0) return pautas
+
+    // Busca todos os nomes de uma vez
+    const { data: eletricistas, error } = await supabase
+      .from('estrutura_equipes')
+      .select('matricula, colaborador')
+      .in('matricula', matriculas)
+
+    if (error) {
+      console.warn('⚠️ Erro ao buscar eletricistas:', error.message)
+      return pautas
+    }
+
+    // Mapeia matricula → nome (primeiro encontrado prevalece)
+    const mapNomes = {}
+    ;(eletricistas || []).forEach(e => {
+      if (!mapNomes[String(e.matricula)]) {
+        mapNomes[String(e.matricula)] = (e.colaborador || '').trim().toUpperCase()
+      }
+    })
+
+    // Enriquece cada pauta. Se a matrícula não foi encontrada, descarta-a também
+    // (assim o registro fica como se a matrícula não tivesse sido informada).
+    return pautas.map(p => {
+      const nome1 = p.matricula_eletricista1 ? mapNomes[p.matricula_eletricista1] : ''
+      const nome2 = p.matricula_eletricista2 ? mapNomes[p.matricula_eletricista2] : ''
+      return {
+        ...p,
+        matricula_eletricista1: nome1 ? p.matricula_eletricista1 : '',
+        matricula_eletricista2: nome2 ? p.matricula_eletricista2 : '',
+        nome_eletricista:       nome1 || '',
+        nome_eletricista2:      nome2 || '',
+      }
+    })
+  }
+
   // ─── Importação CSV/Excel ────────────────────────────────────────────────
   const lerArquivo = (file) => {
     setCsvStatus('')
@@ -506,18 +570,24 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     setCsvStatus('importando')
     try {
       const objs = parseCsvLinhas(csvTexto)
-      const pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
+      let pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
 
       if (pautasNovas.length === 0) {
         setCsvStatus('❌ Nenhuma linha válida encontrada. Verifique se prefixo e fiscal_login estão preenchidos.')
         return
       }
 
+      // ─── Enriquece com nomes dos eletricistas via lookup em estrutura_equipes ───
+      pautasNovas = await enriquecerComEletricistas(pautasNovas)
+
       for (const p of pautasNovas) await criarPauta(p)
 
-      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s) com sucesso!`)
+      // Conta quantas pautas tiveram pelo menos 1 eletricista preenchido
+      const comEletricistas = pautasNovas.filter(p => p.nome_eletricista || p.nome_eletricista2).length
+
+      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s) com sucesso!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas vinculados.` : ''}`)
       await carregar()
-      setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2000)
+      setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2500)
     } catch (e) {
       setCsvStatus('❌ Erro: ' + e.message)
     }
@@ -637,6 +707,13 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                           {p.os && <span>📄 OS: <strong>{p.os}</strong></span>}
                           {p.os && p.uc && <span style={{ margin: '0 8px' }}>·</span>}
                           {p.uc && <span>🏠 UC: <strong>{p.uc}</strong></span>}
+                        </div>
+                      )}
+
+                      {/* ─── Eletricistas vinculados (se houver) ─── */}
+                      {(p.nome_eletricista || p.nome_eletricista2) && (
+                        <div style={{ fontSize: 12, color: '#0c4a6e', lineHeight: 1.6, marginTop: 2, fontWeight: 600 }}>
+                          👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
                         </div>
                       )}
 
@@ -791,6 +868,48 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               />
             </div>
 
+            {/* ─── Matrículas dos Eletricistas (opcional) ─── */}
+            <div style={{
+              background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10,
+              padding: '12px 14px', marginBottom: 14,
+            }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                👷 Eletricistas da Equipe (opcional)
+              </p>
+              <p style={{ fontSize: 11, color: '#475569', marginBottom: 10, lineHeight: 1.4 }}>
+                Informe as matrículas. O sistema busca os nomes automaticamente em <strong>estrutura_equipes</strong>.
+                Se a matrícula não existir, será ignorada.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Matrícula 1</label>
+                  <input
+                    className="form-input"
+                    value={formData.matricula_eletricista1}
+                    onChange={e => upd('matricula_eletricista1', e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ex: 74894"
+                    inputMode="numeric"
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label">Matrícula 2</label>
+                  <input
+                    className="form-input"
+                    value={formData.matricula_eletricista2}
+                    onChange={e => upd('matricula_eletricista2', e.target.value.replace(/\D/g, ''))}
+                    placeholder="Ex: 12345"
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              {/* Mostra nomes vinculados (se houver — após editar) */}
+              {(formData.nome_eletricista || formData.nome_eletricista2) && (
+                <div style={{ marginTop: 8, fontSize: 11, color: '#0c4a6e', fontWeight: 600 }}>
+                  ✅ Vinculados: {[formData.nome_eletricista, formData.nome_eletricista2].filter(Boolean).join(' | ')}
+                </div>
+              )}
+            </div>
+
             {erro && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>
                 ❌ {erro}
@@ -815,10 +934,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
-              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc<br /><br />
+              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
               <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
               <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br /><br />
+              <strong style={{ color: '#0369a1' }}>✨ Eletricistas:</strong> as matrículas são opcionais. Se informadas, o sistema busca os nomes automaticamente em <strong>estrutura_equipes</strong>. Matrículas não encontradas são ignoradas (sem erro).<br /><br />
               <strong style={{ color: '#0369a1' }}>✨ Tratamento automático:</strong> acentos (ç, ã, õ, é...) e caracteres especiais são removidos automaticamente. Pode escrever normalmente no Excel.
             </div>
 
@@ -852,7 +972,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 className="form-textarea"
                 value={csvTexto}
                 onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
-                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;motivo_auditoria;os;uc\nPI-THE-C001M;gileno.ribeiro;2026-06-19;CORTE;DESEMPENHO;UNICA;Verificar material aplicado;MATERIAL APLICADO EM CAMPO;1234;6789`}
+                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;motivo_auditoria;os;uc;matricula_eletricista1;matricula_eletricista2\nPI-THE-C001M;gileno.ribeiro;2026-06-19;CORTE;DESEMPENHO;UNICA;Verificar material aplicado;MATERIAL APLICADO EM CAMPO;1234;6789;74894;12345`}
                 rows={6}
                 style={{ fontFamily: 'monospace', fontSize: 12 }}
               />
@@ -860,12 +980,14 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             {csvPreview.length > 0 && (
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 11 }}>
-                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas):</p>
+                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas — eletricistas serão buscados ao importar):</p>
                 {csvPreview.map((p, i) => (
                   <div key={i} style={{ color: '#475569', marginBottom: 4, lineHeight: 1.5 }}>
                     <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico} · {p.tipo_auditoria} · {p.recorrencia}
                     {p.motivo_auditoria ? ` · 🎯 ${p.motivo_auditoria}` : ''}
                     {p.os ? ` · OS:${p.os}` : ''}{p.uc ? ` · UC:${p.uc}` : ''}
+                    {p.matricula_eletricista1 ? ` · 👷 Mat1:${p.matricula_eletricista1}` : ''}
+                    {p.matricula_eletricista2 ? ` · Mat2:${p.matricula_eletricista2}` : ''}
                     {p.observacao ? ` · 💬 ${p.observacao}` : ''}
                   </div>
                 ))}
