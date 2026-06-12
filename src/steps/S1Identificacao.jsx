@@ -117,11 +117,20 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
 
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat
 
-  // Pré-preenche OS e UC da pauta ativa se estiverem vazios no form
+  // Pré-preenche OS, UC e eletricistas da pauta ativa se estiverem vazios no form
   useEffect(() => {
     if (!pautaAtiva) return
-    if (pautaAtiva.os  && !form.os)  upd('os',  pautaAtiva.os)
-    if (pautaAtiva.uc  && !form.uc)  upd('uc',  pautaAtiva.uc)
+    if (pautaAtiva.os && !form.os) upd('os', pautaAtiva.os)
+    if (pautaAtiva.uc && !form.uc) upd('uc', pautaAtiva.uc)
+    // Eletricistas da pauta (vindos do CSV via lookup em estrutura_equipes)
+    if (pautaAtiva.nome_eletricista && !form.nomeEletricista) {
+      upd('nomeEletricista', pautaAtiva.nome_eletricista)
+      if (pautaAtiva.matricula_eletricista1) upd('matriculaEletricista1', pautaAtiva.matricula_eletricista1)
+    }
+    if (pautaAtiva.nome_eletricista2 && !form.nomeEletricista2) {
+      upd('nomeEletricista2', pautaAtiva.nome_eletricista2)
+      if (pautaAtiva.matricula_eletricista2) upd('matriculaEletricista2', pautaAtiva.matricula_eletricista2)
+    }
   }, [pautaAtiva])
 
   useEffect(() => {
