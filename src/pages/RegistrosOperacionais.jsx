@@ -124,7 +124,8 @@ function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
 
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
   // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+  // Passa `usuarioLogado` pra ativar segregação por estrutura.
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   // ─── Filtros EXTRAS desta tela ───
   const [tipo,       setTipo]       = useState('')   // single select
@@ -155,18 +156,25 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         return
       }
 
-      // ─── 1) Se há filtros hierárquicos, descobre quais supervisores "casam" ───
-      // Combina selSupOp + selSupCampo + selPrefixos → conjunto de Sup. Campo permitidos.
-      // O matching com registros.fiscal é fuzzy (substring case-insensitive)
-      // porque registros.fiscal tem nome completo enquanto superv_campo
-      // pode ter só o primeiro nome.
+      // ─── 1) Determina supervisores permitidos combinando 2 fontes ───
+      // a) Filtros do painel (selSupOp/selSupCampo/selPrefixos)
+      // b) Segregação por estrutura (filtros.prefixosPermitidos do hook)
+      //
+      // O mapPrefixo do hook JÁ vem filtrado pelos prefixos que o usuário
+      // pode ver (cruzamento natural + processos liberados). Então qualquer
+      // iteração sobre ele já respeita a segregação automaticamente.
+      //
+      // Matching com registros.fiscal é fuzzy (substring case-insensitive)
+      // porque fiscal tem nome completo e superv_campo pode ter só primeiro nome.
       const filtroHierarquicoAtivo =
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
 
       let supervisoresPermitidos = null
+
       if (filtroHierarquicoAtivo) {
+        // Aplica filtros do painel sobre mapPrefixo (já segregado)
         const sups = new Set()
         Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
           if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
@@ -175,12 +183,21 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           if (info.campo) sups.add(info.campo)
         })
         supervisoresPermitidos = [...sups]
-        if (supervisoresPermitidos.length === 0) {
-          setRegistros([])
-          setTokensAtivos({})
-          setLoading(false)
-          return
-        }
+      } else if (filtros.prefixosPermitidos) {
+        // Sem filtros do painel mas há segregação → extrai os sups dos prefixos permitidos
+        const sups = new Set()
+        filtros.prefixosPermitidos.forEach(pref => {
+          const info = filtros.mapPrefixo[pref]
+          if (info?.campo) sups.add(info.campo)
+        })
+        supervisoresPermitidos = [...sups]
+      }
+
+      if (supervisoresPermitidos !== null && supervisoresPermitidos.length === 0) {
+        setRegistros([])
+        setTokensAtivos({})
+        setLoading(false)
+        return
       }
 
       // ─── 2) Chama listarRegistros com filtros básicos (data + tipo + fiscais) ───
@@ -307,6 +324,14 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📝 Registros Operacionais</h1>
               <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>
                 {isAdmin ? 'Todos os registros' : `Seus registros — ${usuarioLogado?.nome}`}
+                {filtros.temSegregacao && (
+                  <span style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+                  }}>
+                    🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+                  </span>
+                )}
               </p>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 12px', textAlign: 'center' }}>
