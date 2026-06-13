@@ -165,17 +165,19 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
       if (editando) usuarioSalvo = await atualizarUsuario(editando.id, payload)
       else          usuarioSalvo = await criarUsuario(payload)
 
+      console.log('💾 Usuário salvo:', usuarioSalvo?.id, '— processos a salvar:', processosUsuario)
+
       // Salva os processos atribuídos a esse usuário (granularidade individual)
       if (usuarioSalvo?.id) {
-        try {
-          await salvarProcessosUsuario(usuarioSalvo.id, processosUsuario)
-        } catch (e) {
-          console.warn('Erro salvando processos do usuário:', e.message)
-        }
+        await salvarProcessosUsuario(usuarioSalvo.id, processosUsuario)
+        console.log('✅ Processos salvos com sucesso pro usuário', usuarioSalvo.id)
       }
 
       await carregar(); fechar()
-    } catch (e) { setErro(e.message) }
+    } catch (e) {
+      console.error('❌ Erro ao salvar:', e)
+      setErro(e.message || String(e))
+    }
     finally { setSalvando(false) }
   }
 
