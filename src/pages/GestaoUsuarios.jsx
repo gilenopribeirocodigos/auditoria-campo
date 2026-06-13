@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp } from '../lib/auth.js'
+import {
+  listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp,
+  listarProcessosUsuario, salvarProcessosUsuario,
+} from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 import { processoToKey } from '../components/PainelFiltros.jsx'
 
@@ -66,6 +69,9 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   // Processos distintos da estrutura_equipes (pra gerar toggles dinâmicos)
   const [processosDisponiveis, setProcessosDisponiveis] = useState([]) // [{ label, key }]
 
+  // Processos atribuídos ao usuário atual no modal (granularidade individual)
+  const [processosUsuario, setProcessosUsuario] = useState([])
+
   const carregar = async () => {
     setLoading(true)
     try { setUsuarios(await listarUsuarios()) }
@@ -90,32 +96,59 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
         mapa[r.perfil].push(r.permissao)
       })
       setPermissoes(mapa)
-
-      // ─── Processos distintos da estrutura_equipes (toggles dinâmicos) ───
-      const { data: estrut } = await supabase.from('estrutura_equipes')
-        .select('processo_equipe')
-      const processosSet = new Set()
-      ;(estrut || []).forEach(r => {
-        const p = (r.processo_equipe || '').trim()
-        if (p) processosSet.add(p)
-      })
-      const processosOrdenados = [...processosSet].sort().map(label => ({
-        label,
-        key: processoToKey(label),  // ex: "LIGAÇÃO NOVA" → "processo_LIGACAO_NOVA"
-      })).filter(p => p.key)  // descarta processos sem chave válida
-      setProcessosDisponiveis(processosOrdenados)
     } finally {
       setLoadingPerms(false)
     }
   }
 
-  useEffect(() => { carregar(); carregarVersaoSistema() }, [])
+  // Carrega processos distintos da estrutura_equipes (pra os toggles dinâmicos
+  // tanto da aba "Permissões por Perfil" quanto do modal de editar usuário)
+  const carregarProcessosDisponiveis = async () => {
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select('processo_equipe')
+      const set = new Set()
+      ;(data || []).forEach(r => {
+        const p = (r.processo_equipe || '').trim()
+        if (p) set.add(p)
+      })
+      const lista = [...set].sort().map(label => ({
+        label, key: processoToKey(label),
+      })).filter(p => p.key)
+      setProcessosDisponiveis(lista)
+    } catch (e) {
+      console.warn('Erro carregando processos:', e.message)
+    }
+  }
+
+  useEffect(() => { carregar(); carregarVersaoSistema(); carregarProcessosDisponiveis() }, [])
   useEffect(() => { if (abaAtiva === 'permissoes') carregarPermissoes() }, [abaAtiva])
 
-  const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setModal(true) }
-  const abrirEditar = u  => { setEditando(u); setFormData({ ...u, senha: '' }); setErro(''); setModal(true) }
-  const fechar      = () => { setModal(false); setErro('') }
+  const abrirNovo   = () => {
+    setEditando(null); setFormData(FORM_VAZIO); setErro('')
+    setProcessosUsuario([])
+    setModal(true)
+  }
+  const abrirEditar = async u  => {
+    setEditando(u); setFormData({ ...u, senha: '' }); setErro('')
+    // Carrega os processos atribuídos a esse usuário
+    try {
+      const procs = await listarProcessosUsuario(u.id)
+      setProcessosUsuario(procs)
+    } catch (e) {
+      console.warn('Erro carregando processos do usuário:', e.message)
+      setProcessosUsuario([])
+    }
+    setModal(true)
+  }
+  const fechar      = () => { setModal(false); setErro(''); setProcessosUsuario([]) }
   const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
+
+  const toggleProcessoUsuario = chave => {
+    setProcessosUsuario(prev =>
+      prev.includes(chave) ? prev.filter(p => p !== chave) : [...prev, chave]
+    )
+  }
 
   const salvar = async () => {
     if (!formData.nome || !formData.login) { setErro('Nome e login são obrigatórios.'); return }
@@ -127,8 +160,20 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
       // Não sobrescreve campos de monitoramento ao editar
       delete payload.versao_app
       delete payload.ultimo_login
-      if (editando) await atualizarUsuario(editando.id, payload)
-      else          await criarUsuario(payload)
+
+      let usuarioSalvo
+      if (editando) usuarioSalvo = await atualizarUsuario(editando.id, payload)
+      else          usuarioSalvo = await criarUsuario(payload)
+
+      // Salva os processos atribuídos a esse usuário (granularidade individual)
+      if (usuarioSalvo?.id) {
+        try {
+          await salvarProcessosUsuario(usuarioSalvo.id, processosUsuario)
+        } catch (e) {
+          console.warn('Erro salvando processos do usuário:', e.message)
+        }
+      }
+
       await carregar(); fechar()
     } catch (e) { setErro(e.message) }
     finally { setSalvando(false) }
@@ -413,51 +458,22 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                   })}
                 </div>
 
-                {/* ─── Processos da Estrutura (toggles dinâmicos vindos da estrutura_equipes) ─── */}
-                {processosDisponiveis.length > 0 && (
-                  <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1.5px dashed #c4b5fd' }}>
-                    <p style={{ fontSize: 13, fontWeight: 800, color: '#4c1d95', marginBottom: 6 }}>
-                      🌐 Processos da Estrutura
-                    </p>
-                    <p style={{ fontSize: 11, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
-                      Libere quais <strong>processos</strong> esse perfil pode acessar (vê TODOS os prefixos do processo).
-                      Soma com o acesso natural pela hierarquia.
-                      Se "🌐 Acesso a TODOS os processos" estiver ativo, isso é ignorado.
-                    </p>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                      {processosDisponiveis.map(proc => {
-                        const ativo = (permissoes[perfilSelecionado] || []).includes(proc.key)
-                        return (
-                          <div key={proc.key} onClick={() => togglePermissao(perfilSelecionado, proc.key)} style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-                            background: ativo ? '#ecfdf5' : '#f8fafc',
-                            border: `1.5px solid ${ativo ? '#10b981' : '#e2e8f0'}`,
-                            transition: 'all 0.2s',
-                          }}>
-                            <span style={{ fontSize: 14, fontWeight: 700, color: ativo ? '#065f46' : '#64748b' }}>
-                              ⚙️ {proc.label}
-                            </span>
-                            <div style={{
-                              width: 44, height: 24, borderRadius: 12,
-                              background: ativo ? '#10b981' : '#cbd5e1',
-                              position: 'relative', transition: 'background 0.2s',
-                            }}>
-                              <div style={{
-                                position: 'absolute', top: 3,
-                                left: ativo ? 23 : 3,
-                                width: 18, height: 18, borderRadius: '50%',
-                                background: '#fff', transition: 'left 0.2s',
-                                boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                              }} />
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )}
+                {/* ─── Aviso sobre processos agora serem por USUÁRIO ─── */}
+                <div style={{
+                  marginTop: 22, padding: '14px', borderRadius: 10,
+                  background: '#fef3c7', border: '1px solid #fcd34d',
+                }}>
+                  <p style={{ fontSize: 12, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
+                    💡 Acesso a processos é configurado POR USUÁRIO
+                  </p>
+                  <p style={{ fontSize: 11, color: '#78350f', lineHeight: 1.5 }}>
+                    Os processos da estrutura (CORTE, LIGAÇÃO NOVA, EMERGENCIAL...) são liberados
+                    individualmente no <strong>cadastro de cada usuário</strong> — assim Joselito
+                    (Comercial) e Fulano (Emergencial) podem ter o mesmo perfil sem se misturar.
+                    <br /><br />
+                    Use o botão <strong>✏️ Editar</strong> em cada usuário pra configurar.
+                  </p>
+                </div>
 
                 {msgPerms && (
                   <p style={{ marginTop: 14, fontSize: 13, fontWeight: 700, color: msgPerms.startsWith('✅') ? '#15803d' : '#dc2626' }}>
@@ -523,6 +539,54 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
               <label className="form-label">Base / Região</label>
               <input className="form-input" value={formData.base_regiao} onChange={e => upd('base_regiao', e.target.value)} placeholder="Ex: Teresina, Todas..." />
             </div>
+
+            {/* ─── Processos da Estrutura que o usuário pode ver ─── */}
+            {processosDisponiveis.length > 0 && (
+              <div style={{
+                background: '#f5f3ff', border: '1.5px solid #c4b5fd',
+                borderRadius: 12, padding: '14px', marginBottom: 16,
+              }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: '#4c1d95', marginBottom: 4 }}>
+                  🌐 Processos que este usuário pode ver
+                </p>
+                <p style={{ fontSize: 11, color: '#6b21a8', marginBottom: 12, lineHeight: 1.5 }}>
+                  Marque os processos da estrutura que este usuário específico tem acesso.
+                  Se nenhum marcado, ele só vê pelo cruzamento natural (nome em superv_campo/operacao/coordenador).
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {processosDisponiveis.map(proc => {
+                    const ativo = processosUsuario.includes(proc.key)
+                    return (
+                      <div key={proc.key} onClick={() => toggleProcessoUsuario(proc.key)} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                        background: ativo ? '#ecfdf5' : '#fff',
+                        border: `1.5px solid ${ativo ? '#10b981' : '#e2e8f0'}`,
+                        transition: 'all 0.2s',
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: ativo ? '#065f46' : '#64748b' }}>
+                          ⚙️ {proc.label}
+                        </span>
+                        <div style={{
+                          width: 40, height: 22, borderRadius: 11,
+                          background: ativo ? '#10b981' : '#cbd5e1',
+                          position: 'relative', transition: 'background 0.2s',
+                        }}>
+                          <div style={{
+                            position: 'absolute', top: 3,
+                            left: ativo ? 21 : 3,
+                            width: 16, height: 16, borderRadius: '50%',
+                            background: '#fff', transition: 'left 0.2s',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {erro && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#b91c1c', marginBottom: 14 }}>
