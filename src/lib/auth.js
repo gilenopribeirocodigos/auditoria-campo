@@ -187,12 +187,18 @@ export async function listarProcessosUsuario(usuarioId) {
 // Salva a lista COMPLETA de processos do usuário (substitui tudo).
 // Estratégia: deleta tudo do usuário, insere a nova lista. Mais simples e seguro.
 export async function salvarProcessosUsuario(usuarioId, processosChaves) {
+  console.log('🔄 salvarProcessosUsuario:', { usuarioId, processosChaves })
+
   // Deleta os atuais
-  const { error: errDel } = await supabase
+  const { error: errDel, count: countDel } = await supabase
     .from('usuarios_processos')
-    .delete()
+    .delete({ count: 'exact' })
     .eq('usuario_id', usuarioId)
-  if (errDel) throw errDel
+  if (errDel) {
+    console.error('❌ Erro no DELETE:', errDel)
+    throw new Error('Erro ao limpar processos antigos: ' + errDel.message)
+  }
+  console.log(`🗑️  Deletados ${countDel ?? 0} processos antigos`)
 
   // Insere os novos (se houver)
   if (processosChaves.length > 0) {
@@ -200,9 +206,16 @@ export async function salvarProcessosUsuario(usuarioId, processosChaves) {
       usuario_id:     usuarioId,
       processo_chave: chave,
     }))
-    const { error: errIns } = await supabase
+    console.log('📥 INSERT payload:', payload)
+
+    const { data, error: errIns } = await supabase
       .from('usuarios_processos')
       .insert(payload)
-    if (errIns) throw errIns
+      .select()
+    if (errIns) {
+      console.error('❌ Erro no INSERT:', errIns)
+      throw new Error('Erro ao salvar processos novos: ' + errIns.message)
+    }
+    console.log('✅ INSERT ok:', data)
   }
 }
