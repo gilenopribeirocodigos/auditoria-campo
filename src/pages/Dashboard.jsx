@@ -61,7 +61,9 @@ const TIPO_EMOJI = { CORTE: '✂️', ANEXO: '🔌', RELIGA: '⚡', EMERGENCIAL:
 export default function Dashboard({ usuarioLogado, onVoltar }) {
   // Hook do painel — gerencia: modoPeriodo, mesAno, dataIni/Fim,
   // selSupOp, selSupCampo, selPrefixos + cascatas + mapPrefixo + filtrar()
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+  // Passa `usuarioLogado` pra ativar SEGREGAÇÃO POR ESTRUTURA automática:
+  // o filtros.filtrar() já aplica a restrição de prefixos permitidos.
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   const [abaAtiva, setAbaAtiva] = useState('meta_dia')
   const [loading,  setLoading]  = useState(true)
@@ -114,11 +116,11 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filtros.mesAno, filtros.modoPeriodo, filtros.dataIni, filtros.dataFim])
 
-  // ── auditorias FILTRADAS (filtros.filtrar aplica Sup. Op + Sup. Campo + Prefixo) ──
+  // ── auditorias FILTRADAS (filtros.filtrar aplica Sup. Op + Sup. Campo + Prefixo + SEGREGAÇÃO) ──
   const realizadas     = useMemo(() => filtros.filtrar(audsRaw),
-    [audsRaw, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+    [audsRaw, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
   const realizadasHoje = useMemo(() => filtros.filtrar(audsHojeRaw),
-    [audsHojeRaw, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+    [audsHojeRaw, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
   const filtroHierarquicoAtivo =
     filtros.selSupOp.length    > 0 ||
@@ -298,7 +300,17 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
           }}>← Voltar para Home</button>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800 }}>📊 Dashboard — Ranking Operacional</h1>
-            <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Visão consolidada do desempenho de equipes e fiscais</p>
+            <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
+              Visão consolidada do desempenho de equipes e fiscais
+              {filtros.temSegregacao && (
+                <span style={{
+                  marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                  background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+                }}>
+                  🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+                </span>
+              )}
+            </p>
           </div>
         </div>
       </div>
