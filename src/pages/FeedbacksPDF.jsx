@@ -14,7 +14,7 @@ const STATUS_COR = {
 
 export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
   // Hook do painel — Período + Sup. Op + Sup. Campo + Prefixo + cascatas
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   // Filtros específicos desta tela (extras)
   const [agruparPor, setAgruparPor] = useState('equipe')
@@ -109,6 +109,14 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>💬 Relatório de Feedbacks</h1>
           <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
             Feedbacks aplicados às equipes no período
+            {filtros.temSegregacao && (
+              <span style={{
+                marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+              }}>
+                🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+              </span>
+            )}
           </p>
         </div>
       </div>
