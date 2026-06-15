@@ -33,6 +33,7 @@ const TODAS_PERMISSOES = [
 const FORM_VAZIO = {
   nome: '', login: '', senha: '', matricula: '',
   perfil: 'SUPERV. CAMPO', base_regiao: 'Todas', status: 'ATIVO',
+  tem_meta: false,
 }
 
 // Formata data/hora do último login
@@ -540,6 +541,39 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
             <div className="form-group">
               <label className="form-label">Base / Região</label>
               <input className="form-input" value={formData.base_regiao} onChange={e => upd('base_regiao', e.target.value)} placeholder="Ex: Teresina, Todas..." />
+            </div>
+
+            {/* ─── Toggle: tem meta ─── */}
+            <div
+              onClick={() => upd('tem_meta', !formData.tem_meta)}
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                padding: '12px 14px', borderRadius: 10, cursor: 'pointer', marginBottom: 16,
+                background: formData.tem_meta ? '#f0fdf4' : '#f8fafc',
+                border: `1.5px solid ${formData.tem_meta ? '#86efac' : '#e2e8f0'}`,
+                transition: 'all 0.2s',
+              }}>
+              <div>
+                <p style={{ fontSize: 13, fontWeight: 700, color: formData.tem_meta ? '#15803d' : '#64748b', margin: 0 }}>
+                  🎯 Aparece em Metas por Fiscal
+                </p>
+                <p style={{ fontSize: 11, color: formData.tem_meta ? '#15803d' : '#94a3b8', margin: '2px 0 0', opacity: 0.8 }}>
+                  {formData.tem_meta ? 'Este usuário recebe meta mensal' : 'Este usuário não recebe meta'}
+                </p>
+              </div>
+              <div style={{
+                width: 44, height: 24, borderRadius: 12,
+                background: formData.tem_meta ? '#10b981' : '#cbd5e1',
+                position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+              }}>
+                <div style={{
+                  position: 'absolute', top: 3,
+                  left: formData.tem_meta ? 23 : 3,
+                  width: 18, height: 18, borderRadius: '50%',
+                  background: '#fff', transition: 'left 0.2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                }} />
+              </div>
             </div>
 
             {/* ─── Processos da Estrutura que o usuário pode ver ─── */}
