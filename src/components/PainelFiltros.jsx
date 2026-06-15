@@ -396,13 +396,30 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     : mesAno ? mesLabel(mesAno) : 'Todos'
 
   // ── Filtra uma lista em memória por supervisor/prefixo ──
-  // Cada item precisa ter um campo de prefixo (default: 'prefixo')
+  // Cada item precisa ter um campo de prefixo (default: 'prefixo').
+  // ATENÇÃO: também aplica SEGREGAÇÃO POR ESTRUTURA automaticamente —
+  // se o usuário tem restrição (estrutura.prefixosPermitidos != null),
+  // filtra a lista pra incluir só itens com prefixo permitido, mesmo
+  // sem nenhum filtro hierárquico ativo no painel.
   const filtrar = (lista, { prefixoField = 'prefixo' } = {}) => {
     const temFiltro = selSupOp.length > 0 || selSupCampo.length > 0 || selPrefixos.length > 0
-    if (!temFiltro) return lista
+    const setPermitidos = estrutura.prefixosPermitidos
+      ? new Set(estrutura.prefixosPermitidos)
+      : null
+
+    if (!temFiltro && !setPermitidos) return lista
+
     return lista.filter(item => {
       const pref = item[prefixoField]
       if (!pref) return false
+
+      // Segregação por estrutura (sempre aplicada quando há restrição)
+      if (setPermitidos && !setPermitidos.has(pref)) return false
+
+      // Sem filtros do painel → já passou na segregação, libera
+      if (!temFiltro) return true
+
+      // Filtros do painel
       if (selPrefixos.length > 0 && !selPrefixos.includes(pref)) return false
       const info = estrutura.mapPrefixo[pref]
       if (selSupOp.length    > 0 && (!info || !selSupOp.includes(info.op)))       return false
