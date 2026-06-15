@@ -13,7 +13,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
   // ─── Hook do painel: SEM mês inicial (modo Live não usa Período) ───
   // Mantemos só Sup. Op + Sup. Campo + Prefixo (e Período é ocultado abaixo).
-  const filtros = useFiltrosOperacionais({ inicializarMes: false })
+  const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado })
 
   const [todasPosicoes,   setTodasPosicoes]   = useState([])
   const [loading,         setLoading]         = useState(true)
@@ -29,15 +29,27 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     return CORES[idx % CORES.length] || '#374151'
   }
 
-  // ─── Conjunto de supervisores permitidos pelos filtros hierárquicos ───
-  // null = sem filtro (todos liberados). Set = nomes (lowercase) permitidos.
+  // ─── Conjunto de supervisores permitidos (filtros do painel + SEGREGAÇÃO) ───
+  // null = sem restrição (todos liberados). Set = nomes (lowercase) permitidos.
   const supervisoresAlvo = useMemo(() => {
     const filtroAtivo =
       filtros.selSupOp.length    > 0 ||
       filtros.selSupCampo.length > 0 ||
       filtros.selPrefixos.length > 0
-    if (!filtroAtivo) return null
 
+    // Sem filtros do painel mas com segregação → usa prefixos permitidos como base
+    if (!filtroAtivo) {
+      if (!filtros.prefixosPermitidos) return null  // ADMIN / acesso_todos → sem restrição
+      // Extrai supervisores dos prefixos permitidos
+      const set = new Set()
+      filtros.prefixosPermitidos.forEach(pref => {
+        const info = filtros.mapPrefixo[pref]
+        if (info?.campo) set.add(info.campo.toLowerCase())
+      })
+      return set.size > 0 ? set : null
+    }
+
+    // Com filtros do painel ativos: itera mapPrefixo (já segregado)
     const set = new Set()
     Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
       if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
@@ -46,7 +58,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       if (info.campo) set.add(info.campo.toLowerCase())
     })
     return set
-  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
   // Helper: nome do fiscal "casa" com algum supervisor permitido? (matching fuzzy)
   const fiscalPermitido = (nome) => {
@@ -312,13 +324,28 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       </div>
 
       {/* ═══ PAINEL DE FILTROS (sem Período — não faz sentido em mapa) ═══ */}
-      <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '12px 16px 0', boxSizing: 'border-box' }}>
+      {/* zIndex 1000 pra ficar acima do mapa Leaflet (que usa z-index 400) */}
+      <div style={{
+        maxWidth: 900, margin: '0 auto', width: '100%',
+        padding: '12px 16px 0', boxSizing: 'border-box',
+        position: 'relative', zIndex: 1000,
+      }}>
         <PainelFiltros
           filtros={filtros}
           titulo="🔍 Filtros do Mapa"
           badge={modoHistorico ? 'filtra a lista de fiscais' : 'filtra fiscais visíveis'}
           mostrarMesPeriodo={false}
         />
+        {filtros.temSegregacao && (
+          <div style={{
+            fontSize: 11, fontWeight: 700, color: '#065f46',
+            background: '#d1fae5', border: '1px solid #6ee7b7',
+            borderRadius: 8, padding: '4px 12px', marginTop: -8, marginBottom: 8,
+            display: 'inline-block',
+          }}>
+            🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+          </div>
+        )}
       </div>
 
       {/* Aviso quando filtro hierárquico esconde resultados */}
