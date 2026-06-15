@@ -25,21 +25,30 @@ function tendencia(auditorias) {
 
 export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
   // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   const [auditorias, setAuditorias] = useState([])
   const [equipeInfo, setEquipeInfo] = useState([])
   const [loading,    setLoading]    = useState(false)
   const [gerado,     setGerado]     = useState(false)
 
-  // Computed: lista FINAL de prefixos a buscar (combina cascata)
+  // Computed: lista FINAL de prefixos a buscar (combina cascata + SEGREGAÇÃO)
+  // O mapPrefixo já vem filtrado pelo hook (só prefixos que o usuário pode ver),
+  // então iterar sobre ele já respeita a segregação automaticamente.
   const prefixosFiltrados = useMemo(() => {
     const filtroAtivo =
       filtros.selSupOp.length    > 0 ||
       filtros.selSupCampo.length > 0 ||
       filtros.selPrefixos.length > 0
-    if (!filtroAtivo) return []
 
+    // Se há segregação mas sem filtros do painel ativos,
+    // usa todos os prefixos permitidos como base (sem exigir seleção manual)
+    if (!filtroAtivo) {
+      if (filtros.prefixosPermitidos) return [...filtros.prefixosPermitidos].sort()
+      return []  // sem segregação e sem filtro → exige seleção manual
+    }
+
+    // Com filtros do painel: itera sobre mapPrefixo (já segregado)
     const set = new Set()
     Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
       if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
@@ -48,11 +57,14 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
       set.add(pref)
     })
     return [...set].sort()
-  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
   const buscar = async () => {
     if (prefixosFiltrados.length === 0) {
-      alert('Selecione pelo menos uma equipe via os filtros (Sup. Operacional, Sup. Campo ou Prefixo).')
+      alert(filtros.temSegregacao
+        ? 'Nenhuma equipe disponível na sua estrutura para o filtro selecionado.'
+        : 'Selecione pelo menos uma equipe via os filtros (Sup. Operacional, Sup. Campo ou Prefixo).'
+      )
       return
     }
     setLoading(true)
@@ -164,6 +176,14 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>🚗 Relatório por Equipe</h1>
           <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
             Histórico consolidado de fiscalizações — selecione 1 ou mais equipes
+            {filtros.temSegregacao && (
+              <span style={{
+                marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+              }}>
+                🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+              </span>
+            )}
           </p>
         </div>
       </div>
@@ -211,7 +231,10 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
 
         {prefixosFiltrados.length === 0 && (
           <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '14px 16px', fontSize: 13, color: '#c2410c', fontWeight: 600, marginBottom: 16 }}>
-            ⚠️ Selecione pelo menos uma equipe via os filtros (Supervisor Operacional, de Campo ou Prefixo) para gerar o relatório.
+            {filtros.temSegregacao
+              ? '⚠️ Nenhuma equipe disponível na sua estrutura. Verifique seus processos liberados com o administrador.'
+              : '⚠️ Selecione pelo menos uma equipe via os filtros (Supervisor Operacional, de Campo ou Prefixo) para gerar o relatório.'
+            }
           </div>
         )}
 
