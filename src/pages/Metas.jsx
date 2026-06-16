@@ -12,6 +12,9 @@ function mesLabel(mesAno) {
   return `${nomes[parseInt(mes) - 1]}/${ano}`
 }
 
+// Perfis que SÃO fiscais (têm meta e realizam auditorias)
+// Admin, supervisores e coordenadores ficam de fora.
+
 export default function Metas({ usuarioLogado, onVoltar }) {
   const [mesAno,    setMesAno]    = useState(mesAtual())
   const [fiscais,   setFiscais]   = useState([])
@@ -42,9 +45,12 @@ export default function Metas({ usuarioLogado, onVoltar }) {
   const carregar = async () => {
     setLoading(true)
     try {
+      // Carrega APENAS usuários marcados com tem_meta = true
       const { data: fData } = await supabase
-        .from('usuarios').select('nome, login, matricula')
-        .in('status', ['ATIVO', 'RESERVA']).order('nome')
+        .from('usuarios').select('nome, login, matricula, perfil')
+        .in('status', ['ATIVO', 'RESERVA'])
+        .eq('tem_meta', true)
+        .order('nome')
       setFiscais(fData || [])
 
       const { data: mData, error: mErr } = await supabase
@@ -124,7 +130,9 @@ export default function Metas({ usuarioLogado, onVoltar }) {
           }}>← Voltar para Home</button>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800 }}>🎯 Metas por Fiscal</h1>
-            <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Cadastro de metas e feriados</p>
+            <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
+              Cadastro de metas e feriados — apenas fiscais de campo
+            </p>
           </div>
         </div>
       </div>
@@ -150,6 +158,15 @@ export default function Metas({ usuarioLogado, onVoltar }) {
         {/* ══════════════ ABA EDITAR METAS ══════════════ */}
         {abaAtiva === 'metas' && (
           <>
+            {/* Aviso sobre quem aparece */}
+            <div style={{
+              background: '#f0fdf4', border: '1px solid #86efac',
+              borderRadius: 10, padding: '10px 14px', marginBottom: 14,
+              fontSize: 12, color: '#15803d', fontWeight: 600,
+            }}>
+              🎯 Exibindo apenas usuários marcados com "Aparece em Metas por Fiscal" — configure em Gestão de Usuários.
+            </div>
+
             <div style={{ display: 'flex', gap: 10, marginBottom: 16, alignItems: 'flex-end', flexWrap: 'wrap' }}>
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 4 }}>
@@ -181,8 +198,11 @@ export default function Metas({ usuarioLogado, onVoltar }) {
               </div>
             ) : fiscais.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>👤</div>
-                <p>Nenhum fiscal ativo encontrado.</p>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+                <p>Nenhum usuário marcado para receber meta.</p>
+                <p style={{ fontSize: 12, marginTop: 8 }}>
+                  Acesse <strong>Gestão de Usuários</strong> → edite um usuário → ative <strong>"🎯 Aparece em Metas por Fiscal"</strong>.
+                </p>
               </div>
             ) : (
               <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #059669', padding: '16px' }}>
@@ -199,6 +219,11 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                       <div style={{ flex: 1 }}>
                         <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{f.nome}</span>
                         <span style={{ fontSize: 11, color: '#94a3b8', marginLeft: 8 }}>{f.login}</span>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, color: '#059669',
+                          background: '#d1fae5', padding: '1px 6px', borderRadius: 4,
+                          marginLeft: 6,
+                        }}>{f.perfil}</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <label style={{ fontSize: 12, color: '#64748b' }}>Meta:</label>
@@ -218,7 +243,6 @@ export default function Metas({ usuarioLogado, onVoltar }) {
                     </div>
                   ))}
                 </div>
-                {/* botão salvar repetido no final para listas longas */}
                 {fiscais.length > 6 && (
                   <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid #e2e8f0' }}>
                     <button onClick={salvarMetas} disabled={salvando} style={{

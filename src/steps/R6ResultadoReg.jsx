@@ -63,7 +63,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   // Presencial sem assinatura → "Pendente". Online sem assinatura → "Aguardando via link".
   const blocoAssinatura = (p) => {
     if (p.assinatura) {
-      return `<img src="${p.assinatura}" style="height:48px;max-width:160px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
+      return `<img src="${p.assinatura}" crossorigin="anonymous" style="height:48px;max-width:160px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
     }
     if (p.modo === 'online') {
       return `<span style="font-size:14px;color:#1d4ed8;font-weight:900;background:#dbeafe;padding:5px 12px;border-radius:6px;border:1.5px solid #93c5fd;white-space:nowrap;">🔗 Aguardando</span>`
@@ -199,6 +199,19 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
       div.innerHTML = html
       document.body.appendChild(div)
+
+      // ── FIX DE TIMING: espera TODAS as imagens (assinaturas base64 + fotos remotas)
+      //    carregarem antes de rasterizar. Sem isso, o html2canvas captura o
+      //    container antes das assinaturas/fotos aparecerem e elas saem em branco.
+      const imgs = div.querySelectorAll('img')
+      await Promise.allSettled(Array.from(imgs).map(img =>
+        new Promise(res => {
+          if (img.complete && img.naturalWidth > 0) res()
+          else { img.onload = res; img.onerror = res }
+        })
+      ))
+      // pequena folga extra para o paint
+      await new Promise(r => setTimeout(r, 80))
 
       const canvas = await html2canvas(div.firstElementChild, {
         scale:           6,
@@ -387,6 +400,66 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
               </span>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── Lista de Frequência (nome + assinatura na tela) ─────────────── */}
+      {form.participantes?.length > 0 && (
+        <div className="card" style={{ marginBottom: 14, background: '#f0fdf4', border: '1.5px solid #86efac' }}>
+          <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 10 }}>
+            ✅ Lista de Frequência ({form.participantes.length})
+          </p>
+          {form.participantes.map((p, i) => {
+            const pendentePresencial = p.modo === 'presencial' && !p.assinatura
+            const nomeColor = p.modo === 'online' && !p.assinatura ? '#1d4ed8'
+                            : pendentePresencial ? '#92400e' : '#15803d'
+            return (
+              <div key={i} style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                padding: '9px 0',
+                borderBottom: i < form.participantes.length - 1 ? '1px solid #bbf7d0' : 'none',
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <p style={{ fontSize: 13, fontWeight: 700, color: nomeColor, margin: 0 }}>
+                    {i + 1}. {p.nome}
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2, flexWrap: 'wrap' }}>
+                    {p.matricula && (
+                      <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Mat: {p.matricula}</span>
+                    )}
+                    {p.prefixo && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 800, color: '#0f766e',
+                        background: '#f0fdfa', border: '1px solid #5eead4',
+                        padding: '1px 7px', borderRadius: 5,
+                        fontFamily: '"Courier New", monospace', letterSpacing: 0.3,
+                      }}>{p.prefixo}</span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ flexShrink: 0 }}>
+                  {p.assinatura ? (
+                    <img src={p.assinatura} alt="assinatura" style={{
+                      height: 40, maxWidth: 100, objectFit: 'contain',
+                      borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0',
+                    }} />
+                  ) : p.modo === 'online' ? (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: '#1d4ed8',
+                      background: '#dbeafe', border: '1px solid #93c5fd',
+                      padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap',
+                    }}>🔗 Aguardando</span>
+                  ) : (
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, color: '#b45309',
+                      background: '#fef3c7', border: '1px solid #fcd34d',
+                      padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap',
+                    }}>⚠️ Pendente</span>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 

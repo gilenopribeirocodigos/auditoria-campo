@@ -12,8 +12,6 @@ const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
 
-// ─── Motivos pré-definidos para Motivo Auditoria ──────────────────────────────
-// Para adicionar novos motivos no futuro, basta incluir aqui.
 const MOTIVOS_AUDITORIA = [
   'MATERIAL APLICADO EM CAMPO',
   'RELIGA VINCULADA',
@@ -28,19 +26,15 @@ const FORM_VAZIO = {
   nome_eletricista: '', nome_eletricista2: '',
 }
 
-// ─── Limpa caracteres especiais e acentos ─────────────────────────────────────
-// Remove: ç→c, ã→a, ó→o, é→e, caracteres inválidos de encoding (\uFFFD), etc.
-// Preserva: letras A-Z, dígitos, espaços, pontuação ASCII básica (- . , ; / etc).
-// Usado tanto na importação CSV/Excel quanto no cadastro manual.
 function limparTexto(texto) {
   if (texto === null || texto === undefined) return ''
   return String(texto)
-    .normalize('NFD')                       // separa letras de acentos
-    .replace(/[\u0300-\u036f]/g, '')        // remove diacríticos (acentos)
-    .replace(/[–—−]/g, '-')                 // normaliza dashes exóticos → hyphen ASCII
-    .replace(/[“”]/g, '"')                  // normaliza aspas exóticas
-    .replace(/[‘’]/g, "'")                  // normaliza apóstrofos exóticos
-    .replace(/[^\x20-\x7E]/g, '')           // remove qualquer outro caractere não-ASCII
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[–—−]/g, '-')
+    .replace(/[""]/g, '"')
+    .replace(/['']/g, "'")
+    .replace(/[^\x20-\x7E]/g, '')
     .trim()
 }
 
@@ -60,7 +54,6 @@ function calcStatus(p) {
   return 'PENDENTE'
 }
 
-// ─── Detecta separador e parseia linhas ────────────────────────────────────────
 function parseCsvLinhas(texto) {
   const linhas = texto.trim().split('\n').filter(l => l.trim())
   if (linhas.length < 2) return []
@@ -77,32 +70,23 @@ function parseCsvLinhas(texto) {
 }
 
 function normalizarPauta(obj) {
-  // Limpa TODOS os campos de uma vez (remove acentos e caracteres inválidos)
   const c = Object.fromEntries(
     Object.entries(obj || {}).map(([k, v]) => [k, limparTexto(v)])
   )
-
   const ts = (c.tipo_servico || '').toUpperCase()
   const tipoServico = TIPOS_SERVICO.includes(ts) ? ts : 'CORTE'
-
   const ta = (c.tipo_auditoria || '').toUpperCase()
-  // Após limparTexto, "PÓS" virou "POS", então só precisamos checar "POS"
   const tipoAuditoria = ta.includes('POS') ? 'POS_SERVICO' : 'DESEMPENHO'
-
   const rc = (c.recorrencia || '').toUpperCase()
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
-
-  // ─── Motivo Auditoria — normaliza/valida ───
   const ma = (c.motivo_auditoria || '').toUpperCase()
   const motivoAuditoria = MOTIVOS_AUDITORIA.includes(ma) ? ma : ''
-
   let data = c.data_prevista || ''
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
     const [d, m, a] = data.split('/')
     data = `${a}-${m}-${d}`
   }
   if (!data) data = new Date().toISOString().split('T')[0]
-
   return {
     prefixo:                (c.prefixo || '').toUpperCase(),
     fiscal_login:           (c.fiscal_login || c.fiscal || '').toLowerCase(),
@@ -114,7 +98,6 @@ function normalizarPauta(obj) {
     motivo_auditoria:       motivoAuditoria,
     os:                     c.os || '',
     uc:                     c.uc || '',
-    // Matrículas vêm do CSV — os nomes serão preenchidos depois via lookup
     matricula_eletricista1: (c.matricula_eletricista1 || c.matricula_eletricista || '').replace(/\D/g, ''),
     matricula_eletricista2: (c.matricula_eletricista2 || '').replace(/\D/g, ''),
     nome_eletricista:       '',
@@ -123,26 +106,170 @@ function normalizarPauta(obj) {
   }
 }
 
-export default function GestaoPauta({ usuarioLogado, onVoltar }) {
-  // ─── Hook do painel: Período (data_prevista) + Sup. Op + Sup. Campo + Prefixo ───
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+// ── Campo de Prefixo com validação online/offline ─────────────────────────────
+// Online  → só aceita prefixo escolhido da lista (busca em estrutura_equipes)
+// Offline → digitação livre (sem internet não dá pra validar)
+function PrefixoInputValidado({ value, onChange, onValidChange }) {
+  const [sugestoes,    setSugestoes]    = useState([])
+  const [aberto,       setAberto]       = useState(false)
+  const [valido,       setValido]       = useState(false)
+  const [buscando,     setBuscando]     = useState(false)
+  const [semResultado, setSemResultado] = useState(false)
+  const offline = !navigator.onLine
+  const ref = useRef(null)
 
-  const [pautas,      setPautas]      = useState([])
-  const [fiscais,     setFiscais]     = useState([])
-  const [loading,     setLoading]     = useState(true)
-  const [modal,       setModal]       = useState(false)
-  const [editando,    setEditando]    = useState(null)
-  const [formData,    setFormData]    = useState(FORM_VAZIO)
-  const [salvando,    setSalvando]    = useState(false)
-  const [erro,        setErro]        = useState('')
-  const [statusTab,   setStatusTab]   = useState('TODOS')
-  const [csvModal,    setCsvModal]    = useState(false)
-  const [csvTexto,    setCsvTexto]    = useState('')
-  const [csvStatus,   setCsvStatus]   = useState('')
-  const [csvPreview,  setCsvPreview]  = useState([])
-  const [prefixoSugs, setPrefixoSugs] = useState([])
-  const [baixandoNcs, setBaixandoNcs] = useState(false)
-  const prefixoRef  = useRef(null)
+  // Avisa o pai sempre que o estado de validade muda
+  useEffect(() => { onValidChange(valido || offline) }, [valido, offline])
+
+  // Se o modal abrir com um prefixo já preenchido (modo editar), valida silenciosamente
+  useEffect(() => {
+    if (!value) return
+    if (offline) { setValido(true); return }
+    supabase.from('estrutura_equipes')
+      .select('prefixo').eq('prefixo', value).limit(1)
+      .then(({ data }) => setValido(!!(data && data.length > 0)))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // só na montagem do modal
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleChange = async (v) => {
+    const upper = v.toUpperCase()
+    onChange(upper)
+    setValido(false)
+    setSemResultado(false)
+
+    if (offline) {
+      setValido(true)
+      setSugestoes([])
+      setAberto(false)
+      return
+    }
+
+    if (upper.length < 2) { setSugestoes([]); setAberto(false); return }
+
+    setBuscando(true)
+    const { data } = await supabase
+      .from('estrutura_equipes').select('prefixo')
+      .ilike('prefixo', `%${upper}%`).order('prefixo').limit(10)
+    setBuscando(false)
+    const lista = [...new Set((data || []).map(r => r.prefixo))]
+    setSugestoes(lista)
+    setAberto(lista.length > 0)
+    setSemResultado(lista.length === 0 && upper.length >= 2)
+  }
+
+  const handleSelect = (v) => {
+    onChange(v)
+    setValido(true)
+    setSugestoes([])
+    setAberto(false)
+    setSemResultado(false)
+  }
+
+  const borderColor = valido ? '#16a34a' : (value && !offline) ? '#dc2626' : '#e2e8f0'
+  const bgColor     = valido ? '#f0fdf4' : (value && !offline && !valido) ? '#fef2f2' : '#fff'
+
+  return (
+    <div className="form-group" style={{ position: 'relative' }} ref={ref}>
+      <label className="form-label">Prefixo da Equipe *</label>
+      <div style={{ position: 'relative' }}>
+        <input
+          className="form-input"
+          value={value}
+          onChange={e => handleChange(e.target.value)}
+          onFocus={() => sugestoes.length > 0 && setAberto(true)}
+          placeholder={offline ? 'Offline — digite o prefixo manualmente' : 'Digite para buscar (ex: PI-THE-C001M)'}
+          autoComplete="off"
+          style={{
+            borderColor,
+            background: bgColor,
+            paddingRight: 36,
+            transition: 'border-color 0.2s, background 0.2s',
+          }}
+        />
+        <span style={{
+          position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+          fontSize: 16, pointerEvents: 'none',
+        }}>
+          {offline     ? '📵'
+           : buscando  ? '⏳'
+           : valido    ? '✅'
+           : value && value.length >= 2 ? '❌' : '🔍'}
+        </span>
+      </div>
+
+      {/* Dropdown */}
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} onMouseDown={() => handleSelect(s)} style={{
+              display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left',
+              background: 'none', border: 'none',
+              borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+              fontSize: 13, fontWeight: 700, color: '#1e293b', cursor: 'pointer',
+              fontFamily: '"Courier New", monospace', letterSpacing: 0.5,
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Feedback */}
+      {offline && (
+        <p style={{ fontSize: 11, color: '#92400e', marginTop: 4, fontWeight: 600 }}>
+          📵 Offline — prefixo salvo sem validação. Use o padrão correto (ex: PI-THE-C001M).
+        </p>
+      )}
+      {!offline && valido && (
+        <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4, fontWeight: 600 }}>
+          ✅ Prefixo encontrado na base de dados.
+        </p>
+      )}
+      {!offline && semResultado && value && value.length >= 2 && (
+        <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
+          ❌ Prefixo não encontrado. Verifique o padrão (ex: PI-THE-C001M).
+        </p>
+      )}
+      {!offline && !valido && value && value.length >= 2 && !semResultado && !buscando && sugestoes.length > 0 && (
+        <p style={{ fontSize: 11, color: '#d97706', marginTop: 4, fontWeight: 600 }}>
+          ☝️ Selecione um prefixo da lista para salvar.
+        </p>
+      )}
+    </div>
+  )
+}
+
+export default function GestaoPauta({ usuarioLogado, onVoltar }) {
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
+
+  const [pautas,       setPautas]       = useState([])
+  const [fiscais,      setFiscais]      = useState([])
+  const [loading,      setLoading]      = useState(true)
+  const [modal,        setModal]        = useState(false)
+  const [editando,     setEditando]     = useState(null)
+  const [formData,     setFormData]     = useState(FORM_VAZIO)
+  const [salvando,     setSalvando]     = useState(false)
+  const [erro,         setErro]         = useState('')
+  const [statusTab,    setStatusTab]    = useState('TODOS')
+  const [csvModal,     setCsvModal]     = useState(false)
+  const [csvTexto,     setCsvTexto]     = useState('')
+  const [csvStatus,    setCsvStatus]    = useState('')
+  const [csvPreview,   setCsvPreview]   = useState([])
+  const [baixandoNcs,  setBaixandoNcs]  = useState(false)
+  // ── Novo estado: prefixo validado no modal ──
+  const [prefixoValido, setPrefixoValido] = useState(false)
+
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
 
@@ -166,44 +293,39 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     return () => clearInterval(intervalRef.current)
   }, [])
 
-  useEffect(() => {
-    const handler = e => {
-      if (prefixoRef.current && !prefixoRef.current.contains(e.target)) setPrefixoSugs([])
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
-  const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
-  const abrirNovo   = () => { setEditando(null); setFormData(FORM_VAZIO); setErro(''); setPrefixoSugs([]); setModal(true) }
-  const abrirEditar = p  => {
+  const upd       = (k, v) => setFormData(f => ({ ...f, [k]: v }))
+  const abrirNovo = () => {
+    setEditando(null)
+    setFormData(FORM_VAZIO)
+    setPrefixoValido(false)
+    setErro('')
+    setModal(true)
+  }
+  const abrirEditar = p => {
     setEditando(p)
     setFormData({
-      ...FORM_VAZIO,  // garante todos os campos padrão (inclusive motivo_auditoria)
+      ...FORM_VAZIO,
       ...p,
       os: p.os || '', uc: p.uc || '',
       motivo_auditoria: p.motivo_auditoria || '',
     })
-    setErro(''); setPrefixoSugs([]); setModal(true)
+    // Ao editar, o prefixo já existe — será validado silenciosamente pelo componente
+    setPrefixoValido(false)
+    setErro('')
+    setModal(true)
   }
-  const fechar      = () => { setModal(false); setErro(''); setPrefixoSugs([]) }
-
-  const onPrefixoChange = async v => {
-    upd('prefixo', v)
-    if (v.length < 2) { setPrefixoSugs([]); return }
-    const { data } = await supabase
-      .from('estrutura_equipes').select('prefixo')
-      .ilike('prefixo', `%${v}%`).order('prefixo').limit(10)
-    if (data) setPrefixoSugs([...new Set(data.map(r => r.prefixo))])
-  }
+  const fechar = () => { setModal(false); setErro(''); setPrefixoValido(false) }
 
   const salvar = async () => {
     if (!formData.prefixo || !formData.fiscal_login || !formData.data_prevista) {
       setErro('Prefixo, fiscal e data são obrigatórios.'); return
     }
+    // Bloqueia se prefixo não foi validado e há internet
+    if (!prefixoValido && navigator.onLine) {
+      setErro('Selecione um prefixo válido da lista. O prefixo deve existir na base de dados.'); return
+    }
     setSalvando(true); setErro('')
     try {
-      // Limpa caracteres especiais
       const baseLimpo = {
         ...formData,
         prefixo:                limparTexto(formData.prefixo).toUpperCase(),
@@ -213,12 +335,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         matricula_eletricista1: (formData.matricula_eletricista1 || '').replace(/\D/g, ''),
         matricula_eletricista2: (formData.matricula_eletricista2 || '').replace(/\D/g, ''),
       }
-
-      // Enriquece com nomes dos eletricistas (silencioso se matrícula não bater)
       const [enriquecido] = await enriquecerComEletricistas([baseLimpo])
-
       const payload = enriquecido
-
       if (editando) await atualizarPauta(editando.id, payload)
       else          await criarPauta({ ...payload, status: 'PENDENTE' })
       await carregar(); fechar()
@@ -238,10 +356,13 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     catch (e) { alert(e.message) }
   }
 
-  // ─── Pautas filtradas pelo PAINEL (período + supervisor + prefixo) ───
   const pautasFiltradasPainel = useMemo(() => {
     const { ini, fim } = filtros.getDatasQuery()
+    const setPermitidos = filtros.prefixosPermitidos
+      ? new Set(filtros.prefixosPermitidos)
+      : null
     return pautas.filter(p => {
+      if (setPermitidos && !setPermitidos.has(p.prefixo)) return false
       if (ini && p.data_prevista < ini) return false
       if (fim && p.data_prevista > fim) return false
       const filtroAtivo =
@@ -257,7 +378,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       return true
     })
   }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
-      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo])
+      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
+      filtros.prefixosPermitidos])
 
   const pautasExibidas = pautasFiltradasPainel.filter(p => {
     const s = calcStatus(p)
@@ -285,27 +407,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // RELATÓRIO DE NÃO CONFORMIDADES (Excel)
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Arquitetura atual (refatorada):
-  // 1. Valida limite de 90 dias entre data_ini e data_fim
-  // 2. Carrega auditorias do período (com filtros hierárquicos do painel)
-  // 3. SELECT direto na auditorias_nao_conformes (preenchida automaticamente
-  //    ao salvar a auditoria no S6Resultado)
-  // 4. JOIN em memória: NCs + auditorias + pautas
-  // 5. Gera Excel
-  //
-  // OBS: não popula mais a tabela aqui — quem popula é o S6Resultado ao salvar.
-  // ═══════════════════════════════════════════════════════════════════════════
-  const LIMITE_DIAS_NCS = 90  // máximo de 90 dias por exportação
+  const LIMITE_DIAS_NCS = 90
 
   const baixarRelatorioNCs = async () => {
     setBaixandoNcs(true)
     try {
       const { ini, fim } = filtros.getDatasQuery()
-
-      // ── 1. Validação do período ──
       if (!ini || !fim) {
         alert(`⚠️ Selecione um período válido no filtro (início e fim) com no máximo ${LIMITE_DIAS_NCS} dias.`)
         return
@@ -319,13 +426,10 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         )
         return
       }
-
-      // ── 2. Determina prefixos permitidos pelos filtros hierárquicos ──
       const filtroHierarquicoAtivo =
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
-
       let prefixosPermitidos = null
       if (filtroHierarquicoAtivo) {
         prefixosPermitidos = Object.entries(filtros.mapPrefixo)
@@ -336,59 +440,44 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             return true
           })
           .map(([pref]) => pref)
-
         if (prefixosPermitidos.length === 0) {
           alert('Nenhum prefixo bate com os filtros hierárquicos selecionados.')
           return
         }
       }
-
-      // ── 3. Busca auditorias do período ──
       let qA = supabase.from('auditorias').select('*')
         .gte('data_auditoria', ini)
         .lte('data_auditoria', fim)
       if (prefixosPermitidos !== null) qA = qA.in('prefixo', prefixosPermitidos)
-
       const { data: auditorias, error: aErr } = await qA
       if (aErr) throw aErr
-
       if (!auditorias || auditorias.length === 0) {
         alert('Nenhuma auditoria encontrada no período/filtros selecionados.')
         return
       }
-
       const auditoriaIds = auditorias.map(a => a.id)
       const mapAuditorias = {}
       auditorias.forEach(a => { mapAuditorias[a.id] = a })
-
-      // ── 4. SELECT direto na auditorias_nao_conformes ──
       const { data: ncs, error: ncErr } = await supabase
         .from('auditorias_nao_conformes')
         .select('*')
         .in('auditoria_id', auditoriaIds)
       if (ncErr) throw ncErr
-
       if (!ncs || ncs.length === 0) {
         alert(
           '🎉 Nenhuma não conformidade encontrada no período!\n\n' +
           'Possíveis razões:\n' +
           '• Todas as auditorias do período foram 100% conformes\n' +
-          '• As auditorias antigas (antes do sistema novo) ainda não foram processadas\n' +
-          '  → Para processar antigas, simule uma nova auditoria ou peça pra rodar o catch-up manual'
+          '• As auditorias antigas ainda não foram processadas'
         )
         return
       }
-
-      // ── 5. Busca pautas vinculadas (pra trazer motivo_auditoria e status_2) ──
       const { data: pautasRel, error: pErr } = await supabase
         .from('pautas').select('*')
         .in('auditoria_id', auditoriaIds)
       if (pErr) console.warn('⚠️ Erro ao buscar pautas:', pErr.message)
-
       const mapPautas = {}
       ;(pautasRel || []).forEach(p => { mapPautas[p.auditoria_id] = p })
-
-      // ── 6. Combina tudo em linhas pra Excel ──
       const linhas = ncs.map(nc => {
         const a = mapAuditorias[nc.auditoria_id] || {}
         const p = mapPautas[nc.auditoria_id] || {}
@@ -417,30 +506,20 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           status_tratamento: nc.status_tratamento || 'PENDENTE',
         }
       })
-
-      // Ordena: data_auditoria DESC, depois prefixo
       linhas.sort((x, y) => {
         if (x.data_auditoria !== y.data_auditoria) return y.data_auditoria.localeCompare(x.data_auditoria)
         return (x.prefixo || '').localeCompare(y.prefixo || '')
       })
-
-      // ── 7. Gera Excel com auto-fit ──
       const ws = XLSX.utils.json_to_sheet(linhas)
       const colNames = Object.keys(linhas[0])
       ws['!cols'] = colNames.map(col => {
-        const maxLen = Math.max(
-          col.length,
-          ...linhas.map(r => String(r[col] ?? '').length)
-        )
+        const maxLen = Math.max(col.length, ...linhas.map(r => String(r[col] ?? '').length))
         return { wch: Math.min(maxLen + 2, 60) }
       })
-
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Nao Conformidades')
-
       const hoje = new Date().toISOString().split('T')[0]
       XLSX.writeFile(wb, `nao_conformidades_${ini}_a_${fim}_gerado_${hoje}.xlsx`)
-
       const auditoriasComNc = new Set(ncs.map(n => n.auditoria_id)).size
       alert(`✅ Relatório gerado: ${linhas.length} não conformidade(s) em ${auditoriasComNc} auditoria(s).`)
     } catch (e) {
@@ -450,42 +529,21 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Enriquece pautas com nomes dos eletricistas a partir das matrículas
-  // - Faz UMA query em estrutura_equipes pegando todas as matrículas únicas
-  // - Pra cada pauta, busca os nomes correspondentes
-  // - Se matrícula não bate, deixa nome vazio (silenciosamente — sem erro)
-  // ═══════════════════════════════════════════════════════════════════════════
   const enriquecerComEletricistas = async (pautas) => {
-    // Coleta matrículas únicas que precisam de lookup
     const matriculas = [...new Set(
       pautas.flatMap(p => [p.matricula_eletricista1, p.matricula_eletricista2])
         .filter(m => m && m.length > 0)
     )]
-
     if (matriculas.length === 0) return pautas
-
-    // Busca todos os nomes de uma vez
     const { data: eletricistas, error } = await supabase
       .from('estrutura_equipes')
       .select('matricula, colaborador')
       .in('matricula', matriculas)
-
-    if (error) {
-      console.warn('⚠️ Erro ao buscar eletricistas:', error.message)
-      return pautas
-    }
-
-    // Mapeia matricula → nome (primeiro encontrado prevalece)
+    if (error) { console.warn('⚠️ Erro ao buscar eletricistas:', error.message); return pautas }
     const mapNomes = {}
     ;(eletricistas || []).forEach(e => {
-      if (!mapNomes[String(e.matricula)]) {
-        mapNomes[String(e.matricula)] = (e.colaborador || '').trim().toUpperCase()
-      }
+      if (!mapNomes[String(e.matricula)]) mapNomes[String(e.matricula)] = (e.colaborador || '').trim().toUpperCase()
     })
-
-    // Enriquece cada pauta. Se a matrícula não foi encontrada, descarta-a também
-    // (assim o registro fica como se a matrícula não tivesse sido informada).
     return pautas.map(p => {
       const nome1 = p.matricula_eletricista1 ? mapNomes[p.matricula_eletricista1] : ''
       const nome2 = p.matricula_eletricista2 ? mapNomes[p.matricula_eletricista2] : ''
@@ -499,12 +557,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     })
   }
 
-  // ─── Importação CSV/Excel ────────────────────────────────────────────────
   const lerArquivo = (file) => {
-    setCsvStatus('')
-    setCsvPreview([])
+    setCsvStatus(''); setCsvPreview([])
     const ext = file.name.split('.').pop().toLowerCase()
-
     if (ext === 'xlsx' || ext === 'xls') {
       const reader = new FileReader()
       reader.onload = e => {
@@ -514,12 +569,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           const dados = XLSX.utils.sheet_to_json(ws, { defval: '' })
           if (dados.length === 0) { setCsvStatus('❌ Planilha vazia.'); return }
           const cols = Object.keys(dados[0])
-          const linhas = [
-            cols.join(';'),
-            ...dados.map(row => cols.map(c => String(row[c] ?? '')).join(';'))
-          ]
-          const texto = linhas.join('\n')
-          setCsvTexto(texto)
+          const linhas = [cols.join(';'), ...dados.map(row => cols.map(c => String(row[c] ?? '')).join(';'))]
+          setCsvTexto(linhas.join('\n'))
           const preview = dados.slice(0, 3).map(r => normalizarPauta(
             Object.fromEntries(Object.entries(r).map(([k, v]) => [
               k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_'), v
@@ -527,43 +578,27 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           ))
           setCsvPreview(preview)
           setCsvStatus(`✅ Arquivo lido: ${dados.length} linha(s) encontrada(s). Clique em Importar para salvar.`)
-        } catch (err) {
-          setCsvStatus('❌ Erro ao ler Excel: ' + err.message)
-        }
+        } catch (err) { setCsvStatus('❌ Erro ao ler Excel: ' + err.message) }
       }
       reader.readAsArrayBuffer(file)
     } else {
-      // ─── Leitura inteligente: tenta UTF-8 → se falhar, usa Windows-1252 ───
-      // Excel BR normalmente salva CSV em Windows-1252 (Latin-1), não em UTF-8.
-      // Isso é o que causava "POS SERVI�O" no preview.
       const reader = new FileReader()
       reader.onload = e => {
         const buffer = e.target.result
         let texto, encoding
-        try {
-          texto = new TextDecoder('utf-8', { fatal: true }).decode(buffer)
-          encoding = 'UTF-8'
-        } catch {
-          // Bytes não-UTF-8 detectados → cai pra Windows-1252 (Excel BR padrão)
-          texto = new TextDecoder('windows-1252').decode(buffer)
-          encoding = 'Windows-1252'
-        }
+        try { texto = new TextDecoder('utf-8', { fatal: true }).decode(buffer); encoding = 'UTF-8' }
+        catch { texto = new TextDecoder('windows-1252').decode(buffer); encoding = 'Windows-1252' }
         setCsvTexto(texto)
         const objs = parseCsvLinhas(texto)
-        if (objs.length === 0) { setCsvStatus('❌ Nenhuma linha encontrada. Verifique o arquivo.'); return }
-        const preview = objs.slice(0, 3).map(normalizarPauta)
-        setCsvPreview(preview)
-        setCsvStatus(`✅ Arquivo lido (${encoding}): ${objs.length} linha(s) encontrada(s). Acentos e caracteres especiais serão tratados automaticamente. Clique em Importar para salvar.`)
+        if (objs.length === 0) { setCsvStatus('❌ Nenhuma linha encontrada.'); return }
+        setCsvPreview(objs.slice(0, 3).map(normalizarPauta))
+        setCsvStatus(`✅ Arquivo lido (${encoding}): ${objs.length} linha(s). Clique em Importar para salvar.`)
       }
       reader.readAsArrayBuffer(file)
     }
   }
 
-  const onFileChange = e => {
-    const file = e.target.files?.[0]
-    if (file) lerArquivo(file)
-    e.target.value = ''
-  }
+  const onFileChange = e => { const file = e.target.files?.[0]; if (file) lerArquivo(file); e.target.value = '' }
 
   const importarCsv = async () => {
     if (!csvTexto.trim()) { setCsvStatus('❌ Nenhum dado para importar.'); return }
@@ -571,26 +606,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     try {
       const objs = parseCsvLinhas(csvTexto)
       let pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
-
       if (pautasNovas.length === 0) {
-        setCsvStatus('❌ Nenhuma linha válida encontrada. Verifique se prefixo e fiscal_login estão preenchidos.')
+        setCsvStatus('❌ Nenhuma linha válida. Verifique se prefixo e fiscal_login estão preenchidos.')
         return
       }
-
-      // ─── Enriquece com nomes dos eletricistas via lookup em estrutura_equipes ───
       pautasNovas = await enriquecerComEletricistas(pautasNovas)
-
       for (const p of pautasNovas) await criarPauta(p)
-
-      // Conta quantas pautas tiveram pelo menos 1 eletricista preenchido
       const comEletricistas = pautasNovas.filter(p => p.nome_eletricista || p.nome_eletricista2).length
-
-      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s) com sucesso!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas vinculados.` : ''}`)
+      setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s)!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas.` : ''}`)
       await carregar()
       setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2500)
-    } catch (e) {
-      setCsvStatus('❌ Erro: ' + e.message)
-    }
+    } catch (e) { setCsvStatus('❌ Erro: ' + e.message) }
   }
 
   const fecharCsvModal = () => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }
@@ -608,7 +634,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📋 Pauta de Fiscalização</h1>
-              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Equipes obrigatórias para fiscalização</p>
+              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>
+                Equipes obrigatórias para fiscalização
+                {filtros.temSegregacao && (
+                  <span style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+                  }}>
+                    🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+                  </span>
+                )}
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {['PENDENTE','VENCIDA','CONCLUIDA'].map(s => (
@@ -624,14 +660,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* PAINEL DE FILTROS */}
         <PainelFiltros
           filtros={filtros}
           titulo="🔍 Filtros das Pautas"
           badge="período por data prevista"
         />
 
-        {/* Ações */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <button onClick={abrirNovo} style={{
             background: '#d97706', color: '#fff', border: 'none',
@@ -654,7 +688,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           )}
         </div>
 
-        {/* Tabs de status */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
           {['TODOS','PENDENTE','VENCIDA','CONCLUIDA','CANCELADA'].map(f => (
             <button key={f} onClick={() => setStatusTab(f)} style={{
@@ -688,12 +721,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{p.prefixo}</span>
-                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>
-                          {sc.label}
-                        </span>
-                        <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>
-                          🔁 {RECORRENCIA_LABEL[p.recorrencia]}
-                        </span>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>{sc.label}</span>
+                        <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>🔁 {RECORRENCIA_LABEL[p.recorrencia]}</span>
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
                         <span>👤 {p.fiscal_login}</span>
@@ -709,58 +738,31 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                           {p.uc && <span>🏠 UC: <strong>{p.uc}</strong></span>}
                         </div>
                       )}
-
-                      {/* ─── Eletricistas vinculados (se houver) ─── */}
                       {(p.nome_eletricista || p.nome_eletricista2) && (
                         <div style={{ fontSize: 12, color: '#0c4a6e', lineHeight: 1.6, marginTop: 2, fontWeight: 600 }}>
                           👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
                         </div>
                       )}
-
-                      {/* ─── Motivo Auditoria (destacado em laranja) ─── */}
                       {p.motivo_auditoria && (
-                        <div style={{
-                          marginTop: 8, display: 'inline-block',
-                          background: '#fff7ed', border: '1px solid #fed7aa',
-                          color: '#c2410c', fontWeight: 700, fontSize: 12,
-                          padding: '4px 10px', borderRadius: 6,
-                        }}>
+                        <div style={{ marginTop: 8, display: 'inline-block', background: '#fff7ed', border: '1px solid #fed7aa', color: '#c2410c', fontWeight: 700, fontSize: 12, padding: '4px 10px', borderRadius: 6 }}>
                           🎯 Motivo: {p.motivo_auditoria}
                         </div>
                       )}
-
-                      {/* ─── Observação (destacada em azul, texto completo) ─── */}
                       {p.observacao && (
-                        <div style={{
-                          marginTop: 6, background: '#f0f9ff', border: '1px solid #bae6fd',
-                          padding: '8px 12px', borderRadius: 8, lineHeight: 1.5,
-                        }}>
-                          <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            💬 Observação:
-                          </span>
-                          <p style={{ fontSize: 12, color: '#0c4a6e', margin: '3px 0 0', wordBreak: 'break-word' }}>
-                            {p.observacao}
-                          </p>
+                        <div style={{ marginTop: 6, background: '#f0f9ff', border: '1px solid #bae6fd', padding: '8px 12px', borderRadius: 8, lineHeight: 1.5 }}>
+                          <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>💬 Observação:</span>
+                          <p style={{ fontSize: 12, color: '#0c4a6e', margin: '3px 0 0', wordBreak: 'break-word' }}>{p.observacao}</p>
                         </div>
                       )}
                     </div>
                     {p.status === 'PENDENTE' && (
                       <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
-                        <button onClick={() => abrirEditar(p)} style={{
-                          width: 32, height: 32, borderRadius: 8, border: 'none',
-                          background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 14,
-                        }}>✏️</button>
-                        <button onClick={() => cancelar(p)} style={{
-                          width: 32, height: 32, borderRadius: 8, border: 'none',
-                          background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14,
-                        }}>✕</button>
+                        <button onClick={() => abrirEditar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 14 }}>✏️</button>
+                        <button onClick={() => cancelar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}>✕</button>
                       </div>
                     )}
                     {(p.status === 'CONCLUIDA' || p.status === 'CANCELADA') && (
-                      <button onClick={() => excluir(p)} style={{
-                        width: 32, height: 32, borderRadius: 8, border: 'none', marginLeft: 10,
-                        background: '#f1f5f9', color: '#7c3aed', cursor: 'pointer', fontSize: 14,
-                      }}>🗑️</button>
+                      <button onClick={() => excluir(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', marginLeft: 10, background: '#f1f5f9', color: '#7c3aed', cursor: 'pointer', fontSize: 14 }}>🗑️</button>
                     )}
                   </div>
                 </div>
@@ -779,20 +781,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <button onClick={fechar} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
 
-            <div className="form-group" style={{ position: 'relative' }} ref={prefixoRef}>
-              <label className="form-label">Prefixo da Equipe *</label>
-              <input className="form-input" value={formData.prefixo} onChange={e => onPrefixoChange(e.target.value)} placeholder="Digite para buscar (ex: PI-THE)" />
-              {prefixoSugs.length > 0 && (
-                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 200, overflowY: 'auto' }}>
-                  {prefixoSugs.map((s, i) => (
-                    <button key={i} onClick={() => { upd('prefixo', s); setPrefixoSugs([]) }} style={{ display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left', background: 'none', border: 'none', borderBottom: i < prefixoSugs.length - 1 ? '1px solid #f1f5f9' : 'none', fontSize: 13, color: '#1e293b', cursor: 'pointer' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'none'}
-                    >{s}</button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* ── Prefixo com validação online/offline ── */}
+            <PrefixoInputValidado
+              value={formData.prefixo}
+              onChange={v => upd('prefixo', v)}
+              onValidChange={setPrefixoValido}
+            />
 
             <div className="form-group">
               <label className="form-label">Fiscal Responsável *</label>
@@ -841,7 +835,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </select>
             </div>
 
-            {/* ─── NOVO CAMPO: Motivo da Auditoria ─── */}
             <div className="form-group">
               <label className="form-label">🎯 Motivo da Auditoria</label>
               <select className="form-input" value={formData.motivo_auditoria} onChange={e => upd('motivo_auditoria', e.target.value)}>
@@ -850,7 +843,6 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               </select>
             </div>
 
-            {/* ─── Observação como TEXTAREA (espaço pra escrita) ─── */}
             <div className="form-group">
               <label className="form-label">
                 💬 Observação
@@ -868,11 +860,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               />
             </div>
 
-            {/* ─── Matrículas dos Eletricistas (opcional) ─── */}
-            <div style={{
-              background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10,
-              padding: '12px 14px', marginBottom: 14,
-            }}>
+            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#0369a1', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 👷 Eletricistas da Equipe (opcional)
               </p>
@@ -883,26 +871,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Matrícula 1</label>
-                  <input
-                    className="form-input"
-                    value={formData.matricula_eletricista1}
+                  <input className="form-input" value={formData.matricula_eletricista1}
                     onChange={e => upd('matricula_eletricista1', e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ex: 74894"
-                    inputMode="numeric"
-                  />
+                    placeholder="Ex: 74894" inputMode="numeric" />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">Matrícula 2</label>
-                  <input
-                    className="form-input"
-                    value={formData.matricula_eletricista2}
+                  <input className="form-input" value={formData.matricula_eletricista2}
                     onChange={e => upd('matricula_eletricista2', e.target.value.replace(/\D/g, ''))}
-                    placeholder="Ex: 12345"
-                    inputMode="numeric"
-                  />
+                    placeholder="Ex: 12345" inputMode="numeric" />
                 </div>
               </div>
-              {/* Mostra nomes vinculados (se houver — após editar) */}
               {(formData.nome_eletricista || formData.nome_eletricista2) && (
                 <div style={{ marginTop: 8, fontSize: 11, color: '#0c4a6e', fontWeight: 600 }}>
                   ✅ Vinculados: {[formData.nome_eletricista, formData.nome_eletricista2].filter(Boolean).join(' | ')}
@@ -931,91 +910,55 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <h3 style={{ fontSize: 17, fontWeight: 700 }}>📥 Importar Pautas</h3>
               <button onClick={fecharCsvModal} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#64748b' }}>×</button>
             </div>
-
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
               <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
               <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
-              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br /><br />
-              <strong style={{ color: '#0369a1' }}>✨ Eletricistas:</strong> as matrículas são opcionais. Se informadas, o sistema busca os nomes automaticamente em <strong>estrutura_equipes</strong>. Matrículas não encontradas são ignoradas (sem erro).<br /><br />
-              <strong style={{ color: '#0369a1' }}>✨ Tratamento automático:</strong> acentos (ç, ã, õ, é...) e caracteres especiais são removidos automaticamente. Pode escrever normalmente no Excel.
+              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
             </div>
-
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,.xlsx,.xls,.txt"
-              onChange={onFileChange}
-              style={{ display: 'none' }}
-            />
-            <button
-              onClick={() => fileRef.current?.click()}
-              style={{
-                width: '100%', padding: '14px', borderRadius: 12, border: '2px dashed #0f766e',
-                background: '#f0fdfa', color: '#0f766e', fontSize: 14, fontWeight: 700,
-                cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center',
-                justifyContent: 'center', gap: 8,
-              }}
-            >
-              📂 Selecionar arquivo CSV ou Excel
-            </button>
-
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.txt" onChange={onFileChange} style={{ display: 'none' }} />
+            <button onClick={() => fileRef.current?.click()} style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: '2px dashed #0f766e',
+              background: '#f0fdfa', color: '#0f766e', fontSize: 14, fontWeight: 700,
+              cursor: 'pointer', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>📂 Selecionar arquivo CSV ou Excel</button>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
               <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
               <span style={{ fontSize: 12, color: '#94a3b8', fontWeight: 600 }}>ou cole o conteúdo abaixo</span>
               <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
             </div>
-
             <div className="form-group">
-              <textarea
-                className="form-textarea"
-                value={csvTexto}
+              <textarea className="form-textarea" value={csvTexto}
                 onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
-                placeholder={`prefixo;fiscal_login;data_prevista;tipo_servico;tipo_auditoria;recorrencia;observacao;motivo_auditoria;os;uc;matricula_eletricista1;matricula_eletricista2\nPI-THE-C001M;gileno.ribeiro;2026-06-19;CORTE;DESEMPENHO;UNICA;Verificar material aplicado;MATERIAL APLICADO EM CAMPO;1234;6789;74894;12345`}
-                rows={6}
-                style={{ fontFamily: 'monospace', fontSize: 12 }}
-              />
+                placeholder={`prefixo;fiscal_login;data_prevista\nPI-THE-C001M;gileno.ribeiro;2026-06-19`}
+                rows={6} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </div>
-
             {csvPreview.length > 0 && (
               <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 11 }}>
-                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas — eletricistas serão buscados ao importar):</p>
+                <p style={{ fontWeight: 700, color: '#374151', marginBottom: 6 }}>👁️ Preview (primeiras linhas):</p>
                 {csvPreview.map((p, i) => (
                   <div key={i} style={{ color: '#475569', marginBottom: 4, lineHeight: 1.5 }}>
-                    <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico} · {p.tipo_auditoria} · {p.recorrencia}
+                    <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico}
                     {p.motivo_auditoria ? ` · 🎯 ${p.motivo_auditoria}` : ''}
                     {p.os ? ` · OS:${p.os}` : ''}{p.uc ? ` · UC:${p.uc}` : ''}
-                    {p.matricula_eletricista1 ? ` · 👷 Mat1:${p.matricula_eletricista1}` : ''}
-                    {p.matricula_eletricista2 ? ` · Mat2:${p.matricula_eletricista2}` : ''}
-                    {p.observacao ? ` · 💬 ${p.observacao}` : ''}
                   </div>
                 ))}
               </div>
             )}
-
             {csvStatus && csvStatus !== 'importando' && (
               <div style={{
                 marginBottom: 14, padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 600,
                 background: csvStatus.startsWith('✅') ? '#f0fdf4' : '#fef2f2',
                 color: csvStatus.startsWith('✅') ? '#15803d' : '#b91c1c',
                 border: `1px solid ${csvStatus.startsWith('✅') ? '#86efac' : '#fecaca'}`,
-              }}>
-                {csvStatus}
-              </div>
+              }}>{csvStatus}</div>
             )}
-
-            <button
-              onClick={importarCsv}
-              disabled={!csvTexto.trim() || csvStatus === 'importando'}
-              style={{
-                width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-                background: !csvTexto.trim() || csvStatus === 'importando' ? '#94a3b8' : '#0f766e',
-                color: '#fff', fontSize: 15, fontWeight: 700, cursor: !csvTexto.trim() ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {csvStatus === 'importando' ? '⏳ Importando...' : '📥 Importar Pautas'}
-            </button>
+            <button onClick={importarCsv} disabled={!csvTexto.trim() || csvStatus === 'importando'} style={{
+              width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+              background: !csvTexto.trim() || csvStatus === 'importando' ? '#94a3b8' : '#0f766e',
+              color: '#fff', fontSize: 15, fontWeight: 700, cursor: !csvTexto.trim() ? 'not-allowed' : 'pointer',
+            }}>{csvStatus === 'importando' ? '⏳ Importando...' : '📥 Importar Pautas'}</button>
           </div>
         </div>
       )}

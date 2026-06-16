@@ -170,10 +170,108 @@ export function MultiSelect({ opcoes, selecionados, onChange, placeholder = 'Tod
   )
 }
 
-// ─── Hook: useFiltrosOperacionais ───────────────────────────────────────────
+// ─── Helpers internos: matching de nomes pra cruzar usuário ↔ estrutura ──────
+function normalizarNome(s) {
+  return (s || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .trim()
+}
+
+// Compara nomes considerando que a estrutura pode ter nome abreviado
+// (ex: usuario "CHRISLEY MARK PEREIRA" deve bater com estrutura "CHRISLEY").
+function matchNomes(nomeUsuario, nomeEstrutura) {
+  if (!nomeUsuario || !nomeEstrutura) return false
+  const u = normalizarNome(nomeUsuario)
+  const e = normalizarNome(nomeEstrutura)
+  if (!u || !e || u.length < 3 || e.length < 3) return false
+
+  if (u === e) return true
+  // Um nome é prefixo do outro delimitado por espaço
+  if ((u + ' ').startsWith(e + ' ')) return true
+  if ((e + ' ').startsWith(u + ' ')) return true
+  return false
+}
+
+// ─── Helpers de processo (exportados pra UI usar) ───────────────────────────
+// Converte "LIGAÇÃO NOVA" → "processo_LIGACAO_NOVA" (chave da permissão).
+// Normalização: maiúscula + remove acentos + qualquer não-alfanumérico → underscore.
+export function processoToKey(processo) {
+  const norm = (processo || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return norm ? `processo_${norm}` : ''
+}
+
+// Calcula quais prefixos o usuário tem acesso baseado em:
+//   1. Cruzamento com estrutura_equipes (hierarquia natural)
+//   2. Processos liberados via permissões (chaves processo_XXX)
+//
+// Retorna null = sem restrição (vê tudo). Array = restrição ativa.
+function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
+  // Sem usuário → não restringe (uso público/anônimo)
+  if (!usuarioLogado) return null
+  // ADMIN sempre vê tudo
+  if (usuarioLogado.perfil === 'ADMIN') return null
+
+  const perms = usuarioLogado.permissoes || []
+
+  // Override total
+  if (perms.includes('acesso_todos_processos')) return null
+
+  // ─── 1. Hierarquia natural (regra que já existia) ───
+  const nome      = usuarioLogado.nome || ''
+  const matricula = String(usuarioLogado.matricula || '')
+
+  const linhasMinhas = (estruturaData || []).filter(r => {
+    if (matricula && String(r.matricula || '') === matricula) return true
+    if (matchNomes(nome, r.superv_campo))    return true
+    if (matchNomes(nome, r.superv_operacao)) return true
+    if (matchNomes(nome, r.coordenador))     return true
+    return false
+  })
+
+  // ─── 2. Processos liberados via permissão (processo_XXX) ───
+  // Set com as chaves processo_XXX que o usuário tem. Comparação por chave
+  // (normalizada) pra ser tolerante a acentos/espaços/case.
+  const processosLiberados = new Set(
+    perms.filter(p => typeof p === 'string' && p.startsWith('processo_'))
+  )
+
+  const linhasDosProcessos = processosLiberados.size > 0
+    ? (estruturaData || []).filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
+    : []
+
+  // ─── 3. Padrão liberal: SEM cruzamento natural E SEM processos liberados → vê tudo ───
+  // (Mantém compatibilidade pra ANALISTA/ASSISTENTE que não estão na estrutura)
+  if (linhasMinhas.length === 0 && processosLiberados.size === 0) return null
+
+  // ─── 4. União dos prefixos das duas fontes ───
+  const todosPrefixos = new Set()
+  ;[...linhasMinhas, ...linhasDosProcessos].forEach(r => {
+    if (r.prefixo) todosPrefixos.add(r.prefixo)
+  })
+
+  return [...todosPrefixos]
+}
+
+
+
+
 // Carrega a estrutura_equipes uma vez e gerencia todos os estados de filtro.
 // Retorna estados + setters + helpers (getDatasQuery, filtrar, limparTodos).
-export function useFiltrosOperacionais({ inicializarMes = true } = {}) {
+//
+// SEGREGAÇÃO POR PROCESSO/ESTRUTURA (passando `usuarioLogado`):
+//   • ADMIN ou permissão 'acesso_todos_processos' → vê tudo (prefixosPermitidos = null)
+//   • Usuário cruza com estrutura_equipes (nome em superv_campo/superv_operacao/
+//     coordenador OU matricula em colaborador) → vê só os prefixos onde aparece
+//   • Usuário sem cruzamento → vê tudo (padrão liberal pra ANALISTA/ASSISTENTE)
+//
+// O hook FILTRA automaticamente supervOps, supervCampos e prefixosTodos pelos
+// prefixos permitidos, então o painel já reflete a segregação sem mudanças nas telas.
+// Telas devem usar `prefixosPermitidos` para filtrar suas queries de dados.
+export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = null } = {}) {
   const [modoPeriodo, setModoPeriodo] = useState(false)
   const [mesAno,      setMesAno]      = useState(inicializarMes ? calcMesAtual() : '')
   const [dataIni,     setDataIni]     = useState('')
@@ -188,42 +286,55 @@ export function useFiltrosOperacionais({ inicializarMes = true } = {}) {
     prefixosTodos: [],
     mapPrefixo: {},    // { prefixo: { op, campo } }
     mapOpToCampo: {},  // { op: Set<campo> }
+    prefixosPermitidos: null,  // null = sem restrição; array = lista de prefixos permitidos
     carregado: false,
   })
 
   // ── Carrega estrutura_equipes 1x (todos os filtros derivam daqui) ──
+  // Quando `usuarioLogado` é passado, aplica segregação por estrutura:
+  // os filtros visíveis são limitados aos prefixos onde o usuário aparece.
   useEffect(() => {
     supabase.from('estrutura_equipes')
-      .select('prefixo, superv_campo, superv_operacao')
+      .select('prefixo, superv_campo, superv_operacao, coordenador, matricula, colaborador, processo_equipe')
       .then(({ data }) => {
+        // ─── 1) Calcula prefixos permitidos pelo usuário logado ───
+        const prefixosPermitidos = calcularPrefixosPermitidos(data, usuarioLogado)
+        const setPermitidos      = prefixosPermitidos ? new Set(prefixosPermitidos) : null
+
+        // ─── 2) Processa estrutura aplicando segregação ───
         const opSet    = new Set()
         const campoSet = new Set()
         const prefSet  = new Set()
         const mp       = {}
         const op2c     = {}
         ;(data || []).forEach(r => {
+          const pref = r.prefixo?.trim() || ''
+          if (!pref) return
+          // Se há restrição e o prefixo NÃO está permitido, ignora a linha inteira
+          if (setPermitidos && !setPermitidos.has(pref)) return
+
           const op    = r.superv_operacao?.trim() || ''
           const campo = r.superv_campo?.trim()    || ''
-          const pref  = r.prefixo?.trim()         || ''
           if (op)    opSet.add(op)
           if (campo) campoSet.add(campo)
-          if (pref)  prefSet.add(pref)
-          if (pref) mp[pref] = { op, campo }
+          prefSet.add(pref)
+          mp[pref] = { op, campo }
           if (op && campo) {
             if (!op2c[op]) op2c[op] = new Set()
             op2c[op].add(campo)
           }
         })
         setEstrutura({
-          supervOps:     [...opSet].sort(),
-          supervCampos:  [...campoSet].sort(),
-          prefixosTodos: [...prefSet].sort(),
-          mapPrefixo:    mp,
-          mapOpToCampo:  op2c,
-          carregado:     true,
+          supervOps:          [...opSet].sort(),
+          supervCampos:       [...campoSet].sort(),
+          prefixosTodos:      [...prefSet].sort(),
+          mapPrefixo:         mp,
+          mapOpToCampo:       op2c,
+          prefixosPermitidos,
+          carregado:          true,
         })
       })
-  }, [])
+  }, [usuarioLogado?.id])  // recarrega se usuário mudar
 
   // ── Cascata 1: Sup. Op → limita Sup. Campo selecionados ──
   useEffect(() => {
@@ -285,13 +396,30 @@ export function useFiltrosOperacionais({ inicializarMes = true } = {}) {
     : mesAno ? mesLabel(mesAno) : 'Todos'
 
   // ── Filtra uma lista em memória por supervisor/prefixo ──
-  // Cada item precisa ter um campo de prefixo (default: 'prefixo')
+  // Cada item precisa ter um campo de prefixo (default: 'prefixo').
+  // ATENÇÃO: também aplica SEGREGAÇÃO POR ESTRUTURA automaticamente —
+  // se o usuário tem restrição (estrutura.prefixosPermitidos != null),
+  // filtra a lista pra incluir só itens com prefixo permitido, mesmo
+  // sem nenhum filtro hierárquico ativo no painel.
   const filtrar = (lista, { prefixoField = 'prefixo' } = {}) => {
     const temFiltro = selSupOp.length > 0 || selSupCampo.length > 0 || selPrefixos.length > 0
-    if (!temFiltro) return lista
+    const setPermitidos = estrutura.prefixosPermitidos
+      ? new Set(estrutura.prefixosPermitidos)
+      : null
+
+    if (!temFiltro && !setPermitidos) return lista
+
     return lista.filter(item => {
       const pref = item[prefixoField]
       if (!pref) return false
+
+      // Segregação por estrutura (sempre aplicada quando há restrição)
+      if (setPermitidos && !setPermitidos.has(pref)) return false
+
+      // Sem filtros do painel → já passou na segregação, libera
+      if (!temFiltro) return true
+
+      // Filtros do painel
       if (selPrefixos.length > 0 && !selPrefixos.includes(pref)) return false
       const info = estrutura.mapPrefixo[pref]
       if (selSupOp.length    > 0 && (!info || !selSupOp.includes(info.op)))       return false
@@ -335,6 +463,9 @@ export function useFiltrosOperacionais({ inicializarMes = true } = {}) {
     prefixosVisiveis,
     mapPrefixo:          estrutura.mapPrefixo,
     estruturaCarregada:  estrutura.carregado,
+    // segregação por estrutura (null = sem restrição, array = restrito)
+    prefixosPermitidos:  estrutura.prefixosPermitidos,
+    temSegregacao:       estrutura.prefixosPermitidos !== null,
     // utilitários
     periodoLabel,
     getDatasQuery,

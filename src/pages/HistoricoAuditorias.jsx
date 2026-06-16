@@ -155,7 +155,7 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
 
 export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   // ─── Hook do painel: gerencia Período + Sup. Op + Sup. Campo + Prefixo ───
-  const filtros = useFiltrosOperacionais({ inicializarMes: true })
+  const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   // ─── Filtros EXTRAS desta tela ───
   const [tipoServico, setTipoServico] = useState([]) // multi
@@ -198,14 +198,18 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         return
       }
 
-      // ── 1) Combina os filtros hierárquicos em uma lista de prefixos permitidos ──
+      // ── 1) Combina os filtros hierárquicos + SEGREGAÇÃO POR ESTRUTURA ──
+      // O mapPrefixo do hook JÁ vem filtrado pelos prefixos permitidos do
+      // usuário logado (cruzamento natural + processos liberados).
+      // Aqui aplicamos os filtros do painel POR CIMA disso.
       const filtroHierarquicoAtivo =
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
 
-      let prefixosPermitidos = null
+      let prefixosFiltrados = null
       if (filtroHierarquicoAtivo) {
+        // Itera só sobre prefixos que o usuário JÁ pode ver (mapPrefixo segregado)
         const set = new Set()
         Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
           if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
@@ -213,8 +217,17 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
           set.add(pref)
         })
-        prefixosPermitidos = [...set]
-        if (prefixosPermitidos.length === 0) {
+        prefixosFiltrados = [...set]
+        if (prefixosFiltrados.length === 0) {
+          setAuditorias([])
+          setTotais({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
+          setLoading(false)
+          return
+        }
+      } else if (filtros.prefixosPermitidos) {
+        // Sem filtros do painel, mas há segregação por estrutura → aplica
+        prefixosFiltrados = filtros.prefixosPermitidos
+        if (prefixosFiltrados.length === 0) {
           setAuditorias([])
           setTotais({ total: 0, atende: 0, parcial: 0, naoAtende: 0 })
           setLoading(false)
@@ -231,10 +244,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
       const podeVerTodos = podeVerTodas
 
-      if (!podeVerTodos)        q = q.eq('matricula', usuarioLogado.matricula)
+      if (!podeVerTodos)          q = q.eq('matricula', usuarioLogado.matricula)
       if (tipoServico.length > 0) q = q.in('tipo_servico', tipoServico)
       if (resultado)              q = q.eq('status', resultado)
-      if (prefixosPermitidos)     q = q.in('prefixo', prefixosPermitidos)
+      if (prefixosFiltrados)      q = q.in('prefixo', prefixosFiltrados)
 
       const { data, error } = await q
       if (error) throw error
@@ -404,7 +417,17 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📁 Histórico de Auditorias</h1>
-              <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>{podeVerTodas ? 'Todas as auditorias' : `Suas auditorias — ${usuarioLogado.nome}`}</p>
+              <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>
+                {podeVerTodas ? 'Todas as auditorias' : `Suas auditorias — ${usuarioLogado.nome}`}
+                {filtros.temSegregacao && (
+                  <span style={{
+                    marginLeft: 8, padding: '2px 8px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: 700,
+                  }}>
+                    🔒 Sua estrutura ({filtros.prefixosPermitidos?.length || 0} prefixos)
+                  </span>
+                )}
+              </p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[
