@@ -5,42 +5,55 @@ import {
   PainelFiltros,
 } from '../components/PainelFiltros.jsx'
 
-export default function MapaFiscais({ usuarioLogado, onVoltar }) {
-  const mapRef        = useRef(null)
-  const leafletMap    = useRef(null)
-  const marcadores    = useRef({})
-  const rotas         = useRef({})
+// Janela em que consideramos o fiscal "ativo agora" (verde) vs "ausente" (cinza)
+const ATIVO_MS    = 2 * 60 * 1000    // até 2 min = ativo
+const PRESENCA_MS = 60 * 60 * 1000   // mostra presença das últimas 1h
 
-  // ─── Hook do painel: SEM mês inicial (modo Live não usa Período) ───
-  // Mantemos só Sup. Op + Sup. Campo + Prefixo (e Período é ocultado abaixo).
+// Formata "há X" a partir de um timestamp
+function tempoDesde(ts) {
+  const diff = Date.now() - new Date(ts).getTime()
+  const seg = Math.floor(diff / 1000)
+  if (seg < 60)  return `há ${seg}s`
+  const min = Math.floor(seg / 60)
+  if (min < 60)  return `há ${min} min`
+  const h = Math.floor(min / 60)
+  return `há ${h}h ${min % 60}min`
+}
+
+export default function MapaFiscais({ usuarioLogado, onVoltar }) {
+  const mapRef     = useRef(null)
+  const leafletMap = useRef(null)
+  const marcadores = useRef({})
+  const rotas      = useRef({})
+
   const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado })
 
-  const [todasPosicoes,   setTodasPosicoes]   = useState([])
+  const [presencas,       setPresencas]       = useState([])   // fiscais_presenca (última 1h)
   const [loading,         setLoading]         = useState(true)
   const [modoHistorico,   setModoHistorico]   = useState(false)
   const [dataHistorico,   setDataHistorico]   = useState(new Date().toISOString().split('T')[0])
   const [fiscalHistorico, setFiscalHistorico] = useState('')
   const [fiscais,         setFiscais]         = useState([])
+  const [agora,           setAgora]           = useState(Date.now())  // tick pra recalcular "há X min"
 
-  // Cores por fiscal
   const CORES = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#be185d']
   const corFiscal = (login) => {
     const idx = fiscais.findIndex(f => f.login === login)
     return CORES[idx % CORES.length] || '#374151'
   }
 
-  // ─── Conjunto de supervisores permitidos (filtros do painel + SEGREGAÇÃO) ───
-  // null = sem restrição (todos liberados). Set = nomes (lowercase) permitidos.
+  // Um fiscal está "ativo agora" se foi visto nos últimos ATIVO_MS
+  const estaAtivo = (ultimoVisto) => (Date.now() - new Date(ultimoVisto).getTime()) <= ATIVO_MS
+
+  // ─── Supervisores permitidos (segregação + filtros) ───
   const supervisoresAlvo = useMemo(() => {
     const filtroAtivo =
       filtros.selSupOp.length    > 0 ||
       filtros.selSupCampo.length > 0 ||
       filtros.selPrefixos.length > 0
 
-    // Sem filtros do painel mas com segregação → usa prefixos permitidos como base
     if (!filtroAtivo) {
-      if (!filtros.prefixosPermitidos) return null  // ADMIN / acesso_todos → sem restrição
-      // Extrai supervisores dos prefixos permitidos
+      if (!filtros.prefixosPermitidos) return null
       const set = new Set()
       filtros.prefixosPermitidos.forEach(pref => {
         const info = filtros.mapPrefixo[pref]
@@ -49,7 +62,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       return set.size > 0 ? set : null
     }
 
-    // Com filtros do painel ativos: itera mapPrefixo (já segregado)
     const set = new Set()
     Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
       if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
@@ -60,7 +72,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     return set
   }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
-  // Helper: nome do fiscal "casa" com algum supervisor permitido? (matching fuzzy)
   const fiscalPermitido = (nome) => {
     if (!supervisoresAlvo) return true
     if (!nome) return false
@@ -71,148 +82,145 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     return false
   }
 
-  // ─── Lista de fiscais ativos APÓS filtro hierárquico ───
-  const fiscaisAtivos = useMemo(() => {
-    return todasPosicoes.filter(p => fiscalPermitido(p.fiscal_nome))
+  // ─── Presenças filtradas por hierarquia ───
+  const presencasFiltradas = useMemo(() => {
+    return presencas.filter(p => fiscalPermitido(p.fiscal_nome))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todasPosicoes, supervisoresAlvo])
+  }, [presencas, supervisoresAlvo])
 
-  // ─── Lista de fiscais visíveis no dropdown do Histórico (também filtrada) ───
+  // Separa ativos (verde) de ausentes (cinza) — usa `agora` pra recalcular
+  const { ativos, ausentes } = useMemo(() => {
+    const a = [], au = []
+    presencasFiltradas.forEach(p => (estaAtivo(p.ultimo_visto) ? a : au).push(p))
+    return { ativos: a, ausentes: au }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presencasFiltradas, agora])
+
   const fiscaisDropdown = useMemo(() => {
     return fiscais.filter(f => fiscalPermitido(f.nome))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fiscais, supervisoresAlvo])
 
-  // ─── Carrega lista de fiscais (1x) ───
+  // ─── Lista de fiscais (1x) ───
   useEffect(() => {
     supabase.from('usuarios').select('nome, login')
       .eq('status', 'ATIVO').order('nome')
       .then(({ data }) => setFiscais(data || []))
   }, [])
 
-  // ─── Inicializa o mapa Leaflet (1x) ───
+  // ─── Inicializa Leaflet ───
   useEffect(() => {
     if (!mapRef.current || leafletMap.current) return
-
     const L = window.L
     if (!L) return
-
     leafletMap.current = L.map(mapRef.current).setView([-5.08, -42.80], 12)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap',
     }).addTo(leafletMap.current)
-
     return () => {
-      if (leafletMap.current) {
-        leafletMap.current.remove()
-        leafletMap.current = null
-      }
+      if (leafletMap.current) { leafletMap.current.remove(); leafletMap.current = null }
     }
   }, [])
 
-  // ─── Busca posições do banco (apenas estado, sem mexer no mapa) ───
-  const buscarPosicoes = async () => {
-    const limite = new Date(Date.now() - 30 * 1000).toISOString()
+  // ─── Busca presença (tabela fiscais_presenca, última 1h) ───
+  const buscarPresencas = async () => {
+    const limite = new Date(Date.now() - PRESENCA_MS).toISOString()
     const { data } = await supabase
-      .from('localizacoes').select('*')
-      .gte('created_at', limite)
-      .order('created_at', { ascending: false })
-
-    if (!data) { setLoading(false); return }
-
-    // Última posição por fiscal
-    const ultimas = {}
-    data.forEach(p => {
-      if (!ultimas[p.fiscal_login]) ultimas[p.fiscal_login] = p
-    })
-
-    setTodasPosicoes(Object.values(ultimas))
+      .from('fiscais_presenca').select('*')
+      .gte('ultimo_visto', limite)
+      .order('ultimo_visto', { ascending: false })
+    setPresencas(data || [])
     setLoading(false)
   }
 
-  // ─── Busca + interval (modo Live) ───
-  // Re-roda quando muda modo ou filtros (pra resposta imediata na UI)
-  const buscarRef = useRef(buscarPosicoes)
-  useEffect(() => { buscarRef.current = buscarPosicoes })
+  const buscarRef = useRef(buscarPresencas)
+  useEffect(() => { buscarRef.current = buscarPresencas })
 
+  // Polling a cada 5s + tick de 1s pra atualizar "há X min" sem refazer query
   useEffect(() => {
     if (modoHistorico) return
     buscarRef.current()
     const interval = setInterval(() => buscarRef.current(), 5000)
-    return () => clearInterval(interval)
+    const tick     = setInterval(() => setAgora(Date.now()), 1000)
+    return () => { clearInterval(interval); clearInterval(tick) }
   }, [modoHistorico])
 
-  // ─── Sincroniza marcadores no mapa com fiscaisAtivos ───
-  // Roda quando fiscaisAtivos muda (= busca nova OU filtro mudou)
+  // ─── Sincroniza marcadores (ativos + ausentes com estilos distintos) ───
   useEffect(() => {
     if (modoHistorico) return
     const L = window.L
     if (!L || !leafletMap.current) return
 
-    const loginsAtivos = new Set(fiscaisAtivos.map(p => p.fiscal_login))
+    const visiveis = [...ativos, ...ausentes]
+    const loginsVisiveis = new Set(visiveis.map(p => p.fiscal_login))
 
-    // Cria ou atualiza marcadores dos fiscais permitidos
-    fiscaisAtivos.forEach(p => {
-      const cor = corFiscal(p.fiscal_login)
+    visiveis.forEach(p => {
+      const ativo = estaAtivo(p.ultimo_visto)
+      const cor   = ativo ? corFiscal(p.fiscal_login) : '#94a3b8'  // cinza se ausente
+      const opacidade = ativo ? 1 : 0.65
+      const nome  = p.fiscal_nome?.split(' ')[0]?.substring(0, 6) || '?'
+
+      const htmlIcon = `<div style="
+        background:${cor};color:#fff;border-radius:50%;
+        width:36px;height:36px;display:flex;align-items:center;
+        justify-content:center;font-size:11px;font-weight:700;
+        border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);
+        text-align:center;line-height:1.2;opacity:${opacidade};
+      ">${nome}</div>`
+
+      const popupHtml = `
+        <strong>${p.fiscal_nome}</strong><br/>
+        ${ativo
+          ? '<span style="color:#16a34a;font-weight:700">🟢 Ativo agora</span>'
+          : `<span style="color:#94a3b8;font-weight:700">⚪ Visto ${tempoDesde(p.ultimo_visto)}</span>`}
+        <br/>
+        📍 ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}<br/>
+        🕐 ${new Date(p.ultimo_visto).toLocaleTimeString('pt-BR')}<br/>
+        <a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}"
+          target="_blank" style="color:#2563eb;font-weight:700">
+          🗺️ Traçar rota até aqui
+        </a>`
+
       if (marcadores.current[p.fiscal_login]) {
-        marcadores.current[p.fiscal_login].setLatLng([p.lat, p.lng])
+        const m = marcadores.current[p.fiscal_login]
+        m.setLatLng([p.lat, p.lng])
+        m.setIcon(L.divIcon({ html: htmlIcon, className: '', iconSize: [36, 36], iconAnchor: [18, 18] }))
+        m.setPopupContent(popupHtml)
       } else {
-        const icon = L.divIcon({
-          html: `<div style="
-            background:${cor};color:#fff;border-radius:50%;
-            width:36px;height:36px;display:flex;align-items:center;
-            justify-content:center;font-size:11px;font-weight:700;
-            border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3);
-            text-align:center;line-height:1.2;
-          ">${p.fiscal_nome?.split(' ')[0]?.substring(0, 6) || '?'}</div>`,
-          className: '', iconSize: [36, 36], iconAnchor: [18, 18],
-        })
-
-        const marker = L.marker([p.lat, p.lng], { icon })
-          .addTo(leafletMap.current)
-          .bindPopup(`
-            <strong>${p.fiscal_nome}</strong><br/>
-            📍 ${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}<br/>
-            🕐 ${new Date(p.created_at).toLocaleTimeString('pt-BR')}<br/>
-            <a href="https://www.google.com/maps/dir/?api=1&destination=${p.lat},${p.lng}"
-              target="_blank" style="color:#2563eb;font-weight:700">
-              🗺️ Traçar rota até aqui
-            </a>
-          `)
+        const marker = L.marker([p.lat, p.lng], {
+          icon: L.divIcon({ html: htmlIcon, className: '', iconSize: [36, 36], iconAnchor: [18, 18] }),
+        }).addTo(leafletMap.current).bindPopup(popupHtml)
         marcadores.current[p.fiscal_login] = marker
       }
     })
 
-    // Remove marcadores de fiscais que saíram OU foram filtrados
+    // Remove marcadores de quem saiu da janela de 1h ou foi filtrado
     Object.keys(marcadores.current).forEach(login => {
-      if (!loginsAtivos.has(login)) {
+      if (!loginsVisiveis.has(login)) {
         marcadores.current[login].remove()
         delete marcadores.current[login]
       }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fiscaisAtivos, modoHistorico])
+  }, [ativos, ausentes, modoHistorico])
 
-  // ─── Limpa marcadores ao entrar no modo histórico ───
+  // ─── Limpa marcadores ao entrar no histórico ───
   useEffect(() => {
     if (!modoHistorico) return
     Object.values(marcadores.current).forEach(m => m.remove())
     marcadores.current = {}
   }, [modoHistorico])
 
-  // ─── Quando o fiscal selecionado no histórico não é mais permitido, limpa ───
   useEffect(() => {
     if (!fiscalHistorico) return
-    if (!fiscaisDropdown.some(f => f.login === fiscalHistorico)) {
-      setFiscalHistorico('')
-    }
+    if (!fiscaisDropdown.some(f => f.login === fiscalHistorico)) setFiscalHistorico('')
   }, [fiscaisDropdown, fiscalHistorico])
 
+  // ─── Ver histórico (trilha da tabela localizacoes) ───
   const verHistorico = async () => {
     const L = window.L
     if (!L || !leafletMap.current || !fiscalHistorico || !dataHistorico) return
 
-    // Limpa marcadores/rotas existentes
     Object.values(marcadores.current).forEach(m => m.remove())
     marcadores.current = {}
     Object.values(rotas.current).forEach(r => r.remove())
@@ -235,12 +243,9 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     const cor = corFiscal(fiscalHistorico)
     const pontos = data.map(p => [p.lat, p.lng])
 
-    // Linha da rota
-    const linha = L.polyline(pontos, { color: cor, weight: 4, opacity: 0.8 })
-      .addTo(leafletMap.current)
+    const linha = L.polyline(pontos, { color: cor, weight: 4, opacity: 0.8 }).addTo(leafletMap.current)
     rotas.current[fiscalHistorico] = linha
 
-    // Marcador de início
     L.marker(pontos[0], {
       icon: L.divIcon({
         html: `<div style="background:#16a34a;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)">▶</div>`,
@@ -248,7 +253,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       })
     }).addTo(leafletMap.current).bindPopup(`Início: ${new Date(data[0].created_at).toLocaleTimeString('pt-BR')}`)
 
-    // Marcador de fim
     L.marker(pontos[pontos.length - 1], {
       icon: L.divIcon({
         html: `<div style="background:#dc2626;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)">■</div>`,
@@ -277,11 +281,11 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
               <p style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
                 {modoHistorico
                   ? 'Histórico de rota'
-                  : `${fiscaisAtivos.length} fiscal(is) ativo(s)${filtroHierarquicoAtivo ? ' nos filtros' : ''} — atualiza a cada 5s`}
+                  : `${ativos.length} ativo(s) · ${ausentes.length} visto(s) na última hora — atualiza a cada 5s`}
               </p>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => { setModoHistorico(false) }} style={{
+              <button onClick={() => setModoHistorico(false)} style={{
                 padding: '8px 14px', borderRadius: 8, border: 'none', cursor: 'pointer',
                 fontSize: 12, fontWeight: 700,
                 background: !modoHistorico ? '#fff' : 'rgba(255,255,255,0.2)',
@@ -296,7 +300,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             </div>
           </div>
 
-          {/* Filtro de data/fiscal no modo Histórico */}
           {modoHistorico && (
             <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <div>
@@ -323,8 +326,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         </div>
       </div>
 
-      {/* ═══ PAINEL DE FILTROS (sem Período — não faz sentido em mapa) ═══ */}
-      {/* zIndex 1000 pra ficar acima do mapa Leaflet (que usa z-index 400) */}
+      {/* Painel de filtros */}
       <div style={{
         maxWidth: 900, margin: '0 auto', width: '100%',
         padding: '12px 16px 0', boxSizing: 'border-box',
@@ -348,42 +350,47 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         )}
       </div>
 
-      {/* Aviso quando filtro hierárquico esconde resultados */}
-      {filtroHierarquicoAtivo && !modoHistorico && fiscaisAtivos.length === 0 && todasPosicoes.length > 0 && (
+      {/* Aviso quando filtro esconde resultados */}
+      {filtroHierarquicoAtivo && !modoHistorico && presencasFiltradas.length === 0 && presencas.length > 0 && (
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 12px', boxSizing: 'border-box' }}>
           <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#c2410c', fontWeight: 600 }}>
-            ⚠️ {todasPosicoes.length} fiscal(is) ativo(s) no momento, mas nenhum bate com os filtros selecionados.
+            ⚠️ {presencas.length} fiscal(is) com presença recente, mas nenhum bate com os filtros selecionados.
           </div>
         </div>
       )}
 
-      {/* Cards de fiscais ativos (modo Live) */}
-      {!modoHistorico && fiscaisAtivos.length > 0 && (
+      {/* Cards de fiscais (ativos + ausentes) */}
+      {!modoHistorico && presencasFiltradas.length > 0 && (
         <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 20px', overflowX: 'auto' }}>
           <div style={{ display: 'flex', gap: 10, maxWidth: 900, margin: '0 auto' }}>
-            {fiscaisAtivos.map(f => (
-              <div key={f.fiscal_login} onClick={() => {
-                if (leafletMap.current && marcadores.current[f.fiscal_login]) {
-                  leafletMap.current.setView([f.lat, f.lng], 15)
-                  marcadores.current[f.fiscal_login].openPopup()
-                }
-              }} style={{
-                background: '#f0f9ff', border: `2px solid ${corFiscal(f.fiscal_login)}`,
-                borderRadius: 10, padding: '6px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
-              }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: corFiscal(f.fiscal_login) }}>
-                  {f.fiscal_nome?.split(' ')[0]}
+            {[...ativos, ...ausentes].map(f => {
+              const ativo = estaAtivo(f.ultimo_visto)
+              const cor   = ativo ? corFiscal(f.fiscal_login) : '#94a3b8'
+              return (
+                <div key={f.fiscal_login} onClick={() => {
+                  if (leafletMap.current && marcadores.current[f.fiscal_login]) {
+                    leafletMap.current.setView([f.lat, f.lng], 15)
+                    marcadores.current[f.fiscal_login].openPopup()
+                  }
+                }} style={{
+                  background: ativo ? '#f0f9ff' : '#f8fafc',
+                  border: `2px solid ${cor}`,
+                  borderRadius: 10, padding: '6px 12px', cursor: 'pointer', whiteSpace: 'nowrap',
+                  opacity: ativo ? 1 : 0.75,
+                }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: cor, display: 'flex', alignItems: 'center', gap: 4 }}>
+                    {ativo ? '🟢' : '⚪'} {f.fiscal_nome?.split(' ')[0]}
+                  </div>
+                  <div style={{ fontSize: 10, color: '#64748b' }}>
+                    {ativo ? new Date(f.ultimo_visto).toLocaleTimeString('pt-BR') : tempoDesde(f.ultimo_visto)}
+                  </div>
                 </div>
-                <div style={{ fontSize: 10, color: '#64748b' }}>
-                  {new Date(f.created_at).toLocaleTimeString('pt-BR')}
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
 
-      {/* Mapa */}
       {loading && (
         <div style={{ textAlign: 'center', padding: 20, color: '#64748b', fontSize: 13 }}>
           ⏳ Carregando mapa...
@@ -392,14 +399,14 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
       <div ref={mapRef} style={{ flex: 1, minHeight: 500 }} />
 
-      {/* Sem fiscais ativos no momento */}
-      {!loading && !modoHistorico && fiscaisAtivos.length === 0 && !filtroHierarquicoAtivo && (
+      {/* Sem fiscais */}
+      {!loading && !modoHistorico && presencasFiltradas.length === 0 && !filtroHierarquicoAtivo && (
         <div style={{
           position: 'absolute', bottom: 80, left: '50%', transform: 'translateX(-50%)',
           background: '#fff', borderRadius: 12, padding: '12px 20px',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.15)', fontSize: 13, color: '#64748b', textAlign: 'center',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.15)', fontSize: 13, color: '#64748b', textAlign: 'center', zIndex: 1000,
         }}>
-          📭 Nenhum fiscal ativo no momento
+          📭 Nenhum fiscal com presença na última hora
         </div>
       )}
     </div>
