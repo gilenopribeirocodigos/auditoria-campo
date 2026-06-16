@@ -60,6 +60,7 @@ async function reverseGeocode(lat, lng) {
   } catch { return '' }
 }
 
+// ── Autocomplete genérico (fiscal, eletricistas) ──────────────────────────────
 function AutocompleteInput({ label, value, onChange, onSelect, suggestions, placeholder, required, info }) {
   const [aberto, setAberto] = useState(false)
   const ref = useRef(null)
@@ -106,23 +107,180 @@ function AutocompleteInput({ label, value, onChange, onSelect, suggestions, plac
   )
 }
 
-export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
-  const [gpsLoading,   setGpsLoading]   = useState(false)
-  const [gpsErro,      setGpsErro]      = useState('')
-  const [fiscalSugs,   setFiscalSugs]   = useState([])
-  const [prefixoSugs,  setPrefixoSugs]  = useState([])
-  const [elet1Sugs,    setElet1Sugs]    = useState([])
-  const [elet2Sugs,    setElet2Sugs]    = useState([])
-  const [eletricistas, setEletricistas] = useState([])
+// ── PrefixoInput com validação online/offline ─────────────────────────────────
+// Online  → só aceita prefixo escolhido da lista (busca em estrutura_equipes)
+// Offline → digitação livre (sem internet não dá pra validar)
+function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCount }) {
+  const [sugestoes,   setSugestoes]   = useState([])
+  const [aberto,      setAberto]      = useState(false)
+  const [valido,      setValido]      = useState(false)
+  const [buscando,    setBuscando]    = useState(false)
+  const [semResultado, setSemResultado] = useState(false)
+  const offline = !navigator.onLine
+  const ref = useRef(null)
 
-  const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat
+  // Sincroniza estado de validade com o pai
+  useEffect(() => { onValidChange(valido || offline) }, [valido, offline])
+
+  // Quando o form é carregado com prefixo pré-preenchido (pauta ativa),
+  // marca como válido direto se estiver offline ou dispara uma verificação
+  useEffect(() => {
+    if (!value) return
+    if (offline) { setValido(true); return }
+    // Verifica silenciosamente se o prefixo pré-preenchido é válido
+    supabase.from('estrutura_equipes')
+      .select('prefixo').eq('prefixo', value).limit(1)
+      .then(({ data }) => {
+        const ok = !!(data && data.length > 0)
+        setValido(ok)
+      })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // só na montagem
+
+  useEffect(() => {
+    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const handleChange = async (v) => {
+    const upper = v.toUpperCase()
+    onChange(upper)
+    setValido(false)
+    setSemResultado(false)
+
+    if (offline) {
+      // Sem internet: aceita qualquer digitação
+      setValido(true)
+      setSugestoes([])
+      setAberto(false)
+      return
+    }
+
+    if (upper.length < 2) { setSugestoes([]); setAberto(false); return }
+
+    setBuscando(true)
+    const lista = await buscarPrefixos(upper)
+    setBuscando(false)
+    setSugestoes(lista)
+    setAberto(lista.length > 0)
+    setSemResultado(lista.length === 0 && upper.length >= 2)
+  }
+
+  const handleSelect = (v) => {
+    onChange(v)
+    setValido(true)
+    setSugestoes([])
+    setAberto(false)
+    setSemResultado(false)
+  }
+
+  // Cor e ícone do campo de acordo com o estado
+  const borderColor = valido
+    ? '#16a34a'
+    : (value && !offline)
+      ? '#dc2626'
+      : '#e2e8f0'
+
+  const bgColor = valido ? '#f0fdf4' : (value && !offline && !valido) ? '#fef2f2' : '#fff'
+
+  return (
+    <div className="form-group" style={{ position: 'relative' }} ref={ref}>
+      <label className="form-label">Prefixo da Equipe *</label>
+      <div style={{ position: 'relative' }}>
+        <input
+          className="form-input"
+          value={value}
+          onChange={e => handleChange(e.target.value)}
+          onFocus={() => sugestoes.length > 0 && setAberto(true)}
+          placeholder={offline ? 'Offline — digite o prefixo manualmente' : 'Digite para buscar (ex: PI-THE-C001M)'}
+          autoComplete="off"
+          style={{
+            borderColor,
+            background: bgColor,
+            paddingRight: 36,
+            transition: 'border-color 0.2s, background 0.2s',
+          }}
+        />
+        {/* Ícone de estado no canto direito */}
+        <span style={{
+          position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
+          fontSize: 16, pointerEvents: 'none',
+        }}>
+          {offline     ? '📵'
+           : buscando  ? '⏳'
+           : valido    ? '✅'
+           : value && value.length >= 2 ? '❌' : '🔍'}
+        </span>
+      </div>
+
+      {/* Dropdown de sugestões */}
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} onMouseDown={() => handleSelect(s)} style={{
+              display: 'block', width: '100%', padding: '11px 14px', textAlign: 'left',
+              background: 'none', border: 'none',
+              borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+              fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              fontFamily: '"Courier New", monospace', letterSpacing: 0.5,
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+
+      {/* Mensagens de feedback */}
+      {offline && (
+        <p style={{ fontSize: 11, color: '#92400e', marginTop: 4, fontWeight: 600 }}>
+          📵 Offline — prefixo será salvo sem validação. Certifique-se de usar o padrão correto (ex: PI-THE-C001M).
+        </p>
+      )}
+      {!offline && valido && (
+        <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4, fontWeight: 600 }}>
+          ✅ Prefixo encontrado na base de dados
+          {eletricistasCount > 0 ? ` · ${eletricistasCount} eletricista(s) nesta equipe` : ''}
+        </p>
+      )}
+      {!offline && semResultado && value && value.length >= 2 && (
+        <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
+          ❌ Prefixo não encontrado. Verifique o padrão (ex: PI-THE-C001M) ou escolha da lista.
+        </p>
+      )}
+      {!offline && !valido && value && value.length >= 2 && !semResultado && !buscando && sugestoes.length > 0 && (
+        <p style={{ fontSize: 11, color: '#d97706', marginTop: 4, fontWeight: 600 }}>
+          ☝️ Selecione um prefixo da lista para continuar.
+        </p>
+      )}
+    </div>
+  )
+}
+
+export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
+  const [gpsLoading,      setGpsLoading]      = useState(false)
+  const [gpsErro,         setGpsErro]         = useState('')
+  const [fiscalSugs,      setFiscalSugs]      = useState([])
+  const [elet1Sugs,       setElet1Sugs]       = useState([])
+  const [elet2Sugs,       setElet2Sugs]       = useState([])
+  const [eletricistas,    setEletricistas]    = useState([])
+  const [prefixoValido,   setPrefixoValido]   = useState(false)
+
+  const offline = !navigator.onLine
+
+  // Prefixo válido = selecionado da lista OU offline
+  const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat && (prefixoValido || offline)
 
   // Pré-preenche OS, UC e eletricistas da pauta ativa se estiverem vazios no form
   useEffect(() => {
     if (!pautaAtiva) return
     if (pautaAtiva.os && !form.os) upd('os', pautaAtiva.os)
     if (pautaAtiva.uc && !form.uc) upd('uc', pautaAtiva.uc)
-    // Eletricistas da pauta (vindos do CSV via lookup em estrutura_equipes)
     if (pautaAtiva.nome_eletricista && !form.nomeEletricista) {
       upd('nomeEletricista', pautaAtiva.nome_eletricista)
       if (pautaAtiva.matricula_eletricista1) upd('matriculaEletricista1', pautaAtiva.matricula_eletricista1)
@@ -156,16 +314,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
       upd('fiscal', v)
     }
     setFiscalSugs([])
-  }
-
-  const onPrefixoChange = async v => {
-    upd('prefixo', v)
-    const sugs = await buscarPrefixos(v)
-    setPrefixoSugs(sugs)
-  }
-  const onPrefixoSelect = v => {
-    upd('prefixo', v)
-    setPrefixoSugs([])
   }
 
   const onElet1Change = async v => {
@@ -210,7 +358,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     )
   }
 
-  // ── Tem alguma info de pauta pra exibir? ──
   const temInfoPauta = pautaAtiva && (pautaAtiva.motivo_auditoria || pautaAtiva.observacao)
 
   return (
@@ -241,15 +388,12 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
 
       <p className="section-title" style={{ marginTop: 18 }}>Dados do Serviço</p>
 
-      <AutocompleteInput
-        label="Prefixo da Equipe"
+      {/* ── Prefixo com validação online/offline ── */}
+      <PrefixoInputValidado
         value={form.prefixo}
-        onChange={onPrefixoChange}
-        onSelect={onPrefixoSelect}
-        suggestions={prefixoSugs}
-        placeholder="Digite o prefixo (ex: PI-AGB)"
-        required
-        info={eletricistas.length > 0 ? `✅ ${eletricistas.length} eletricista(s) nesta equipe` : ''}
+        onChange={v => upd('prefixo', v)}
+        onValidChange={setPrefixoValido}
+        eletricistasCount={eletricistas.length}
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -269,10 +413,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════════════════════════════════
-          INFORMAÇÕES DA PAUTA — Motivo Auditoria + Observação (somente leitura)
-          Aparece quando a auditoria foi iniciada a partir de uma pauta.
-      ═══════════════════════════════════════════════════════════════════════ */}
       {temInfoPauta && (
         <div style={{
           background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 12,
@@ -290,8 +430,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               letterSpacing: 0.5,
             }}>somente leitura</span>
           </p>
-
-          {/* ─── 1) MOTIVO DA AUDITORIA ─── */}
           {pautaAtiva.motivo_auditoria && (
             <div style={{
               display: 'inline-block',
@@ -303,8 +441,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               🎯 Motivo: {pautaAtiva.motivo_auditoria}
             </div>
           )}
-
-          {/* ─── 2) OBSERVAÇÃO (texto livre, com espaço pra ser lida) ─── */}
           {pautaAtiva.observacao && (
             <div style={{
               background: '#f0f9ff', border: '1.5px solid #bae6fd', borderRadius: 8,
@@ -313,9 +449,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               <p style={{
                 fontSize: 10, fontWeight: 800, color: '#0369a1',
                 textTransform: 'uppercase', letterSpacing: 0.5, margin: 0,
-              }}>
-                💬 Observação:
-              </p>
+              }}>💬 Observação:</p>
               <p style={{
                 fontSize: 13, color: '#0c4a6e', margin: '5px 0 0',
                 wordBreak: 'break-word', whiteSpace: 'pre-wrap',
@@ -385,6 +519,17 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
         {form.lat ? '✅ GPS capturado e registrado como evidência.'
           : '⚠️ GPS obrigatório! Clique em "Capturar GPS" para continuar.'}
       </Alert>
+
+      {/* Aviso de prefixo inválido ao tentar avançar sem validação */}
+      {!offline && form.prefixo && !prefixoValido && (
+        <div style={{
+          background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 10,
+          padding: '10px 14px', marginTop: 10, fontSize: 13, color: '#b91c1c', fontWeight: 600,
+        }}>
+          ⚠️ Selecione um prefixo válido da lista antes de continuar.
+          O prefixo deve existir na base de dados (ex: PI-THE-C001M).
+        </div>
+      )}
 
       <div style={{ height: 80 }} />
       <NavBar onPrev={prev} onNext={ok ? next : undefined} nextDisabled={!ok} />
