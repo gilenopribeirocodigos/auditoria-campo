@@ -279,6 +279,10 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
   // - Nova auditoria: só INSERT
   // - Reabertura (modoEdicao=true): DELETE das antigas + INSERT das atuais
   //   (porque as respostas podem ter mudado e NCs antigas podem não ser mais NCs)
+  // - Cada linha agora leva também os dados de identificação da auditoria
+  //   (fiscal, matrícula, prefixo, OS, UC, eletricista 1 e 2), denormalizados
+  //   para facilitar relatórios e a tela de tratamento de NCs sem precisar
+  //   de JOIN com a tabela `auditorias`.
   // - Falhas são silenciosas (console.warn) pra não bloquear o salvar da auditoria
   // ═══════════════════════════════════════════════════════════════════════════
   const sincronizarNCs = async (auditoriaId, ncs, isEdicao) => {
@@ -294,12 +298,19 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         }
       }
 
-      // Insere as NCs atuais (se houver)
+      // Insere as NCs atuais (se houver), já com os campos de identificação
       if (ncs && ncs.length > 0) {
         const linhas = ncs.map(item => ({
-          auditoria_id: auditoriaId,
-          item_id:      String(item.id ?? ''),
-          item_texto:   item.p || '',
+          auditoria_id:      auditoriaId,
+          item_id:           String(item.id ?? ''),
+          item_texto:        item.p || '',
+          fiscal:            form.fiscal           || null,
+          matricula:         form.matricula        || null,
+          prefixo:           form.prefixo          || null,
+          os:                form.os               || null,
+          uc:                form.uc               || null,
+          nome_eletricista:  form.nomeEletricista   || null,
+          nome_eletricista2: form.nomeEletricista2  || null,
         }))
         const { error: insErr } = await supabase
           .from('auditorias_nao_conformes')
