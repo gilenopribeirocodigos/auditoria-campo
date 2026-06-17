@@ -463,5 +463,10 @@ export const FORM_INICIAL = () => {
     matriculaEletricista1: '',
     matriculaEletricista2: '',
     debitoPago: null, // null = ainda não respondeu o check "Foi débito pago?"
+    // ── Motivo da Auditoria (vem da pauta, ex: "MATERIAL APLICADO EM CAMPO") ──
+    motivoAuditoria:            '',   // '' = sem motivo específico nesta auditoria
+    fotosMotivo:                [],   // fotos exclusivas do motivo (mesmo formato de `fotos`)
+    statusMotivoAuditoria:      null, // null | true (CONFORME) | false (NÃO CONFORME)
+    observacoesMotivoAuditoria: '',
   }
 }

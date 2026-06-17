@@ -276,7 +276,10 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
   // Prefixo válido = selecionado da lista OU offline
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat && (prefixoValido || offline)
 
-  // Pré-preenche OS, UC e eletricistas da pauta ativa se estiverem vazios no form
+  // Pré-preenche OS, UC, eletricistas e MOTIVO DA AUDITORIA a partir da pauta
+  // ativa, sempre que os campos correspondentes ainda estiverem vazios no form.
+  // ⚠️ O motivo_auditoria é o gatilho do módulo condicional nas Evidências (S4)
+  // e no Resultado (S6) — sem essa cópia, `form.motivoAuditoria` nunca chega lá.
   useEffect(() => {
     if (!pautaAtiva) return
     if (pautaAtiva.os && !form.os) upd('os', pautaAtiva.os)
@@ -288,6 +291,9 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     if (pautaAtiva.nome_eletricista2 && !form.nomeEletricista2) {
       upd('nomeEletricista2', pautaAtiva.nome_eletricista2)
       if (pautaAtiva.matricula_eletricista2) upd('matriculaEletricista2', pautaAtiva.matricula_eletricista2)
+    }
+    if (pautaAtiva.motivo_auditoria && !form.motivoAuditoria) {
+      upd('motivoAuditoria', pautaAtiva.motivo_auditoria)
     }
   }, [pautaAtiva])
 

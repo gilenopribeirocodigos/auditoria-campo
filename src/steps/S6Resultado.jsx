@@ -117,6 +117,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
             ${infoRow('Tipo de Serviço', CHECKLISTS[form.tipoServico]?.label)}
+            ${form.motivoAuditoria ? infoRow('Motivo da Auditoria', form.motivoAuditoria) : ''}
             ${infoRow('Status do Serviço', form.produtivo ? 'Produtivo' : 'Improdutivo')}
             ${infoRow('Fiscal',         form.fiscal)}
             ${infoRow('Matrícula',      form.matricula)}
@@ -250,6 +251,13 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     link.click()
   }
 
+  // Converte o booleano statusMotivoAuditoria em texto legível para relatórios.
+  // null/undefined → null (motivo ainda não avaliado ou não se aplica)
+  const avaliacaoMotivoTexto =
+    form.statusMotivoAuditoria === true  ? 'CONFORME' :
+    form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
+    null
+
   const montarPayload = () => ({
     fiscal:            form.fiscal,
     matricula:         form.matricula,
@@ -272,6 +280,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     observacoes:       form.observacoes,
     nome_eletricista:  form.nomeEletricista,
     nome_eletricista2: form.nomeEletricista2 || null,
+    motivo_auditoria:  form.motivoAuditoria || null,
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -279,6 +288,10 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
   // - Nova auditoria: só INSERT
   // - Reabertura (modoEdicao=true): DELETE das antigas + INSERT das atuais
   //   (porque as respostas podem ter mudado e NCs antigas podem não ser mais NCs)
+  // - Cada linha agora leva também os dados de identificação da auditoria
+  //   (fiscal, matrícula, prefixo, OS, UC, eletricista 1 e 2), denormalizados
+  //   para facilitar relatórios e a tela de tratamento de NCs sem precisar
+  //   de JOIN com a tabela `auditorias`.
   // - Falhas são silenciosas (console.warn) pra não bloquear o salvar da auditoria
   // ═══════════════════════════════════════════════════════════════════════════
   const sincronizarNCs = async (auditoriaId, ncs, isEdicao) => {
@@ -294,12 +307,22 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         }
       }
 
-      // Insere as NCs atuais (se houver)
+      // Insere as NCs atuais (se houver), já com os campos de identificação
       if (ncs && ncs.length > 0) {
         const linhas = ncs.map(item => ({
-          auditoria_id: auditoriaId,
-          item_id:      String(item.id ?? ''),
-          item_texto:   item.p || '',
+          auditoria_id:                 auditoriaId,
+          item_id:                      String(item.id ?? ''),
+          item_texto:                   item.p || '',
+          fiscal:                       form.fiscal           || null,
+          matricula:                    form.matricula        || null,
+          prefixo:                      form.prefixo          || null,
+          os:                           form.os               || null,
+          uc:                           form.uc               || null,
+          nome_eletricista:             form.nomeEletricista   || null,
+          nome_eletricista2:            form.nomeEletricista2  || null,
+          motivo_auditoria:             form.motivoAuditoria   || null,
+          avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
+          observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
         }))
         const { error: insErr } = await supabase
           .from('auditorias_nao_conformes')
@@ -324,7 +347,20 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
     if (!online && !modoEdicao) {
       try {
-        const payload      = montarPayload()
+        const payload = {
+          ...montarPayload(),
+          ...(form.motivoAuditoria && {
+            status_motivo_auditoria:      form.statusMotivoAuditoria,
+            avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
+            observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
+            // ⚠️ fotos_motivo_urls NÃO incluídas aqui: o salvamento offline
+            // depende de offline.js aceitar um array extra de fotos, fora
+            // do escopo deste ajuste. As fotos do motivo, se capturadas
+            // offline, ficam retidas no estado local até nova tentativa
+            // online — não são perdidas, mas não sobem automaticamente
+            // no modo offline nesta versão.
+          }),
+        }
         const fotosBase64  = form.fotos.map(f => f.url)
         const assinBase64  = form.assinatura  || null
         const assin2Base64 = form.assinatura2 || null
@@ -352,6 +388,15 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       const fotosUrls = modoEdicao ? [...(fotosAntigas || []), ...fotosNovas] : fotosNovas
       setFotosUrlsSalvas(fotosUrls)
 
+      // ── Upload das fotos do Motivo da Auditoria (se houver) ──
+      const fotosMotivoUrls = []
+      if (form.motivoAuditoria && form.fotosMotivo?.length > 0) {
+        for (let i = 0; i < form.fotosMotivo.length; i++) {
+          const url = await uploadBase64(form.fotosMotivo[i].url, `${auditId}/motivo_${Date.now()}_${i + 1}.jpg`)
+          fotosMotivoUrls.push(url)
+        }
+      }
+
       let assinaturaUrl  = null
       let assinatura2Url = null
       if (form.assinatura)  assinaturaUrl  = await uploadBase64(form.assinatura,  `${auditId}/assinatura_1.png`)
@@ -362,6 +407,12 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         fotos_urls: fotosUrls,
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
+        ...(form.motivoAuditoria && {
+          fotos_motivo_urls:            fotosMotivoUrls,
+          status_motivo_auditoria:      form.statusMotivoAuditoria,
+          avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
+          observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
+        }),
       }
 
       let saved
@@ -443,6 +494,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
           <InfoRow label="Tipo de Serviço"  value={CHECKLISTS[form.tipoServico]?.label} />
+          {form.motivoAuditoria && <InfoRow label="Motivo da Auditoria" value={form.motivoAuditoria} />}
           <InfoRow label="Status do Serviço" value={form.produtivo ? 'Produtivo' : 'Improdutivo'} />
           <InfoRow label="Fiscal"         value={form.fiscal} />
           <InfoRow label="Matrícula"      value={form.matricula} />
