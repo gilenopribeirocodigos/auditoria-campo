@@ -117,6 +117,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
             <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
             ${infoRow('Tipo de Serviço', CHECKLISTS[form.tipoServico]?.label)}
+            ${form.motivoAuditoria ? infoRow('Motivo da Auditoria', form.motivoAuditoria) : ''}
             ${infoRow('Status do Serviço', form.produtivo ? 'Produtivo' : 'Improdutivo')}
             ${infoRow('Fiscal',         form.fiscal)}
             ${infoRow('Matrícula',      form.matricula)}
@@ -272,6 +273,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     observacoes:       form.observacoes,
     nome_eletricista:  form.nomeEletricista,
     nome_eletricista2: form.nomeEletricista2 || null,
+    motivo_auditoria:  form.motivoAuditoria || null,
   })
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -311,6 +313,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           uc:                form.uc               || null,
           nome_eletricista:  form.nomeEletricista   || null,
           nome_eletricista2: form.nomeEletricista2  || null,
+          motivo_auditoria:  form.motivoAuditoria   || null,
         }))
         const { error: insErr } = await supabase
           .from('auditorias_nao_conformes')
@@ -335,7 +338,19 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
 
     if (!online && !modoEdicao) {
       try {
-        const payload      = montarPayload()
+        const payload = {
+          ...montarPayload(),
+          ...(form.motivoAuditoria && {
+            status_motivo_auditoria:      form.statusMotivoAuditoria,
+            observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
+            // ⚠️ fotos_motivo_urls NÃO incluídas aqui: o salvamento offline
+            // depende de offline.js aceitar um array extra de fotos, fora
+            // do escopo deste ajuste. As fotos do motivo, se capturadas
+            // offline, ficam retidas no estado local até nova tentativa
+            // online — não são perdidas, mas não sobem automaticamente
+            // no modo offline nesta versão.
+          }),
+        }
         const fotosBase64  = form.fotos.map(f => f.url)
         const assinBase64  = form.assinatura  || null
         const assin2Base64 = form.assinatura2 || null
@@ -363,6 +378,15 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       const fotosUrls = modoEdicao ? [...(fotosAntigas || []), ...fotosNovas] : fotosNovas
       setFotosUrlsSalvas(fotosUrls)
 
+      // ── Upload das fotos do Motivo da Auditoria (se houver) ──
+      const fotosMotivoUrls = []
+      if (form.motivoAuditoria && form.fotosMotivo?.length > 0) {
+        for (let i = 0; i < form.fotosMotivo.length; i++) {
+          const url = await uploadBase64(form.fotosMotivo[i].url, `${auditId}/motivo_${Date.now()}_${i + 1}.jpg`)
+          fotosMotivoUrls.push(url)
+        }
+      }
+
       let assinaturaUrl  = null
       let assinatura2Url = null
       if (form.assinatura)  assinaturaUrl  = await uploadBase64(form.assinatura,  `${auditId}/assinatura_1.png`)
@@ -373,6 +397,11 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         fotos_urls: fotosUrls,
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
+        ...(form.motivoAuditoria && {
+          fotos_motivo_urls:           fotosMotivoUrls,
+          status_motivo_auditoria:     form.statusMotivoAuditoria,
+          observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
+        }),
       }
 
       let saved
@@ -454,6 +483,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
           <InfoRow label="Tipo de Serviço"  value={CHECKLISTS[form.tipoServico]?.label} />
+          {form.motivoAuditoria && <InfoRow label="Motivo da Auditoria" value={form.motivoAuditoria} />}
           <InfoRow label="Status do Serviço" value={form.produtivo ? 'Produtivo' : 'Improdutivo'} />
           <InfoRow label="Fiscal"         value={form.fiscal} />
           <InfoRow label="Matrícula"      value={form.matricula} />
