@@ -251,6 +251,13 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     link.click()
   }
 
+  // Converte o booleano statusMotivoAuditoria em texto legível para relatórios.
+  // null/undefined → null (motivo ainda não avaliado ou não se aplica)
+  const avaliacaoMotivoTexto =
+    form.statusMotivoAuditoria === true  ? 'CONFORME' :
+    form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
+    null
+
   const montarPayload = () => ({
     fiscal:            form.fiscal,
     matricula:         form.matricula,
@@ -303,17 +310,19 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
       // Insere as NCs atuais (se houver), já com os campos de identificação
       if (ncs && ncs.length > 0) {
         const linhas = ncs.map(item => ({
-          auditoria_id:      auditoriaId,
-          item_id:           String(item.id ?? ''),
-          item_texto:        item.p || '',
-          fiscal:            form.fiscal           || null,
-          matricula:         form.matricula        || null,
-          prefixo:           form.prefixo          || null,
-          os:                form.os               || null,
-          uc:                form.uc               || null,
-          nome_eletricista:  form.nomeEletricista   || null,
-          nome_eletricista2: form.nomeEletricista2  || null,
-          motivo_auditoria:  form.motivoAuditoria   || null,
+          auditoria_id:                 auditoriaId,
+          item_id:                      String(item.id ?? ''),
+          item_texto:                   item.p || '',
+          fiscal:                       form.fiscal           || null,
+          matricula:                    form.matricula        || null,
+          prefixo:                      form.prefixo          || null,
+          os:                           form.os               || null,
+          uc:                           form.uc               || null,
+          nome_eletricista:             form.nomeEletricista   || null,
+          nome_eletricista2:            form.nomeEletricista2  || null,
+          motivo_auditoria:             form.motivoAuditoria   || null,
+          avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
+          observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
         }))
         const { error: insErr } = await supabase
           .from('auditorias_nao_conformes')
@@ -342,6 +351,7 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
           ...montarPayload(),
           ...(form.motivoAuditoria && {
             status_motivo_auditoria:      form.statusMotivoAuditoria,
+            avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
             observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
             // ⚠️ fotos_motivo_urls NÃO incluídas aqui: o salvamento offline
             // depende de offline.js aceitar um array extra de fotos, fora
@@ -398,8 +408,9 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
         ...(form.motivoAuditoria && {
-          fotos_motivo_urls:           fotosMotivoUrls,
-          status_motivo_auditoria:     form.statusMotivoAuditoria,
+          fotos_motivo_urls:            fotosMotivoUrls,
+          status_motivo_auditoria:      form.statusMotivoAuditoria,
+          avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
           observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
         }),
       }
