@@ -52,16 +52,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         .order('descricao')
       setMotivos(motivosData || [])
 
-      // IDs já registrados na data (presentes + indisponíveis)
-      const [{ data: presentes }, { data: ausentes }] = await Promise.all([
-        supabase.from('equipes_dia').select('eletricista_id').eq('data', data),
-        supabase.from('indisponibilidades').select('eletricista_id').eq('data', data),
-      ])
+      // IDs já registrados na data — tudo fica em equipes_dia (presentes E ausentes)
+      const { data: jaRegistrados } = await supabase
+        .from('equipes_dia')
+        .select('eletricista_id')
+        .eq('data', data)
 
-      const idsRegistrados = new Set([
-        ...(presentes  || []).map(p => p.eletricista_id),
-        ...(ausentes   || []).map(a => a.eletricista_id),
-      ])
+      const idsRegistrados = new Set((jaRegistrados || []).map(p => p.eletricista_id))
 
       // Eletricistas do supervisor que ainda não foram registrados
       let query = supabase
@@ -138,50 +135,59 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const eletMap = {}
       eletricistas.forEach(e => { eletMap[e.id] = e })
 
-      // Busca motivo PRESENTE para registrar em equipes_dia
+      // Busca id do motivo PRESENTE
       const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
+      if (!motivoPresente) throw new Error('Motivo "PRESENTE" não encontrado na tabela motivos_indisponibilidade.')
 
-      const presentes = marcados.filter(([, r]) => r.status === 'presente')
-      const ausentesArr = marcados.filter(([, r]) => r.status === 'ausente')
-
-      // Insere em equipes_dia (presentes)
-      if (presentes.length > 0) {
-        const linhasPresentes = presentes.map(([id, r]) => ({
+      // ── Tudo vai para equipes_dia ──────────────────────────────────────────
+      // Presentes → id_indisponibilidade = id do motivo PRESENTE
+      // Ausentes  → id_indisponibilidade = id do motivo de ausência escolhido
+      // Esta é a mesma lógica do sistema original.
+      const linhasEquipesDia = marcados.map(([id, r]) => {
+        const elet = eletMap[id] || {}
+        const isPresente = r.status === 'presente'
+        return {
           eletricista_id:       Number(id),
-          prefixo:              r.prefixo,
+          prefixo:              isPresente ? r.prefixo : (elet.prefixo || ''),
           data,
           supervisor_registro:  supervisorCampo || 'Administrador',
           usuario_registro:     usuarioLogado?.login || 'admin',
-          id_indisponibilidade: motivoPresente?.id || null,
+          id_indisponibilidade: isPresente ? motivoPresente.id : Number(r.motivo_id),
           observacoes:          r.obs || null,
-        }))
-        const { error } = await supabase.from('equipes_dia').upsert(linhasPresentes, { onConflict: 'eletricista_id,data' })
-        if (error) throw error
-      }
+        }
+      })
 
-      // Insere em indisponibilidades (ausentes)
+      const { error: errEquipes } = await supabase
+        .from('equipes_dia')
+        .upsert(linhasEquipesDia, { onConflict: 'eletricista_id,data' })
+      if (errEquipes) throw errEquipes
+
+      // ── Ausentes: grava também em indisponibilidades (detalhe tipo parcial/total) ──
+      const ausentesArr = marcados.filter(([, r]) => r.status === 'ausente')
       if (ausentesArr.length > 0) {
-        const linhasAusentes = ausentesArr.map(([id, r]) => {
+        const linhasIndisp = ausentesArr.map(([id, r]) => {
           const elet = eletMap[id] || {}
           return {
             data,
             eletricista_id:        Number(id),
             matricula:             elet.matricula || null,
-            prefixo:               elet.prefixo || r.prefixo || '',
+            prefixo:               elet.prefixo  || '',
             tipo_indisponibilidade: r.tipo || 'total',
             motivo_id:             Number(r.motivo_id),
             observacao:            r.obs || null,
             usuario_registro:      usuarioLogado?.login || 'admin',
           }
         })
-        const { error } = await supabase.from('indisponibilidades').upsert(linhasAusentes, { onConflict: 'eletricista_id,data' })
-        if (error) throw error
+        const { error: errIndisp } = await supabase
+          .from('indisponibilidades')
+          .upsert(linhasIndisp, { onConflict: 'eletricista_id,data' })
+        if (errIndisp) throw errIndisp
       }
 
-      const totalPresentes = presentes.length
+      const totalPresentes = marcados.filter(([, r]) => r.status === 'presente').length
       const totalAusentes  = ausentesArr.length
       setSucesso(`✅ ${totalPresentes} presente(s) e ${totalAusentes} ausente(s) registrado(s) para ${data}!`)
-      await carregar()   // recarrega para atualizar a lista
+      await carregar()
     } catch (e) {
       setErro('Erro ao salvar: ' + e.message)
     } finally {
