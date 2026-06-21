@@ -9,7 +9,7 @@ function PrefixoSelect({ value, onChange, prefixos, placeholder = 'Digite para f
   const ref = useRef(null)
 
   // Sincroniza quando o pai limpa/muda o valor
-  useEffect(() => { setFiltro(value || '') }, [value])
+  useEffect(() => { setFiltro(value || '') }, [value]) 
 
   useEffect(() => {
     const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
