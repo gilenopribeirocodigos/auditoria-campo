@@ -81,9 +81,10 @@ function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite p
 
 export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // ── DIAGNÓSTICO — remover após confirmar que o arquivo correto está rodando ──
-  console.log('✅ IndisponibilidadePage v3 — PrefixoSelect + cards coloridos CARREGADO')
+  console.log('✅ IndisponibilidadePage v4 — PainelFiltros visual CARREGADO')
   // ────────────────────────────────────────────────────────────────────────────
   const hoje = new Date().toISOString().split('T')[0]
+  const [data, setData] = useState(hoje)
   const [data,              setData]              = useState(hoje)
   const [eletricistas,      setEletricistas]      = useState([])
   const [motivos,           setMotivos]           = useState([])
@@ -305,38 +306,54 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ── Filtro de data no padrão VérticeGP (igual ao "Filtros do Relatório") ── */}
+        {/* ── Filtro no padrão exato do PainelFiltros do VérticeGP ── */}
         <div style={{
-          background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
-          padding: '16px 20px', marginBottom: 16,
+          background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0',
+          padding: '16px 18px', marginBottom: 16,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-            <span style={{ fontSize: 14 }}>🔍</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Filtros do Registro</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, color: '#64748b',
-              textTransform: 'uppercase', letterSpacing: 0.8,
-              background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
-            }}>PERÍODO POR DATA</span>
+          {/* Header igual ao PainelFiltros */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9',
+          }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              🔍 Filtros do Registro
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: '#64748b',
+                background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
+                textTransform: 'uppercase', letterSpacing: 0.5,
+              }}>período por data</span>
+            </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
-                DATA DO REGISTRO
-              </p>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <input
-                  type="date"
-                  value={data}
-                  onChange={e => setData(e.target.value)}
-                  className="form-input"
-                  style={{ maxWidth: 200 }}
-                />
-                {data === hoje
-                  ? <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '3px 10px' }}>✅ Hoje</span>
-                  : <span style={{ fontSize: 12, color: '#d97706', fontWeight: 700, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '3px 10px' }}>⚠️ Data retroativa</span>
-                }
-              </div>
+
+          {/* Campo de data com label uppercase */}
+          <div>
+            <label style={{
+              display: 'block', fontSize: 11, fontWeight: 800, color: '#475569',
+              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
+            }}>Data do Registro</label>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <input
+                type="date"
+                value={data}
+                onChange={e => setData(e.target.value)}
+                style={{
+                  height: 38, padding: '0 12px', borderRadius: 10,
+                  border: '1.5px solid #e2e8f0', background: '#fff',
+                  color: '#1e293b', fontSize: 13, fontWeight: 600,
+                  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
+                  cursor: 'pointer',
+                }}
+              />
+              <span style={{
+                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
+                background: data === hoje ? '#f0fdf4' : '#fef3c7',
+                color:      data === hoje ? '#16a34a' : '#d97706',
+                border: `1px solid ${data === hoje ? '#86efac' : '#fcd34d'}`,
+              }}>
+                {data === hoje ? '✅ Hoje' : '⚠️ Data retroativa'}
+              </span>
             </div>
           </div>
         </div>
