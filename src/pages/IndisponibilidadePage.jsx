@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useFiltrosOperacionais, PainelFiltros } from '../components/PainelFiltros.jsx'
 import { supabase } from '../lib/supabase.js'
 
 // ── Autocomplete de Prefixo ───────────────────────────────────────────────────
@@ -81,10 +82,17 @@ function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite p
 
 export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // ── DIAGNÓSTICO — remover após confirmar que o arquivo correto está rodando ──
-  console.log('✅ IndisponibilidadePage v4 — PainelFiltros visual CARREGADO')
+  console.log('✅ IndisponibilidadePage v5 — PainelFiltros REAL integrado')
   // ────────────────────────────────────────────────────────────────────────────
   const hoje = new Date().toISOString().split('T')[0]
-  const [data, setData] = useState(hoje)
+
+  // Usa o hook real de filtros — apenas período (supervisores não se aplicam aqui)
+  const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado })
+
+  // Deriva a data do filtro: modo período → usa dataIni; modo mês → usa hoje
+  const data = filtros.modoPeriodo
+    ? (filtros.dataIni || hoje)
+    : hoje
   const [eletricistas,      setEletricistas]      = useState([])
   const [motivos,           setMotivos]           = useState([])
   const [prefixos,          setPrefixos]          = useState([])
@@ -305,57 +313,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ── Filtro no padrão exato do PainelFiltros do VérticeGP ── */}
-        <div style={{
-          background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0',
-          padding: '16px 18px', marginBottom: 16,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-        }}>
-          {/* Header igual ao PainelFiltros */}
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9',
-          }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              🔍 Filtros do Registro
-              <span style={{
-                fontSize: 10, fontWeight: 700, color: '#64748b',
-                background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
-                textTransform: 'uppercase', letterSpacing: 0.5,
-              }}>período por data</span>
-            </p>
-          </div>
-
-          {/* Campo de data com label uppercase */}
-          <div>
-            <label style={{
-              display: 'block', fontSize: 11, fontWeight: 800, color: '#475569',
-              textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
-            }}>Data do Registro</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <input
-                type="date"
-                value={data}
-                onChange={e => setData(e.target.value)}
-                style={{
-                  height: 38, padding: '0 12px', borderRadius: 10,
-                  border: '1.5px solid #e2e8f0', background: '#fff',
-                  color: '#1e293b', fontSize: 13, fontWeight: 600,
-                  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
-                  cursor: 'pointer',
-                }}
-              />
-              <span style={{
-                fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6,
-                background: data === hoje ? '#f0fdf4' : '#fef3c7',
-                color:      data === hoje ? '#16a34a' : '#d97706',
-                border: `1px solid ${data === hoje ? '#86efac' : '#fcd34d'}`,
-              }}>
-                {data === hoje ? '✅ Hoje' : '⚠️ Data retroativa'}
-              </span>
-            </div>
-          </div>
-        </div>
+        {/* ── Filtro no padrão real do VérticeGP — apenas período ── */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros do Registro"
+          badge="período por data"
+          mostrarPrefixo={false}
+        />
 
         {/* ── Abas ── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
