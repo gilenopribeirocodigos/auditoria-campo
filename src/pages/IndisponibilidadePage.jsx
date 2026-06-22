@@ -215,11 +215,18 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     [todosEletricistas, filtros]
   )
 
-  // Opções de eletricista para os cards (para trocar o nome dentro do card)
-  const opcoesTodosElet = useMemo(() =>
-    todosEletricistas.map(e => ({ value: String(e.id), label: e.colaborador, sub: e.prefixo })),
-    [todosEletricistas]
-  )
+  // Opções de eletricista para os cards:
+  // exclui eletricistas já escolhidos em outros cards para evitar duplicata
+  const opcoesTodosElet = useMemo(() => {
+    const idsEmUso = new Set(
+      Object.values(registros)
+        .filter(r => r.status && r.eletId)
+        .map(r => r.eletId)
+    )
+    return todosEletricistas
+      .filter(e => !idsEmUso.has(String(e.id)))
+      .map(e => ({ value: String(e.id), label: e.colaborador, sub: e.prefixo }))
+  }, [todosEletricistas, registros])
 
   // Contadores do painel (baseados na lista filtrada atual + registros na tela)
   const totalPrefixosFiltrados = useMemo(() =>
@@ -393,20 +400,36 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     </div>
   )
 
-  // ── Painel de contadores ──────────────────────────────────────────────────
+  // ── Painel de contadores (reativo à aba ativa) ───────────────────────────
+  // Frequência: mostra eletricistas | Indisponível: mostra prefixos
+  const totalPrefixosIndisp = useMemo(() =>
+    [...new Set(indispRegistradas.map(r => r.prefixo).filter(Boolean))].length,
+    [indispRegistradas]
+  )
+
+  const itensContadores = abaAtiva === 'indisponivel'
+    ? [
+        { label: 'Prefixos indisponíveis', val: totalPrefixosIndisp,       cor: '#dc2626', bg: '#fef2f2' },
+        { label: 'Registros no dia',       val: indispRegistradas.length,  cor: '#7c3aed', bg: '#f5f3ff' },
+        { label: 'Ausentes hoje',          val: contadores.ausentes,        cor: '#b91c1c', bg: '#fee2e2' },
+        { label: 'Presentes hoje',         val: contadores.presentes,       cor: '#16a34a', bg: '#f0fdf4' },
+        { label: 'Faltam justificar',      val: faltamJustificar,           cor: '#d97706', bg: '#fef3c7' },
+      ]
+    : [
+        { label: 'Prefixos na lista',  val: totalPrefixosFiltrados, cor: '#2563eb', bg: '#eff6ff' },
+        { label: 'Eletricistas',       val: totalNomesFiltrados,    cor: '#7c3aed', bg: '#f5f3ff' },
+        { label: 'Presentes hoje',     val: contadores.presentes,   cor: '#16a34a', bg: '#f0fdf4' },
+        { label: 'Ausentes hoje',      val: contadores.ausentes,    cor: '#dc2626', bg: '#fef2f2' },
+        { label: 'Faltam justificar',  val: faltamJustificar,       cor: '#d97706', bg: '#fef3c7' },
+      ]
+
   const PainelContadores = (
     <div style={{
       background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0',
       padding: '12px 18px', marginBottom: 16,
       display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10,
     }}>
-      {[
-        { label: 'Prefixos na lista',   val: totalPrefixosFiltrados, cor: '#2563eb', bg: '#eff6ff' },
-        { label: 'Eletricistas',        val: totalNomesFiltrados,    cor: '#7c3aed', bg: '#f5f3ff' },
-        { label: 'Presentes hoje',      val: contadores.presentes,   cor: '#16a34a', bg: '#f0fdf4' },
-        { label: 'Ausentes hoje',       val: contadores.ausentes,    cor: '#dc2626', bg: '#fef2f2' },
-        { label: 'Faltam justificar',   val: faltamJustificar,       cor: '#d97706', bg: '#fef3c7' },
-      ].map(({ label, val, cor, bg }) => (
+      {itensContadores.map(({ label, val, cor, bg }) => (
         <div key={label} style={{ background: bg, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
           <p style={{ fontSize: 22, fontWeight: 900, color: cor, margin: 0 }}>{val}</p>
           <p style={{ fontSize: 10, color: '#64748b', fontWeight: 700, margin: 0, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</p>
@@ -515,15 +538,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               </div>
             ) : (
               <>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-                  <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '5px 12px' }}>
-                    ✓ PRESENTE — veio trabalhar
-                  </div>
-                  <div style={{ fontSize: 11, color: '#dc2626', fontWeight: 600, background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 8, padding: '5px 12px' }}>
-                    ✗ AUSENTE — não veio (selecione motivo)
-                  </div>
-                </div>
-
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
                   {eletricistas.map(elet => {
                     const cardKey    = String(elet.id)
