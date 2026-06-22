@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
-// IndisponibilidadePage v6 — filtro customizado (data + prefixo + nome)
+// IndisponibilidadePage v7 — PainelFiltros completo + filtro de eletricista
 // ════════════════════════════════════════════════════════════════════════════
 
-// ── Autocomplete genérico (prefixo ou nome) ──────────────────────────────────
-function AutocompleteInput({ value, onChange, opcoes = [], placeholder = 'Digite para filtrar...', renderOpcao }) {
+// ── Autocomplete de Prefixo nos cards ────────────────────────────────────────
+function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite para filtrar...' }) {
   const [filtro, setFiltro] = useState(value || '')
   const [aberto, setAberto] = useState(false)
   const ref = useRef(null)
@@ -17,73 +18,41 @@ function AutocompleteInput({ value, onChange, opcoes = [], placeholder = 'Digite
     const handler = e => {
       if (ref.current && !ref.current.contains(e.target)) {
         setAberto(false)
-        const existeExato = opcoes.find(o =>
-          (typeof o === 'string' ? o : o.label).toLowerCase() === filtro.toLowerCase()
-        )
-        if (existeExato) {
-          onChange(typeof existeExato === 'string' ? existeExato : existeExato.value)
-          setFiltro(typeof existeExato === 'string' ? existeExato : existeExato.label)
-        } else {
-          setFiltro(value || '')
-        }
+        const existeExato = prefixos.find(p => p.toLowerCase() === filtro.toLowerCase())
+        if (existeExato) { onChange(existeExato); setFiltro(existeExato) }
+        else setFiltro(value || '')
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [filtro, value, opcoes, onChange])
+  }, [filtro, value, prefixos, onChange])
 
-  const opcoesFiltradas = opcoes.filter(o => {
-    const label = typeof o === 'string' ? o : o.label
-    return !filtro || label.toLowerCase().includes(filtro.toLowerCase())
-  })
+  const opcoesFiltradas = prefixos.filter(p => !filtro || p.toLowerCase().includes(filtro.toLowerCase()))
 
-  const selecionar = o => {
-    const val   = typeof o === 'string' ? o : o.value
-    const label = typeof o === 'string' ? o : o.label
-    onChange(val)
-    setFiltro(label)
-    setAberto(false)
-  }
+  const selecionar = p => { onChange(p); setFiltro(p); setAberto(false) }
 
   return (
     <div style={{ position: 'relative' }} ref={ref}>
-      <input
-        className="form-input"
-        value={filtro}
+      <input className="form-input" value={filtro}
         onChange={e => { setFiltro(e.target.value); setAberto(true) }}
-        onFocus={() => setAberto(true)}
-        placeholder={placeholder}
-        autoComplete="off"
-        style={{ paddingRight: 32 }}
-      />
-      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>
-        🔍
-      </span>
+        onFocus={() => setAberto(true)} placeholder={placeholder}
+        autoComplete="off" style={{ paddingRight: 32 }} />
+      <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14, pointerEvents: 'none' }}>🔍</span>
       {aberto && opcoesFiltradas.length > 0 && (
-        <div style={{
-          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300,
-          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto',
-        }}>
-          {opcoesFiltradas.map((o, i) => {
-            const label = typeof o === 'string' ? o : o.label
-            const isSelected = (typeof o === 'string' ? o : o.value) === value
-            return (
-              <button key={i} type="button" onMouseDown={() => selecionar(o)} style={{
-                display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
-                background: isSelected ? '#eff6ff' : '#fff', border: 'none', cursor: 'pointer',
-                borderBottom: i < opcoesFiltradas.length - 1 ? '1px solid #f1f5f9' : 'none',
-                fontSize: 13, fontFamily: '"Courier New", monospace', fontWeight: 600, color: '#1e293b',
-              }}>
-                {renderOpcao ? renderOpcao(o) : label}
-              </button>
-            )
-          })}
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto' }}>
+          {opcoesFiltradas.map((p, i) => (
+            <button key={p} type="button" onMouseDown={() => selecionar(p)} style={{
+              display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
+              background: p === value ? '#eff6ff' : '#fff', border: 'none', cursor: 'pointer',
+              borderBottom: i < opcoesFiltradas.length - 1 ? '1px solid #f1f5f9' : 'none',
+              fontSize: 13, fontFamily: '"Courier New", monospace', fontWeight: 600, color: '#1e293b',
+            }}>{p}</button>
+          ))}
         </div>
       )}
       {aberto && filtro && opcoesFiltradas.length === 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: '#fff', border: '1.5px solid #fecaca', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#dc2626' }}>
-          ❌ Nenhum resultado para "{filtro}"
+          ❌ Nenhum prefixo encontrado para "{filtro}"
         </div>
       )}
     </div>
@@ -91,18 +60,33 @@ function AutocompleteInput({ value, onChange, opcoes = [], placeholder = 'Digite
 }
 
 export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
-  console.log('✅ IndisponibilidadePage v6 — filtro customizado data+prefixo+nome')
+  console.log('✅ IndisponibilidadePage v7 — PainelFiltros completo + eletricista')
 
   const hoje = new Date().toISOString().split('T')[0]
 
-  // ── Filtros ──
-  const [data,           setData]           = useState(hoje)
-  const [filtroPrefixo,  setFiltroPrefixo]  = useState('')  // prefixo selecionado no filtro
-  const [filtroNome,     setFiltroNome]      = useState('')  // nome/id do eletricista selecionado no filtro
+  // ── Hook de filtros operacionais completo ──
+  const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado })
+
+  // ── Filtro extra: eletricista (busca local na lista carregada) ──
+  const [filtroEletricista, setFiltroEletricista] = useState('')
+  const [buscaEletAberta,   setBuscaEletAberta]   = useState(false)
+  const eletFiltroRef = useRef(null)
+
+  // Fecha dropdown de eletricista ao clicar fora
+  useEffect(() => {
+    const handler = e => { if (eletFiltroRef.current && !eletFiltroRef.current.contains(e.target)) setBuscaEletAberta(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // ── Deriva data do filtro de período ──
+  const data = useMemo(() => {
+    if (filtros.modoPeriodo) return filtros.dataIni || hoje
+    return hoje
+  }, [filtros.modoPeriodo, filtros.dataIni, hoje])
 
   // ── Dados ──
-  const [todosEletricistas, setTodosEletricistas] = useState([])  // lista base (sem filtro)
-  const [eletricistas,      setEletricistas]      = useState([])  // lista exibida (com filtro aplicado)
+  const [todosEletricistas, setTodosEletricistas] = useState([])
   const [motivos,           setMotivos]           = useState([])
   const [prefixos,          setPrefixos]          = useState([])
   const [loading,           setLoading]           = useState(false)
@@ -131,8 +115,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     setLoading(true)
     setErro('')
     setRegistros({})
-    setFiltroPrefixo('')
-    setFiltroNome('')
+    setFiltroEletricista('')
 
     try {
       const { data: motivosData } = await supabase
@@ -151,7 +134,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const { data: todosElet } = await query
       const disponiveis = (todosElet || []).filter(e => !idsRegistrados.has(e.id))
       setTodosEletricistas(disponiveis)
-      setEletricistas(disponiveis)
 
       const prefixosUnicos = [...new Set((todosElet || []).map(e => e.prefixo).filter(Boolean))].sort()
       setPrefixos(prefixosUnicos)
@@ -182,22 +164,29 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [carregar])
 
-  // ── Aplica filtros de prefixo e nome automaticamente ──────────────────────
-  useEffect(() => {
+  // ── Lista de eletricistas com todos os filtros aplicados ──────────────────
+  const eletricistas = useMemo(() => {
     let lista = todosEletricistas
-    if (filtroPrefixo) lista = lista.filter(e => e.prefixo === filtroPrefixo)
-    if (filtroNome)    lista = lista.filter(e => String(e.id) === filtroNome)
-    setEletricistas(lista)
-  }, [filtroPrefixo, filtroNome, todosEletricistas])
 
-  // Opções de nome para o autocomplete — label com nome + prefixo
-  const opcoesNome = todosEletricistas
-    .filter(e => !filtroPrefixo || e.prefixo === filtroPrefixo)
-    .map(e => ({
-      value: String(e.id),
+    // Filtro do PainelFiltros (supervisor operacional, campo, prefixo)
+    lista = filtros.filtrar(lista)
+
+    // Filtro extra de eletricista por nome (busca local)
+    if (filtroEletricista) {
+      lista = lista.filter(e => String(e.id) === filtroEletricista)
+    }
+
+    return lista
+  }, [todosEletricistas, filtros, filtroEletricista])
+
+  // Opções de eletricista para o autocomplete (mostra nome + prefixo)
+  const opcoesEletricista = useMemo(() => {
+    return filtros.filtrar(todosEletricistas).map(e => ({
+      id: String(e.id),
       label: e.colaborador,
-      sub:   e.prefixo,
+      sub: e.prefixo,
     }))
+  }, [todosEletricistas, filtros])
 
   const upd = (eletId, campo, valor) =>
     setRegistros(prev => ({ ...prev, [eletId]: { ...prev[eletId], [campo]: valor } }))
@@ -217,7 +206,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
     setSalvando(true); setErro(''); setSucesso('')
     try {
-      const eletMap = {}; eletricistas.forEach(e => { eletMap[e.id] = e })
+      const eletMap = {}; todosEletricistas.forEach(e => { eletMap[e.id] = e })
       const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
       if (!motivoPresente) throw new Error('Motivo "PRESENTE" não encontrado.')
 
@@ -306,7 +295,69 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const totalPresentes = Object.values(registros).filter(r => r.status === 'presente').length
   const totalAusentes  = Object.values(registros).filter(r => r.status === 'ausente').length
   const totalMarcados  = totalPresentes + totalAusentes
-  const temFiltroAtivo = filtroPrefixo || filtroNome
+
+  // ── Filtro extra de eletricista (dropdown autocomplete) ───────────────────
+  const eletSelecionado = opcoesEletricista.find(o => o.id === filtroEletricista)
+  const [buscaEletTexto, setBuscaEletTexto] = useState('')
+  const opcoesFiltradas = opcoesEletricista.filter(o =>
+    !buscaEletTexto || o.label.toLowerCase().includes(buscaEletTexto.toLowerCase())
+  )
+
+  const FiltroEletricista = (
+    <div>
+      <label style={LABEL_STYLE}>Eletricista</label>
+      <div style={{ position: 'relative' }} ref={eletFiltroRef}>
+        <button type="button"
+          onClick={() => setBuscaEletAberta(a => !a)}
+          style={{
+            ...INPUT_STYLE,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            cursor: 'pointer', textAlign: 'left',
+            color: eletSelecionado ? '#1e293b' : '#94a3b8',
+            borderColor: buscaEletAberta ? '#3b82f6' : '#e2e8f0',
+          }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: eletSelecionado ? 700 : 500, fontSize: 13 }}>
+            {eletSelecionado ? eletSelecionado.label : 'Todos'}
+          </span>
+          <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 8, flexShrink: 0 }}>▼</span>
+        </button>
+
+        {buscaEletAberta && (
+          <div style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 300, overflowY: 'auto' }}>
+            <div style={{ padding: 8, borderBottom: '1px solid #f1f5f9', position: 'sticky', top: 0, background: '#fff' }}>
+              <input type="text" autoFocus placeholder="Buscar..." value={buscaEletTexto}
+                onChange={e => setBuscaEletTexto(e.target.value)}
+                style={{ width: '100%', padding: '6px 10px', fontSize: 12, border: '1px solid #e2e8f0', borderRadius: 8, outline: 'none', boxSizing: 'border-box' }}
+              />
+              {filtroEletricista && (
+                <button type="button" onClick={() => { setFiltroEletricista(''); setBuscaEletTexto(''); setBuscaEletAberta(false) }} style={{
+                  marginTop: 6, width: '100%', padding: '4px 8px', fontSize: 11, fontWeight: 700,
+                  color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, cursor: 'pointer',
+                }}>✕ Limpar seleção</button>
+              )}
+            </div>
+            {opcoesFiltradas.length === 0 ? (
+              <p style={{ padding: 14, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>Nenhum resultado</p>
+            ) : opcoesFiltradas.map(o => {
+              const sel = o.id === filtroEletricista
+              return (
+                <button key={o.id} type="button"
+                  onClick={() => { setFiltroEletricista(o.id); setBuscaEletAberta(false); setBuscaEletTexto('') }}
+                  style={{
+                    display: 'block', width: '100%', padding: '9px 12px',
+                    background: sel ? '#eff6ff' : 'none', border: 'none',
+                    borderBottom: '1px solid #f8fafc', textAlign: 'left', cursor: 'pointer',
+                  }}>
+                  <p style={{ fontSize: 12, fontWeight: sel ? 700 : 500, color: '#1e293b', margin: 0 }}>{o.label}</p>
+                  <p style={{ fontSize: 10, color: '#64748b', fontFamily: '"Courier New", monospace', margin: 0 }}>{o.sub}</p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -327,9 +378,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
-                { label: 'NA LISTA',  val: eletricistas.length,    cor: '#93c5fd' },
-                { label: 'PRESENTES', val: totalPresentes,          cor: '#86efac' },
-                { label: 'AUSENTES',  val: totalAusentes,           cor: '#fca5a5' },
+                { label: 'NA LISTA',  val: eletricistas.length, cor: '#93c5fd' },
+                { label: 'PRESENTES', val: totalPresentes,       cor: '#86efac' },
+                { label: 'AUSENTES',  val: totalAusentes,        cor: '#fca5a5' },
               ].map(({ label, val, cor }) => (
                 <div key={label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 12px', textAlign: 'center', minWidth: 60 }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: cor }}>{val}</div>
@@ -343,88 +394,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ── Filtros no padrão VérticeGP ── */}
-        <div style={{
-          background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0',
-          padding: '16px 18px', marginBottom: 16,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
-        }}>
-          {/* Header */}
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9',
-          }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
-              🔍 Filtros do Registro
-              <span style={{
-                fontSize: 10, fontWeight: 700, color: '#64748b',
-                background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
-                textTransform: 'uppercase', letterSpacing: 0.5,
-              }}>aplica automaticamente</span>
-            </p>
-            {temFiltroAtivo && (
-              <button onClick={() => { setFiltroPrefixo(''); setFiltroNome('') }} style={{
-                fontSize: 11, fontWeight: 700, color: '#dc2626',
-                background: '#fef2f2', border: '1px solid #fecaca',
-                padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
-              }}>✕ Limpar filtros</button>
-            )}
-          </div>
-
-          {/* Grid de filtros */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
-
-            {/* Data */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Data do Registro
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input
-                  type="date" value={data}
-                  onChange={e => setData(e.target.value)}
-                  style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#1e293b', fontSize: 13, fontWeight: 600, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'pointer' }}
-                />
-                {data === hoje
-                  ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac', whiteSpace: 'nowrap' }}>✅ Hoje</span>
-                  : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}>⚠️ Retroativa</span>
-                }
-              </div>
-            </div>
-
-            {/* Prefixo */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Prefixo
-              </label>
-              <AutocompleteInput
-                value={filtroPrefixo}
-                onChange={v => { setFiltroPrefixo(v); setFiltroNome('') }}
-                opcoes={prefixos}
-                placeholder="Todos os prefixos..."
-              />
-            </div>
-
-            {/* Nome do Eletricista */}
-            <div>
-              <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
-                Eletricista
-              </label>
-              <AutocompleteInput
-                value={filtroNome}
-                onChange={v => setFiltroNome(v)}
-                opcoes={opcoesNome}
-                placeholder="Buscar por nome..."
-                renderOpcao={o => (
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', fontFamily: 'inherit' }}>{o.label}</div>
-                    <div style={{ fontSize: 10, color: '#64748b', fontFamily: '"Courier New", monospace' }}>{o.sub}</div>
-                  </div>
-                )}
-              />
-            </div>
-          </div>
-        </div>
+        {/* ── PainelFiltros completo + filtro de eletricista como extra ── */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros do Registro"
+          badge="período por data"
+          extras={FiltroEletricista}
+        />
 
         {/* ── Abas ── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -467,7 +443,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               <div style={{ background: '#f0fdf4', borderRadius: 14, border: '1px solid #86efac', padding: 30, textAlign: 'center', color: '#15803d' }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
                 <p style={{ fontWeight: 700 }}>
-                  {temFiltroAtivo
+                  {filtros.temFiltrosAtivos || filtroEletricista
                     ? 'Nenhum eletricista encontrado para os filtros selecionados.'
                     : 'Todos os eletricistas já foram registrados para esta data!'}
                 </p>
@@ -525,12 +501,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Prefixo da Equipe *</label>
-                              <AutocompleteInput
-                                value={reg.prefixo || ''}
-                                onChange={v => upd(elet.id, 'prefixo', v)}
-                                opcoes={prefixos}
-                                placeholder="Digite para filtrar..."
-                              />
+                              <PrefixoSelect value={reg.prefixo || ''} onChange={v => upd(elet.id, 'prefixo', v)} prefixos={prefixos} />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Observação (opcional)</label>
@@ -651,12 +622,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                       Prefixo da Equipe *
                       <span style={{ fontSize: 10, color: '#64748b', fontWeight: 400, marginLeft: 6 }}>preenchido automaticamente — editável</span>
                     </label>
-                    <AutocompleteInput
-                      value={formIndisp.prefixo}
-                      onChange={v => setFormIndisp(f => ({ ...f, prefixo: v }))}
-                      opcoes={prefixos}
-                      placeholder="Digite para filtrar prefixos..."
-                    />
+                    <PrefixoSelect value={formIndisp.prefixo} onChange={v => setFormIndisp(f => ({ ...f, prefixo: v }))} prefixos={prefixos} />
                   </div>
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
