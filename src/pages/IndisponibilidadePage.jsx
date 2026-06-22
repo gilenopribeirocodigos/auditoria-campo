@@ -2,26 +2,39 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 // ── Autocomplete de Prefixo ───────────────────────────────────────────────────
-// Digita para filtrar a lista existente, mas só aceita seleção da lista.
-function PrefixoSelect({ value, onChange, prefixos, placeholder = 'Digite para filtrar...' }) {
-  const [filtro,  setFiltro]  = useState(value || '')
-  const [aberto,  setAberto]  = useState(false)
+// Digita para filtrar a lista existente.
+// Ao sair do campo sem selecionar: volta ao valor anterior (não aceita texto livre).
+function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite para filtrar...' }) {
+  const [filtro, setFiltro] = useState(value || '')
+  const [aberto, setAberto] = useState(false)
   const ref = useRef(null)
 
-  // Sincroniza quando o pai limpa/muda o valor
   useEffect(() => { setFiltro(value || '') }, [value])
 
   useEffect(() => {
-    const handler = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    const handler = e => {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setAberto(false)
+        // Se o texto digitado bate exatamente com algum prefixo, aceita
+        const existeExato = prefixos.find(p => p.toLowerCase() === filtro.toLowerCase())
+        if (existeExato) {
+          onChange(existeExato)
+          setFiltro(existeExato)
+        } else {
+          // Senão volta ao valor anterior (não aceita digitação livre)
+          setFiltro(value || '')
+        }
+      }
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [filtro, value, prefixos, onChange])
 
   const opcoesFiltradas = prefixos.filter(p =>
     !filtro || p.toLowerCase().includes(filtro.toLowerCase())
   )
 
-  const selecionar = (p) => {
+  const selecionar = p => {
     onChange(p)
     setFiltro(p)
     setAberto(false)
@@ -48,15 +61,12 @@ function PrefixoSelect({ value, onChange, prefixos, placeholder = 'Digite para f
           boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto',
         }}>
           {opcoesFiltradas.map((p, i) => (
-            <button key={p} onMouseDown={() => selecionar(p)} style={{
+            <button key={p} type="button" onMouseDown={() => selecionar(p)} style={{
               display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
-              background: p === value ? '#eff6ff' : 'none', border: 'none', cursor: 'pointer',
+              background: p === value ? '#eff6ff' : '#fff', border: 'none', cursor: 'pointer',
               borderBottom: i < opcoesFiltradas.length - 1 ? '1px solid #f1f5f9' : 'none',
               fontSize: 13, fontFamily: '"Courier New", monospace', fontWeight: 600, color: '#1e293b',
-            }}
-              onMouseEnter={e => e.currentTarget.style.background = '#f0f9ff'}
-              onMouseLeave={e => e.currentTarget.style.background = p === value ? '#eff6ff' : 'none'}
-            >{p}</button>
+            }}>{p}</button>
           ))}
         </div>
       )}
@@ -70,6 +80,9 @@ function PrefixoSelect({ value, onChange, prefixos, placeholder = 'Digite para f
 }
 
 export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
+  // ── DIAGNÓSTICO — remover após confirmar que o arquivo correto está rodando ──
+  console.log('✅ IndisponibilidadePage v3 — PrefixoSelect + cards coloridos CARREGADO')
+  // ────────────────────────────────────────────────────────────────────────────
   const hoje = new Date().toISOString().split('T')[0]
   const [data,              setData]              = useState(hoje)
   const [eletricistas,      setEletricistas]      = useState([])
