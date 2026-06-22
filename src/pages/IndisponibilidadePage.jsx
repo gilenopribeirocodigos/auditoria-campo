@@ -85,7 +85,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // ────────────────────────────────────────────────────────────────────────────
   const hoje = new Date().toISOString().split('T')[0]
   const [data, setData] = useState(hoje)
-  const [data,              setData]              = useState(hoje)
   const [eletricistas,      setEletricistas]      = useState([])
   const [motivos,           setMotivos]           = useState([])
   const [prefixos,          setPrefixos]          = useState([])
