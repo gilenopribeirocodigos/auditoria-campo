@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useFiltrosOperacionais, PainelFiltros } from '../components/PainelFiltros.jsx'
 import { supabase } from '../lib/supabase.js'
 
-// ── Autocomplete de Prefixo ───────────────────────────────────────────────────
-// Digita para filtrar a lista existente.
-// Ao sair do campo sem selecionar: volta ao valor anterior (não aceita texto livre).
-function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite para filtrar...' }) {
+// ════════════════════════════════════════════════════════════════════════════
+// IndisponibilidadePage v6 — filtro customizado (data + prefixo + nome)
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── Autocomplete genérico (prefixo ou nome) ──────────────────────────────────
+function AutocompleteInput({ value, onChange, opcoes = [], placeholder = 'Digite para filtrar...', renderOpcao }) {
   const [filtro, setFiltro] = useState(value || '')
   const [aberto, setAberto] = useState(false)
   const ref = useRef(null)
@@ -16,28 +17,31 @@ function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite p
     const handler = e => {
       if (ref.current && !ref.current.contains(e.target)) {
         setAberto(false)
-        // Se o texto digitado bate exatamente com algum prefixo, aceita
-        const existeExato = prefixos.find(p => p.toLowerCase() === filtro.toLowerCase())
+        const existeExato = opcoes.find(o =>
+          (typeof o === 'string' ? o : o.label).toLowerCase() === filtro.toLowerCase()
+        )
         if (existeExato) {
-          onChange(existeExato)
-          setFiltro(existeExato)
+          onChange(typeof existeExato === 'string' ? existeExato : existeExato.value)
+          setFiltro(typeof existeExato === 'string' ? existeExato : existeExato.label)
         } else {
-          // Senão volta ao valor anterior (não aceita digitação livre)
           setFiltro(value || '')
         }
       }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [filtro, value, prefixos, onChange])
+  }, [filtro, value, opcoes, onChange])
 
-  const opcoesFiltradas = prefixos.filter(p =>
-    !filtro || p.toLowerCase().includes(filtro.toLowerCase())
-  )
+  const opcoesFiltradas = opcoes.filter(o => {
+    const label = typeof o === 'string' ? o : o.label
+    return !filtro || label.toLowerCase().includes(filtro.toLowerCase())
+  })
 
-  const selecionar = p => {
-    onChange(p)
-    setFiltro(p)
+  const selecionar = o => {
+    const val   = typeof o === 'string' ? o : o.value
+    const label = typeof o === 'string' ? o : o.label
+    onChange(val)
+    setFiltro(label)
     setAberto(false)
   }
 
@@ -61,19 +65,25 @@ function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite p
           background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10,
           boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 220, overflowY: 'auto',
         }}>
-          {opcoesFiltradas.map((p, i) => (
-            <button key={p} type="button" onMouseDown={() => selecionar(p)} style={{
-              display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
-              background: p === value ? '#eff6ff' : '#fff', border: 'none', cursor: 'pointer',
-              borderBottom: i < opcoesFiltradas.length - 1 ? '1px solid #f1f5f9' : 'none',
-              fontSize: 13, fontFamily: '"Courier New", monospace', fontWeight: 600, color: '#1e293b',
-            }}>{p}</button>
-          ))}
+          {opcoesFiltradas.map((o, i) => {
+            const label = typeof o === 'string' ? o : o.label
+            const isSelected = (typeof o === 'string' ? o : o.value) === value
+            return (
+              <button key={i} type="button" onMouseDown={() => selecionar(o)} style={{
+                display: 'block', width: '100%', padding: '10px 14px', textAlign: 'left',
+                background: isSelected ? '#eff6ff' : '#fff', border: 'none', cursor: 'pointer',
+                borderBottom: i < opcoesFiltradas.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 13, fontFamily: '"Courier New", monospace', fontWeight: 600, color: '#1e293b',
+              }}>
+                {renderOpcao ? renderOpcao(o) : label}
+              </button>
+            )
+          })}
         </div>
       )}
       {aberto && filtro && opcoesFiltradas.length === 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 300, background: '#fff', border: '1.5px solid #fecaca', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#dc2626' }}>
-          ❌ Nenhum prefixo encontrado para "{filtro}"
+          ❌ Nenhum resultado para "{filtro}"
         </div>
       )}
     </div>
@@ -81,19 +91,18 @@ function PrefixoSelect({ value, onChange, prefixos = [], placeholder = 'Digite p
 }
 
 export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
-  // ── DIAGNÓSTICO — remover após confirmar que o arquivo correto está rodando ──
-  console.log('✅ IndisponibilidadePage v5 — PainelFiltros REAL integrado')
-  // ────────────────────────────────────────────────────────────────────────────
+  console.log('✅ IndisponibilidadePage v6 — filtro customizado data+prefixo+nome')
+
   const hoje = new Date().toISOString().split('T')[0]
 
-  // Usa o hook real de filtros — apenas período (supervisores não se aplicam aqui)
-  const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado })
+  // ── Filtros ──
+  const [data,           setData]           = useState(hoje)
+  const [filtroPrefixo,  setFiltroPrefixo]  = useState('')  // prefixo selecionado no filtro
+  const [filtroNome,     setFiltroNome]      = useState('')  // nome/id do eletricista selecionado no filtro
 
-  // Deriva a data do filtro: modo período → usa dataIni; modo mês → usa hoje
-  const data = filtros.modoPeriodo
-    ? (filtros.dataIni || hoje)
-    : hoje
-  const [eletricistas,      setEletricistas]      = useState([])
+  // ── Dados ──
+  const [todosEletricistas, setTodosEletricistas] = useState([])  // lista base (sem filtro)
+  const [eletricistas,      setEletricistas]      = useState([])  // lista exibida (com filtro aplicado)
   const [motivos,           setMotivos]           = useState([])
   const [prefixos,          setPrefixos]          = useState([])
   const [loading,           setLoading]           = useState(false)
@@ -117,11 +126,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const isSupervisor    = usuarioLogado?.perfil !== 'ADMIN'
   const supervisorCampo = usuarioLogado?.nome
 
-  // ─── Carrega dados ────────────────────────────────────────────────────────
+  // ─── Carrega dados ao mudar a data ────────────────────────────────────────
   const carregar = useCallback(async () => {
     setLoading(true)
     setErro('')
     setRegistros({})
+    setFiltroPrefixo('')
+    setFiltroNome('')
 
     try {
       const { data: motivosData } = await supabase
@@ -138,16 +149,17 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       if (isSupervisor && supervisorCampo) query = query.eq('superv_campo', supervisorCampo)
 
       const { data: todosElet } = await query
-      setEletricistas((todosElet || []).filter(e => !idsRegistrados.has(e.id)))
+      const disponiveis = (todosElet || []).filter(e => !idsRegistrados.has(e.id))
+      setTodosEletricistas(disponiveis)
+      setEletricistas(disponiveis)
 
       const prefixosUnicos = [...new Set((todosElet || []).map(e => e.prefixo).filter(Boolean))].sort()
       setPrefixos(prefixosUnicos)
 
-      // Ausentes do dia para aba 3
+      // Ausentes para aba 3
       const motivoPresente = (motivosData || []).find(m => m.descricao.toUpperCase() === 'PRESENTE')
       const ausentes = (jaRegistrados || []).filter(r => r.id_indisponibilidade !== motivoPresente?.id)
       const idsAusentes = ausentes.map(r => r.eletricista_id)
-
       if (idsAusentes.length > 0) {
         const { data: eletAusentes } = await supabase.from('estrutura_equipes')
           .select('id, colaborador, matricula, prefixo').in('id', idsAusentes).order('colaborador')
@@ -169,6 +181,23 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   }, [data, supervisorCampo, isSupervisor])
 
   useEffect(() => { carregar() }, [carregar])
+
+  // ── Aplica filtros de prefixo e nome automaticamente ──────────────────────
+  useEffect(() => {
+    let lista = todosEletricistas
+    if (filtroPrefixo) lista = lista.filter(e => e.prefixo === filtroPrefixo)
+    if (filtroNome)    lista = lista.filter(e => String(e.id) === filtroNome)
+    setEletricistas(lista)
+  }, [filtroPrefixo, filtroNome, todosEletricistas])
+
+  // Opções de nome para o autocomplete — label com nome + prefixo
+  const opcoesNome = todosEletricistas
+    .filter(e => !filtroPrefixo || e.prefixo === filtroPrefixo)
+    .map(e => ({
+      value: String(e.id),
+      label: e.colaborador,
+      sub:   e.prefixo,
+    }))
 
   const upd = (eletId, campo, valor) =>
     setRegistros(prev => ({ ...prev, [eletId]: { ...prev[eletId], [campo]: valor } }))
@@ -224,7 +253,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     setBuscandoReman(true)
     const { data: jaReg } = await supabase.from('equipes_dia').select('eletricista_id').eq('data', data)
     const idsReg     = new Set((jaReg || []).map(r => r.eletricista_id))
-    const idsNaLista = new Set(eletricistas.map(e => e.id))
+    const idsNaLista = new Set(todosEletricistas.map(e => e.id))
     const { data: res } = await supabase.from('estrutura_equipes')
       .select('id, colaborador, matricula, prefixo, superv_campo')
       .ilike('colaborador', `%${texto}%`).in('descr_situacao', ['ATIVO', 'RESERVA']).limit(10)
@@ -240,7 +269,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         supervisor_destino: supervisorCampo || 'Administrador',
         data, temporario: true, usuario_registro: usuarioLogado?.login || 'admin',
       }, { onConflict: 'eletricista_id,data' })
-      setEletricistas(prev => [...prev, elet])
+      setTodosEletricistas(prev => [...prev, elet])
       setResultadosReman([]); setBuscaReman('')
       setSucesso(`✅ ${elet.colaborador} adicionado à lista de frequência.`)
     } catch (e) { setErro('Erro no remanejamento: ' + e.message) }
@@ -277,6 +306,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const totalPresentes = Object.values(registros).filter(r => r.status === 'presente').length
   const totalAusentes  = Object.values(registros).filter(r => r.status === 'ausente').length
   const totalMarcados  = totalPresentes + totalAusentes
+  const temFiltroAtivo = filtroPrefixo || filtroNome
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -297,9 +327,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
-                { label: 'NA LISTA',  val: eletricistas.length, cor: '#93c5fd' },
-                { label: 'PRESENTES', val: totalPresentes,       cor: '#86efac' },
-                { label: 'AUSENTES',  val: totalAusentes,        cor: '#fca5a5' },
+                { label: 'NA LISTA',  val: eletricistas.length,    cor: '#93c5fd' },
+                { label: 'PRESENTES', val: totalPresentes,          cor: '#86efac' },
+                { label: 'AUSENTES',  val: totalAusentes,           cor: '#fca5a5' },
               ].map(({ label, val, cor }) => (
                 <div key={label} style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 12px', textAlign: 'center', minWidth: 60 }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: cor }}>{val}</div>
@@ -313,13 +343,88 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ── Filtro no padrão real do VérticeGP — apenas período ── */}
-        <PainelFiltros
-          filtros={filtros}
-          titulo="🔍 Filtros do Registro"
-          badge="período por data"
-          mostrarPrefixo={false}
-        />
+        {/* ── Filtros no padrão VérticeGP ── */}
+        <div style={{
+          background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0',
+          padding: '16px 18px', marginBottom: 16,
+          boxShadow: '0 1px 3px rgba(0,0,0,0.04)',
+        }}>
+          {/* Header */}
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9',
+          }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
+              🔍 Filtros do Registro
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: '#64748b',
+                background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
+                textTransform: 'uppercase', letterSpacing: 0.5,
+              }}>aplica automaticamente</span>
+            </p>
+            {temFiltroAtivo && (
+              <button onClick={() => { setFiltroPrefixo(''); setFiltroNome('') }} style={{
+                fontSize: 11, fontWeight: 700, color: '#dc2626',
+                background: '#fef2f2', border: '1px solid #fecaca',
+                padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+              }}>✕ Limpar filtros</button>
+            )}
+          </div>
+
+          {/* Grid de filtros */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 14 }}>
+
+            {/* Data */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Data do Registro
+              </label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input
+                  type="date" value={data}
+                  onChange={e => setData(e.target.value)}
+                  style={{ height: 38, padding: '0 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', background: '#fff', color: '#1e293b', fontSize: 13, fontWeight: 600, outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit', cursor: 'pointer' }}
+                />
+                {data === hoje
+                  ? <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#f0fdf4', color: '#16a34a', border: '1px solid #86efac', whiteSpace: 'nowrap' }}>✅ Hoje</span>
+                  : <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', whiteSpace: 'nowrap' }}>⚠️ Retroativa</span>
+                }
+              </div>
+            </div>
+
+            {/* Prefixo */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Prefixo
+              </label>
+              <AutocompleteInput
+                value={filtroPrefixo}
+                onChange={v => { setFiltroPrefixo(v); setFiltroNome('') }}
+                opcoes={prefixos}
+                placeholder="Todos os prefixos..."
+              />
+            </div>
+
+            {/* Nome do Eletricista */}
+            <div>
+              <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+                Eletricista
+              </label>
+              <AutocompleteInput
+                value={filtroNome}
+                onChange={v => setFiltroNome(v)}
+                opcoes={opcoesNome}
+                placeholder="Buscar por nome..."
+                renderOpcao={o => (
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b', fontFamily: 'inherit' }}>{o.label}</div>
+                    <div style={{ fontSize: 10, color: '#64748b', fontFamily: '"Courier New", monospace' }}>{o.sub}</div>
+                  </div>
+                )}
+              />
+            </div>
+          </div>
+        </div>
 
         {/* ── Abas ── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -361,11 +466,14 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
             ) : eletricistas.length === 0 ? (
               <div style={{ background: '#f0fdf4', borderRadius: 14, border: '1px solid #86efac', padding: 30, textAlign: 'center', color: '#15803d' }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
-                <p style={{ fontWeight: 700 }}>Todos os eletricistas já foram registrados para esta data!</p>
+                <p style={{ fontWeight: 700 }}>
+                  {temFiltroAtivo
+                    ? 'Nenhum eletricista encontrado para os filtros selecionados.'
+                    : 'Todos os eletricistas já foram registrados para esta data!'}
+                </p>
               </div>
             ) : (
               <>
-                {/* Legenda */}
                 <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
                   <div style={{ fontSize: 11, color: '#16a34a', fontWeight: 600, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '5px 12px' }}>
                     ✓ PRESENTE — veio trabalhar
@@ -377,73 +485,51 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
                   {eletricistas.map(elet => {
-                    const reg       = registros[elet.id] || {}
+                    const reg        = registros[elet.id] || {}
                     const isPresente = reg.status === 'presente'
                     const isAusente  = reg.status === 'ausente'
-
-                    // ── Cores do card por status ──
-                    let cardBg     = '#fff'
-                    let cardBorder = '#e2e8f0'
+                    let cardBg = '#fff', cardBorder = '#e2e8f0'
                     if (isPresente) { cardBg = '#f0fdf4'; cardBorder = '#16a34a' }
                     if (isAusente)  { cardBg = '#fef2f2'; cardBorder = '#dc2626' }
 
                     return (
-                      <div key={elet.id} style={{
-                        background: cardBg, borderRadius: 14,
-                        border: `2px solid ${cardBorder}`,
-                        padding: '14px 16px',
-                        transition: 'all 0.2s',
-                      }}>
-                        {/* Nome + botões */}
+                      <div key={elet.id} style={{ background: cardBg, borderRadius: 14, border: `2px solid ${cardBorder}`, padding: '14px 16px', transition: 'all 0.2s' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            {/* Ícone de status */}
                             <div style={{
                               width: 32, height: 32, borderRadius: '50%', flexShrink: 0,
                               background: isPresente ? '#16a34a' : isAusente ? '#dc2626' : '#e2e8f0',
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontSize: 16, transition: 'background 0.2s',
+                              fontSize: 16, color: (isPresente || isAusente) ? '#fff' : '#64748b',
                             }}>
                               {isPresente ? '✓' : isAusente ? '✗' : '?'}
                             </div>
                             <div>
                               <p style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{elet.colaborador}</p>
-                              <p style={{ fontSize: 11, color: '#64748b' }}>
-                                Mat: {elet.matricula} · {elet.prefixo || '—'} · {elet.base || '—'}
-                              </p>
+                              <p style={{ fontSize: 11, color: '#64748b' }}>Mat: {elet.matricula} · {elet.prefixo || '—'} · {elet.base || '—'}</p>
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8 }}>
-                            <button
-                              onClick={() => setStatus(elet.id, isPresente ? null : 'presente', elet.prefixo)}
-                              style={{
-                                padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                                border: '2px solid #16a34a',
-                                background: isPresente ? '#16a34a' : '#fff',
-                                color:      isPresente ? '#fff'    : '#16a34a',
-                                transition: 'all 0.15s',
-                              }}>✓ Presente</button>
-                            <button
-                              onClick={() => setStatus(elet.id, isAusente ? null : 'ausente')}
-                              style={{
-                                padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                                border: '2px solid #dc2626',
-                                background: isAusente ? '#dc2626' : '#fff',
-                                color:      isAusente ? '#fff'    : '#dc2626',
-                                transition: 'all 0.15s',
-                              }}>✗ Ausente</button>
+                            <button onClick={() => setStatus(elet.id, isPresente ? null : 'presente', elet.prefixo)} style={{
+                              padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                              border: '2px solid #16a34a', background: isPresente ? '#16a34a' : '#fff', color: isPresente ? '#fff' : '#16a34a',
+                            }}>✓ Presente</button>
+                            <button onClick={() => setStatus(elet.id, isAusente ? null : 'ausente')} style={{
+                              padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 700,
+                              border: '2px solid #dc2626', background: isAusente ? '#dc2626' : '#fff', color: isAusente ? '#fff' : '#dc2626',
+                            }}>✗ Ausente</button>
                           </div>
                         </div>
 
-                        {/* Campos extras — PRESENTE */}
                         {isPresente && (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Prefixo da Equipe *</label>
-                              <PrefixoSelect
+                              <AutocompleteInput
                                 value={reg.prefixo || ''}
                                 onChange={v => upd(elet.id, 'prefixo', v)}
-                                prefixos={prefixos}
+                                opcoes={prefixos}
+                                placeholder="Digite para filtrar..."
                               />
                             </div>
                             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -453,7 +539,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                           </div>
                         )}
 
-                        {/* Campos extras — AUSENTE */}
                         {isAusente && (
                           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #fecaca' }}>
                             <div className="form-group" style={{ marginBottom: 0 }}>
@@ -476,7 +561,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                   })}
                 </div>
 
-                {/* Botão salvar fixo na base */}
                 {totalMarcados > 0 && (
                   <div style={{
                     position: 'sticky', bottom: 16, background: '#fff', borderRadius: 14,
@@ -485,12 +569,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                     boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
                   }}>
                     <div style={{ display: 'flex', gap: 16 }}>
-                      {totalPresentes > 0 && (
-                        <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 700 }}>✅ {totalPresentes} presente(s)</span>
-                      )}
-                      {totalAusentes > 0 && (
-                        <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 700 }}>❌ {totalAusentes} ausente(s)</span>
-                      )}
+                      {totalPresentes > 0 && <span style={{ fontSize: 13, color: '#16a34a', fontWeight: 700 }}>✅ {totalPresentes} presente(s)</span>}
+                      {totalAusentes  > 0 && <span style={{ fontSize: 13, color: '#dc2626', fontWeight: 700 }}>❌ {totalAusentes} ausente(s)</span>}
                     </div>
                     <button onClick={salvarFrequencia} disabled={salvando} className="btn-primary"
                       style={{ background: salvando ? '#64748b' : '#1e3a5f', minWidth: 160, marginBottom: 0 }}>
@@ -546,8 +626,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
             <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #fed7aa', padding: '20px' }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>⚠️ Registrar Indisponibilidade de Equipe</p>
               <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
-                Selecione um eletricista <strong>ausente</strong> e registre qual equipe/prefixo ficou parado e o motivo.
-                Este registro é feito manualmente após a frequência.
+                Selecione um eletricista <strong>ausente</strong> e registre qual equipe/prefixo ficou parado.
               </p>
 
               {ausentesHoje.length === 0 ? (
@@ -572,10 +651,11 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                       Prefixo da Equipe *
                       <span style={{ fontSize: 10, color: '#64748b', fontWeight: 400, marginLeft: 6 }}>preenchido automaticamente — editável</span>
                     </label>
-                    <PrefixoSelect
+                    <AutocompleteInput
                       value={formIndisp.prefixo}
                       onChange={v => setFormIndisp(f => ({ ...f, prefixo: v }))}
-                      prefixos={prefixos}
+                      opcoes={prefixos}
+                      placeholder="Digite para filtrar prefixos..."
                     />
                   </div>
 
@@ -624,11 +704,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               )}
             </div>
 
-            {/* Registradas hoje */}
             {indispRegistradas.length > 0 && (
               <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px' }}>
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>
-                  📋 Registradas hoje ({indispRegistradas.length})
+                  📋 Registradas nesta data ({indispRegistradas.length})
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {indispRegistradas.map(r => {
