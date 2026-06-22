@@ -305,26 +305,39 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
 
-        {/* ── Filtro de data no padrão VérticeGP ── */}
+        {/* ── Filtro de data no padrão VérticeGP (igual ao "Filtros do Relatório") ── */}
         <div style={{
           background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0',
           padding: '16px 20px', marginBottom: 16,
         }}>
-          <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>
-            📅 Data do Registro
-          </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+            <span style={{ fontSize: 14 }}>🔍</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>Filtros do Registro</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, color: '#64748b',
+              textTransform: 'uppercase', letterSpacing: 0.8,
+              background: '#f1f5f9', padding: '2px 8px', borderRadius: 6,
+            }}>PERÍODO POR DATA</span>
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-            <input
-              type="date"
-              value={data}
-              onChange={e => setData(e.target.value)}
-              className="form-input"
-              style={{ maxWidth: 200, fontWeight: 700, fontSize: 15 }}
-            />
-            {data === hoje
-              ? <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>✅ Hoje</span>
-              : <span style={{ fontSize: 12, color: '#d97706', fontWeight: 700 }}>⚠️ Data retroativa</span>
-            }
+            <div>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 }}>
+                DATA DO REGISTRO
+              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <input
+                  type="date"
+                  value={data}
+                  onChange={e => setData(e.target.value)}
+                  className="form-input"
+                  style={{ maxWidth: 200 }}
+                />
+                {data === hoje
+                  ? <span style={{ fontSize: 12, color: '#16a34a', fontWeight: 700, background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, padding: '3px 10px' }}>✅ Hoje</span>
+                  : <span style={{ fontSize: 12, color: '#d97706', fontWeight: 700, background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 8, padding: '3px 10px' }}>⚠️ Data retroativa</span>
+                }
+              </div>
+            </div>
           </div>
         </div>
 
