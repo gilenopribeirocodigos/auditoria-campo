@@ -588,8 +588,8 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                   🌐 Processos que este usuário pode ver
                 </p>
                 <p style={{ fontSize: 11, color: '#6b21a8', marginBottom: 12, lineHeight: 1.5 }}>
-                  Marque os processos da estrutura que este usuário específico tem acesso.
-                  Se nenhum marcado, ele só vê pelo cruzamento natural (nome em superv_campo/operacao/coordenador).
+                  Marque os processos da estrutura que este usuário específico pode acessar.
+                  Se nenhum processo for marcado, ele não verá equipes da estrutura, exceto ADMIN ou quem tiver acesso a todos os processos.
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
