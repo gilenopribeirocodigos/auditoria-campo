@@ -145,6 +145,30 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const isSupervisor    = usuarioLogado?.perfil !== 'ADMIN'
   const supervisorCampo = usuarioLogado?.nome
 
+  const chaveTrocasPendentes = useMemo(() => `indisp_trocas_pendentes_${data}`, [data])
+
+  const lerTrocasPendentes = useCallback(() => {
+    try {
+      return JSON.parse(localStorage.getItem(chaveTrocasPendentes) || '{}')
+    } catch {
+      return {}
+    }
+  }, [chaveTrocasPendentes])
+
+  const gravarTrocasPendentes = useCallback((trocas) => {
+    const limpas = Object.fromEntries(Object.entries(trocas).filter(([, prefixo]) => prefixo))
+    if (Object.keys(limpas).length) localStorage.setItem(chaveTrocasPendentes, JSON.stringify(limpas))
+    else localStorage.removeItem(chaveTrocasPendentes)
+  }, [chaveTrocasPendentes])
+
+  const aplicarTrocasPendentes = useCallback((lista) => {
+    const trocas = lerTrocasPendentes()
+    return lista.map(e => {
+      const prefixoPendente = trocas[String(e.id)]
+      return prefixoPendente ? { ...e, prefixo: prefixoPendente } : e
+    })
+  }, [lerTrocasPendentes])
+
   // ─── Carrega dados ao mudar a data ────────────────────────────────────────
   const carregar = useCallback(async () => {
     setLoading(true)
@@ -176,7 +200,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       if (isSupervisor && supervisorCampo) query = query.eq('superv_campo', supervisorCampo)
 
       const { data: todosElet } = await query
-      const listaBase = todosElet || []
+      const listaBaseOriginal = todosElet || []
+      const listaBase = aplicarTrocasPendentes(listaBaseOriginal)
       setTotalPessoalBase(listaBase.length)
       setTodosEletricistasBase(listaBase)
       const disponiveis = listaBase.filter(e => !idsRegistrados.has(e.id))
@@ -207,7 +232,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     } finally {
       setLoading(false)
     }
-  }, [data, supervisorCampo, isSupervisor])
+  }, [data, supervisorCampo, isSupervisor, aplicarTrocasPendentes])
 
   useEffect(() => { carregar() }, [carregar])
 
@@ -332,8 +357,20 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         }
       })
 
+      const trocasParaPersistir = {}
+      marcados.forEach(([cardKey, r]) => {
+        if (!r.eletId || String(r.eletId) === String(cardKey)) return
+        const eletSelecionado = todosEletricistasBase.find(e => String(e.id) === String(r.eletId)) ||
+          todosEletricistas.find(e => String(e.id) === String(r.eletId))
+        if (eletSelecionado?.prefixo) trocasParaPersistir[String(cardKey)] = eletSelecionado.prefixo
+      })
+
       const { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
       if (error) throw error
+
+      const trocasAtualizadas = { ...lerTrocasPendentes(), ...trocasParaPersistir }
+      linhas.forEach(l => { delete trocasAtualizadas[String(l.eletricista_id)] })
+      gravarTrocasPendentes(trocasAtualizadas)
 
       const presentesSalvos = linhas.filter(l => l.id_indisponibilidade === motivoPresente.id).length
       const ausentesSalvos = linhas.length - presentesSalvos
