@@ -239,17 +239,16 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
     perms.filter(p => typeof p === 'string' && p.startsWith('processo_'))
   )
 
-  // Sem processos marcados, o usuário não vê equipes da estrutura.
-  // Para liberar tudo, use a permissão perfil 'acesso_todos_processos'.
-  if (processosLiberados.size === 0) return []
+  // Regra cumulativa do manual: hierarquia natural + processos marcados.
+  // Se não houver cruzamento natural nem processo marcado, mantém o padrão liberal.
+  if (linhasMinhas.length === 0 && processosLiberados.size === 0) return null
 
-  // Quando existe cruzamento natural, o processo restringe dentro da própria estrutura do usuário.
-  // Quando não existe cruzamento natural (ex.: analista), o processo libera a visão daquele processo geral.
-  const baseProcessos = linhasMinhas.length > 0 ? linhasMinhas : (estruturaData || [])
-  const linhasPermitidas = baseProcessos.filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
+  const linhasDosProcessos = processosLiberados.size > 0
+    ? (estruturaData || []).filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
+    : []
 
   const todosPrefixos = new Set()
-  linhasPermitidas.forEach(r => {
+  ;[...linhasMinhas, ...linhasDosProcessos].forEach(r => {
     if (r.prefixo) todosPrefixos.add(r.prefixo)
   })
 
@@ -264,10 +263,10 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
 //
 // SEGREGAÇÃO POR PROCESSO/ESTRUTURA (passando `usuarioLogado`):
 //   • ADMIN ou permissão 'acesso_todos_processos' → vê tudo (prefixosPermitidos = null)
-//   • Processos marcados no cadastro do usuário restringem a estrutura visível
-//   • Se o usuário cruza com a estrutura, vê somente os próprios prefixos dentro dos processos marcados
-//   • Se não cruza com a estrutura, vê os prefixos gerais dos processos marcados
-//   • Sem processos marcados → não vê equipes da estrutura
+//   • Se o usuário cruza com a estrutura, vê os prefixos da hierarquia natural
+//   • Processos marcados no cadastro do usuário somam todos os prefixos daquele processo
+//   • Com hierarquia + processos, vê a união das duas regras
+//   • Sem cruzamento natural e sem processos marcados → padrão liberal (sem restrição)
 //
 // O hook FILTRA automaticamente supervOps, supervCampos e prefixosTodos pelos
 // prefixos permitidos, então o painel já reflete a segregação sem mudanças nas telas.
@@ -292,8 +291,8 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   })
 
   // ── Carrega estrutura_equipes 1x (todos os filtros derivam daqui) ──
-  // Quando `usuarioLogado` é passado, aplica segregação por estrutura:
-  // os filtros visíveis são limitados aos prefixos onde o usuário aparece.
+  // Quando `usuarioLogado` é passado, aplica segregação por estrutura/processos:
+  // os filtros visíveis são limitados aos prefixos permitidos pela regra cumulativa.
   useEffect(() => {
     supabase.from('estrutura_equipes')
       .select('prefixo, superv_campo, superv_operacao, coordenador, matricula, colaborador, processo_equipe')
