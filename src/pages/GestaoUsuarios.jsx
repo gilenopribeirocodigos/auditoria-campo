@@ -18,6 +18,8 @@ const PERFIL_CORES = {
 
 const TODAS_PERMISSOES = [
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
+  { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
+  { id: 'dashboard_indisponibilidade', label: '📈 Dashboard Indisponibilidade' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },
   { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
