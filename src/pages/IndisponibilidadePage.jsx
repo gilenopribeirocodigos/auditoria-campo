@@ -260,15 +260,30 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const trocarEletricistaCard = (cardKey, novoEletId) =>
     setRegistros(prev => {
       const atual = { ...prev[cardKey], eletId: prev[cardKey]?.eletId || cardKey }
+      const eletTroca = todosEletricistasBase.find(e => String(e.id) === String(novoEletId)) ||
+        todosEletricistas.find(e => String(e.id) === String(novoEletId))
       const chaveTroca = Object.keys(prev).find(key => key !== cardKey && prev[key]?.eletId === novoEletId) ||
-        (todosEletricistas.some(e => String(e.id) === novoEletId) ? novoEletId : null)
+        (eletTroca ? String(eletTroca.id) : null)
 
       if (!chaveTroca || chaveTroca === cardKey) return { ...prev, [cardKey]: { ...atual, eletId: novoEletId } }
+
+      const registroTroca = prev[chaveTroca] || {}
+      const statusTroca = registroTroca.status || atual.status
+      const proximoRegistroTroca = {
+        ...registroTroca,
+        status: statusTroca,
+        eletId: atual.eletId,
+        prefixo: registroTroca.prefixo || eletTroca?.prefixo || '',
+      }
+
+      if (statusTroca === 'ausente') {
+        proximoRegistroTroca.motivo_id = registroTroca.motivo_id || atual.motivo_id || ''
+      }
 
       return {
         ...prev,
         [cardKey]: { ...atual, eletId: novoEletId },
-        [chaveTroca]: { ...prev[chaveTroca], eletId: atual.eletId },
+        [chaveTroca]: proximoRegistroTroca,
       }
     })
 
