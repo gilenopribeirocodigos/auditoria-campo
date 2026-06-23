@@ -140,6 +140,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   // Contadores do dia (total geral, não só filtrado)
   const [contadores, setContadores] = useState({ presentes: 0, ausentes: 0 })
+  const [idsRegistroDia, setIdsRegistroDia] = useState({ presentes: [], ausentes: [] })
 
   const isSupervisor    = usuarioLogado?.perfil !== 'ADMIN'
   const supervisorCampo = usuarioLogado?.nome
@@ -165,8 +166,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const idsAusentes  = new Set((jaRegistrados || []).filter(r => r.id_indisponibilidade !== motivoPresente?.id).map(r => r.eletricista_id))
       const idsRegistrados = new Set((jaRegistrados || []).map(p => p.eletricista_id))
 
-      // Contadores do dia (sem filtro de supervisor para mostrar total)
+      // Contadores do dia
       setContadores({ presentes: idsPresentes.size, ausentes: idsAusentes.size })
+      setIdsRegistroDia({ presentes: [...idsPresentes], ausentes: [...idsAusentes] })
 
       let query = supabase.from('estrutura_equipes')
         .select('id, colaborador, matricula, prefixo, superv_campo, base')
@@ -236,6 +238,14 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     [todosEletricistas]
   )
 
+  const contadoresFiltrados = useMemo(() => {
+    const idsBase = new Set(eletricistasBaseFiltrados.map(e => e.id))
+    return {
+      presentes: idsRegistroDia.presentes.filter(id => idsBase.has(id)).length,
+      ausentes: idsRegistroDia.ausentes.filter(id => idsBase.has(id)).length,
+    }
+  }, [eletricistasBaseFiltrados, idsRegistroDia])
+
   // Contadores do painel (baseados na lista filtrada atual + registros na tela)
   const totalPrefixosFiltrados = useMemo(() =>
     [...new Set(eletricistasBaseFiltrados.map(e => e.prefixo).filter(Boolean))].length,
@@ -245,7 +255,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const marcadosPresentes   = Object.values(registros).filter(r => r.status === 'presente').length
   const marcadosAusentes    = Object.values(registros).filter(r => r.status === 'ausente').length
   const totalMarcados = marcadosPresentes + marcadosAusentes
-  const faltamJustificar    = Math.max(totalNomesFiltrados - contadores.presentes - contadores.ausentes - totalMarcados, 0)
+  const faltamJustificar    = Math.max(totalNomesFiltrados - contadoresFiltrados.presentes - contadoresFiltrados.ausentes - totalMarcados, 0)
 
   const trocarEletricistaCard = (cardKey, novoEletId) =>
     setRegistros(prev => {
@@ -441,8 +451,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     : [
         { label: 'Prefixos na lista',  val: totalPrefixosFiltrados, cor: '#2563eb', bg: '#eff6ff' },
         { label: 'Eletricistas',       val: totalNomesFiltrados,    cor: '#7c3aed', bg: '#f5f3ff' },
-        { label: 'Presentes hoje',     val: contadores.presentes,   cor: '#16a34a', bg: '#f0fdf4' },
-        { label: 'Ausentes hoje',      val: contadores.ausentes,    cor: '#dc2626', bg: '#fef2f2' },
+        { label: 'Presentes hoje',     val: contadoresFiltrados.presentes,   cor: '#16a34a', bg: '#f0fdf4' },
+        { label: 'Ausentes hoje',      val: contadoresFiltrados.ausentes,    cor: '#dc2626', bg: '#fef2f2' },
         { label: 'Faltam justificar',  val: faltamJustificar,       cor: '#d97706', bg: '#fef3c7' },
       ]
 
