@@ -496,7 +496,7 @@ export default function App() {
           )}
 
           {/* ── NOVO: Dashboard Indisponibilidade ── */}
-          {temPermissao(usuario, 'dashboard') && (
+          {temPermissao(usuario, 'dashboard_indisponibilidade') && (
             <button onClick={() => setTela('dashboard-indisp')} style={{
               background: 'linear-gradient(135deg, rgba(30,58,95,0.9), rgba(220,38,38,0.85))', color: '#fff', border: 'none',
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
