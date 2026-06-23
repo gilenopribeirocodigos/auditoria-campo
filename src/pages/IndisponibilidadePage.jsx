@@ -114,6 +114,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   // ── Dados ──
   const [todosEletricistas, setTodosEletricistas] = useState([])
+  const [todosEletricistasBase, setTodosEletricistasBase] = useState([])
   const [totalPessoalBase,  setTotalPessoalBase]  = useState(0)
   const [motivos,           setMotivos]           = useState([])
   const [prefixos,          setPrefixos]          = useState([])
@@ -175,6 +176,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const { data: todosElet } = await query
       const listaBase = todosElet || []
       setTotalPessoalBase(listaBase.length)
+      setTodosEletricistasBase(listaBase)
       const disponiveis = listaBase.filter(e => !idsRegistrados.has(e.id))
       setTodosEletricistas(disponiveis)
 
@@ -207,12 +209,19 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [carregar])
 
+  const aplicarFiltroEletricista = useCallback((lista) => {
+    let filtrada = filtros.filtrar(lista)
+    if (filtroEletId) filtrada = filtrada.filter(e => String(e.id) === filtroEletId)
+    return filtrada
+  }, [filtros, filtroEletId])
+
   // ── Lista filtrada pelos filtros do PainelFiltros + eletricista ───────────
-  const eletricistas = useMemo(() => {
-    let lista = filtros.filtrar(todosEletricistas)
-    if (filtroEletId) lista = lista.filter(e => String(e.id) === filtroEletId)
-    return lista
-  }, [todosEletricistas, filtros, filtroEletId])
+  const eletricistas = useMemo(() => aplicarFiltroEletricista(todosEletricistas), [todosEletricistas, aplicarFiltroEletricista])
+
+  const eletricistasBaseFiltrados = useMemo(() =>
+    aplicarFiltroEletricista(todosEletricistasBase),
+    [todosEletricistasBase, aplicarFiltroEletricista]
+  )
 
   // Opções de eletricista para o dropdown do filtro
   const opcoesEletricista = useMemo(() =>
@@ -229,10 +238,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   // Contadores do painel (baseados na lista filtrada atual + registros na tela)
   const totalPrefixosFiltrados = useMemo(() =>
-    [...new Set(eletricistas.map(e => e.prefixo).filter(Boolean))].length,
-    [eletricistas]
+    [...new Set(eletricistasBaseFiltrados.map(e => e.prefixo).filter(Boolean))].length,
+    [eletricistasBaseFiltrados]
   )
-  const totalNomesFiltrados = totalPessoalBase || eletricistas.length
+  const totalNomesFiltrados = eletricistasBaseFiltrados.length || totalPessoalBase || eletricistas.length
   const marcadosPresentes   = Object.values(registros).filter(r => r.status === 'presente').length
   const marcadosAusentes    = Object.values(registros).filter(r => r.status === 'ausente').length
   const totalMarcados = marcadosPresentes + marcadosAusentes
