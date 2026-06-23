@@ -239,17 +239,17 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
     perms.filter(p => typeof p === 'string' && p.startsWith('processo_'))
   )
 
-  const linhasDosProcessos = processosLiberados.size > 0
-    ? (estruturaData || []).filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
-    : []
+  // Sem processos marcados, o usuário não vê equipes da estrutura.
+  // Para liberar tudo, use a permissão perfil 'acesso_todos_processos'.
+  if (processosLiberados.size === 0) return []
 
-  // ─── 3. Padrão liberal: SEM cruzamento natural E SEM processos liberados → vê tudo ───
-  // (Mantém compatibilidade pra ANALISTA/ASSISTENTE que não estão na estrutura)
-  if (linhasMinhas.length === 0 && processosLiberados.size === 0) return null
+  // Quando existe cruzamento natural, o processo restringe dentro da própria estrutura do usuário.
+  // Quando não existe cruzamento natural (ex.: analista), o processo libera a visão daquele processo geral.
+  const baseProcessos = linhasMinhas.length > 0 ? linhasMinhas : (estruturaData || [])
+  const linhasPermitidas = baseProcessos.filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
 
-  // ─── 4. União dos prefixos das duas fontes ───
   const todosPrefixos = new Set()
-  ;[...linhasMinhas, ...linhasDosProcessos].forEach(r => {
+  linhasPermitidas.forEach(r => {
     if (r.prefixo) todosPrefixos.add(r.prefixo)
   })
 
@@ -264,9 +264,10 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
 //
 // SEGREGAÇÃO POR PROCESSO/ESTRUTURA (passando `usuarioLogado`):
 //   • ADMIN ou permissão 'acesso_todos_processos' → vê tudo (prefixosPermitidos = null)
-//   • Usuário cruza com estrutura_equipes (nome em superv_campo/superv_operacao/
-//     coordenador OU matricula em colaborador) → vê só os prefixos onde aparece
-//   • Usuário sem cruzamento → vê tudo (padrão liberal pra ANALISTA/ASSISTENTE)
+//   • Processos marcados no cadastro do usuário restringem a estrutura visível
+//   • Se o usuário cruza com a estrutura, vê somente os próprios prefixos dentro dos processos marcados
+//   • Se não cruza com a estrutura, vê os prefixos gerais dos processos marcados
+//   • Sem processos marcados → não vê equipes da estrutura
 //
 // O hook FILTRA automaticamente supervOps, supervCampos e prefixosTodos pelos
 // prefixos permitidos, então o painel já reflete a segregação sem mudanças nas telas.
