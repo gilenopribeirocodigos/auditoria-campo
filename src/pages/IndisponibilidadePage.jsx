@@ -268,16 +268,18 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       if (!chaveTroca || chaveTroca === cardKey) return { ...prev, [cardKey]: { ...atual, eletId: novoEletId } }
 
       const registroTroca = prev[chaveTroca] || {}
-      const statusTroca = registroTroca.status || atual.status
       const proximoRegistroTroca = {
         ...registroTroca,
-        status: statusTroca,
         eletId: atual.eletId,
         prefixo: registroTroca.prefixo || eletTroca?.prefixo || '',
       }
 
-      if (statusTroca === 'ausente') {
-        proximoRegistroTroca.motivo_id = registroTroca.motivo_id || atual.motivo_id || ''
+      if (!registroTroca.status) {
+        delete proximoRegistroTroca.status
+        delete proximoRegistroTroca.motivo_id
+        delete proximoRegistroTroca.obs
+      } else if (registroTroca.status === 'ausente') {
+        proximoRegistroTroca.motivo_id = registroTroca.motivo_id || ''
       }
 
       return {
@@ -317,33 +319,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
       if (!motivoPresente) throw new Error('Motivo "PRESENTE" não encontrado.')
 
-      const marcadosExpandidos = [...marcados]
-      marcados.forEach(([cardKey, r]) => {
-        if (!r.eletId || String(r.eletId) === String(cardKey)) return
-
-        const jaTemPar = marcadosExpandidos.some(([outroKey, outro]) =>
-          String(outroKey) !== String(cardKey) && String(outro.eletId) === String(cardKey)
-        )
-        if (jaTemPar) return
-
-        const eletSelecionado = todosEletricistasBase.find(e => String(e.id) === String(r.eletId)) ||
-          todosEletricistas.find(e => String(e.id) === String(r.eletId))
-        if (!eletSelecionado?.prefixo) return
-
-        marcadosExpandidos.push([
-          `troca-${cardKey}-${r.eletId}`,
-          {
-            ...r,
-            eletId: String(cardKey),
-            prefixo: eletSelecionado.prefixo,
-          },
-        ])
-      })
-
-      const linhasPorEletricista = new Map()
-      marcadosExpandidos.forEach(([, r]) => {
+      const linhas = marcados.map(([, r]) => {
         const isP = r.status === 'presente'
-        linhasPorEletricista.set(Number(r.eletId), {
+        return {
           eletricista_id:       Number(r.eletId),
           prefixo:              r.prefixo || '',
           data,
@@ -351,9 +329,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           usuario_registro:     usuarioLogado?.login || 'admin',
           id_indisponibilidade: isP ? motivoPresente.id : Number(r.motivo_id),
           observacoes:          r.obs || null,
-        })
+        }
       })
-      const linhas = [...linhasPorEletricista.values()]
 
       const { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
       if (error) throw error
@@ -621,9 +598,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                     const isAusente  = reg.status === 'ausente'
 
                     // Eletricista atual do card (pode ter sido trocado)
-                    const eletAtual = reg.eletId
-                      ? (todosEletricistas.find(e => String(e.id) === reg.eletId) || elet)
+                    const eletAtualBase = reg.eletId
+                      ? (todosEletricistasBase.find(e => String(e.id) === reg.eletId) || todosEletricistas.find(e => String(e.id) === reg.eletId) || elet)
                       : elet
+                    const eletAtual = reg.prefixo ? { ...eletAtualBase, prefixo: reg.prefixo } : eletAtualBase
 
                     let cardBg = '#fff', cardBorder = '#e2e8f0'
                     if (isPresente) { cardBg = '#f0fdf4'; cardBorder = '#16a34a' }
