@@ -589,7 +589,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                 </p>
                 <p style={{ fontSize: 11, color: '#6b21a8', marginBottom: 12, lineHeight: 1.5 }}>
                   Marque os processos da estrutura que este usuário específico pode acessar.
-                  Se nenhum processo for marcado, ele não verá equipes da estrutura, exceto ADMIN ou quem tiver acesso a todos os processos.
+                  Os processos marcados somam aos prefixos da hierarquia natural do usuário.
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
