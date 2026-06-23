@@ -114,6 +114,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   // ── Dados ──
   const [todosEletricistas, setTodosEletricistas] = useState([])
+  const [totalPessoalBase,  setTotalPessoalBase]  = useState(0)
   const [motivos,           setMotivos]           = useState([])
   const [prefixos,          setPrefixos]          = useState([])
   const [loading,           setLoading]           = useState(false)
@@ -172,14 +173,23 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       if (isSupervisor && supervisorCampo) query = query.eq('superv_campo', supervisorCampo)
 
       const { data: todosElet } = await query
-      const disponiveis = (todosElet || []).filter(e => !idsRegistrados.has(e.id))
+      const listaBase = todosElet || []
+      setTotalPessoalBase(listaBase.length)
+      const disponiveis = listaBase.filter(e => !idsRegistrados.has(e.id))
       setTodosEletricistas(disponiveis)
 
-      const prefixosUnicos = [...new Set((todosElet || []).map(e => e.prefixo).filter(Boolean))].sort()
+      const prefixosUnicos = [...new Set(listaBase.map(e => e.prefixo).filter(Boolean))].sort()
       setPrefixos(prefixosUnicos)
 
-      // Ausentes para aba 3
-      const idsAusentesArr = [...idsAusentes]
+      const { data: indispHoje } = await supabase.from('indisponibilidades')
+        .select('id, eletricista_id, prefixo, tipo_indisponibilidade, motivo_id, observacao, motivos_indisponibilidade(descricao)')
+        .eq('data', data)
+      const registrosIndisp = indispHoje || []
+      setIndispRegistradas(registrosIndisp)
+
+      // Ausentes disponiveis para aba 3: remove quem ja teve indisponibilidade justificada.
+      const idsComIndisp = new Set(registrosIndisp.map(r => r.eletricista_id))
+      const idsAusentesArr = [...idsAusentes].filter(id => !idsComIndisp.has(id))
       if (idsAusentesArr.length > 0) {
         const { data: eletAusentes } = await supabase.from('estrutura_equipes')
           .select('id, colaborador, matricula, prefixo').in('id', idsAusentesArr).order('colaborador')
@@ -187,11 +197,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       } else {
         setAusentesHoje([])
       }
-
-      const { data: indispHoje } = await supabase.from('indisponibilidades')
-        .select('id, eletricista_id, prefixo, tipo_indisponibilidade, motivo_id, observacao, motivos_indisponibilidade(descricao)')
-        .eq('data', data)
-      setIndispRegistradas(indispHoje || [])
 
     } catch (e) {
       setErro('Erro ao carregar dados: ' + e.message)
@@ -215,30 +220,38 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     [todosEletricistas, filtros]
   )
 
-  // Opções de eletricista para os cards:
-  // exclui eletricistas já escolhidos em outros cards para evitar duplicata
-  const opcoesTodosElet = useMemo(() => {
-    const idsEmUso = new Set(
-      Object.values(registros)
-        .filter(r => r.status && r.eletId)
-        .map(r => r.eletId)
-    )
-    return todosEletricistas
-      .filter(e => !idsEmUso.has(String(e.id)))
-      .map(e => ({ value: String(e.id), label: e.colaborador, sub: e.prefixo }))
-  }, [todosEletricistas, registros])
+  // Opções de eletricista para os cards: permite escolher alguem de outro prefixo.
+  // Se isso acontecer, o card original recebe o eletricista que saiu daqui.
+  const opcoesTodosElet = useMemo(() =>
+    todosEletricistas.map(e => ({ value: String(e.id), label: e.colaborador, sub: e.prefixo })),
+    [todosEletricistas]
+  )
 
   // Contadores do painel (baseados na lista filtrada atual + registros na tela)
   const totalPrefixosFiltrados = useMemo(() =>
     [...new Set(eletricistas.map(e => e.prefixo).filter(Boolean))].length,
     [eletricistas]
   )
-  const totalNomesFiltrados = eletricistas.length
+  const totalNomesFiltrados = totalPessoalBase || eletricistas.length
   const marcadosPresentes   = Object.values(registros).filter(r => r.status === 'presente').length
   const marcadosAusentes    = Object.values(registros).filter(r => r.status === 'ausente').length
-  const faltamJustificar    = totalNomesFiltrados - marcadosPresentes - marcadosAusentes
-
   const totalMarcados = marcadosPresentes + marcadosAusentes
+  const faltamJustificar    = Math.max(totalNomesFiltrados - contadores.presentes - contadores.ausentes - totalMarcados, 0)
+
+  const trocarEletricistaCard = (cardKey, novoEletId) =>
+    setRegistros(prev => {
+      const atual = { ...prev[cardKey], eletId: prev[cardKey]?.eletId || cardKey }
+      const chaveTroca = Object.keys(prev).find(key => key !== cardKey && prev[key]?.eletId === novoEletId) ||
+        (todosEletricistas.some(e => String(e.id) === novoEletId) ? novoEletId : null)
+
+      if (!chaveTroca || chaveTroca === cardKey) return { ...prev, [cardKey]: { ...atual, eletId: novoEletId } }
+
+      return {
+        ...prev,
+        [cardKey]: { ...atual, eletId: novoEletId },
+        [chaveTroca]: { ...prev[chaveTroca], eletId: atual.eletId },
+      }
+    })
 
   // ── Atualiza um campo de um card ──────────────────────────────────────────
   const upd = (cardKey, campo, valor) =>
@@ -406,14 +419,15 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     [...new Set(indispRegistradas.map(r => r.prefixo).filter(Boolean))].length,
     [indispRegistradas]
   )
+  const totalPrefixosIndispFiltrados = totalPrefixosFiltrados || prefixos.length
+  const faltamPrefixosJustificar = Math.max(totalPrefixosIndispFiltrados - totalPrefixosIndisp, 0)
 
   const itensContadores = abaAtiva === 'indisponivel'
     ? [
-        { label: 'Prefixos indisponíveis', val: totalPrefixosIndisp,       cor: '#dc2626', bg: '#fef2f2' },
-        { label: 'Registros no dia',       val: indispRegistradas.length,  cor: '#7c3aed', bg: '#f5f3ff' },
-        { label: 'Ausentes hoje',          val: contadores.ausentes,        cor: '#b91c1c', bg: '#fee2e2' },
-        { label: 'Presentes hoje',         val: contadores.presentes,       cor: '#16a34a', bg: '#f0fdf4' },
-        { label: 'Faltam justificar',      val: faltamJustificar,           cor: '#d97706', bg: '#fef3c7' },
+        { label: 'Prefixos na lista',          val: totalPrefixosIndispFiltrados, cor: '#2563eb', bg: '#eff6ff' },
+        { label: 'Prefixos indisponíveis',     val: totalPrefixosIndisp,          cor: '#dc2626', bg: '#fef2f2' },
+        { label: 'Registros no dia',           val: indispRegistradas.length,     cor: '#7c3aed', bg: '#f5f3ff' },
+        { label: 'Faltam prefixos justificar', val: faltamPrefixosJustificar,     cor: '#d97706', bg: '#fef3c7' },
       ]
     : [
         { label: 'Prefixos na lista',  val: totalPrefixosFiltrados, cor: '#2563eb', bg: '#eff6ff' },
@@ -493,7 +507,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         {/* ── Abas ── */}
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {[
-            { id: 'frequencia',    emoji: '📋', label: 'Frequência da Equipe' },
+            { id: 'frequencia',    emoji: '📋', label: 'Frequência de Pessoal' },
             { id: 'remanejamento', emoji: '🔄', label: 'Remanejar Eletricista' },
             { id: 'indisponivel',  emoji: '⚠️', label: 'Indisponível' },
           ].map(aba => (
@@ -594,7 +608,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                               <AutocompleteCard
                                 value={reg.eletId || String(elet.id)}
                                 valorDisplay={eletAtual.colaborador}
-                                onChange={v => upd(cardKey, 'eletId', v)}
+                                onChange={v => trocarEletricistaCard(cardKey, v)}
                                 opcoes={opcoesTodosElet}
                                 placeholder="Trocar eletricista..."
                                 renderOpcao={o => (
@@ -631,7 +645,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                               <AutocompleteCard
                                 value={reg.eletId || String(elet.id)}
                                 valorDisplay={eletAtual.colaborador}
-                                onChange={v => upd(cardKey, 'eletId', v)}
+                                onChange={v => trocarEletricistaCard(cardKey, v)}
                                 opcoes={opcoesTodosElet}
                                 placeholder="Trocar eletricista..."
                                 renderOpcao={o => (
@@ -732,7 +746,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               {ausentesHoje.length === 0 ? (
                 <div style={{ background: '#f8fafc', borderRadius: 10, padding: '20px', textAlign: 'center', color: '#64748b' }}>
                   <p style={{ fontWeight: 700 }}>Nenhum eletricista ausente registrado para esta data.</p>
-                  <p style={{ fontSize: 12, marginTop: 6 }}>Registre as ausências na aba "Frequência da Equipe" primeiro.</p>
+                  <p style={{ fontSize: 12, marginTop: 6 }}>Registre as ausências na aba "Frequência de Pessoal" primeiro.</p>
                 </div>
               ) : (
                 <>
