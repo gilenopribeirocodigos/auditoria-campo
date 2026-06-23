@@ -317,9 +317,33 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
       if (!motivoPresente) throw new Error('Motivo "PRESENTE" não encontrado.')
 
-      const linhas = marcados.map(([, r]) => {
+      const marcadosExpandidos = [...marcados]
+      marcados.forEach(([cardKey, r]) => {
+        if (!r.eletId || String(r.eletId) === String(cardKey)) return
+
+        const jaTemPar = marcadosExpandidos.some(([outroKey, outro]) =>
+          String(outroKey) !== String(cardKey) && String(outro.eletId) === String(cardKey)
+        )
+        if (jaTemPar) return
+
+        const eletSelecionado = todosEletricistasBase.find(e => String(e.id) === String(r.eletId)) ||
+          todosEletricistas.find(e => String(e.id) === String(r.eletId))
+        if (!eletSelecionado?.prefixo) return
+
+        marcadosExpandidos.push([
+          `troca-${cardKey}-${r.eletId}`,
+          {
+            ...r,
+            eletId: String(cardKey),
+            prefixo: eletSelecionado.prefixo,
+          },
+        ])
+      })
+
+      const linhasPorEletricista = new Map()
+      marcadosExpandidos.forEach(([, r]) => {
         const isP = r.status === 'presente'
-        return {
+        linhasPorEletricista.set(Number(r.eletId), {
           eletricista_id:       Number(r.eletId),
           prefixo:              r.prefixo || '',
           data,
@@ -327,13 +351,16 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           usuario_registro:     usuarioLogado?.login || 'admin',
           id_indisponibilidade: isP ? motivoPresente.id : Number(r.motivo_id),
           observacoes:          r.obs || null,
-        }
+        })
       })
+      const linhas = [...linhasPorEletricista.values()]
 
       const { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
       if (error) throw error
 
-      setSucesso(`✅ ${marcadosPresentes} presente(s) e ${marcadosAusentes} ausente(s) registrado(s)!`)
+      const presentesSalvos = linhas.filter(l => l.id_indisponibilidade === motivoPresente.id).length
+      const ausentesSalvos = linhas.length - presentesSalvos
+      setSucesso(`✅ ${presentesSalvos} presente(s) e ${ausentesSalvos} ausente(s) registrado(s)!`)
       await carregar()
     } catch (e) { setErro('Erro ao salvar: ' + e.message) }
     finally { setSalvando(false) }
