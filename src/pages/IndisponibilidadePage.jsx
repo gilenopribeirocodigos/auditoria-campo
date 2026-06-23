@@ -195,7 +195,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       setIdsRegistroDia({ presentes: [...idsPresentes], ausentes: [...idsAusentes] })
 
       let query = supabase.from('estrutura_equipes')
-        .select('id, colaborador, matricula, prefixo, superv_campo, base')
+        .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, base')
         .in('descr_situacao', ['ATIVO', 'RESERVA']).order('colaborador')
       if (isSupervisor && supervisorCampo) query = query.eq('superv_campo', supervisorCampo)
 
@@ -221,7 +221,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const idsAusentesArr = [...idsAusentes].filter(id => !idsComIndisp.has(id))
       if (idsAusentesArr.length > 0) {
         const { data: eletAusentes } = await supabase.from('estrutura_equipes')
-          .select('id, colaborador, matricula, prefixo').in('id', idsAusentesArr).order('colaborador')
+          .select('id, id_eletricista, colaborador, matricula, prefixo').in('id', idsAusentesArr).order('colaborador')
         setAusentesHoje(eletAusentes || [])
       } else {
         setAusentesHoje([])
@@ -339,6 +339,15 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     if (marcados.some(([, r]) => r.status === 'ausente'  && !r.motivo_id))  { setErro('Selecione o motivo para todos os Ausentes.'); return }
     if (marcados.some(([, r]) => !r.eletId))                                { setErro('Selecione o eletricista para todos os registros.'); return }
 
+    const buscarEletricistaRegistro = (id) =>
+      todosEletricistasBase.find(e => String(e.id) === String(id)) ||
+      todosEletricistas.find(e => String(e.id) === String(id))
+
+    if (marcados.some(([, r]) => !buscarEletricistaRegistro(r.eletId)?.id_eletricista)) {
+      setErro('ID permanente do eletricista não encontrado. Recarregue a estrutura antes de salvar.')
+      return
+    }
+
     setSalvando(true); setErro(''); setSucesso('')
     try {
       const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
@@ -346,8 +355,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       const linhas = marcados.map(([, r]) => {
         const isP = r.status === 'presente'
+        const eletRegistro = buscarEletricistaRegistro(r.eletId)
         return {
           eletricista_id:       Number(r.eletId),
+          id_eletricista:       eletRegistro.id_eletricista,
           prefixo:              r.prefixo || '',
           data,
           supervisor_registro:  supervisorCampo || 'Administrador',
@@ -389,7 +400,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     const idsReg     = new Set((jaReg || []).map(r => r.eletricista_id))
     const idsNaLista = new Set(todosEletricistas.map(e => e.id))
     const { data: res } = await supabase.from('estrutura_equipes')
-      .select('id, colaborador, matricula, prefixo, superv_campo')
+      .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo')
       .ilike('colaborador', `%${texto}%`).in('descr_situacao', ['ATIVO', 'RESERVA']).limit(10)
     setResultadosReman((res || []).filter(e => !idsNaLista.has(e.id) && !idsReg.has(e.id)))
     setBuscandoReman(false)
