@@ -144,6 +144,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   const isSupervisor    = usuarioLogado?.perfil !== 'ADMIN'
   const supervisorCampo = usuarioLogado?.nome
+  const estruturaCarregada = filtros.estruturaCarregada
+  const prefixosPermitidos = filtros.prefixosPermitidos
 
   const chaveTrocasPendentes = useMemo(() => `indisp_trocas_pendentes_${data}`, [data])
 
@@ -178,6 +180,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     setBuscaEletTexto('')
 
     try {
+      if (!estruturaCarregada) return
+
       const { data: motivosData } = await supabase
         .from('motivos_indisponibilidade').select('id, descricao').eq('ativo', true).order('descricao')
       setMotivos(motivosData || [])
@@ -194,10 +198,20 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       setContadores({ presentes: idsPresentes.size, ausentes: idsAusentes.size })
       setIdsRegistroDia({ presentes: [...idsPresentes], ausentes: [...idsAusentes] })
 
+      const prefixosRestritos = isSupervisor && Array.isArray(prefixosPermitidos) ? prefixosPermitidos : null
+      if (prefixosRestritos && prefixosRestritos.length === 0) {
+        setTotalPessoalBase(0)
+        setTodosEletricistasBase([])
+        setTodosEletricistas([])
+        setPrefixos([])
+        setAusentesHoje([])
+        return
+      }
+
       let query = supabase.from('estrutura_equipes')
         .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, base')
         .in('descr_situacao', ['ATIVO', 'RESERVA']).order('colaborador')
-      if (isSupervisor && supervisorCampo) query = query.eq('superv_campo', supervisorCampo)
+      if (prefixosRestritos) query = query.in('prefixo', prefixosRestritos)
 
       const { data: todosElet } = await query
       const listaBaseOriginal = todosElet || []
@@ -232,7 +246,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     } finally {
       setLoading(false)
     }
-  }, [data, supervisorCampo, isSupervisor, aplicarTrocasPendentes])
+  }, [data, supervisorCampo, isSupervisor, aplicarTrocasPendentes, estruturaCarregada, prefixosPermitidos])
 
   useEffect(() => { carregar() }, [carregar])
 
