@@ -139,6 +139,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const [formIndisp,        setFormIndisp]        = useState({ eletricista_id: '', prefixo: '', tipo: 'total', motivo_id: '', obs: '' })
   const [salvandoIndisp,    setSalvandoIndisp]    = useState(false)
   const [indispRegistradas, setIndispRegistradas] = useState([])
+  const [frequenciasRegistradas, setFrequenciasRegistradas] = useState([])
 
   // Contadores do dia (total geral, não só filtrado)
   const [contadores, setContadores] = useState({ presentes: 0, ausentes: 0 })
@@ -183,6 +184,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     setColaboradorRemanSelecionado(null)
     setResultadosReman([])
     setBuscaReman('')
+    setFrequenciasRegistradas([])
 
     try {
       if (!estruturaCarregada) return
@@ -192,8 +194,12 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       setMotivos(motivosData || [])
 
       const { data: jaRegistrados } = await supabase
-        .from('equipes_dia').select('eletricista_id, id_eletricista, id_indisponibilidade').eq('data', data)
+        .from('equipes_dia')
+        .select('id, eletricista_id, id_eletricista, id_indisponibilidade, prefixo, data, matricula, colaborador, superv_campo, processo_equipe, descricao_motivo_indisponibilidade, observacoes, criado_em')
+        .eq('data', data)
+        .order('criado_em', { ascending: false })
 
+      const descricaoMotivoPorId = new Map((motivosData || []).map(m => [String(m.id), m.descricao]))
       const motivoPresente = (motivosData || []).find(m => m.descricao.toUpperCase() === 'PRESENTE')
       const idsPresentes = new Set((jaRegistrados || []).filter(r => r.id_indisponibilidade === motivoPresente?.id).map(r => r.eletricista_id))
       const idsAusentes  = new Set((jaRegistrados || []).filter(r => r.id_indisponibilidade !== motivoPresente?.id).map(r => r.eletricista_id))
@@ -211,6 +217,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         setPrefixos([])
         setAusentesHoje([])
         setRemanejamentosDia([])
+        setFrequenciasRegistradas([])
         return
       }
 
@@ -278,6 +285,21 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       const prefixosUnicos = [...new Set(listaBase.map(e => e.prefixo).filter(Boolean))].sort()
       setPrefixos(prefixosUnicos)
+
+      const estruturaPorId = new Map(listaBase.map(e => [String(e.id), e]))
+      setFrequenciasRegistradas((jaRegistrados || []).map(r => {
+        const elet = estruturaPorId.get(String(r.eletricista_id))
+        const descricaoMotivo = r.descricao_motivo_indisponibilidade || descricaoMotivoPorId.get(String(r.id_indisponibilidade)) || null
+        return {
+          ...r,
+          colaborador: r.colaborador || elet?.colaborador || null,
+          matricula: r.matricula || elet?.matricula || null,
+          prefixo: r.prefixo || elet?.prefixo || null,
+          superv_campo: r.superv_campo || elet?.superv_campo || null,
+          processo_equipe: r.processo_equipe || elet?.processo_equipe || null,
+          descricao_motivo_indisponibilidade: descricaoMotivo,
+        }
+      }))
 
       const { data: indispHoje } = await supabase.from('indisponibilidades')
         .select('id, eletricista_id, prefixo, tipo_indisponibilidade, motivo_id, observacao, motivos_indisponibilidade(descricao)')
@@ -355,6 +377,11 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     aplicarFiltroEletricista(todosEletricistasBase),
     [todosEletricistasBase, aplicarFiltroEletricista]
   )
+
+  const frequenciasRegistradasFiltradas = useMemo(() => {
+    const idsBase = new Set(eletricistasBaseFiltrados.map(e => String(e.id)))
+    return frequenciasRegistradas.filter(r => idsBase.has(String(r.eletricista_id)))
+  }, [frequenciasRegistradas, eletricistasBaseFiltrados])
 
   // Opções de eletricista para o dropdown do filtro
   const opcoesEletricista = useMemo(() =>
@@ -999,6 +1026,48 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                   </div>
                 )}
               </>
+            )}
+
+            {frequenciasRegistradasFiltradas.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {frequenciasRegistradasFiltradas.map(r => {
+                    const descricaoMotivo = r.descricao_motivo_indisponibilidade || '—'
+                    const isPresenteHistorico = descricaoMotivo.toUpperCase() === 'PRESENTE'
+                    const nomeEletricista = r.colaborador || `Eletricista #${r.eletricista_id}`
+                    return (
+                      <div key={r.id || String(r.eletricista_id) + '-' + r.data} style={{
+                        background: isPresenteHistorico ? '#f0fdf4' : '#fef2f2',
+                        border: `1px solid ${isPresenteHistorico ? '#86efac' : '#fecaca'}`,
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                          <div>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: isPresenteHistorico ? '#15803d' : '#b91c1c', margin: 0 }}>{nomeEletricista}</p>
+                            <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
+                              {r.matricula ? `Mat: ${r.matricula} · ` : ''}Prefixo: {r.prefixo || '—'} · {isPresenteHistorico ? 'PRESENTE' : `AUSENTE · ${descricaoMotivo}`}
+                            </p>
+                            {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
+                          </div>
+                          <span style={{
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: '3px 8px',
+                            borderRadius: 6,
+                            alignSelf: 'flex-start',
+                            background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
+                            color: isPresenteHistorico ? '#15803d' : '#dc2626',
+                          }}>
+                            {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
             )}
           </>
         )}
