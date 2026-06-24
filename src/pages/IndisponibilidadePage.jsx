@@ -439,29 +439,62 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // ─── Remanejamento ────────────────────────────────────────────────────────
   const buscarRemanejamento = async (texto) => {
     setBuscaReman(texto)
-    if (texto.length < 3) { setResultadosReman([]); return }
+    const termo = texto.trim()
+    if (termo.length < 3) { setResultadosReman([]); return }
+
     setBuscandoReman(true)
-    const { data: jaReg } = await supabase.from('equipes_dia').select('eletricista_id').eq('data', data)
-    const idsReg     = new Set((jaReg || []).map(r => r.eletricista_id))
-    const idsNaLista = new Set(todosEletricistas.map(e => e.id))
-    const { data: res } = await supabase.from('estrutura_equipes')
-      .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe')
-      .ilike('colaborador', `%${texto}%`).in('descr_situacao', ['ATIVO', 'RESERVA']).limit(10)
-    setResultadosReman((res || []).filter(e => !idsNaLista.has(e.id) && !idsReg.has(e.id)))
-    setBuscandoReman(false)
+    setErro('')
+    try {
+      const { data: jaReg, error: erroReg } = await supabase
+        .from('equipes_dia')
+        .select('eletricista_id, id_eletricista')
+        .eq('data', data)
+      if (erroReg) throw erroReg
+
+      const idsEstruturaRegistrados = new Set((jaReg || []).map(r => r.eletricista_id).filter(Boolean))
+      const idsPermanentesRegistrados = new Set((jaReg || []).map(r => r.id_eletricista).filter(Boolean))
+
+      const { data: res, error: erroBusca } = await supabase.from('estrutura_equipes')
+        .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
+        .ilike('colaborador', `%${termo}%`)
+        .in('descr_situacao', ['ATIVO', 'RESERVA'])
+        .order('colaborador')
+        .limit(20)
+      if (erroBusca) throw erroBusca
+
+      setResultadosReman((res || []).filter(e =>
+        !idsEstruturaRegistrados.has(e.id) &&
+        (!e.id_eletricista || !idsPermanentesRegistrados.has(e.id_eletricista))
+      ))
+    } catch (e) {
+      setResultadosReman([])
+      setErro('Erro ao buscar colaboradores: ' + e.message)
+    } finally {
+      setBuscandoReman(false)
+    }
   }
 
   const confirmarRemanejamento = async (elet) => {
     setSalvando(true)
     try {
-      await supabase.from('remanejamentos').upsert({
+      const colaboradorRemanejado = {
+        ...elet,
+        superv_campo: supervisorCampo || elet.superv_campo,
+      }
+
+      const { error } = await supabase.from('remanejamentos').upsert({
         eletricista_id: elet.id, supervisor_origem: elet.superv_campo,
         supervisor_destino: supervisorCampo || 'Administrador',
         data, temporario: true, usuario_registro: usuarioLogado?.login || 'admin',
       }, { onConflict: 'eletricista_id,data' })
-      setTodosEletricistas(prev => [...prev, elet])
-      setResultadosReman([]); setBuscaReman('')
-      setSucesso(`✅ ${elet.colaborador} adicionado à lista.`)
+      if (error) throw error
+
+      setTodosEletricistas(prev => prev.some(item => String(item.id) === String(elet.id)) ? prev : [...prev, colaboradorRemanejado])
+      setTodosEletricistasBase(prev => prev.some(item => String(item.id) === String(elet.id)) ? prev : [...prev, colaboradorRemanejado])
+      setResultadosReman([])
+      setBuscaReman('')
+      setAbaAtiva('frequencia')
+      setSucesso(`✅ ${elet.colaborador} adicionado à frequência de pessoal.`)
     } catch (e) { setErro('Erro no remanejamento: ' + e.message) }
     finally { setSalvando(false) }
   }
@@ -639,7 +672,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
           {[
             { id: 'frequencia',    emoji: '📋', label: 'Frequência de Pessoal' },
-            { id: 'remanejamento', emoji: '🔄', label: 'Remanejar Eletricista' },
+            { id: 'remanejamento', emoji: '🔄', label: 'Remanejar Colaborador' },
             { id: 'indisponivel',  emoji: '⚠️', label: 'Indisponível' },
           ].map(aba => (
             <button key={aba.id} onClick={() => { setAbaAtiva(aba.id); setErro(''); setSucesso('') }} style={{
@@ -835,12 +868,12 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         ══════════════════════════════════════════════ */}
         {abaAtiva === 'remanejamento' && (
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px' }}>
-            <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>🔄 Remanejar Eletricista</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>🔄 Remanejar Colaborador</p>
             <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
-              Adicione um eletricista de outro supervisor à lista de frequência de hoje.
+              Adicione um colaborador ainda não contabilizado à lista de frequência de hoje.
             </p>
             <div style={{ position: 'relative' }}>
-              <label className="form-label">Buscar eletricista pelo nome</label>
+              <label className="form-label">Buscar colaborador pelo nome</label>
               <input className="form-input" value={buscaReman} onChange={e => buscarRemanejamento(e.target.value)} placeholder="Digite ao menos 3 letras..." />
               {buscandoReman && <p style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>⏳ Buscando...</p>}
               {resultadosReman.length > 0 && (
@@ -859,7 +892,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                 </div>
               )}
               {buscaReman.length >= 3 && !buscandoReman && resultadosReman.length === 0 && (
-                <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6, fontWeight: 600 }}>❌ Nenhum disponível encontrado.</p>
+                <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6, fontWeight: 600 }}>❌ Nenhum colaborador disponível encontrado.</p>
               )}
             </div>
           </div>
