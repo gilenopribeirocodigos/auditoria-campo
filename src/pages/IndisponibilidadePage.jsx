@@ -209,7 +209,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       }
 
       let query = supabase.from('estrutura_equipes')
-        .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, base')
+        .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
         .in('descr_situacao', ['ATIVO', 'RESERVA']).order('colaborador')
       if (prefixosRestritos) query = query.in('prefixo', prefixosRestritos)
 
@@ -370,14 +370,23 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const linhas = marcados.map(([, r]) => {
         const isP = r.status === 'presente'
         const eletRegistro = buscarEletricistaRegistro(r.eletId)
+        const motivoRegistro = isP
+          ? motivoPresente
+          : motivos.find(m => String(m.id) === String(r.motivo_id))
+
         return {
           eletricista_id:       Number(r.eletId),
           id_eletricista:       eletRegistro.id_eletricista,
+          matricula:            eletRegistro.matricula || null,
+          colaborador:          eletRegistro.colaborador || null,
+          superv_campo:         eletRegistro.superv_campo || null,
+          processo_equipe:      eletRegistro.processo_equipe || null,
           prefixo:              r.prefixo || '',
           data,
           supervisor_registro:  supervisorCampo || 'Administrador',
           usuario_registro:     usuarioLogado?.login || 'admin',
           id_indisponibilidade: isP ? motivoPresente.id : Number(r.motivo_id),
+          descricao_motivo_indisponibilidade: motivoRegistro?.descricao || null,
           observacoes:          r.obs || null,
         }
       })
@@ -390,7 +399,18 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         if (eletSelecionado?.prefixo) trocasParaPersistir[String(cardKey)] = eletSelecionado.prefixo
       })
 
-      const { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
+      let { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
+
+      // Mantem o salvamento funcionando caso o deploy do app chegue antes da migracao SQL.
+      // Depois que as colunas existirem, o upsert completo acima grava o snapshot normalmente.
+      if (error && /column .* does not exist/i.test(error.message || '')) {
+        const linhasCompat = linhas.map(({
+          matricula, colaborador, superv_campo, processo_equipe,
+          descricao_motivo_indisponibilidade, ...linha
+        }) => linha)
+        ;({ error } = await supabase.from('equipes_dia').upsert(linhasCompat, { onConflict: 'eletricista_id,data' }))
+      }
+
       if (error) throw error
 
       const trocasAtualizadas = { ...lerTrocasPendentes(), ...trocasParaPersistir }
@@ -414,7 +434,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     const idsReg     = new Set((jaReg || []).map(r => r.eletricista_id))
     const idsNaLista = new Set(todosEletricistas.map(e => e.id))
     const { data: res } = await supabase.from('estrutura_equipes')
-      .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo')
+      .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe')
       .ilike('colaborador', `%${texto}%`).in('descr_situacao', ['ATIVO', 'RESERVA']).limit(10)
     setResultadosReman((res || []).filter(e => !idsNaLista.has(e.id) && !idsReg.has(e.id)))
     setBuscandoReman(false)
