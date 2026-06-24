@@ -288,7 +288,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       let eletricistasIndispPorId = new Map()
       if (idsIndisp.length > 0) {
         const { data: eletIndisp, error: erroEletIndisp } = await supabase.from('estrutura_equipes')
-          .select('id, colaborador, matricula')
+          .select('id, colaborador, matricula, superv_campo, processo_equipe')
           .in('id', idsIndisp)
         if (erroEletIndisp) throw erroEletIndisp
         eletricistasIndispPorId = new Map((eletIndisp || []).map(e => [String(e.id), e]))
@@ -299,6 +299,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           ...r,
           colaborador: elet?.colaborador || null,
           matricula: elet?.matricula || null,
+          superv_campo: elet?.superv_campo || null,
+          processo_equipe: elet?.processo_equipe || null,
         }
       })
       setIndispRegistradas(registrosIndisp)
@@ -308,7 +310,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const idsAusentesArr = [...idsAusentes].filter(id => !idsComIndisp.has(id))
       if (idsAusentesArr.length > 0) {
         const { data: eletAusentes } = await supabase.from('estrutura_equipes')
-          .select('id, id_eletricista, colaborador, matricula, prefixo').in('id', idsAusentesArr).order('colaborador')
+          .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe').in('id', idsAusentesArr).order('colaborador')
         setAusentesHoje(eletAusentes || [])
       } else {
         setAusentesHoje([])
@@ -625,12 +627,37 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     setSalvandoIndisp(true); setErro(''); setSucesso('')
     try {
       const elet = ausentesHoje.find(e => String(e.id) === String(formIndisp.eletricista_id))
-      const { error } = await supabase.from('indisponibilidades').upsert({
-        data, eletricista_id: Number(formIndisp.eletricista_id),
-        matricula: elet?.matricula || null, prefixo: formIndisp.prefixo,
-        tipo_indisponibilidade: formIndisp.tipo, motivo_id: Number(formIndisp.motivo_id),
-        observacao: formIndisp.obs || null, usuario_registro: usuarioLogado?.login || 'admin',
-      }, { onConflict: 'eletricista_id,data' })
+      const motivoSelecionado = motivos.find(m => String(m.id) === String(formIndisp.motivo_id))
+      const linhaIndisponibilidade = {
+        data,
+        eletricista_id: Number(formIndisp.eletricista_id),
+        matricula: elet?.matricula || null,
+        colaborador: elet?.colaborador || null,
+        superv_campo: elet?.superv_campo || null,
+        processo_equipe: elet?.processo_equipe || null,
+        prefixo: formIndisp.prefixo,
+        tipo_indisponibilidade: formIndisp.tipo,
+        motivo_id: Number(formIndisp.motivo_id),
+        descricao_motivo_indisponibilidade: motivoSelecionado?.descricao || null,
+        observacao: formIndisp.obs || null,
+        usuario_registro: usuarioLogado?.login || 'admin',
+      }
+
+      let { error } = await supabase
+        .from('indisponibilidades')
+        .upsert(linhaIndisponibilidade, { onConflict: 'eletricista_id,data' })
+
+      // Mantem o salvamento funcionando caso o deploy do app chegue antes da migracao SQL.
+      if (error && /column .* does not exist/i.test(error.message || '')) {
+        const {
+          colaborador, superv_campo, processo_equipe,
+          descricao_motivo_indisponibilidade, ...linhaCompat
+        } = linhaIndisponibilidade
+        ;({ error } = await supabase
+          .from('indisponibilidades')
+          .upsert(linhaCompat, { onConflict: 'eletricista_id,data' }))
+      }
+
       if (error) throw error
       setSucesso(`✅ Indisponibilidade de ${elet?.colaborador} registrada!`)
       setFormIndisp({ eletricista_id: '', prefixo: '', tipo: 'total', motivo_id: '', obs: '' })
