@@ -131,6 +131,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const [buscaReman,        setBuscaReman]        = useState('')
   const [resultadosReman,   setResultadosReman]   = useState([])
   const [buscandoReman,     setBuscandoReman]     = useState(false)
+  const [colaboradorRemanSelecionado, setColaboradorRemanSelecionado] = useState(null)
+  const [remanejamentosDia, setRemanejamentosDia] = useState([])
 
   // Indisponibilidade (aba 3)
   const [ausentesHoje,      setAusentesHoje]      = useState([])
@@ -178,6 +180,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     setRegistros({})
     setFiltroEletId('')
     setBuscaEletTexto('')
+    setColaboradorRemanSelecionado(null)
+    setResultadosReman([])
+    setBuscaReman('')
 
     try {
       if (!estruturaCarregada) return
@@ -187,7 +192,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       setMotivos(motivosData || [])
 
       const { data: jaRegistrados } = await supabase
-        .from('equipes_dia').select('eletricista_id, id_indisponibilidade').eq('data', data)
+        .from('equipes_dia').select('eletricista_id, id_eletricista, id_indisponibilidade').eq('data', data)
 
       const motivoPresente = (motivosData || []).find(m => m.descricao.toUpperCase() === 'PRESENTE')
       const idsPresentes = new Set((jaRegistrados || []).filter(r => r.id_indisponibilidade === motivoPresente?.id).map(r => r.eletricista_id))
@@ -205,8 +210,53 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         setTodosEletricistas([])
         setPrefixos([])
         setAusentesHoje([])
+        setRemanejamentosDia([])
         return
       }
+
+      let queryRemanejamentosDia = supabase.from('remanejamentos')
+        .select('id, eletricista_id, supervisor_origem, supervisor_destino, data, temporario, usuario_registro, criado_em, observacoes')
+        .eq('data', data)
+        .order('criado_em', { ascending: false })
+      if (isSupervisor && supervisorCampo) queryRemanejamentosDia = queryRemanejamentosDia.eq('supervisor_destino', supervisorCampo)
+      const { data: remanDiaData, error: erroRemanDia } = await queryRemanejamentosDia
+      if (erroRemanDia) throw erroRemanDia
+
+      const remanDia = remanDiaData || []
+      const idsRemanejadosDia = [...new Set(remanDia.map(r => r.eletricista_id).filter(Boolean))]
+      let remanejadosComDestino = []
+      if (idsRemanejadosDia.length > 0) {
+        const { data: eletRemanejados, error: erroEletRemanejados } = await supabase.from('estrutura_equipes')
+          .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
+          .in('id', idsRemanejadosDia)
+        if (erroEletRemanejados) throw erroEletRemanejados
+
+        const remanPorId = new Map(remanDia.map(r => [String(r.eletricista_id), r]))
+        remanejadosComDestino = (eletRemanejados || []).map(e => {
+          const reman = remanPorId.get(String(e.id))
+          return {
+            ...e,
+            superv_campo: reman?.supervisor_destino || supervisorCampo || e.superv_campo,
+            remanejado: true,
+            supervisor_origem_reman: reman?.supervisor_origem || e.superv_campo,
+            remanejamento_id: reman?.id,
+            criado_em_reman: reman?.criado_em,
+          }
+        })
+      }
+
+      const remanejadosPorId = new Map(remanejadosComDestino.map(e => [String(e.id), e]))
+      setRemanejamentosDia(remanDia.map(r => {
+        const e = remanejadosPorId.get(String(r.eletricista_id))
+        return {
+          ...r,
+          colaborador: e?.colaborador || `Colaborador #${r.eletricista_id}`,
+          matricula: e?.matricula || null,
+          prefixo: e?.prefixo || null,
+          base: e?.base || null,
+          processo_equipe: e?.processo_equipe || null,
+        }
+      }))
 
       let query = supabase.from('estrutura_equipes')
         .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
@@ -215,7 +265,12 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       const { data: todosElet } = await query
       const listaBaseOriginal = todosElet || []
-      const listaBase = aplicarTrocasPendentes(listaBaseOriginal)
+      const idsListaOriginal = new Set(listaBaseOriginal.map(e => String(e.id)))
+      const listaComRemanejados = [
+        ...remanejadosComDestino.filter(e => !idsListaOriginal.has(String(e.id))),
+        ...listaBaseOriginal.map(e => remanejadosPorId.get(String(e.id)) || e),
+      ]
+      const listaBase = aplicarTrocasPendentes(listaComRemanejados)
       setTotalPessoalBase(listaBase.length)
       setTodosEletricistasBase(listaBase)
       const disponiveis = listaBase.filter(e => !idsRegistrados.has(e.id))
@@ -439,6 +494,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // ─── Remanejamento ────────────────────────────────────────────────────────
   const buscarRemanejamento = async (texto) => {
     setBuscaReman(texto)
+    setColaboradorRemanSelecionado(null)
     const termo = texto.trim()
     if (termo.length < 3) { setResultadosReman([]); return }
 
@@ -451,8 +507,14 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         .eq('data', data)
       if (erroReg) throw erroReg
 
+      let queryRemanejados = supabase.from('remanejamentos').select('eletricista_id').eq('data', data)
+      if (isSupervisor && supervisorCampo) queryRemanejados = queryRemanejados.eq('supervisor_destino', supervisorCampo)
+      const { data: jaRemanejados, error: erroJaRemanejados } = await queryRemanejados
+      if (erroJaRemanejados) throw erroJaRemanejados
+
       const idsEstruturaRegistrados = new Set((jaReg || []).map(r => r.eletricista_id).filter(Boolean))
       const idsPermanentesRegistrados = new Set((jaReg || []).map(r => r.id_eletricista).filter(Boolean))
+      const idsJaRemanejados = new Set((jaRemanejados || []).map(r => r.eletricista_id).filter(Boolean))
 
       const { data: res, error: erroBusca } = await supabase.from('estrutura_equipes')
         .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
@@ -464,6 +526,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       setResultadosReman((res || []).filter(e =>
         !idsEstruturaRegistrados.has(e.id) &&
+        !idsJaRemanejados.has(e.id) &&
         (!e.id_eletricista || !idsPermanentesRegistrados.has(e.id_eletricista))
       ))
     } catch (e) {
@@ -474,27 +537,41 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     }
   }
 
-  const confirmarRemanejamento = async (elet) => {
-    setSalvando(true)
-    try {
-      const colaboradorRemanejado = {
-        ...elet,
-        superv_campo: supervisorCampo || elet.superv_campo,
-      }
+  const selecionarRemanejamento = (elet) => {
+    setColaboradorRemanSelecionado(elet)
+    setResultadosReman([])
+    setBuscaReman(elet.colaborador)
+    setErro('')
+    setSucesso('')
+  }
 
+  const cancelarRemanejamento = () => {
+    setColaboradorRemanSelecionado(null)
+    setResultadosReman([])
+    setBuscaReman('')
+    setErro('')
+  }
+
+  const salvarRemanejamento = async () => {
+    if (!colaboradorRemanSelecionado) { setErro('Selecione um colaborador para remanejar.'); return }
+
+    setSalvando(true)
+    setErro('')
+    setSucesso('')
+    try {
+      const elet = colaboradorRemanSelecionado
       const { error } = await supabase.from('remanejamentos').upsert({
-        eletricista_id: elet.id, supervisor_origem: elet.superv_campo,
+        eletricista_id: elet.id,
+        supervisor_origem: elet.superv_campo,
         supervisor_destino: supervisorCampo || 'Administrador',
-        data, temporario: true, usuario_registro: usuarioLogado?.login || 'admin',
+        data,
+        temporario: true,
+        usuario_registro: usuarioLogado?.login || 'admin',
       }, { onConflict: 'eletricista_id,data' })
       if (error) throw error
 
-      setTodosEletricistas(prev => prev.some(item => String(item.id) === String(elet.id)) ? prev : [...prev, colaboradorRemanejado])
-      setTodosEletricistasBase(prev => prev.some(item => String(item.id) === String(elet.id)) ? prev : [...prev, colaboradorRemanejado])
-      setResultadosReman([])
-      setBuscaReman('')
-      setAbaAtiva('frequencia')
-      setSucesso(`✅ ${elet.colaborador} adicionado à frequência de pessoal.`)
+      await carregar()
+      setSucesso(`✅ ${elet.colaborador} remanejado e liberado na frequência de pessoal.`)
     } catch (e) { setErro('Erro no remanejamento: ' + e.message) }
     finally { setSalvando(false) }
   }
@@ -870,7 +947,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px' }}>
             <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>🔄 Remanejar Colaborador</p>
             <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
-              Adicione um colaborador ainda não contabilizado à lista de frequência de hoje.
+              Selecione um colaborador ainda não contabilizado e confirme o salvamento para liberar na frequência de pessoal.
             </p>
             <div style={{ position: 'relative' }}>
               <label className="form-label">Buscar colaborador pelo nome</label>
@@ -879,20 +956,63 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               {resultadosReman.length > 0 && (
                 <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', maxHeight: 300, overflowY: 'auto' }}>
                   {resultadosReman.map(e => (
-                    <div key={e.id} style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div key={e.id} style={{ padding: '12px 14px', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                       <div>
                         <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{e.colaborador}</p>
-                        <p style={{ fontSize: 11, color: '#64748b' }}>Mat: {e.matricula} · Sup: {e.superv_campo}</p>
+                        <p style={{ fontSize: 11, color: '#64748b' }}>Mat: {e.matricula} · Sup: {e.superv_campo} · {e.prefixo || 'sem prefixo'}</p>
                       </div>
-                      <button onClick={() => confirmarRemanejamento(e)} style={{ padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#1e3a5f', color: '#fff', fontSize: 12, fontWeight: 700 }}>
+                      <button onClick={() => selecionarRemanejamento(e)} style={{ padding: '7px 12px', borderRadius: 8, border: 'none', cursor: 'pointer', background: '#1e3a5f', color: '#fff', fontSize: 12, fontWeight: 700 }}>
                         Adicionar
                       </button>
                     </div>
                   ))}
                 </div>
               )}
-              {buscaReman.length >= 3 && !buscandoReman && resultadosReman.length === 0 && (
+              {buscaReman.length >= 3 && !buscandoReman && resultadosReman.length === 0 && !colaboradorRemanSelecionado && (
                 <p style={{ fontSize: 12, color: '#dc2626', marginTop: 6, fontWeight: 600 }}>❌ Nenhum colaborador disponível encontrado.</p>
+              )}
+            </div>
+
+            {colaboradorRemanSelecionado && (
+              <div style={{ marginTop: 14, border: '1.5px solid #bfdbfe', borderRadius: 12, padding: '14px 16px', background: '#eff6ff' }}>
+                <p style={{ fontSize: 12, color: '#1e40af', fontWeight: 800, marginBottom: 8 }}>Colaborador selecionado para remanejamento</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <div>
+                    <p style={{ fontSize: 14, fontWeight: 800, color: '#1e293b', margin: 0 }}>{colaboradorRemanSelecionado.colaborador}</p>
+                    <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>Mat: {colaboradorRemanSelecionado.matricula} · Origem: {colaboradorRemanSelecionado.superv_campo || '—'} · {colaboradorRemanSelecionado.prefixo || 'sem prefixo'}</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={cancelarRemanejamento} disabled={salvando} style={{ padding: '8px 14px', borderRadius: 8, border: '1.5px solid #cbd5e1', cursor: salvando ? 'not-allowed' : 'pointer', background: '#fff', color: '#475569', fontSize: 12, fontWeight: 800 }}>
+                      Cancelar
+                    </button>
+                    <button onClick={salvarRemanejamento} disabled={salvando} style={{ padding: '8px 14px', borderRadius: 8, border: 'none', cursor: salvando ? 'not-allowed' : 'pointer', background: salvando ? '#64748b' : '#16a34a', color: '#fff', fontSize: 12, fontWeight: 800 }}>
+                      {salvando ? 'Salvando...' : 'Salvar Remanejamento'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: 18, borderTop: '1px solid #e2e8f0', paddingTop: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', marginBottom: 10 }}>Histórico de Remanejamento do Dia ({remanejamentosDia.length})</p>
+              {remanejamentosDia.length === 0 ? (
+                <p style={{ fontSize: 12, color: '#94a3b8', background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: 10, padding: '12px 14px', margin: 0 }}>
+                  Nenhum colaborador remanejado para esta data.
+                </p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {remanejamentosDia.map(r => (
+                    <div key={r.id || String(r.eletricista_id) + '-' + r.data} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                      <div>
+                        <p style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', margin: 0 }}>{r.colaborador}</p>
+                        <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>Mat: {r.matricula || '—'} · {r.prefixo || 'sem prefixo'} · Origem: {r.supervisor_origem || '—'} → Destino: {r.supervisor_destino || '—'}</p>
+                      </div>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: '#1e40af', background: '#dbeafe', borderRadius: 999, padding: '4px 8px', alignSelf: 'center' }}>
+                        {r.temporario ? 'Temporário' : 'Fixo'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           </div>
