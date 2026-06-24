@@ -305,9 +305,26 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   useEffect(() => { carregar() }, [carregar])
 
-  const aplicarFiltroEletricista = useCallback((lista) => {
-    let filtrada = filtros.filtrar(lista)
-    if (filtroEletId) filtrada = filtrada.filter(e => String(e.id) === filtroEletId)
+  const aplicarFiltroEletricista = useCallback((lista, { aplicarFiltroElet = true } = {}) => {
+    const remanejados = lista.filter(e => e.remanejado)
+    const demais = lista.filter(e => !e.remanejado)
+    const filtrados = filtros.filtrar(demais)
+
+    // Remanejados pertencem ao supervisor de destino no dia do registro.
+    // Por isso nao podem ser cortados pela segregacao do prefixo original.
+    const remanejadosVisiveis = remanejados.filter(e => {
+      if (filtros.selPrefixos?.length > 0 && !filtros.selPrefixos.includes(e.prefixo)) return false
+      if (filtros.selSupCampo?.length > 0 && !filtros.selSupCampo.includes(e.superv_campo)) return false
+      return true
+    })
+
+    const porId = new Map()
+    ;[...remanejadosVisiveis, ...filtrados].forEach(e => {
+      if (!porId.has(String(e.id))) porId.set(String(e.id), e)
+    })
+
+    let filtrada = [...porId.values()]
+    if (aplicarFiltroElet && filtroEletId) filtrada = filtrada.filter(e => String(e.id) === filtroEletId)
     return filtrada
   }, [filtros, filtroEletId])
 
@@ -321,8 +338,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   // Opções de eletricista para o dropdown do filtro
   const opcoesEletricista = useMemo(() =>
-    filtros.filtrar(todosEletricistas).map(e => ({ id: String(e.id), label: e.colaborador, sub: e.prefixo })),
-    [todosEletricistas, filtros]
+    aplicarFiltroEletricista(todosEletricistas, { aplicarFiltroElet: false })
+      .map(e => ({ id: String(e.id), label: e.colaborador, sub: e.prefixo })),
+    [todosEletricistas, aplicarFiltroEletricista]
   )
 
   // Opções de eletricista para os cards: permite escolher alguem de outro prefixo.
