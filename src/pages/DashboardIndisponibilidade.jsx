@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { useFiltrosOperacionais, PainelFiltros } from '../components/PainelFiltros.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
 // Dashboard de Indisponibilidade — VérticeGP
@@ -44,11 +45,7 @@ function BarraMotivo({ motivo, qtde, percentual, total }) {
 }
 
 export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) {
-  const hoje = new Date().toISOString().split('T')[0]
-  const inicioMes = hoje.slice(0, 8) + '01'
-
-  const [dataIni,   setDataIni]   = useState(inicioMes)
-  const [dataFim,   setDataFim]   = useState(hoje)
+  const filtros = useFiltrosOperacionais({ usuarioLogado })
   const [abaAtiva,  setAbaAtiva]  = useState('geral')
   const [loading,   setLoading]   = useState(false)
   const [erro,      setErro]      = useState('')
@@ -59,131 +56,165 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
   const [dadosPrefixo,     setDadosPrefixo]     = useState(null)
   const [dadosDisponiveis, setDadosDisponiveis] = useState(null)
 
-  // ─── Busca o relatório geral ────────────────────────────────────────────────
-  const buscarGeral = useCallback(async () => {
-    const { data: eletricistas } = await supabase
+  const motivoDescricao = (registro, fallback = 'OUTRO') => (
+    registro?.descricao_motivo_indisponibilidade ||
+    registro?.motivos_indisponibilidade?.descricao ||
+    fallback
+  )
+
+  // Carrega dados brutos uma vez por busca, já limitados pelo painel padrão.
+  const carregarDadosBase = async (ini, fim) => {
+    const { data: estruturaRaw, error: estruturaError } = await supabase
       .from('estrutura_equipes')
-      .select('id')
+      .select('id, colaborador, matricula, prefixo, superv_campo, superv_operacao, polo, base, processo_equipe, descr_situacao')
       .in('descr_situacao', ['ATIVO', 'RESERVA'])
 
-    const totalElet = eletricistas?.length || 0
+    if (estruturaError) throw estruturaError
 
-    const { data: indisponiveis } = await supabase
-      .from('indisponibilidades')
-      .select('motivo_id, motivos_indisponibilidade(descricao)')
-      .gte('data', dataIni).lte('data', dataFim)
+    const estrutura = filtros.filtrar(estruturaRaw || [])
+    const prefixosEscopo = new Set(estrutura.map(e => e.prefixo).filter(Boolean))
+    const idsEscopo = new Set(estrutura.map(e => e.id).filter(id => id !== null && id !== undefined))
 
-    const { data: presentes } = await supabase
-      .from('equipes_dia')
-      .select('id')
-      .gte('data', dataIni).lte('data', dataFim)
+    if (prefixosEscopo.size === 0) {
+      return { estrutura, presentes: [], indisponiveis: [], prefixosEscopo, idsEscopo }
+    }
 
-    const contadores = { 'PRESENTE': presentes?.length || 0 }
-    ;(indisponiveis || []).forEach(i => {
-      const m = i.motivos_indisponibilidade?.descricao?.toUpperCase() || 'OUTRO'
-      contadores[m] = (contadores[m] || 0) + 1
+    const [{ data: presentesRaw, error: presentesError }, { data: indisponiveisRaw, error: indisponiveisError }] = await Promise.all([
+      supabase
+        .from('equipes_dia')
+        .select('id, eletricista_id, prefixo, data, id_indisponibilidade, descricao_motivo_indisponibilidade')
+        .gte('data', ini)
+        .lte('data', fim),
+      supabase
+        .from('indisponibilidades')
+        .select('id, eletricista_id, prefixo, data, motivo_id, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
+        .gte('data', ini)
+        .lte('data', fim),
+    ])
+
+    if (presentesError) throw presentesError
+    if (indisponiveisError) throw indisponiveisError
+
+    const noEscopo = (registro) => {
+      if (registro.prefixo && prefixosEscopo.has(registro.prefixo)) return true
+      return idsEscopo.has(registro.eletricista_id)
+    }
+
+    return {
+      estrutura,
+      presentes: (presentesRaw || []).filter(noEscopo),
+      indisponiveis: (indisponiveisRaw || []).filter(noEscopo),
+      prefixosEscopo,
+      idsEscopo,
+    }
+  }
+
+  const montarGeral = ({ estrutura, presentes, indisponiveis }) => {
+    const contadores = { PRESENTE: presentes.length }
+    indisponiveis.forEach(i => {
+      const motivo = motivoDescricao(i).toUpperCase()
+      contadores[motivo] = (contadores[motivo] || 0) + 1
     })
 
-    const total = Object.values(contadores).reduce((a, b) => a + b, 0)
-    const dados = Object.entries(contadores).map(([motivo, qtde]) => ({
-      motivo, qtde,
-      percentual: total > 0 ? Math.round(qtde / total * 1000) / 10 : 0,
-    })).sort((a, b) => b.qtde - a.qtde)
+    const total = Object.values(contadores).reduce((acc, qtde) => acc + qtde, 0)
+    const dados = Object.entries(contadores)
+      .map(([motivo, qtde]) => ({
+        motivo,
+        qtde,
+        percentual: total > 0 ? Math.round(qtde / total * 1000) / 10 : 0,
+      }))
+      .sort((a, b) => b.qtde - a.qtde)
 
-    setDadosGeral({ total, totalElet, dados })
-  }, [dataIni, dataFim])
+    setDadosGeral({ total, totalElet: estrutura.length, dados })
+  }
 
-  // ─── Busca por supervisor ───────────────────────────────────────────────────
-  const buscarSupervisor = useCallback(async () => {
-    const { data: supervisores } = await supabase
-      .from('estrutura_equipes')
-      .select('superv_campo')
-      .in('descr_situacao', ['ATIVO', 'RESERVA'])
+  const montarSupervisor = ({ estrutura, presentes, indisponiveis }) => {
+    const grupos = {}
 
-    const supSet = [...new Set((supervisores || []).map(s => s.superv_campo).filter(Boolean))]
-
-    const resultados = await Promise.all(supSet.map(async sup => {
-      const { data: eletSup } = await supabase
-        .from('estrutura_equipes')
-        .select('id')
-        .eq('superv_campo', sup)
-        .in('descr_situacao', ['ATIVO', 'RESERVA'])
-
-      const ids = (eletSup || []).map(e => e.id)
-
-      const [{ data: presentes }, { data: ausentes }] = await Promise.all([
-        supabase.from('equipes_dia').select('id').in('eletricista_id', ids).gte('data', dataIni).lte('data', dataFim),
-        supabase.from('indisponibilidades').select('id').in('eletricista_id', ids).gte('data', dataIni).lte('data', dataFim),
-      ])
-
-      const totalPres = presentes?.length || 0
-      const totalAus  = ausentes?.length || 0
-      const totalReg  = totalPres + totalAus
-
-      return {
-        supervisor: sup,
-        totalElet: ids.length,
-        presentes: totalPres,
-        ausentes: totalAus,
-        totalRegistros: totalReg,
-        pctPresenca: totalReg > 0 ? Math.round(totalPres / totalReg * 1000) / 10 : 0,
+    estrutura.forEach(e => {
+      const supervisor = e.superv_campo || 'Sem Supervisor'
+      if (!grupos[supervisor]) {
+        grupos[supervisor] = {
+          supervisor,
+          totalElet: 0,
+          presentes: 0,
+          ausentes: 0,
+          ids: new Set(),
+          prefixos: new Set(),
+        }
       }
-    }))
+      grupos[supervisor].totalElet += 1
+      if (e.id !== null && e.id !== undefined) grupos[supervisor].ids.add(e.id)
+      if (e.prefixo) grupos[supervisor].prefixos.add(e.prefixo)
+    })
 
-    setDadosSupervisor(resultados.sort((a, b) => b.pctPresenca - a.pctPresenca))
-  }, [dataIni, dataFim])
+    const pertenceAoGrupo = (registro, grupo) => (
+      grupo.ids.has(registro.eletricista_id) ||
+      (registro.prefixo && grupo.prefixos.has(registro.prefixo))
+    )
 
-  // ─── Busca por prefixo ──────────────────────────────────────────────────────
-  const buscarPrefixo = useCallback(async () => {
-    const { data: indisponiveis } = await supabase
-      .from('indisponibilidades')
-      .select('prefixo, data, motivo_id, motivos_indisponibilidade(descricao)')
-      .gte('data', dataIni).lte('data', dataFim)
-      .order('prefixo').order('data')
+    Object.values(grupos).forEach(grupo => {
+      grupo.presentes = presentes.filter(p => pertenceAoGrupo(p, grupo)).length
+      grupo.ausentes = indisponiveis.filter(i => pertenceAoGrupo(i, grupo)).length
+      grupo.totalRegistros = grupo.presentes + grupo.ausentes
+      grupo.pctPresenca = grupo.totalRegistros > 0
+        ? Math.round(grupo.presentes / grupo.totalRegistros * 1000) / 10
+        : 0
+    })
 
+    setDadosSupervisor(
+      Object.values(grupos)
+        .map(({ ids, prefixos, ...grupo }) => grupo)
+        .sort((a, b) => b.pctPresenca - a.pctPresenca || a.supervisor.localeCompare(b.supervisor))
+    )
+  }
+
+  const montarPrefixo = ({ indisponiveis }) => {
     const mapa = {}
-    ;(indisponiveis || []).forEach(i => {
-      const chave = `${i.prefixo}__${i.data}`
-      if (!mapa[chave]) mapa[chave] = { prefixo: i.prefixo, data: i.data, motivos: [] }
-      if (mapa[chave].motivos.length < 2) {
-        mapa[chave].motivos.push(i.motivos_indisponibilidade?.descricao || '—')
-      }
+    indisponiveis.forEach(i => {
+      const chave = String(i.prefixo || '') + '__' + String(i.data || '')
+      if (!mapa[chave]) mapa[chave] = { prefixo: i.prefixo || '—', data: i.data, motivos: [] }
+      if (mapa[chave].motivos.length < 2) mapa[chave].motivos.push(motivoDescricao(i, '—'))
     })
 
-    setDadosPrefixo(Object.values(mapa).sort((a, b) => a.prefixo.localeCompare(b.prefixo)))
-  }, [dataIni, dataFim])
+    setDadosPrefixo(
+      Object.values(mapa).sort((a, b) => String(a.prefixo).localeCompare(String(b.prefixo)))
+    )
+  }
 
-  // ─── Busca eletricistas disponíveis (sem nenhum registro no período) ────────
-  const buscarDisponiveis = useCallback(async () => {
-    const { data: todos } = await supabase
-      .from('estrutura_equipes')
-      .select('id, colaborador, matricula, prefixo, superv_campo, superv_operacao, polo, base, processo_equipe')
-      .in('descr_situacao', ['ATIVO', 'RESERVA'])
-
-    const [{ data: presentes }, { data: ausentes }] = await Promise.all([
-      supabase.from('equipes_dia').select('eletricista_id').gte('data', dataIni).lte('data', dataFim),
-      supabase.from('indisponibilidades').select('eletricista_id').gte('data', dataIni).lte('data', dataFim),
-    ])
-
+  const montarDisponiveis = ({ estrutura, presentes, indisponiveis }) => {
     const comRegistro = new Set([
-      ...(presentes || []).map(p => p.eletricista_id),
-      ...(ausentes  || []).map(a => a.eletricista_id),
+      ...presentes.map(p => p.eletricista_id),
+      ...indisponiveis.map(i => i.eletricista_id),
     ])
 
-    const disponiveis = (todos || []).filter(e => !comRegistro.has(e.id))
-    setDadosDisponiveis({ total: todos?.length || 0, disponiveis })
-  }, [dataIni, dataFim])
+    const disponiveis = estrutura.filter(e => !comRegistro.has(e.id))
+    setDadosDisponiveis({ total: estrutura.length, disponiveis })
+  }
 
-  // ─── Busca ao clicar em "Filtrar" ──────────────────────────────────────────
+  // Busca ao clicar em "Filtrar".
   const filtrar = async () => {
-    if (!dataIni || !dataFim || dataIni > dataFim) {
+    const { ini, fim } = filtros.getDatasQuery()
+
+    if (!ini || !fim || ini > fim) {
       setErro('Selecione um período válido (início ≤ fim).')
       return
     }
+
+    if (!filtros.estruturaCarregada) {
+      setErro('Aguarde o carregamento da estrutura de equipes.')
+      return
+    }
+
     setLoading(true)
     setErro('')
+
     try {
-      await Promise.all([buscarGeral(), buscarSupervisor(), buscarPrefixo(), buscarDisponiveis()])
+      const base = await carregarDadosBase(ini, fim)
+      montarGeral(base)
+      montarSupervisor(base)
+      montarPrefixo(base)
+      montarDisponiveis(base)
     } catch (e) {
       setErro('Erro ao carregar relatório: ' + e.message)
     } finally {
@@ -210,27 +241,24 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 60px' }}>
 
-        {/* ── Filtro de período ── */}
-        <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', marginBottom: 16 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 12 }}>📅 Período de Análise</p>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">De</label>
-              <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} className="form-input" />
-            </div>
-            <div className="form-group" style={{ marginBottom: 0 }}>
-              <label className="form-label">Até</label>
-              <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)} className="form-input" />
-            </div>
-            <button
-              onClick={filtrar}
-              disabled={loading}
-              className="btn-primary"
-              style={{ background: loading ? '#64748b' : '#1e3a5f', minWidth: 120, marginBottom: 0 }}>
-              {loading ? '⏳ Buscando...' : '🔍 Filtrar'}
-            </button>
-          </div>
-        </div>
+        {/* ── Painel padrão de filtros ── */}
+        <PainelFiltros
+          filtros={filtros}
+          titulo="🔍 Filtros"
+          badge="dashboard indisponibilidade"
+        />
+
+        <button
+          onClick={filtrar}
+          disabled={loading || !filtros.estruturaCarregada}
+          className="btn-primary"
+          style={{
+            background: loading || !filtros.estruturaCarregada ? '#64748b' : '#1e3a5f',
+            width: '100%',
+            marginBottom: 16,
+          }}>
+          {loading ? '⏳ Buscando...' : '🔍 Filtrar'}
+        </button>
 
         {/* ── Erro ── */}
         {erro && (
