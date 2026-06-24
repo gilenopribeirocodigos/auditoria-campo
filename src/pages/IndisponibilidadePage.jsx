@@ -367,12 +367,23 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
       if (!motivoPresente) throw new Error('Motivo "PRESENTE" não encontrado.')
 
+      const motivoIdsSalvar = [...new Set(marcados.map(([, r]) =>
+        r.status === 'presente' ? Number(motivoPresente.id) : Number(r.motivo_id)
+      ).filter(Boolean))]
+
+      const { data: motivosSalvar, error: erroMotivosSalvar } = await supabase
+        .from('motivos_indisponibilidade')
+        .select('id, descricao')
+        .in('id', motivoIdsSalvar)
+      if (erroMotivosSalvar) throw erroMotivosSalvar
+
+      const descricaoPorMotivo = new Map((motivosSalvar || []).map(m => [String(m.id), m.descricao]))
+
       const linhas = marcados.map(([, r]) => {
         const isP = r.status === 'presente'
         const eletRegistro = buscarEletricistaRegistro(r.eletId)
-        const motivoRegistro = isP
-          ? motivoPresente
-          : motivos.find(m => String(m.id) === String(r.motivo_id))
+        const motivoId = isP ? Number(motivoPresente.id) : Number(r.motivo_id)
+        const descricaoMotivo = descricaoPorMotivo.get(String(motivoId)) || null
 
         return {
           eletricista_id:       Number(r.eletId),
@@ -385,8 +396,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           data,
           supervisor_registro:  supervisorCampo || 'Administrador',
           usuario_registro:     usuarioLogado?.login || 'admin',
-          id_indisponibilidade: isP ? motivoPresente.id : Number(r.motivo_id),
-          descricao_motivo_indisponibilidade: motivoRegistro?.descricao || null,
+          id_indisponibilidade: motivoId,
+          descricao_motivo_indisponibilidade: descricaoMotivo,
           observacoes:          r.obs || null,
         }
       })
