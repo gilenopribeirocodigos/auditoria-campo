@@ -282,7 +282,25 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const { data: indispHoje } = await supabase.from('indisponibilidades')
         .select('id, eletricista_id, prefixo, tipo_indisponibilidade, motivo_id, observacao, motivos_indisponibilidade(descricao)')
         .eq('data', data)
-      const registrosIndisp = indispHoje || []
+
+      const indispBase = indispHoje || []
+      const idsIndisp = [...new Set(indispBase.map(r => r.eletricista_id).filter(Boolean))]
+      let eletricistasIndispPorId = new Map()
+      if (idsIndisp.length > 0) {
+        const { data: eletIndisp, error: erroEletIndisp } = await supabase.from('estrutura_equipes')
+          .select('id, colaborador, matricula')
+          .in('id', idsIndisp)
+        if (erroEletIndisp) throw erroEletIndisp
+        eletricistasIndispPorId = new Map((eletIndisp || []).map(e => [String(e.id), e]))
+      }
+      const registrosIndisp = indispBase.map(r => {
+        const elet = eletricistasIndispPorId.get(String(r.eletricista_id))
+        return {
+          ...r,
+          colaborador: elet?.colaborador || null,
+          matricula: elet?.matricula || null,
+        }
+      })
       setIndispRegistradas(registrosIndisp)
 
       // Ausentes disponiveis para aba 3: remove quem ja teve indisponibilidade justificada.
@@ -768,7 +786,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           {[
             { id: 'frequencia',    emoji: '📋', label: 'Frequência de Pessoal' },
             { id: 'remanejamento', emoji: '🔄', label: 'Remanejar Colaborador' },
-            { id: 'indisponivel',  emoji: '⚠️', label: 'Indisponível' },
+            { id: 'indisponivel',  emoji: '⚠️', label: 'Indisponibilidade Prefixo' },
           ].map(aba => (
             <button key={aba.id} onClick={() => { setAbaAtiva(aba.id); setErro(''); setSucesso('') }} style={{
               padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
@@ -1103,13 +1121,15 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({indispRegistradas.length})</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {indispRegistradas.map(r => {
-                    const elet = ausentesHoje.find(e => e.id === r.eletricista_id)
+                    const elet = ausentesHoje.find(e => String(e.id) === String(r.eletricista_id))
+                    const nomeEletricista = r.colaborador || elet?.colaborador || `Eletricista #${r.eletricista_id}`
+                    const matriculaEletricista = r.matricula || elet?.matricula
                     return (
                       <div key={r.id} style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 10, padding: '12px 14px' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
                           <div>
-                            <p style={{ fontSize: 13, fontWeight: 700, color: '#9a3412' }}>{elet?.colaborador || `Eletricista #${r.eletricista_id}`}</p>
-                            <p style={{ fontSize: 11, color: '#64748b' }}>Prefixo: {r.prefixo} · {r.tipo_indisponibilidade?.toUpperCase()} · {r.motivos_indisponibilidade?.descricao || '—'}</p>
+                            <p style={{ fontSize: 13, fontWeight: 700, color: '#9a3412' }}>{nomeEletricista}</p>
+                            <p style={{ fontSize: 11, color: '#64748b' }}>{matriculaEletricista ? `Mat: ${matriculaEletricista} · ` : ''}Prefixo: {r.prefixo} · {r.tipo_indisponibilidade?.toUpperCase()} · {r.motivos_indisponibilidade?.descricao || '—'}</p>
                             {r.observacao && <p style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>💬 {r.observacao}</p>}
                           </div>
                           <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, alignSelf: 'flex-start', background: r.tipo_indisponibilidade === 'total' ? '#fee2e2' : '#fef3c7', color: r.tipo_indisponibilidade === 'total' ? '#dc2626' : '#d97706' }}>
