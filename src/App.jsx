@@ -224,6 +224,16 @@ export default function App() {
       respostas:        auditoria.respostas         || {},
       feedback:         auditoria.feedback          || '',
       observacoes:      auditoria.observacoes       || '',
+      motivoAuditoria:  auditoria.motivo_auditoria  || '',
+      statusMotivoAuditoria: typeof auditoria.status_motivo_auditoria === 'boolean'
+        ? auditoria.status_motivo_auditoria
+        : auditoria.avaliacao_motivo_auditoria === 'CONFORME'
+          ? true
+          : auditoria.avaliacao_motivo_auditoria === 'NÃO CONFORME'
+            ? false
+            : null,
+      observacoesMotivoAuditoria: auditoria.observacoes_motivo_auditoria || '',
+      fotosMotivo:      [],
       nomeEletricista:  auditoria.nome_eletricista  || '',
       nomeEletricista2: auditoria.nome_eletricista2 || '',
       fotos:            [],
@@ -246,7 +256,14 @@ export default function App() {
     }
     if (pautaAtiva) {
       try {
-        await concluirPauta(pautaAtiva.id, auditoria_id)
+        const avaliacaoMotivoPauta =
+          form.statusMotivoAuditoria === true  ? 'CONFORME' :
+          form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
+          null
+        await concluirPauta(pautaAtiva.id, auditoria_id, {
+          motivo_auditoria: form.motivoAuditoria || pautaAtiva.motivo_auditoria || null,
+          avaliacao_motivo_auditoria: avaliacaoMotivoPauta,
+        })
         await criarProximaRecorrencia(pautaAtiva)
         setPautaAtiva(null)
         setPautasHoje(prev => prev.filter(p => p.id !== pautaAtiva.id))
