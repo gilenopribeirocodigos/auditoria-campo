@@ -26,8 +26,21 @@ const modeloVazio = {
   perfil_responsavel: '',
 }
 
+const acaoVazia = {
+  titulo: '',
+  descricao: '',
+  prefixo: '',
+  supervisor_campo: '',
+  eletricista: '',
+}
+
 function normalizar(valor) {
   return (valor || '').toString().trim().toUpperCase()
+}
+
+function unicos(lista) {
+  return [...new Set(lista.map(v => (v || '').toString().trim()).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR'))
 }
 
 function usuarioNome(usuario) {
@@ -120,11 +133,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [modelos, setModelos] = useState([])
   const [execucoes, setExecucoes] = useState([])
   const [subrotinas, setSubrotinas] = useState([])
-  const [diario, setDiario] = useState([])
+  const [sugestoes, setSugestoes] = useState({ prefixos: [], supervisores: [], eletricistas: [] })
   const [selecionadaId, setSelecionadaId] = useState(null)
   const [modeloForm, setModeloForm] = useState(modeloVazio)
-  const [novaSubrotina, setNovaSubrotina] = useState('')
-  const [novoDiario, setNovoDiario] = useState('')
+  const [acaoForm, setAcaoForm] = useState(acaoVazia)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -132,6 +144,18 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
 
   const acessoGeral = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_dashboard')
   const podeConfigurar = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_configurar')
+
+  const atualizarAcao = (campo, valor) => setAcaoForm(form => ({ ...form, [campo]: valor }))
+
+  const vinculosNaoPreenchidos = useMemo(() => {
+    const faltantes = []
+    if (!acaoForm.prefixo.trim()) faltantes.push('prefixo')
+    if (!acaoForm.supervisor_campo.trim()) faltantes.push('supervisor de campo')
+    if (!acaoForm.eletricista.trim()) faltantes.push('eletricista')
+    return faltantes
+  }, [acaoForm.prefixo, acaoForm.supervisor_campo, acaoForm.eletricista])
+
+  const exibirAlertaVinculos = (acaoForm.titulo.trim() || acaoForm.descricao.trim()) && vinculosNaoPreenchidos.length > 0
 
   const selecionada = useMemo(
     () => execucoes.find(r => r.id === selecionadaId) || execucoes[0] || null,
@@ -227,23 +251,43 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     }
   }
 
+
+  const carregarSugestoes = async () => {
+    try {
+      const [{ data: estrutura }, { data: usuarios }] = await Promise.all([
+        supabase.from('estrutura_equipes').select('prefixo, superv_campo, colaborador'),
+        supabase.from('usuarios').select('nome, perfil, status'),
+      ])
+      const supervisoresUsuarios = (usuarios || [])
+        .filter(u => (u.status || 'ATIVO') === 'ATIVO' && ['SUPERV. CAMPO', 'SUPERV. OPERAÇÃO'].includes(normalizar(u.perfil)))
+        .map(u => u.nome)
+
+      setSugestoes({
+        prefixos: unicos((estrutura || []).map(r => r.prefixo)),
+        supervisores: unicos([...(estrutura || []).map(r => r.superv_campo), ...supervisoresUsuarios]),
+        eletricistas: unicos((estrutura || []).map(r => r.colaborador)),
+      })
+    } catch (e) {
+      console.warn('Erro carregando sugestões de ações:', e.message || String(e))
+    }
+  }
+
   const carregarDetalhes = async () => {
     if (!selecionada?.id) {
       setSubrotinas([])
-      setDiario([])
       return
     }
-    const [{ data: subs, error: errSubs }, { data: logs, error: errLogs }] = await Promise.all([
-      supabase.from('rotinas_subrotinas').select('*').eq('rotina_execucao_id', selecionada.id).order('created_at', { ascending: true }),
-      supabase.from('rotinas_diario').select('*').eq('rotina_execucao_id', selecionada.id).order('created_at', { ascending: false }),
-    ])
+    const { data: subs, error: errSubs } = await supabase
+      .from('rotinas_subrotinas')
+      .select('*')
+      .eq('rotina_execucao_id', selecionada.id)
+      .order('created_at', { ascending: false })
     if (errSubs) setErro(errSubs.message)
     else setSubrotinas(subs || [])
-    if (errLogs) setErro(errLogs.message)
-    else setDiario(logs || [])
   }
 
   useEffect(() => { carregar() }, [dataSelecionada])
+  useEffect(() => { carregarSugestoes() }, [])
   useEffect(() => { carregarDetalhes() }, [selecionada?.id])
 
   const flash = texto => {
@@ -317,17 +361,27 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   }
 
   const adicionarSubrotina = async () => {
-    if (!selecionada || !novaSubrotina.trim()) return
+    if (!selecionada) return
+    if (!acaoForm.titulo.trim()) { setErro('Informe o nome da ação realizada.'); return }
+    if (!acaoForm.descricao.trim()) { setErro('Descreva o que foi realizado antes de salvar.'); return }
     setSalvando(true)
     setErro('')
     try {
       const { error } = await supabase.from('rotinas_subrotinas').insert({
         rotina_execucao_id: selecionada.id,
-        titulo: novaSubrotina.trim(),
+        titulo: acaoForm.titulo.trim(),
+        observacao: acaoForm.descricao.trim(),
+        prefixo: acaoForm.prefixo.trim() || null,
+        supervisor_campo: acaoForm.supervisor_campo.trim() || null,
+        eletricista: acaoForm.eletricista.trim() || null,
         responsavel_login: usuarioLogado?.login || null,
       })
       if (error) throw error
-      setNovaSubrotina('')
+      const faltantes = vinculosNaoPreenchidos.length > 0
+        ? ' Campos opcionais não preenchidos: ' + vinculosNaoPreenchidos.join(', ') + '.'
+        : ''
+      setAcaoForm(acaoVazia)
+      flash('✅ Ação realizada registrada.' + faltantes)
       await carregarDetalhes()
     } catch (e) { setErro(e.message || String(e)) }
     finally { setSalvando(false) }
@@ -349,23 +403,6 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     finally { setSalvando(false) }
   }
 
-  const adicionarDiario = async () => {
-    if (!selecionada || !novoDiario.trim()) return
-    setSalvando(true)
-    setErro('')
-    try {
-      const { error } = await supabase.from('rotinas_diario').insert({
-        rotina_execucao_id: selecionada.id,
-        descricao: novoDiario.trim(),
-        usuario_registro: usuarioLogado?.login || null,
-      })
-      if (error) throw error
-      setNovoDiario('')
-      await carregarDetalhes()
-    } catch (e) { setErro(e.message || String(e)) }
-    finally { setSalvando(false) }
-  }
-
   return (
     <div style={{ minHeight: '100vh', background: '#eef3f8' }}>
       <div style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)', color: '#fff', padding: '22px 20px' }}>
@@ -377,7 +414,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>
               <h1 style={{ fontSize: 22, fontWeight: 900, margin: 0 }}>🗓️ Rotinas Administrativas</h1>
-              <p style={{ fontSize: 12, opacity: 0.82, margin: '4px 0 0' }}>Agenda diária, subrotinas e diário de bordo da equipe administrativa</p>
+              <p style={{ fontSize: 12, opacity: 0.82, margin: '4px 0 0' }}>Agenda diária, ações realizadas e acompanhamento da equipe administrativa</p>
             </div>
             <div style={{ fontSize: 12, fontWeight: 800, background: 'rgba(255,255,255,0.15)', borderRadius: 12, padding: '10px 14px' }}>
               {usuarioNome(usuarioLogado)} · {fmtData(dataSelecionada)}
@@ -472,17 +509,64 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                   </div>
 
                   <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginTop: 12 }}>
-                    <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 900, color: '#0f172a' }}>Subrotinas</h4>
-                    <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                      <input value={novaSubrotina} onChange={e => setNovaSubrotina(e.target.value)} placeholder="Ex: falei com supervisor de campo..." style={inputStyle} />
-                      <Botao onClick={adicionarSubrotina} disabled={salvando || !novaSubrotina.trim()}>Adicionar</Botao>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 900, color: '#0f172a' }}>Ações Realizadas</h4>
+                    <div style={{ display: 'grid', gap: 10, marginBottom: 12 }}>
+                      <Campo label="Ação realizada *">
+                        <input
+                          value={acaoForm.titulo}
+                          onChange={e => atualizarAcao('titulo', e.target.value)}
+                          placeholder="Ex: fiz a primeira cobrança"
+                          style={inputStyle}
+                        />
+                      </Campo>
+                      <Campo label="Registro da ação *">
+                        <textarea
+                          value={acaoForm.descricao}
+                          onChange={e => atualizarAcao('descricao', e.target.value)}
+                          placeholder="Descreva contato, cobrança feita, evidência ou observação..."
+                          style={{ ...inputStyle, minHeight: 84, resize: 'vertical' }}
+                        />
+                      </Campo>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
+                        <Campo label="Prefixo (opcional)">
+                          <input list="rotinas-prefixos" value={acaoForm.prefixo} onChange={e => atualizarAcao('prefixo', e.target.value)} placeholder="Digite o prefixo..." style={inputStyle} />
+                        </Campo>
+                        <Campo label="Supervisor de campo (opcional)">
+                          <input list="rotinas-supervisores" value={acaoForm.supervisor_campo} onChange={e => atualizarAcao('supervisor_campo', e.target.value)} placeholder="Digite o supervisor..." style={inputStyle} />
+                        </Campo>
+                        <Campo label="Eletricista (opcional)">
+                          <input list="rotinas-eletricistas" value={acaoForm.eletricista} onChange={e => atualizarAcao('eletricista', e.target.value)} placeholder="Digite o eletricista..." style={inputStyle} />
+                        </Campo>
+                      </div>
+                      <datalist id="rotinas-prefixos">{sugestoes.prefixos.map(v => <option key={v} value={v} />)}</datalist>
+                      <datalist id="rotinas-supervisores">{sugestoes.supervisores.map(v => <option key={v} value={v} />)}</datalist>
+                      <datalist id="rotinas-eletricistas">{sugestoes.eletricistas.map(v => <option key={v} value={v} />)}</datalist>
+                      {exibirAlertaVinculos && (
+                        <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800 }}>
+                          Atenção: campos opcionais sem preenchimento: {vinculosNaoPreenchidos.join(', ')}.
+                        </div>
+                      )}
+                      <Botao
+                        onClick={adicionarSubrotina}
+                        disabled={salvando || !acaoForm.titulo.trim() || !acaoForm.descricao.trim()}
+                        style={{ background: '#1e3a5f', color: '#fff', width: '100%' }}
+                      >Salvar ação realizada</Botao>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {subrotinas.length === 0 && <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>Nenhuma subrotina criada.</p>}
+                      {subrotinas.length === 0 && <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>Nenhuma ação registrada.</p>}
                       {subrotinas.map(sub => (
-                        <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '9px 10px' }}>
-                          <span style={{ fontSize: 13, color: sub.status === 'CONCLUIDA' ? '#15803d' : '#0f172a', fontWeight: 800 }}>{sub.status === 'CONCLUIDA' ? '✓ ' : ''}{sub.titulo}</span>
-                          <button onClick={() => concluirSubrotina(sub)} style={{ border: 'none', background: sub.status === 'CONCLUIDA' ? '#e2e8f0' : '#dcfce7', color: sub.status === 'CONCLUIDA' ? '#475569' : '#15803d', borderRadius: 8, padding: '6px 9px', fontSize: 12, fontWeight: 900, cursor: 'pointer' }}>
+                        <div key={sub.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'flex-start', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 11px' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <span style={{ fontSize: 13, color: sub.status === 'CONCLUIDA' ? '#15803d' : '#0f172a', fontWeight: 900 }}>{sub.status === 'CONCLUIDA' ? '✓ ' : ''}{sub.titulo}</span>
+                            {sub.observacao && <p style={{ margin: '5px 0 0', color: '#334155', fontSize: 12, lineHeight: 1.4 }}>{sub.observacao}</p>}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 7, color: '#64748b', fontSize: 11 }}>
+                              {sub.prefixo && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 7px', fontWeight: 800 }}>Prefixo: {sub.prefixo}</span>}
+                              {sub.supervisor_campo && <span style={{ background: '#ede9fe', color: '#5b21b6', borderRadius: 999, padding: '3px 7px', fontWeight: 800 }}>Sup.: {sub.supervisor_campo}</span>}
+                              {sub.eletricista && <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '3px 7px', fontWeight: 800 }}>Eletricista: {sub.eletricista}</span>}
+                              <span>{sub.responsavel_login || 'usuário'} · {new Date(sub.created_at).toLocaleString('pt-BR')}</span>
+                            </div>
+                          </div>
+                          <button onClick={() => concluirSubrotina(sub)} style={{ border: 'none', background: sub.status === 'CONCLUIDA' ? '#e2e8f0' : '#dcfce7', color: sub.status === 'CONCLUIDA' ? '#475569' : '#15803d', borderRadius: 8, padding: '6px 9px', fontSize: 12, fontWeight: 900, cursor: 'pointer', flexShrink: 0 }}>
                             {sub.status === 'CONCLUIDA' ? 'Reabrir' : 'Fechar'}
                           </button>
                         </div>
@@ -490,20 +574,6 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     </div>
                   </div>
 
-                  <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, marginTop: 14 }}>
-                    <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 900, color: '#0f172a' }}>Diário de Bordo</h4>
-                    <textarea value={novoDiario} onChange={e => setNovoDiario(e.target.value)} placeholder="Registre contatos, cobrança feita, evidência ou observação..." style={{ ...inputStyle, minHeight: 82, resize: 'vertical' }} />
-                    <Botao onClick={adicionarDiario} disabled={salvando || !novoDiario.trim()} style={{ marginTop: 8, width: '100%', background: '#1e3a5f', color: '#fff' }}>Registrar no diário</Botao>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10, maxHeight: 240, overflow: 'auto' }}>
-                      {diario.length === 0 && <p style={{ margin: 0, color: '#94a3b8', fontSize: 12 }}>Nenhum registro no diário.</p>}
-                      {diario.map(log => (
-                        <div key={log.id} style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 10 }}>
-                          <p style={{ margin: 0, color: '#0f172a', fontSize: 13, lineHeight: 1.45 }}>{log.descricao}</p>
-                          <p style={{ margin: '6px 0 0', color: '#94a3b8', fontSize: 11 }}>{log.usuario_registro || 'usuário'} · {new Date(log.created_at).toLocaleString('pt-BR')}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
                 </>
               )}
             </aside>
