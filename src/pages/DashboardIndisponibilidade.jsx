@@ -88,7 +88,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
         .lte('data', fim),
       supabase
         .from('indisponibilidades')
-        .select('id, eletricista_id, prefixo, data, motivo_id, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
+        .select('id, eletricista_id, prefixo, data, motivo_id, colaborador, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
         .gte('data', ini)
         .lte('data', fim),
     ])
@@ -126,7 +126,13 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
       }))
       .sort((a, b) => b.qtde - a.qtde)
 
-    setDadosGeral({ total, totalElet: estrutura.length, dados })
+    setDadosGeral({
+      total,
+      totalElet: estrutura.length,
+      presentes: presentes.length,
+      ausentes: indisponiveis.length,
+      dados,
+    })
   }
 
   const montarSupervisor = ({ estrutura, presentes, indisponiveis }) => {
@@ -158,8 +164,11 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
       grupo.presentes = presentes.filter(p => pertenceAoGrupo(p, grupo)).length
       grupo.ausentes = indisponiveis.filter(i => pertenceAoGrupo(i, grupo)).length
       grupo.totalRegistros = grupo.presentes + grupo.ausentes
-      grupo.pctPresenca = grupo.totalRegistros > 0
-        ? Math.round(grupo.presentes / grupo.totalRegistros * 1000) / 10
+      grupo.pctPresenca = grupo.totalElet > 0
+        ? Math.round(grupo.presentes / grupo.totalElet * 1000) / 10
+        : 0
+      grupo.pctAusencia = grupo.totalElet > 0
+        ? Math.round(grupo.ausentes / grupo.totalElet * 1000) / 10
         : 0
     })
 
@@ -170,12 +179,18 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
     )
   }
 
-  const montarPrefixo = ({ indisponiveis }) => {
+  const montarPrefixo = ({ estrutura, indisponiveis }) => {
+    const eletricistasPorId = new Map(
+      estrutura.map(e => [e.id, e]).filter(([id]) => id !== null && id !== undefined)
+    )
     const mapa = {}
     indisponiveis.forEach(i => {
       const chave = String(i.prefixo || '') + '__' + String(i.data || '')
-      if (!mapa[chave]) mapa[chave] = { prefixo: i.prefixo || '—', data: i.data, motivos: [] }
-      if (mapa[chave].motivos.length < 2) mapa[chave].motivos.push(motivoDescricao(i, '—'))
+      if (!mapa[chave]) mapa[chave] = { prefixo: i.prefixo || '—', data: i.data, registros: [] }
+      if (mapa[chave].registros.length < 2) {
+        const eletricista = i.colaborador || eletricistasPorId.get(i.eletricista_id)?.colaborador || '—'
+        mapa[chave].registros.push({ eletricista, motivo: motivoDescricao(i, '—') })
+      }
     })
 
     setDadosPrefixo(
@@ -324,11 +339,12 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
             ══════════════════════════════ */}
             {abaAtiva === 'geral' && dadosGeral && (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10, marginBottom: 16 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 16 }}>
                   {[
-                    { label: 'Total Eletricistas', val: dadosGeral.totalElet,                              cor: '#2563eb' },
-                    { label: 'Total Registros',    val: dadosGeral.total,                                  cor: '#7c3aed' },
-                    { label: 'Presentes',          val: dadosGeral.dados.find(d => d.motivo === 'PRESENTE')?.qtde || 0, cor: '#16a34a' },
+                    { label: 'Total Eletricistas', val: dadosGeral.totalElet,  cor: '#2563eb' },
+                    { label: 'Total Registros',    val: dadosGeral.total,      cor: '#7c3aed' },
+                    { label: 'Presentes',          val: dadosGeral.presentes,  cor: '#16a34a' },
+                    { label: 'Ausentes',           val: dadosGeral.ausentes,   cor: '#dc2626' },
                   ].map(({ label, val, cor }) => (
                     <div key={label} style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '16px', textAlign: 'center' }}>
                       <p style={{ fontSize: 26, fontWeight: 900, color: cor }}>{val}</p>
@@ -358,12 +374,21 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                         <p style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{s.supervisor}</p>
                         <p style={{ fontSize: 11, color: '#64748b' }}>{s.totalElet} eletricistas · {s.totalRegistros} registros</p>
                       </div>
-                      <div style={{
-                        background: s.pctPresenca >= 90 ? '#dcfce7' : s.pctPresenca >= 70 ? '#fef3c7' : '#fee2e2',
-                        color:      s.pctPresenca >= 90 ? '#16a34a' : s.pctPresenca >= 70 ? '#d97706' : '#dc2626',
-                        borderRadius: 10, padding: '6px 12px', fontWeight: 800, fontSize: 16,
-                      }}>
-                        {s.pctPresenca}% presença
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <div style={{
+                          background: s.pctPresenca >= 90 ? '#dcfce7' : s.pctPresenca >= 70 ? '#fef3c7' : '#fee2e2',
+                          color:      s.pctPresenca >= 90 ? '#16a34a' : s.pctPresenca >= 70 ? '#d97706' : '#dc2626',
+                          borderRadius: 10, padding: '6px 12px', fontWeight: 800, fontSize: 14,
+                        }}>
+                          {s.pctPresenca}% PRESENÇA
+                        </div>
+                        <div style={{
+                          background: s.pctAusencia === 0 ? '#dcfce7' : s.pctAusencia <= 10 ? '#fef3c7' : '#fee2e2',
+                          color:      s.pctAusencia === 0 ? '#16a34a' : s.pctAusencia <= 10 ? '#d97706' : '#dc2626',
+                          borderRadius: 10, padding: '6px 12px', fontWeight: 800, fontSize: 14,
+                        }}>
+                          {s.pctAusencia}% AUSÊNCIA
+                        </div>
                       </div>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -377,9 +402,10 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                         </div>
                       ))}
                     </div>
-                    {/* Barra de presença */}
-                    <div style={{ marginTop: 10, background: '#f1f5f9', borderRadius: 6, height: 8, overflow: 'hidden' }}>
-                      <div style={{ width: `${s.pctPresenca}%`, height: 8, background: s.pctPresenca >= 90 ? '#16a34a' : s.pctPresenca >= 70 ? '#d97706' : '#dc2626', borderRadius: 6 }} />
+                    {/* Barra de presença/ausência sobre o total de eletricistas */}
+                    <div style={{ marginTop: 10, background: '#f1f5f9', borderRadius: 6, height: 8, overflow: 'hidden', display: 'flex' }}>
+                      <div style={{ width: `${s.pctPresenca}%`, height: 8, background: '#16a34a' }} />
+                      <div style={{ width: `${s.pctAusencia}%`, height: 8, background: '#dc2626' }} />
                     </div>
                   </div>
                 ))}
@@ -405,7 +431,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Prefixo', 'Data', 'Motivo 1', 'Motivo 2'].map(h => (
+                          {['Prefixo', 'Data', 'Eletricista 1', 'Motivo 1', 'Eletricista 2', 'Motivo 2'].map(h => (
                             <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
                           ))}
                         </tr>
@@ -415,15 +441,19 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                           <tr key={i} style={{ borderBottom: '1px solid #f1f5f9' }}>
                             <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b', fontFamily: 'monospace' }}>{row.prefixo}</td>
                             <td style={{ padding: '10px 14px', color: '#64748b' }}>{new Date(row.data + 'T12:00:00').toLocaleDateString('pt-BR')}</td>
+                            <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>{row.registros[0]?.eletricista || '—'}</td>
                             <td style={{ padding: '10px 14px' }}>
-                              <span style={{ background: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                                {row.motivos[0] || '—'}
-                              </span>
+                              {row.registros[0]?.motivo ? (
+                                <span style={{ background: '#fee2e2', color: '#dc2626', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                                  {row.registros[0].motivo}
+                                </span>
+                              ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                             </td>
+                            <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>{row.registros[1]?.eletricista || '—'}</td>
                             <td style={{ padding: '10px 14px' }}>
-                              {row.motivos[1] ? (
+                              {row.registros[1]?.motivo ? (
                                 <span style={{ background: '#fef3c7', color: '#92400e', padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                                  {row.motivos[1]}
+                                  {row.registros[1].motivo}
                                 </span>
                               ) : <span style={{ color: '#cbd5e1' }}>—</span>}
                             </td>
