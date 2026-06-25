@@ -15,14 +15,14 @@ alter table dev.pautas
 update dev.pautas p
 set avaliacao_motivo_auditoria = a.avaliacao_motivo_auditoria
 from dev.auditorias a
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and p.avaliacao_motivo_auditoria is null
   and a.avaliacao_motivo_auditoria is not null;
 
 update dev.auditorias a
 set motivo_auditoria = p.motivo_auditoria
 from dev.pautas p
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and a.motivo_auditoria is null
   and p.motivo_auditoria is not null;
 
@@ -40,13 +40,13 @@ alter table public.pautas
 update public.pautas p
 set avaliacao_motivo_auditoria = a.avaliacao_motivo_auditoria
 from public.auditorias a
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and p.avaliacao_motivo_auditoria is null
   and a.avaliacao_motivo_auditoria is not null;
 
 update public.auditorias a
 set motivo_auditoria = p.motivo_auditoria
 from public.pautas p
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and a.motivo_auditoria is null
   and p.motivo_auditoria is not null;
