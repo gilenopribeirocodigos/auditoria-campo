@@ -45,7 +45,7 @@ function BarraMotivo({ motivo, qtde, percentual, total }) {
 }
 
 export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) {
-  const filtros = useFiltrosOperacionais({ usuarioLogado })
+  const filtros = useFiltrosOperacionais({ usuarioLogado, periodoPadrao: 'hoje' })
   const ultimaBuscaRef = useRef(0)
   const [abaAtiva,  setAbaAtiva]  = useState('geral')
   const [loading,   setLoading]   = useState(false)
@@ -230,7 +230,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
 
   const filtroAplicacaoKey = [
     filtros.estruturaCarregada ? '1' : '0',
-    filtros.modoPeriodo ? 'periodo' : 'mes',
+    filtros.tipoPeriodo || (filtros.modoPeriodo ? 'periodo' : 'mes'),
     filtros.mesAno || '',
     filtros.dataIni || '',
     filtros.dataFim || '',
