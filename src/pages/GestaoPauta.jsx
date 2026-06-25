@@ -511,6 +511,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           tipo_auditoria:    a.tipo_auditoria || '',
           reaberta:          a.reaberta ? 'SIM' : 'NAO',
           motivo_auditoria:  p.motivo_auditoria || '',
+          avaliacao_motivo_auditoria: a.avaliacao_motivo_auditoria || p.avaliacao_motivo_auditoria || nc.avaliacao_motivo_auditoria || '',
           item_id:           nc.item_id || '',
           item_nao_conforme: nc.item_texto || '',
           status_tratamento: nc.status_tratamento || 'PENDENTE',
