@@ -477,13 +477,15 @@ export default function App() {
 
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          <button onClick={iniciarAuditoria} disabled={loadingPauta} style={{
-            background: loadingPauta ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
-            padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>
-            {loadingPauta ? '⏳ Verificando pautas...' : '📋 Iniciar Auditoria'}
-          </button>
+          {temPermissao(usuario, 'iniciar_auditoria') && (
+            <button onClick={iniciarAuditoria} disabled={loadingPauta} style={{
+              background: loadingPauta ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
+              padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>
+              {loadingPauta ? '⏳ Verificando pautas...' : '📋 Iniciar Auditoria'}
+            </button>
+          )}
 
           <button onClick={() => setTela('historico')} style={{
             background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
