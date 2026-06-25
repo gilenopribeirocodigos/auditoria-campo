@@ -122,6 +122,69 @@ function Campo({ label, children }) {
   )
 }
 
+function BuscaLista({ label, value, onChange, options, placeholder }) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca] = useState(value || '')
+
+  const filtradas = useMemo(() => {
+    const termo = normalizar(busca)
+    const lista = termo ? options.filter(item => normalizar(item).includes(termo)) : options
+    return lista.slice(0, 80)
+  }, [busca, options])
+
+  const abrir = () => {
+    setBusca(value || '')
+    setAberto(true)
+  }
+
+  const selecionar = item => {
+    onChange(item)
+    setBusca(item)
+    setAberto(false)
+  }
+
+  return (
+    <div style={{ position: 'relative', minWidth: 0 }} onBlur={() => setTimeout(() => setAberto(false), 140)}>
+      <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <button
+        type="button"
+        onClick={abrir}
+        style={{ ...inputStyle, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, textAlign: 'left', cursor: 'pointer', marginTop: 6 }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: value ? '#0f172a' : '#64748b' }}>{value || placeholder}</span>
+        <span style={{ color: '#94a3b8', fontSize: 12 }}>▼</span>
+      </button>
+      {aberto && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, minWidth: 240, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 14px 30px rgba(15,23,42,0.16)', zIndex: 30, overflow: 'hidden' }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>
+            <input
+              autoFocus
+              value={busca}
+              onChange={e => { setBusca(e.target.value); onChange(e.target.value) }}
+              onKeyDown={e => { if (e.key === 'Escape') setAberto(false) }}
+              placeholder="Buscar..."
+              style={{ ...inputStyle, height: 34, padding: '8px 10px', fontSize: 13 }}
+            />
+          </div>
+          <div style={{ maxHeight: 190, overflowY: 'auto' }}>
+            {filtradas.length === 0 ? (
+              <div style={{ padding: 12, color: '#dc2626', fontSize: 12, fontWeight: 800 }}>Nenhum resultado encontrado.</div>
+            ) : filtradas.map(item => (
+              <button
+                key={item}
+                type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => selecionar(item)}
+                style={{ width: '100%', border: 'none', borderBottom: '1px solid #f1f5f9', background: item === value ? '#eff6ff' : '#fff', color: '#0f172a', padding: '10px 12px', textAlign: 'left', cursor: 'pointer', fontSize: 13, fontWeight: item === value ? 900 : 700 }}
+              >{item}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const inputStyle = {
   width: '100%', border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
   fontSize: 14, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box',
@@ -474,7 +537,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           {rotina.prioridade && rotina.prioridade !== 'NORMAL' && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 900 }}>Prioridade {rotina.prioridade}</span>}
                         </div>
                         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: '#0f172a' }}>{rotina.titulo_snapshot}</h2>
-                        <p style={{ margin: '4px 0 0', fontSize: 12, color: '#64748b' }}>
+                        {rotina.descricao_snapshot && (
+                          <p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.35, color: '#475569' }}>{rotina.descricao_snapshot}</p>
+                        )}
+                        <p style={{ margin: '6px 0 0', fontSize: 12, color: '#64748b' }}>
                           {rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral'}
                         </p>
                       </div>
@@ -527,20 +593,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           style={{ ...inputStyle, minHeight: 84, resize: 'vertical' }}
                         />
                       </Campo>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8 }}>
-                        <Campo label="Prefixo (opcional)">
-                          <input list="rotinas-prefixos" value={acaoForm.prefixo} onChange={e => atualizarAcao('prefixo', e.target.value)} placeholder="Digite o prefixo..." style={inputStyle} />
-                        </Campo>
-                        <Campo label="Supervisor de campo (opcional)">
-                          <input list="rotinas-supervisores" value={acaoForm.supervisor_campo} onChange={e => atualizarAcao('supervisor_campo', e.target.value)} placeholder="Digite o supervisor..." style={inputStyle} />
-                        </Campo>
-                        <Campo label="Eletricista (opcional)">
-                          <input list="rotinas-eletricistas" value={acaoForm.eletricista} onChange={e => atualizarAcao('eletricista', e.target.value)} placeholder="Digite o eletricista..." style={inputStyle} />
-                        </Campo>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8, alignItems: 'start' }}>
+                        <BuscaLista label="Prefixo (opcional)" value={acaoForm.prefixo} onChange={valor => atualizarAcao('prefixo', valor)} options={sugestoes.prefixos} placeholder="Todos" />
+                        <BuscaLista label="Supervisor de campo (opcional)" value={acaoForm.supervisor_campo} onChange={valor => atualizarAcao('supervisor_campo', valor)} options={sugestoes.supervisores} placeholder="Todos" />
+                        <BuscaLista label="Eletricista (opcional)" value={acaoForm.eletricista} onChange={valor => atualizarAcao('eletricista', valor)} options={sugestoes.eletricistas} placeholder="Todos" />
                       </div>
-                      <datalist id="rotinas-prefixos">{sugestoes.prefixos.map(v => <option key={v} value={v} />)}</datalist>
-                      <datalist id="rotinas-supervisores">{sugestoes.supervisores.map(v => <option key={v} value={v} />)}</datalist>
-                      <datalist id="rotinas-eletricistas">{sugestoes.eletricistas.map(v => <option key={v} value={v} />)}</datalist>
                       {exibirAlertaVinculos && (
                         <div style={{ background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800 }}>
                           Atenção: campos opcionais sem preenchimento: {vinculosNaoPreenchidos.join(', ')}.
@@ -605,7 +662,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                   <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1 }}>
                     <div>
                       <div style={{ fontWeight: 900, color: '#0f172a' }}>{fmtHora(m.horario_previsto)} · {m.titulo}</div>
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'}</div>
+                      {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'}</div>
                     </div>
                     {podeConfigurar && <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>}
                   </div>
