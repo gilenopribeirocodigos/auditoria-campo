@@ -7,7 +7,7 @@ alter table dev.auditorias
   add column if not exists status_motivo_auditoria boolean,
   add column if not exists avaliacao_motivo_auditoria text,
   add column if not exists observacoes_motivo_auditoria text,
-  add column if not exists fotos_motivo_urls text[];
+  add column if not exists fotos_motivo_urls jsonb;
 
 alter table dev.pautas
   add column if not exists avaliacao_motivo_auditoria text;
@@ -32,7 +32,7 @@ alter table public.auditorias
   add column if not exists status_motivo_auditoria boolean,
   add column if not exists avaliacao_motivo_auditoria text,
   add column if not exists observacoes_motivo_auditoria text,
-  add column if not exists fotos_motivo_urls text[];
+  add column if not exists fotos_motivo_urls jsonb;
 
 alter table public.pautas
   add column if not exists avaliacao_motivo_auditoria text;
