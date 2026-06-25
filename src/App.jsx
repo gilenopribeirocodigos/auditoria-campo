@@ -8,20 +8,24 @@ import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
 import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/registros_offline.js'
 
-import Login                from './pages/Login.jsx'
-import GestaoUsuarios       from './pages/GestaoUsuarios.jsx'
-import ImportarEquipes      from './pages/ImportarEquipes.jsx'
-import GestaoPauta          from './pages/GestaoPauta.jsx'
-import HistoricoAuditorias  from './pages/HistoricoAuditorias.jsx'
-import Metas                from './pages/Metas.jsx'
-import FeedbacksPDF         from './pages/FeedbacksPDF.jsx'
-import RelatorioEquipe      from './pages/RelatorioEquipe.jsx'
-import Dashboard            from './pages/Dashboard.jsx'
-import MapaFiscais          from './pages/MapaFiscais.jsx'
-import RegistrosApp           from './RegistrosApp.jsx'                        // ← NOVO
-import RegistrosOperacionais  from './pages/RegistrosOperacionais.jsx'         // ← NOVO
-import RelatorioEvidencias    from './pages/RelatorioEvidencias.jsx'           // ← NOVO
-import PaginaAssinar          from './pages/PaginaAssinar.jsx'                // ← NOVO
+import Login                    from './pages/Login.jsx'
+import GestaoUsuarios           from './pages/GestaoUsuarios.jsx'
+import ImportarEquipes          from './pages/ImportarEquipes.jsx'
+import GestaoPauta              from './pages/GestaoPauta.jsx'
+import HistoricoAuditorias      from './pages/HistoricoAuditorias.jsx'
+import Metas                    from './pages/Metas.jsx'
+import FeedbacksPDF             from './pages/FeedbacksPDF.jsx'
+import RelatorioEquipe          from './pages/RelatorioEquipe.jsx'
+import Dashboard                from './pages/Dashboard.jsx'
+import MapaFiscais              from './pages/MapaFiscais.jsx'
+import RegistrosApp             from './RegistrosApp.jsx'
+import RegistrosOperacionais    from './pages/RegistrosOperacionais.jsx'
+import RelatorioEvidencias      from './pages/RelatorioEvidencias.jsx'
+import PaginaAssinar            from './pages/PaginaAssinar.jsx'
+// ── NOVO: Módulo de Indisponibilidade ────────────────────────────────────────
+import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
+import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
+
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
 import S3Checklist     from './steps/S3Checklist.jsx'
@@ -31,7 +35,6 @@ import S6Resultado     from './steps/S6Resultado.jsx'
 
 const STEPS = ['Serviço', 'Identificação', 'Checklist', 'Evidências', 'Assinatura', 'Resultado']
 
-// Versão atual do app (vem do package.json via Vite)
 const VERSAO = getVersaoApp()
 
 export default function App() {
@@ -46,18 +49,13 @@ export default function App() {
   const [auditoriaEditando,   setAuditoriaEditando]   = useState(null)
   const [fotosAntigas,        setFotosAntigas]        = useState([])
   const [msgSessao,           setMsgSessao]           = useState('')
+  const [modalAtualizacao,    setModalAtualizacao]    = useState(false)
+  const [online,              setOnline]              = useState(navigator.onLine)
+  const [pendentesOffline,    setPendentesOffline]    = useState(0)
+  const [sincronizando,       setSincronizando]       = useState(false)
+  const [msgSync,             setMsgSync]             = useState('')
+  const [pendentesReg,        setPendentesReg]        = useState(0)
 
-  // ── Modal bloqueante de atualização obrigatória ───────────────────────────
-  const [modalAtualizacao, setModalAtualizacao] = useState(false)
-
-  // Offline
-  const [online,           setOnline]           = useState(navigator.onLine)
-  const [pendentesOffline, setPendentesOffline] = useState(0)
-  const [sincronizando,    setSincronizando]    = useState(false)
-  const [msgSync,          setMsgSync]          = useState('')
-  const [pendentesReg,     setPendentesReg]     = useState(0)
-
-  // PWA — detecta nova versão disponível
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
 
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
@@ -70,23 +68,19 @@ export default function App() {
     setUsuario(null)
   }
 
-  // ── PWA: aplica update APENAS quando o usuário estiver na home ──────────────
   useEffect(() => {
     if (needRefresh && tela === 'home' && !auditoriaEditando) {
       setTimeout(() => { updateServiceWorker(true) }, 1000)
     }
   }, [needRefresh, tela])
 
-  // ── Verificação de sessão ───────────────────────────────────────────────────
   useEffect(() => {
     if (!usuario) return
-
     const onAtividade = () => registrarAtividade()
     window.addEventListener('click',      onAtividade)
     window.addEventListener('keydown',    onAtividade)
     window.addEventListener('touchstart', onAtividade)
     window.addEventListener('scroll',     onAtividade)
-
     const intervalo = setInterval(async () => {
       const { valida, motivo } = await verificarSessao()
       if (!valida) {
@@ -96,16 +90,12 @@ export default function App() {
           setModalAtualizacao(true)
         } else if (motivo === 'timeout') {
           setMsgSessao('⏰ Sessão expirada por inatividade.')
-          setTimeout(() => {
-            setMsgSessao('')
-            setUsuario(null)
-          }, 2000)
+          setTimeout(() => { setMsgSessao(''); setUsuario(null) }, 2000)
         } else {
           setUsuario(null)
         }
       }
-    }, 25 * 60 * 1000)  //#PARA AJUSTAR O TEMPO DE ATUALIZAÇÃO !
-
+    }, 25 * 60 * 1000)
     return () => {
       clearInterval(intervalo)
       window.removeEventListener('click',      onAtividade)
@@ -115,7 +105,6 @@ export default function App() {
     }
   }, [usuario, tela])
 
-  // ── Sincroniza pendentes ao carregar ────────────────────────────────────────
   useEffect(() => {
     const syncInicial = async () => {
       if (navigator.onLine) {
@@ -133,15 +122,12 @@ export default function App() {
             if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
             setPendentesOffline(0)
             setPendentesReg(0)
-            const okTotal = okAud + okReg
-            setMsgSync(`✅ ${okTotal} item(ns) sincronizado(s) com sucesso!`)
+            setMsgSync(`✅ ${okAud + okReg} item(ns) sincronizado(s) com sucesso!`)
             setTimeout(() => setMsgSync(''), 4000)
           } catch (e) {
             setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
             setTimeout(() => setMsgSync(''), 4000)
-          } finally {
-            setSincronizando(false)
-          }
+          } finally { setSincronizando(false) }
         }
       } else {
         const qtdAud = await contarPendentes()
@@ -153,7 +139,6 @@ export default function App() {
     syncInicial()
   }, [])
 
-  // ── Detecta online/offline ───────────────────────────────────────────────────
   useEffect(() => {
     const handleOnline = async () => {
       setOnline(true)
@@ -174,13 +159,10 @@ export default function App() {
         } catch (e) {
           setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
           setTimeout(() => setMsgSync(''), 4000)
-        } finally {
-          setSincronizando(false)
-        }
+        } finally { setSincronizando(false) }
       }
     }
     const handleOffline = () => setOnline(false)
-
     window.addEventListener('online',  handleOnline)
     window.addEventListener('offline', handleOffline)
     return () => {
@@ -189,7 +171,6 @@ export default function App() {
     }
   }, [])
 
-  // ── Inicia rastreio ao logar ─────────────────────────────────────────────────
   useEffect(() => {
     if (usuario) iniciarRastreio(usuario)
     return () => { if (!usuario) pararRastreio() }
@@ -217,11 +198,7 @@ export default function App() {
     finally { setLoadingPauta(false) }
     setAuditoriaEditando(null)
     setFotosAntigas([])
-    setForm({
-      ...FORM_INICIAL(),
-      fiscal:    usuario.nome      || '',
-      matricula: usuario.matricula || '',
-    })
+    setForm({ ...FORM_INICIAL(), fiscal: usuario.nome || '', matricula: usuario.matricula || '' })
     setStep(0)
     setTela('auditoria')
   }
@@ -291,52 +268,49 @@ export default function App() {
           boxShadow: '0 20px 60px rgba(0,0,0,0.4)',
         }}>
           <div style={{ fontSize: 56, marginBottom: 16 }}>🔄</div>
-          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 10 }}>
-            Sistema Atualizado!
-          </h2>
+          <h2 style={{ fontSize: 20, fontWeight: 800, color: '#1e293b', marginBottom: 10 }}>Sistema Atualizado!</h2>
           <p style={{ fontSize: 14, color: '#64748b', lineHeight: 1.6, marginBottom: 8 }}>
             Uma nova versão do sistema foi disponibilizada.
           </p>
           <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.5, marginBottom: 28 }}>
-            Por segurança, sua sessão foi encerrada.<br />
-            Faça login novamente para continuar.
+            Por segurança, sua sessão foi encerrada.<br />Faça login novamente para continuar.
           </p>
           <button
             onClick={() => { setModalAtualizacao(false); window.location.reload() }}
             style={{
               width: '100%', padding: '14px', borderRadius: 12, border: 'none',
-              background: '#2563eb', color: '#fff', fontSize: 16,
-              fontWeight: 700, cursor: 'pointer',
-            }}
-          >
+              background: '#2563eb', color: '#fff', fontSize: 16, fontWeight: 700, cursor: 'pointer',
+            }}>
             🔐 Entrar novamente
           </button>
-          <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 16 }}>
-            VérticeGP · v{VERSAO}
-          </p>
+          <p style={{ fontSize: 11, color: '#cbd5e1', marginTop: 16 }}>VérticeGP · v{VERSAO}</p>
         </div>
       </div>
     )
   }
 
-  // ── Rota pública: /assinar/:token (sem login) ────────────────────────────────
+  // ── Rota pública: /assinar/:token ────────────────────────────────────────────
   const pathToken = window.location.pathname.match(/^\/assinar\/([0-9a-f-]+)$/i)?.[1]
   if (pathToken) return <PaginaAssinar tokenUUID={pathToken} />
 
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
-  if (tela === 'gestao')               return <GestaoUsuarios        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar')             return <ImportarEquipes       onVoltar={() => setTela('home')} />
-  if (tela === 'pauta')                return <GestaoPauta           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'historico')            return <HistoricoAuditorias   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'metas')                return <Metas                 usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'feedbacks')            return <FeedbacksPDF          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'relat-equipe')         return <RelatorioEquipe       usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'dashboard')            return <Dashboard             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'mapa-fiscais')         return <MapaFiscais           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  // ── NOVO: Registros Operacionais ─────────────────────────────────────────────
-  if (tela === 'registros-historico')  return <RegistrosOperacionais usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
-  if (tela === 'relatorio-evidencias') return <RelatorioEvidencias   usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
-  if (tela === 'registros-novo')       return <RegistrosApp          usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
+
+  // ── Rotas das telas ──────────────────────────────────────────────────────────
+  if (tela === 'gestao')               return <GestaoUsuarios           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'importar')             return <ImportarEquipes          onVoltar={() => setTela('home')} />
+  if (tela === 'pauta')                return <GestaoPauta              usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'historico')            return <HistoricoAuditorias      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'metas')                return <Metas                    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'feedbacks')            return <FeedbacksPDF             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'relat-equipe')         return <RelatorioEquipe          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'dashboard')            return <Dashboard                usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'mapa-fiscais')         return <MapaFiscais              usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'registros-historico')  return <RegistrosOperacionais    usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
+  if (tela === 'relatorio-evidencias') return <RelatorioEvidencias      usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
+  if (tela === 'registros-novo')       return <RegistrosApp             usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
+  // ── NOVO: Indisponibilidade ──────────────────────────────────────────────────
+  if (tela === 'indisponibilidade')    return <IndisponibilidadePage    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -347,38 +321,26 @@ export default function App() {
         justifyContent: 'center', padding: 24,
       }}>
 
-        {/* BANNER SESSÃO / VERSÃO */}
         {msgSessao && (
           <div style={{
             position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
             background: msgSessao.includes('⏰') ? '#d97706' : '#2563eb',
-            color: '#fff', padding: '12px 16px',
-            textAlign: 'center', fontSize: 13, fontWeight: 700,
-          }}>
-            {msgSessao}
-          </div>
+            color: '#fff', padding: '12px 16px', textAlign: 'center', fontSize: 13, fontWeight: 700,
+          }}>{msgSessao}</div>
         )}
-
-        {/* BANNER OFFLINE */}
         {!online && (
           <div style={{
             position: 'fixed', top: msgSessao ? 44 : 0, left: 0, right: 0, zIndex: 9998,
             background: '#dc2626', color: '#fff', padding: '10px 16px',
             textAlign: 'center', fontSize: 13, fontWeight: 700,
-          }}>
-            📵 Sem internet — auditorias serão salvas localmente e sincronizadas ao reconectar
-          </div>
+          }}>📵 Sem internet — auditorias serão salvas localmente e sincronizadas ao reconectar</div>
         )}
-
-        {/* BANNER SINCRONIZAÇÃO */}
         {msgSync && (
           <div style={{
             position: 'fixed', top: msgSessao ? 44 : 0, left: 0, right: 0, zIndex: 9998,
             background: msgSync.startsWith('✅') ? '#16a34a' : msgSync.startsWith('❌') ? '#dc2626' : '#2563eb',
             color: '#fff', padding: '10px 16px', textAlign: 'center', fontSize: 13, fontWeight: 700,
-          }}>
-            {msgSync}
-          </div>
+          }}>{msgSync}</div>
         )}
 
         <div style={{ textAlign: 'center', marginBottom: 40, marginTop: (msgSessao || !online || msgSync) ? 50 : 0 }}>
@@ -443,12 +405,10 @@ export default function App() {
           }}>Sair</button>
         </div>
 
-        {/* BANNER PENDENTES OFFLINE */}
         {pendentesOffline > 0 && online && (
           <div style={{
             width: '100%', maxWidth: 380, marginBottom: 16,
-            background: '#fef3c7', border: '2px solid #f59e0b',
-            borderRadius: 14, padding: '12px 16px',
+            background: '#fef3c7', border: '2px solid #f59e0b', borderRadius: 14, padding: '12px 16px',
           }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 8 }}>
               📤 {pendentesOffline + pendentesReg} item(ns) aguardando sincronização
@@ -473,7 +433,6 @@ export default function App() {
           </div>
         )}
 
-        {/* BANNER AUDITORIAS REABERTAS */}
         {auditoriasReabertas.length > 0 && (
           <div style={{ width: '100%', maxWidth: 380, marginBottom: 20 }}>
             {auditoriasReabertas.map(a => (
@@ -490,11 +449,8 @@ export default function App() {
                 </p>
                 <button onClick={() => editarAuditoriaReaberta(a)} style={{
                   width: '100%', padding: '10px', borderRadius: 10, border: 'none',
-                  background: '#d97706', color: '#fff', fontSize: 13,
-                  fontWeight: 700, cursor: 'pointer',
-                }}>
-                  ✏️ Corrigir Auditoria
-                </button>
+                  background: '#d97706', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>✏️ Corrigir Auditoria</button>
               </div>
             ))}
           </div>
@@ -514,16 +470,22 @@ export default function App() {
             background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>
-            📁 Histórico de Auditorias
-          </button>
+          }}>📁 Histórico de Auditorias</button>
 
-          {/* ── NOVO: Registros Operacionais ── */}
           <button onClick={() => setTela('registros-historico')} style={{
             background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>📝 Registros Operacionais</button>
+
+          {/* ── NOVO: Indisponibilidade ── */}
+          {temPermissao(usuario, 'indisponibilidade') && (
+            <button onClick={() => setTela('indisponibilidade')} style={{
+              background: 'linear-gradient(135deg, rgba(220,38,38,0.9), rgba(185,28,28,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🚫 Registrar Indisponibilidade</button>
+          )}
 
           {temPermissao(usuario, 'dashboard') && (
             <button onClick={() => setTela('dashboard')} style={{
@@ -531,6 +493,15 @@ export default function App() {
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>📊 Dashboard / Ranking</button>
+          )}
+
+          {/* ── NOVO: Dashboard Indisponibilidade ── */}
+          {temPermissao(usuario, 'dashboard_indisponibilidade') && (
+            <button onClick={() => setTela('dashboard-indisp')} style={{
+              background: 'linear-gradient(135deg, rgba(30,58,95,0.9), rgba(220,38,38,0.85))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📈 Dashboard Indisponibilidade</button>
           )}
 
           {temPermissao(usuario, 'fiscais_campo') && (
@@ -591,7 +562,9 @@ export default function App() {
 
         </div>
 
-        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>VérticeGP · v{VERSAO} · © 2026 Todos os direitos reservados</p>
+        <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: 11, marginTop: 40 }}>
+          VérticeGP · v{VERSAO} · © 2026 Todos os direitos reservados
+        </p>
       </div>
     )
   }
@@ -600,17 +573,12 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="app-header no-print">
-
-        {/* BANNER OFFLINE dentro da auditoria */}
         {!online && (
           <div style={{
             background: '#dc2626', color: '#fff', borderRadius: 8,
             padding: '6px 10px', marginBottom: 6, fontSize: 12, fontWeight: 700, textAlign: 'center',
-          }}>
-            📵 Offline — auditoria será salva localmente
-          </div>
+          }}>📵 Offline — auditoria será salva localmente</div>
         )}
-
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>
             Plataforma de Gestão Operacional
@@ -646,12 +614,12 @@ export default function App() {
       </header>
 
       <main className="app-content">
-        {step === 0 && <S0Selecao      {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
+        {step === 0 && <S0Selecao       {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
         {step === 1 && <S1Identificacao {...stepProps} pautaAtiva={pautaAtiva} />}
-        {step === 2 && <S3Checklist    {...stepProps} />}
-        {step === 3 && <S4Fotos        {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
-        {step === 4 && <S5Assinatura   {...stepProps} />}
-        {step === 5 && <S6Resultado    {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} isOnline={online} />}
+        {step === 2 && <S3Checklist     {...stepProps} />}
+        {step === 3 && <S4Fotos         {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
+        {step === 4 && <S5Assinatura    {...stepProps} />}
+        {step === 5 && <S6Resultado     {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} isOnline={online} />}
       </main>
     </div>
   )

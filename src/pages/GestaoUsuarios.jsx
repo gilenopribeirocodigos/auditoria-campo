@@ -18,6 +18,8 @@ const PERFIL_CORES = {
 
 const TODAS_PERMISSOES = [
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
+  { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
+  { id: 'dashboard_indisponibilidade', label: '📈 Dashboard Indisponibilidade' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },
   { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
@@ -586,8 +588,8 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                   🌐 Processos que este usuário pode ver
                 </p>
                 <p style={{ fontSize: 11, color: '#6b21a8', marginBottom: 12, lineHeight: 1.5 }}>
-                  Marque os processos da estrutura que este usuário específico tem acesso.
-                  Se nenhum marcado, ele só vê pelo cruzamento natural (nome em superv_campo/operacao/coordenador).
+                  Marque os processos da estrutura que este usuário específico pode acessar.
+                  Os processos marcados somam aos prefixos da hierarquia natural do usuário.
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
