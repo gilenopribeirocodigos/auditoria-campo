@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { isAdmin, temPermissao } from '../lib/auth.js'
 
@@ -125,12 +125,26 @@ function Campo({ label, children }) {
 function BuscaLista({ label, value, onChange, options, placeholder }) {
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca] = useState(value || '')
+  const ref = useRef(null)
 
   const filtradas = useMemo(() => {
     const termo = normalizar(busca)
     const lista = termo ? options.filter(item => normalizar(item).includes(termo)) : options
     return lista.slice(0, 80)
   }, [busca, options])
+
+  useEffect(() => {
+    if (!aberto) return undefined
+
+    const fecharAoClicarFora = event => {
+      if (ref.current && !ref.current.contains(event.target)) {
+        setAberto(false)
+      }
+    }
+
+    document.addEventListener('mousedown', fecharAoClicarFora)
+    return () => document.removeEventListener('mousedown', fecharAoClicarFora)
+  }, [aberto])
 
   const abrir = () => {
     setBusca(value || '')
@@ -144,7 +158,7 @@ function BuscaLista({ label, value, onChange, options, placeholder }) {
   }
 
   return (
-    <div style={{ position: 'relative', minWidth: 0 }} onBlur={() => setTimeout(() => setAberto(false), 140)}>
+    <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
       <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
       <button
         type="button"
