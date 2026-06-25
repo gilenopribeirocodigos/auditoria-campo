@@ -17,6 +17,11 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 
 // ─── Helpers de data (exportados para uso nas telas) ────────────────────────
+export function calcHoje() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export function calcMesAtual() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -271,14 +276,24 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
 // O hook FILTRA automaticamente supervOps, supervCampos e prefixosTodos pelos
 // prefixos permitidos, então o painel já reflete a segregação sem mudanças nas telas.
 // Telas devem usar `prefixosPermitidos` para filtrar suas queries de dados.
-export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = null } = {}) {
-  const [modoPeriodo, setModoPeriodo] = useState(false)
+export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = null, periodoPadrao = null } = {}) {
+  const periodoInicial = periodoPadrao || (inicializarMes ? 'mes' : 'todos')
+  const [tipoPeriodo, setTipoPeriodo] = useState(periodoInicial)
   const [mesAno,      setMesAno]      = useState(inicializarMes ? calcMesAtual() : '')
   const [dataIni,     setDataIni]     = useState('')
   const [dataFim,     setDataFim]     = useState('')
   const [selSupOp,    setSelSupOp]    = useState([])
   const [selSupCampo, setSelSupCampo] = useState([])
   const [selPrefixos, setSelPrefixos] = useState([])
+
+  const modoPeriodo = tipoPeriodo === 'periodo'
+  const setModoPeriodo = (ativo) => {
+    setTipoPeriodo(ativo ? 'periodo' : (inicializarMes ? 'mes' : 'todos'))
+    if (!ativo) {
+      setDataIni('')
+      setDataFim('')
+    }
+  }
 
   const [estrutura, setEstrutura] = useState({
     supervOps: [],
@@ -377,10 +392,14 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
 
   // ── Datas para uso em queries (.gte/.lte) ──
   const getDatasQuery = () => {
-    if (modoPeriodo && dataIni) {
+    if (tipoPeriodo === 'hoje') {
+      const hoje = calcHoje()
+      return { ini: hoje, fim: hoje }
+    }
+    if (tipoPeriodo === 'periodo' && dataIni) {
       return { ini: dataIni, fim: dataFim || dataIni }
     }
-    if (mesAno) {
+    if (tipoPeriodo === 'mes' && mesAno) {
       const [ano, mes] = mesAno.split('-')
       return {
         ini: `${ano}-${mes}-01`,
@@ -391,9 +410,11 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   }
 
   // ── Label legível do período ativo ──
-  const periodoLabel = modoPeriodo && dataIni
-    ? (dataFim && dataFim !== dataIni ? `${fmtData(dataIni)} → ${fmtData(dataFim)}` : fmtData(dataIni))
-    : mesAno ? mesLabel(mesAno) : 'Todos'
+  const periodoLabel = tipoPeriodo === 'hoje'
+    ? `Hoje (${fmtData(calcHoje())})`
+    : tipoPeriodo === 'periodo' && dataIni
+      ? (dataFim && dataFim !== dataIni ? `${fmtData(dataIni)} → ${fmtData(dataFim)}` : fmtData(dataIni))
+      : tipoPeriodo === 'mes' && mesAno ? mesLabel(mesAno) : 'Todos'
 
   // ── Filtra uma lista em memória por supervisor/prefixo ──
   // Cada item precisa ter um campo de prefixo (default: 'prefixo').
@@ -435,7 +456,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     setSelPrefixos([])
     setDataIni('')
     setDataFim('')
-    setModoPeriodo(false)
+    setTipoPeriodo(periodoInicial)
     if (inicializarMes) setMesAno(calcMesAtual())
   }
 
@@ -444,12 +465,15 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     selSupOp.length    > 0 ||
     selSupCampo.length > 0 ||
     selPrefixos.length > 0 ||
-    modoPeriodo ||
-    (inicializarMes && mesAno !== calcMesAtual())
+    tipoPeriodo !== periodoInicial ||
+    (tipoPeriodo === 'mes' && inicializarMes && mesAno !== calcMesAtual()) ||
+    (tipoPeriodo === 'periodo' && (dataIni || dataFim))
   )
 
   return {
     // estados controlados
+    tipoPeriodo, setTipoPeriodo,
+    tipoPeriodo, setTipoPeriodo,
     modoPeriodo, setModoPeriodo,
     mesAno,      setMesAno,
     dataIni,     setDataIni,
@@ -498,6 +522,37 @@ export function PainelFiltros({
     supervOps, supervCamposVisiveis, prefixosVisiveis,
     periodoLabel, limparTodos, temFiltrosAtivos,
   } = filtros
+
+  const selecionarHoje = () => {
+    setTipoPeriodo('hoje')
+    setDataIni('')
+    setDataFim('')
+  }
+
+  const selecionarMes = () => {
+    setTipoPeriodo('mes')
+    setDataIni('')
+    setDataFim('')
+    if (!mesAno && mesesOpcoesCount > 0) setMesAno(calcMesAtual())
+  }
+
+  const selecionarPeriodo = () => {
+    setTipoPeriodo('periodo')
+    if (!dataIni) {
+      const hoje = calcHoje()
+      setDataIni(hoje)
+      setDataFim(hoje)
+    }
+  }
+
+  const botaoPeriodoStyle = (ativo) => ({
+    flex: 1, borderRadius: 8, border: 'none', cursor: 'pointer',
+    fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+    background: ativo ? '#fff' : 'transparent',
+    color:      ativo ? '#1e3a5f' : '#64748b',
+    boxShadow:  ativo ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+    whiteSpace: 'nowrap',
+  })
 
   const mesesOpcoes = Array.from({ length: mesesOpcoesCount }, (_, i) => {
     const d = new Date()
@@ -549,29 +604,30 @@ export function PainelFiltros({
           <div>
             <label style={LABEL_STYLE}>Período</label>
 
-            {/* Toggle Mês / Período */}
+            {/* Toggle Hoje / Mês / Período */}
             <div style={{
               display: 'flex', background: '#f1f5f9', borderRadius: 10,
               padding: 3, gap: 2, marginBottom: 8, height: FIELD_HEIGHT, boxSizing: 'border-box',
             }}>
-              <button onClick={() => { setModoPeriodo(false); setDataIni(''); setDataFim('') }} style={{
-                flex: 1, borderRadius: 8, border: 'none', cursor: 'pointer',
-                fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
-                background: !modoPeriodo ? '#fff' : 'transparent',
-                color:      !modoPeriodo ? '#1e3a5f' : '#64748b',
-                boxShadow:  !modoPeriodo ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-              }}>📅 Mês</button>
-              <button onClick={() => setModoPeriodo(true)} style={{
-                flex: 1, borderRadius: 8, border: 'none', cursor: 'pointer',
-                fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
-                background: modoPeriodo ? '#fff' : 'transparent',
-                color:      modoPeriodo ? '#1e3a5f' : '#64748b',
-                boxShadow:  modoPeriodo ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
-              }}>📆 Período</button>
+              <button type="button" onClick={selecionarHoje} style={botaoPeriodoStyle(tipoPeriodo === 'hoje')}>📍 Hoje</button>
+              <button type="button" onClick={selecionarMes} style={botaoPeriodoStyle(tipoPeriodo === 'mes')}>📅 Mês</button>
+              <button type="button" onClick={selecionarPeriodo} style={botaoPeriodoStyle(tipoPeriodo === 'periodo')}>📆 Período</button>
             </div>
 
+            {/* Modo Hoje */}
+            {tipoPeriodo === 'hoje' && (
+              <div style={{
+                ...INPUT_STYLE,
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: '#eff6ff', color: '#1e3a5f', borderColor: '#bfdbfe',
+              }}>
+                <span>Hoje</span>
+                <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 800 }}>{fmtData(calcHoje())}</span>
+              </div>
+            )}
+
             {/* Modo Mês: dropdown de mês */}
-            {!modoPeriodo && (
+            {tipoPeriodo === 'mes' && (
               <select value={mesAno} onChange={e => setMesAno(e.target.value)} style={{
                 ...INPUT_STYLE,
                 cursor: 'pointer',
@@ -590,7 +646,7 @@ export function PainelFiltros({
             )}
 
             {/* Modo Período: dois inputs de data */}
-            {modoPeriodo && (
+            {tipoPeriodo === 'periodo' && (
               <div style={{ display: 'flex', gap: 8 }}>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>DE</p>
@@ -667,12 +723,12 @@ export function PainelFiltros({
       </div>
 
       {/* Indicador do filtro de período ativo */}
-      {modoPeriodo && (
+      {(tipoPeriodo === 'hoje' || tipoPeriodo === 'periodo') && (
         <div style={{
-          fontSize: 11, color: dataIni ? '#1d4ed8' : '#d97706',
+          fontSize: 11, color: tipoPeriodo === 'periodo' && !dataIni ? '#d97706' : '#1d4ed8',
           fontWeight: 700, marginTop: 10, textAlign: 'right',
         }}>
-          {dataIni ? `📆 Filtrando: ${periodoLabel}` : '⚠️ Selecione a data inicial para aplicar'}
+          {tipoPeriodo === 'periodo' && !dataIni ? '⚠️ Selecione a data inicial para aplicar' : `📆 Filtrando: ${periodoLabel}`}
         </div>
       )}
     </div>
