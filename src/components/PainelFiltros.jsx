@@ -512,6 +512,7 @@ export function PainelFiltros({
   mostrarPrefixo = true,
 }) {
   const {
+    tipoPeriodo, setTipoPeriodo,
     modoPeriodo, setModoPeriodo,
     mesAno,      setMesAno,
     dataIni,     setDataIni,
