@@ -377,8 +377,8 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                       </div>
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <div style={{
-                          background: s.pctPresenca >= 90 ? '#dcfce7' : s.pctPresenca >= 70 ? '#fef3c7' : '#fee2e2',
-                          color:      s.pctPresenca >= 90 ? '#16a34a' : s.pctPresenca >= 70 ? '#d97706' : '#dc2626',
+                          background: '#dcfce7',
+                          color: '#15803d',
                           borderRadius: 10, padding: '6px 12px', fontWeight: 800, fontSize: 14,
                         }}>
                           {s.pctPresenca}% PRESENÇA
