@@ -19,6 +19,9 @@ CREATE INDEX IF NOT EXISTS idx_rotinas_subrotinas_public_prefixo ON public.rotin
 CREATE INDEX IF NOT EXISTS idx_rotinas_subrotinas_public_supervisor ON public.rotinas_subrotinas (supervisor_campo);
 CREATE INDEX IF NOT EXISTS idx_rotinas_subrotinas_public_eletricista ON public.rotinas_subrotinas (eletricista);
 
+-- Forca o PostgREST/Supabase API a recarregar o cache de schema.
+NOTIFY pgrst, 'reload schema';
+
 -- Verificacao rapida apos executar:
 -- SELECT table_schema, column_name, data_type
 -- FROM information_schema.columns
