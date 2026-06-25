@@ -25,6 +25,7 @@ import PaginaAssinar            from './pages/PaginaAssinar.jsx'
 // ── NOVO: Módulo de Indisponibilidade ────────────────────────────────────────
 import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
 import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
+import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -328,6 +329,7 @@ export default function App() {
   // ── NOVO: Indisponibilidade ──────────────────────────────────────────────────
   if (tela === 'indisponibilidade')    return <IndisponibilidadePage    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'rotinas-admin')        return <RotinasAdministrativas   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -494,6 +496,14 @@ export default function App() {
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>📝 Registros Operacionais</button>
+
+          {temPermissao(usuario, 'rotinas_administrativas') && (
+            <button onClick={() => setTela('rotinas-admin')} style={{
+              background: 'linear-gradient(135deg, rgba(14,116,144,0.95), rgba(37,99,235,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🗓️ Rotinas Administrativas</button>
+          )}
 
           {/* ── NOVO: Indisponibilidade ── */}
           {temPermissao(usuario, 'indisponibilidade') && (
