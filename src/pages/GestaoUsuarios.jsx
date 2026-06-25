@@ -17,6 +17,7 @@ const PERFIL_CORES = {
 }
 
 const TODAS_PERMISSOES = [
+  { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
   { id: 'dashboard_indisponibilidade', label: '📈 Dashboard Indisponibilidade' },
