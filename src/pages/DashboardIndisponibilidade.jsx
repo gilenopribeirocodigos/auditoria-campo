@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useFiltrosOperacionais, PainelFiltros } from '../components/PainelFiltros.jsx'
 
@@ -46,6 +46,7 @@ function BarraMotivo({ motivo, qtde, percentual, total }) {
 
 export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ usuarioLogado })
+  const ultimaBuscaRef = useRef(0)
   const [abaAtiva,  setAbaAtiva]  = useState('geral')
   const [loading,   setLoading]   = useState(false)
   const [erro,      setErro]      = useState('')
@@ -192,17 +193,21 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
     setDadosDisponiveis({ total: estrutura.length, disponiveis })
   }
 
-  // Busca ao clicar em "Filtrar".
-  const filtrar = async () => {
+  // Recalcula os relatórios sempre que o painel padrão muda.
+  const aplicarFiltros = async () => {
+    const buscaId = ++ultimaBuscaRef.current
     const { ini, fim } = filtros.getDatasQuery()
+
 
     if (!ini || !fim || ini > fim) {
       setErro('Selecione um período válido (início ≤ fim).')
+      setLoading(false)
       return
     }
 
     if (!filtros.estruturaCarregada) {
       setErro('Aguarde o carregamento da estrutura de equipes.')
+      setLoading(false)
       return
     }
 
@@ -211,16 +216,34 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
 
     try {
       const base = await carregarDadosBase(ini, fim)
+      if (buscaId !== ultimaBuscaRef.current) return
       montarGeral(base)
       montarSupervisor(base)
       montarPrefixo(base)
       montarDisponiveis(base)
     } catch (e) {
-      setErro('Erro ao carregar relatório: ' + e.message)
+      if (buscaId === ultimaBuscaRef.current) setErro('Erro ao carregar relatório: ' + e.message)
     } finally {
-      setLoading(false)
+      if (buscaId === ultimaBuscaRef.current) setLoading(false)
     }
   }
+
+  const filtroAplicacaoKey = [
+    filtros.estruturaCarregada ? '1' : '0',
+    filtros.modoPeriodo ? 'periodo' : 'mes',
+    filtros.mesAno || '',
+    filtros.dataIni || '',
+    filtros.dataFim || '',
+    filtros.selSupOp.join('|'),
+    filtros.selSupCampo.join('|'),
+    filtros.selPrefixos.join('|'),
+  ].join('::')
+
+  useEffect(() => {
+    if (!filtros.estruturaCarregada) return
+    const timer = setTimeout(() => { aplicarFiltros() }, 150)
+    return () => clearTimeout(timer)
+  }, [filtroAplicacaoKey])
 
   const temDados = dadosGeral !== null
 
@@ -247,18 +270,21 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
           titulo="🔍 Filtros"
           badge="dashboard indisponibilidade"
         />
-
-        <button
-          onClick={filtrar}
-          disabled={loading || !filtros.estruturaCarregada}
-          className="btn-primary"
-          style={{
-            background: loading || !filtros.estruturaCarregada ? '#64748b' : '#1e3a5f',
-            width: '100%',
+        {loading && (
+          <div style={{
+            background: '#eff6ff',
+            border: '1px solid #bfdbfe',
+            borderRadius: 10,
+            padding: '10px 14px',
             marginBottom: 16,
+            fontSize: 12,
+            color: '#1e3a5f',
+            fontWeight: 700,
+            textAlign: 'center',
           }}>
-          {loading ? '⏳ Buscando...' : '🔍 Filtrar'}
-        </button>
+            🔄 Atualizando relatório...
+          </div>
+        )}
 
         {/* ── Erro ── */}
         {erro && (
@@ -270,7 +296,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
         {!temDados && !loading && (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 10 }}>📊</div>
-            <p>Selecione um período e clique em Filtrar para ver os relatórios.</p>
+            <p>Ajuste os filtros para ver os relatórios.</p>
           </div>
         )}
 
