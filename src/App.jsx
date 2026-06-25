@@ -25,6 +25,7 @@ import PaginaAssinar            from './pages/PaginaAssinar.jsx'
 // ── NOVO: Módulo de Indisponibilidade ────────────────────────────────────────
 import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
 import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
+import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -224,6 +225,16 @@ export default function App() {
       respostas:        auditoria.respostas         || {},
       feedback:         auditoria.feedback          || '',
       observacoes:      auditoria.observacoes       || '',
+      motivoAuditoria:  auditoria.motivo_auditoria  || '',
+      statusMotivoAuditoria: typeof auditoria.status_motivo_auditoria === 'boolean'
+        ? auditoria.status_motivo_auditoria
+        : auditoria.avaliacao_motivo_auditoria === 'CONFORME'
+          ? true
+          : auditoria.avaliacao_motivo_auditoria === 'NÃO CONFORME'
+            ? false
+            : null,
+      observacoesMotivoAuditoria: auditoria.observacoes_motivo_auditoria || '',
+      fotosMotivo:      [],
       nomeEletricista:  auditoria.nome_eletricista  || '',
       nomeEletricista2: auditoria.nome_eletricista2 || '',
       fotos:            [],
@@ -246,7 +257,14 @@ export default function App() {
     }
     if (pautaAtiva) {
       try {
-        await concluirPauta(pautaAtiva.id, auditoria_id)
+        const avaliacaoMotivoPauta =
+          form.statusMotivoAuditoria === true  ? 'CONFORME' :
+          form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
+          null
+        await concluirPauta(pautaAtiva.id, auditoria_id, {
+          motivo_auditoria: form.motivoAuditoria || pautaAtiva.motivo_auditoria || null,
+          avaliacao_motivo_auditoria: avaliacaoMotivoPauta,
+        })
         await criarProximaRecorrencia(pautaAtiva)
         setPautaAtiva(null)
         setPautasHoje(prev => prev.filter(p => p.id !== pautaAtiva.id))
@@ -311,6 +329,7 @@ export default function App() {
   // ── NOVO: Indisponibilidade ──────────────────────────────────────────────────
   if (tela === 'indisponibilidade')    return <IndisponibilidadePage    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'rotinas-admin')        return <RotinasAdministrativas   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -458,13 +477,15 @@ export default function App() {
 
         <div style={{ width: '100%', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 14 }}>
 
-          <button onClick={iniciarAuditoria} disabled={loadingPauta} style={{
-            background: loadingPauta ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
-            padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>
-            {loadingPauta ? '⏳ Verificando pautas...' : '📋 Iniciar Auditoria'}
-          </button>
+          {temPermissao(usuario, 'iniciar_auditoria') && (
+            <button onClick={iniciarAuditoria} disabled={loadingPauta} style={{
+              background: loadingPauta ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
+              padding: '18px', borderRadius: 14, fontSize: 17, fontWeight: 800,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>
+              {loadingPauta ? '⏳ Verificando pautas...' : '📋 Iniciar Auditoria'}
+            </button>
+          )}
 
           <button onClick={() => setTela('historico')} style={{
             background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
@@ -477,6 +498,14 @@ export default function App() {
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>📝 Registros Operacionais</button>
+
+          {temPermissao(usuario, 'rotinas_administrativas') && (
+            <button onClick={() => setTela('rotinas-admin')} style={{
+              background: 'linear-gradient(135deg, rgba(14,116,144,0.95), rgba(37,99,235,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🗓️ Rotinas Administrativas</button>
+          )}
 
           {/* ── NOVO: Indisponibilidade ── */}
           {temPermissao(usuario, 'indisponibilidade') && (

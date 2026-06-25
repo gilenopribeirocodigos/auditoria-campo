@@ -44,10 +44,18 @@ export async function deletarPauta(id) {
   if (error) throw error
 }
 
-export async function concluirPauta(id, auditoria_id) {
+export async function concluirPauta(id, auditoria_id, dadosConclusao = {}) {
+  const update = { status: 'CONCLUIDA', auditoria_id }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'motivo_auditoria')) {
+    update.motivo_auditoria = dadosConclusao.motivo_auditoria || null
+  }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'avaliacao_motivo_auditoria')) {
+    update.avaliacao_motivo_auditoria = dadosConclusao.avaliacao_motivo_auditoria || null
+  }
+
   const { error } = await supabase
     .from('pautas')
-    .update({ status: 'CONCLUIDA', auditoria_id })
+    .update(update)
     .eq('id', id)
   if (error) throw error
 }
@@ -67,6 +75,7 @@ export async function criarProximaRecorrencia(pauta) {
     recorrencia:            pauta.recorrencia,
     observacao:             pauta.observacao,
     motivo_auditoria:       pauta.motivo_auditoria,
+    avaliacao_motivo_auditoria: null,
     matricula_eletricista1: pauta.matricula_eletricista1,
     matricula_eletricista2: pauta.matricula_eletricista2,
     nome_eletricista:       pauta.nome_eletricista,

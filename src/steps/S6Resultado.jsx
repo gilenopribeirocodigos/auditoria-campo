@@ -277,10 +277,13 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     status:            st.label,
     respostas:         form.respostas,
     feedback:          form.feedback,
-    observacoes:       form.observacoes,
-    nome_eletricista:  form.nomeEletricista,
-    nome_eletricista2: form.nomeEletricista2 || null,
-    motivo_auditoria:  form.motivoAuditoria || null,
+    observacoes:                     form.observacoes,
+    nome_eletricista:                form.nomeEletricista,
+    nome_eletricista2:               form.nomeEletricista2 || null,
+    motivo_auditoria:                form.motivoAuditoria || null,
+    status_motivo_auditoria:         form.motivoAuditoria ? form.statusMotivoAuditoria : null,
+    avaliacao_motivo_auditoria:      form.motivoAuditoria ? avaliacaoMotivoTexto : null,
+    observacoes_motivo_auditoria:    form.motivoAuditoria ? (form.observacoesMotivoAuditoria || null) : null,
   })
 
   // ═══════════════════════════════════════════════════════════════════════════

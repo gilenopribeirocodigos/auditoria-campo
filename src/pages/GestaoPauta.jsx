@@ -54,6 +54,16 @@ function calcStatus(p) {
   return 'PENDENTE'
 }
 
+function statusConclusaoPauta(pauta, auditoria) {
+  const status = String(pauta?.status || '').toUpperCase()
+  if (status === 'CANCELADA') return 'CANCELADA'
+  if (status === 'CONCLUIDA' || pauta?.auditoria_id || auditoria?.id) return 'CONCLUIDA'
+  const dataPrevista = pauta?.data_prevista || auditoria?.data_auditoria || ''
+  if (!dataPrevista) return ''
+  const hoje = new Date().toISOString().split('T')[0]
+  return dataPrevista < hoje ? 'PENDENTE VENCIDA' : 'PENDENTE NO PRAZO'
+}
+
 function parseCsvLinhas(texto) {
   const linhas = texto.trim().split('\n').filter(l => l.trim())
   if (linhas.length < 2) return []
@@ -493,7 +503,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           tipo_servico:      a.tipo_servico || '',
           produtivo:         a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO',
           status:            a.status || '',
-          status_2:          p.status || '',
+          Status_Conclusao_Pauta: statusConclusaoPauta(p, a),
           feedback:          a.feedback || '',
           observacao:        a.observacao || a.observacoes || '',
           nome_eletricista:  a.nome_eletricista || '',
@@ -501,6 +511,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           tipo_auditoria:    a.tipo_auditoria || '',
           reaberta:          a.reaberta ? 'SIM' : 'NAO',
           motivo_auditoria:  p.motivo_auditoria || '',
+          avaliacao_motivo_auditoria: a.avaliacao_motivo_auditoria || p.avaliacao_motivo_auditoria || nc.avaliacao_motivo_auditoria || '',
           item_id:           nc.item_id || '',
           item_nao_conforme: nc.item_texto || '',
           status_tratamento: nc.status_tratamento || 'PENDENTE',

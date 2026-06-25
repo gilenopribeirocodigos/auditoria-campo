@@ -17,9 +17,13 @@ const PERFIL_CORES = {
 }
 
 const TODAS_PERMISSOES = [
+  { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
   { id: 'dashboard_indisponibilidade', label: '📈 Dashboard Indisponibilidade' },
+  { id: 'rotinas_administrativas', label: '🗓️ Rotinas Administrativas' },
+  { id: 'rotinas_configurar',      label: '🛠️ Rotinas — configurar modelos' },
+  { id: 'rotinas_dashboard',       label: '📊 Rotinas — acompanhamento geral' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },
   { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
