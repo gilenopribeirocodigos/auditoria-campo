@@ -90,7 +90,8 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
         .from('indisponibilidades')
         .select('id, eletricista_id, prefixo, data, motivo_id, colaborador, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
         .gte('data', ini)
-        .lte('data', fim),
+        .lte('data', fim)
+        .order('id', { ascending: true }),
     ])
 
     if (presentesError) throw presentesError
