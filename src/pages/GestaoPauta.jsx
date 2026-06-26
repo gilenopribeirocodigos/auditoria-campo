@@ -347,8 +347,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       }
       const [enriquecido] = await enriquecerComEletricistas([baseLimpo])
       const payload = enriquecido
-      if (editando) await atualizarPauta(editando.id, payload)
-      else          await criarPauta({ ...payload, status: 'PENDENTE' })
+      if (editando) {
+        await atualizarPauta(editando.id, payload)
+      } else {
+        await criarPauta({ ...payload, status: 'PENDENTE' })
+        setStatusTab('PENDENTE')
+      }
       await carregar(); fechar()
     } catch (e) { setErro(e.message) }
     finally { setSalvando(false) }
@@ -436,90 +440,110 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         )
         return
       }
+  
+      const prefixosBase = filtros.prefixosPermitidos
+        ? new Set(filtros.prefixosPermitidos)
+        : null
       const filtroHierarquicoAtivo =
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
-      let prefixosPermitidos = null
+      let prefixosPermitidos = prefixosBase ? [...prefixosBase] : null
+  
       if (filtroHierarquicoAtivo) {
         prefixosPermitidos = Object.entries(filtros.mapPrefixo)
           .filter(([pref, info]) => {
-            if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))     return false
-            if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))     return false
+            if (prefixosBase && !prefixosBase.has(pref)) return false
+            if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref)) return false
+            if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op)) return false
             if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
             return true
           })
           .map(([pref]) => pref)
-        if (prefixosPermitidos.length === 0) {
-          alert('Nenhum prefixo bate com os filtros hierárquicos selecionados.')
-          return
-        }
       }
-      let qA = supabase.from('auditorias').select('*')
-        .gte('data_auditoria', ini)
-        .lte('data_auditoria', fim)
-      if (prefixosPermitidos !== null) qA = qA.in('prefixo', prefixosPermitidos)
-      const { data: auditorias, error: aErr } = await qA
-      if (aErr) throw aErr
-      if (!auditorias || auditorias.length === 0) {
-        alert('Nenhuma auditoria encontrada no período/filtros selecionados.')
+  
+      if (prefixosPermitidos !== null && prefixosPermitidos.length === 0) {
+        alert('Nenhum prefixo bate com os filtros selecionados.')
         return
       }
-      const auditoriaIds = auditorias.map(a => a.id)
+  
+      let qP = supabase.from('pautas').select('*')
+        .gte('data_prevista', ini)
+        .lte('data_prevista', fim)
+      if (prefixosPermitidos !== null) qP = qP.in('prefixo', prefixosPermitidos)
+      const { data: pautasRel, error: pErr } = await qP
+      if (pErr) throw pErr
+      if (!pautasRel || pautasRel.length === 0) {
+        alert('Nenhuma pauta encontrada no período/filtros selecionados.')
+        return
+      }
+  
+      const auditoriaIds = [...new Set((pautasRel || []).map(p => p.auditoria_id).filter(Boolean))]
+      let auditorias = []
+      if (auditoriaIds.length > 0) {
+        const { data, error } = await supabase
+          .from('auditorias')
+          .select('*')
+          .in('id', auditoriaIds)
+        if (error) throw error
+        auditorias = data || []
+      }
       const mapAuditorias = {}
       auditorias.forEach(a => { mapAuditorias[a.id] = a })
-      const { data: ncs, error: ncErr } = await supabase
-        .from('auditorias_nao_conformes')
-        .select('*')
-        .in('auditoria_id', auditoriaIds)
-      if (ncErr) throw ncErr
-      if (!ncs || ncs.length === 0) {
-        alert(
-          '🎉 Nenhuma não conformidade encontrada no período!\n\n' +
-          'Possíveis razões:\n' +
-          '• Todas as auditorias do período foram 100% conformes\n' +
-          '• As auditorias antigas ainda não foram processadas'
-        )
-        return
+  
+      let ncs = []
+      if (auditoriaIds.length > 0) {
+        const { data, error } = await supabase
+          .from('auditorias_nao_conformes')
+          .select('*')
+          .in('auditoria_id', auditoriaIds)
+        if (error) throw error
+        ncs = data || []
       }
-      const { data: pautasRel, error: pErr } = await supabase
-        .from('pautas').select('*')
-        .in('auditoria_id', auditoriaIds)
-      if (pErr) console.warn('⚠️ Erro ao buscar pautas:', pErr.message)
-      const mapPautas = {}
-      ;(pautasRel || []).forEach(p => { mapPautas[p.auditoria_id] = p })
-      const linhas = ncs.map(nc => {
-        const a = mapAuditorias[nc.auditoria_id] || {}
-        const p = mapPautas[nc.auditoria_id] || {}
-        return {
-          auditoria_id:      nc.auditoria_id,
-          fiscal:            a.fiscal || '',
-          matricula:         a.matricula || '',
-          prefixo:           a.prefixo || '',
-          os:                a.os || '',
-          uc:                a.uc || '',
-          data_auditoria:    a.data_auditoria || '',
-          hora_auditoria:    a.hora_auditoria || '',
-          tipo_servico:      a.tipo_servico || '',
-          produtivo:         a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO',
-          status:            a.status || '',
-          Status_Conclusao_Pauta: statusConclusaoPauta(p, a),
-          feedback:          a.feedback || '',
-          observacao:        a.observacao || a.observacoes || '',
-          nome_eletricista:  a.nome_eletricista || '',
-          nome_eletricista2: a.nome_eletricista2 || '',
-          tipo_auditoria:    a.tipo_auditoria || '',
-          reaberta:          a.reaberta ? 'SIM' : 'NAO',
-          motivo_auditoria:  p.motivo_auditoria || '',
-          avaliacao_motivo_auditoria: a.avaliacao_motivo_auditoria || p.avaliacao_motivo_auditoria || nc.avaliacao_motivo_auditoria || '',
-          item_id:           nc.item_id || '',
-          item_nao_conforme: nc.item_texto || '',
-          status_tratamento: nc.status_tratamento || 'PENDENTE',
-        }
+      const ncsPorAuditoria = {}
+      ncs.forEach(nc => {
+        if (!ncsPorAuditoria[nc.auditoria_id]) ncsPorAuditoria[nc.auditoria_id] = []
+        ncsPorAuditoria[nc.auditoria_id].push(nc)
       })
+  
+      const linhas = pautasRel.flatMap(p => {
+        const a = p.auditoria_id ? (mapAuditorias[p.auditoria_id] || {}) : {}
+        const listaNcs = a.id ? (ncsPorAuditoria[a.id] || []) : []
+        const registros = listaNcs.length > 0 ? listaNcs : [null]
+        return registros.map(nc => ({
+          pauta_id:                   p.id || '',
+          auditoria_id:               p.auditoria_id || a.id || '',
+          fiscal:                     a.fiscal || p.fiscal_login || '',
+          matricula:                  a.matricula || '',
+          prefixo:                    p.prefixo || a.prefixo || '',
+          os:                         p.os || a.os || '',
+          uc:                         p.uc || a.uc || '',
+          data_prevista:              p.data_prevista || '',
+          data_auditoria:             a.data_auditoria || '',
+          hora_auditoria:             a.hora_auditoria || '',
+          tipo_servico:               p.tipo_servico || a.tipo_servico || '',
+          produtivo:                  typeof a.produtivo === 'boolean' ? (a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO') : '',
+          status:                     p.status || '',
+          Status_Conclusao_Pauta:     statusConclusaoPauta(p, a),
+          feedback:                   a.feedback || '',
+          observacao_pauta:           p.observacao || '',
+          observacao_auditoria:       a.observacao || a.observacoes || '',
+          nome_eletricista:           p.nome_eletricista || a.nome_eletricista || '',
+          nome_eletricista2:          p.nome_eletricista2 || a.nome_eletricista2 || '',
+          tipo_auditoria:             p.tipo_auditoria || a.tipo_auditoria || '',
+          reaberta:                   a.reaberta ? 'SIM' : (a.id ? 'NAO' : ''),
+          motivo_auditoria:           p.motivo_auditoria || a.motivo_auditoria || '',
+          avaliacao_motivo_auditoria: a.avaliacao_motivo_auditoria || p.avaliacao_motivo_auditoria || nc?.avaliacao_motivo_auditoria || '',
+          item_id:                    nc?.item_id || '',
+          item_nao_conforme:          nc?.item_texto || '',
+          status_tratamento:          nc?.status_tratamento || '',
+        }))
+      })
+  
       linhas.sort((x, y) => {
-        if (x.data_auditoria !== y.data_auditoria) return y.data_auditoria.localeCompare(x.data_auditoria)
-        return (x.prefixo || '').localeCompare(y.prefixo || '')
+        if (x.data_prevista !== y.data_prevista) return y.data_prevista.localeCompare(x.data_prevista)
+        if ((x.prefixo || '') !== (y.prefixo || '')) return (x.prefixo || '').localeCompare(y.prefixo || '')
+        return String(x.pauta_id || '').localeCompare(String(y.pauta_id || ''))
       })
       const ws = XLSX.utils.json_to_sheet(linhas)
       const colNames = Object.keys(linhas[0])
@@ -528,11 +552,14 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         return { wch: Math.min(maxLen + 2, 60) }
       })
       const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Nao Conformidades')
+      XLSX.utils.book_append_sheet(wb, ws, 'Acompanhamento Pautas')
       const hoje = new Date().toISOString().split('T')[0]
-      XLSX.writeFile(wb, `nao_conformidades_${ini}_a_${fim}_gerado_${hoje}.xlsx`)
-      const auditoriasComNc = new Set(ncs.map(n => n.auditoria_id)).size
-      alert(`✅ Relatório gerado: ${linhas.length} não conformidade(s) em ${auditoriasComNc} auditoria(s).`)
+      XLSX.writeFile(wb, `acompanhamento_pautas_${ini}_a_${fim}_gerado_${hoje}.xlsx`)
+      const pautasComAuditoria = pautasRel.filter(p => p.auditoria_id).length
+      alert(
+        `✅ Relatório gerado: ${linhas.length} linha(s), ${pautasRel.length} pauta(s), ` +
+        `${pautasComAuditoria} concluída(s) vinculada(s) e ${ncs.length} não conformidade(s).`
+      )
     } catch (e) {
       alert('❌ Erro ao gerar relatório: ' + e.message)
     } finally {
@@ -625,6 +652,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       for (const p of pautasNovas) await criarPauta(p)
       const comEletricistas = pautasNovas.filter(p => p.nome_eletricista || p.nome_eletricista2).length
       setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s)!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas.` : ''}`)
+      setStatusTab('PENDENTE')
       await carregar()
       setTimeout(() => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }, 2500)
     } catch (e) { setCsvStatus('❌ Erro: ' + e.message) }
