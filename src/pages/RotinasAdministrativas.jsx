@@ -21,6 +21,16 @@ const RECORRENCIAS = [
   { valor: 'SEMANAL', label: 'Semanal' },
   { valor: 'MENSAL', label: 'Mensal' },
 ]
+const DIAS_SEMANA = [
+  { valor: 0, label: 'Domingo', alerta: 'todo domingo' },
+  { valor: 1, label: 'Segunda-feira', alerta: 'toda segunda-feira' },
+  { valor: 2, label: 'Terça-feira', alerta: 'toda terça-feira' },
+  { valor: 3, label: 'Quarta-feira', alerta: 'toda quarta-feira' },
+  { valor: 4, label: 'Quinta-feira', alerta: 'toda quinta-feira' },
+  { valor: 5, label: 'Sexta-feira', alerta: 'toda sexta-feira' },
+  { valor: 6, label: 'Sábado', alerta: 'todo sábado' },
+]
+const DIAS_MES = Array.from({ length: 31 }, (_, i) => i + 1)
 
 const modeloVazio = {
   titulo: '',
@@ -29,6 +39,8 @@ const modeloVazio = {
   horario_final: '',
   prioridade: 'NORMAL',
   recorrencia: 'DIARIA',
+  dia_semana: '',
+  dia_mes: '',
   responsavel_login: '',
   perfil_responsavel: '',
 }
@@ -96,23 +108,58 @@ function intervaloHora(item) {
   return inicial || final || ''
 }
 
-function rotuloRecorrencia(valor) {
-  return RECORRENCIAS.find(r => r.valor === (valor || 'DIARIA'))?.label || 'Diária'
+function numeroOuNulo(valor) {
+  if (valor === null || valor === undefined || valor === '') return null
+  const numero = Number(valor)
+  return Number.isFinite(numero) ? numero : null
+}
+
+function valorRecorrenciaOuPadrao(valor, padrao) {
+  return valor === null || valor === undefined || valor === '' ? String(padrao) : String(valor)
 }
 
 function dataReferenciaRotina(rotina) {
   return (rotina?.created_at || rotina?.data_criacao || rotina?.data_execucao || hojeISO()).slice(0, 10)
 }
 
+function diaSemanaDaData(data) {
+  const dt = new Date(`${data}T00:00:00`)
+  return Number.isNaN(dt.getTime()) ? new Date().getDay() : dt.getDay()
+}
+
+function diaMesDaData(data) {
+  return Number(data.slice(8, 10)) || new Date().getDate()
+}
+
+function diaSemanaRecorrencia(rotina) {
+  const marcado = numeroOuNulo(rotina?.dia_semana)
+  if (marcado !== null) return marcado
+  return diaSemanaDaData(dataReferenciaRotina(rotina))
+}
+
+function diaMesRecorrencia(rotina) {
+  const marcado = numeroOuNulo(rotina?.dia_mes)
+  if (marcado !== null) return marcado
+  return diaMesDaData(dataReferenciaRotina(rotina))
+}
+
+function rotuloProgramacao(rotina) {
+  const recorrencia = normalizar(rotina?.recorrencia || 'DIARIA')
+  if (recorrencia === 'SEMANAL') {
+    const dia = DIAS_SEMANA.find(d => d.valor === diaSemanaRecorrencia(rotina))
+    return dia ? `Semanal · ${dia.alerta}` : 'Semanal'
+  }
+  if (recorrencia === 'MENSAL') {
+    return `Mensal · todo dia ${diaMesRecorrencia(rotina)}`
+  }
+  return 'Diária'
+}
+
 function rotinaCabeNaData(rotina, data) {
   const recorrencia = normalizar(rotina?.recorrencia || 'DIARIA')
   if (recorrencia === 'DIARIA') return true
-  const referencia = dataReferenciaRotina(rotina)
-  const dataRef = new Date(`${referencia}T00:00:00`)
-  const dataAgenda = new Date(`${data}T00:00:00`)
-  if (Number.isNaN(dataRef.getTime()) || Number.isNaN(dataAgenda.getTime())) return true
-  if (recorrencia === 'SEMANAL') return dataRef.getDay() === dataAgenda.getDay()
-  if (recorrencia === 'MENSAL') return referencia.slice(8, 10) === data.slice(8, 10)
+  if (recorrencia === 'SEMANAL') return diaSemanaRecorrencia(rotina) === diaSemanaDaData(data)
+  if (recorrencia === 'MENSAL') return diaMesRecorrencia(rotina) === diaMesDaData(data)
   return true
 }
 
@@ -356,6 +403,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       horario_final: fmtHora(modelo.horario_final) || '',
       prioridade: modelo.prioridade || 'NORMAL',
       recorrencia: modelo.recorrencia || 'DIARIA',
+      dia_semana: modelo.dia_semana ?? '',
+      dia_mes: modelo.dia_mes ?? '',
       responsavel_login: modelo.responsavel_login || '',
       perfil_responsavel: modelo.perfil_responsavel || '',
     })
@@ -408,6 +457,14 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome))
   }, [visiveis])
 
+  const alertasPendentes = useMemo(() => {
+    if (dataSelecionada !== hojeISO()) return []
+    return visiveis.filter(r =>
+      ['PENDENTE', 'ATRASADA'].includes(statusVisual(r)) &&
+      !r.alerta_ciente_em
+    )
+  }, [dataSelecionada, visiveis])
+
   const carregar = async () => {
     setLoading(true)
     setErro('')
@@ -443,6 +500,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           horario_final: m.horario_final || null,
           prioridade: m.prioridade || 'NORMAL',
           recorrencia: m.recorrencia || 'DIARIA',
+          dia_semana: m.dia_semana ?? null,
+          dia_mes: m.dia_mes ?? null,
           responsavel_login: m.responsavel_login || null,
           perfil_responsavel: m.perfil_responsavel || null,
           status: 'PENDENTE',
@@ -530,13 +589,22 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     setSalvando(true)
     setErro('')
     try {
+      const recorrenciaModelo = modeloForm.recorrencia || 'DIARIA'
+      const diaSemanaModelo = recorrenciaModelo === 'SEMANAL'
+        ? (numeroOuNulo(modeloForm.dia_semana) ?? diaSemanaDaData(dataSelecionada))
+        : null
+      const diaMesModelo = recorrenciaModelo === 'MENSAL'
+        ? (numeroOuNulo(modeloForm.dia_mes) ?? diaMesDaData(dataSelecionada))
+        : null
       const payloadBase = {
         ...modeloForm,
         titulo: modeloForm.titulo.trim(),
         descricao: modeloForm.descricao.trim() || null,
         horario_previsto: modeloForm.horario_previsto || '08:00',
         horario_final: modeloForm.horario_final || null,
-        recorrencia: modeloForm.recorrencia || 'DIARIA',
+        recorrencia: recorrenciaModelo,
+        dia_semana: diaSemanaModelo,
+        dia_mes: diaMesModelo,
         responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
         perfil_responsavel: modeloForm.perfil_responsavel || null,
       }
@@ -558,6 +626,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
             horario_final: payloadBase.horario_final,
             prioridade: payloadBase.prioridade,
             recorrencia: payloadBase.recorrencia,
+            dia_semana: payloadBase.dia_semana,
+            dia_mes: payloadBase.dia_mes,
             responsavel_login: payloadBase.responsavel_login,
             perfil_responsavel: payloadBase.perfil_responsavel,
             updated_at: atualizadoEm,
@@ -631,6 +701,27 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     finally { setSalvando(false) }
   }
 
+  const confirmarCienciaAlerta = async rotina => {
+    if (!rotina) return
+    setSalvando(true)
+    setErro('')
+    try {
+      const { error } = await supabase
+        .from('rotinas_execucoes')
+        .update({
+          alerta_ciente_em: agoraISO(),
+          alerta_ciente_por: usuarioLogado?.login || null,
+          updated_at: agoraISO(),
+        })
+        .eq('id', rotina.id)
+      if (error) throw error
+      setSelecionadaId(rotina.id)
+      flash('✅ Ciência registrada para a rotina.')
+      await carregar()
+    } catch (e) { setErro(e.message || String(e)) }
+    finally { setSalvando(false) }
+  }
+
   const adicionarSubrotina = async () => {
     if (!selecionada) return
     if (!acaoForm.titulo.trim()) { setErro('Informe o nome da ação realizada.'); return }
@@ -698,6 +789,29 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         {erro && <div style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 12, padding: 12, marginBottom: 14, fontWeight: 800 }}>{erro}</div>}
         {msg && <div style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 12, padding: 12, marginBottom: 14, fontWeight: 800 }}>{msg}</div>}
 
+        {alertasPendentes.length > 0 && (
+          <section style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#9a3412', fontSize: 15, fontWeight: 900 }}>🔔 Alerta de rotina para hoje</h3>
+                <p style={{ margin: '4px 0 0', color: '#9a3412', fontSize: 12, fontWeight: 700 }}>Dê ciência para confirmar que viu a rotina e deve cumprir a atividade.</p>
+              </div>
+              <span style={{ background: '#fed7aa', color: '#9a3412', borderRadius: 999, padding: '5px 10px', fontSize: 12, fontWeight: 900 }}>{alertasPendentes.length} pendente(s)</span>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {alertasPendentes.map(rotina => (
+                <div key={rotina.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, color: '#0f172a', fontSize: 13 }}>{intervaloHora(rotina)} · {rotina.titulo_snapshot}</div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{rotuloProgramacao(rotina)} · {statusMeta(rotina).label}</div>
+                  </div>
+                  <Botao onClick={() => confirmarCienciaAlerta(rotina)} disabled={salvando} style={{ background: '#ea580c', color: '#fff', flexShrink: 0 }}>Dar ciência</Botao>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section style={{ background: '#fff', border: '1px solid #dbe3ef', borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
             <CardNumero valor={contadores.total} label="Rotinas do dia" />
@@ -749,7 +863,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           <p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.35, color: '#475569' }}>{rotina.descricao_snapshot}</p>
                         )}
                         <p style={{ margin: '6px 0 0', fontSize: 12, color: '#64748b' }}>
-                          {(rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral') + ' · ' + rotuloRecorrencia(rotina.recorrencia)}
+                          {(rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral') + ' · ' + rotuloProgramacao(rotina)}
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
@@ -864,8 +978,47 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <Campo label="Prioridade"><select style={inputStyle} value={modeloForm.prioridade} onChange={e => setModeloForm(f => ({ ...f, prioridade: e.target.value }))}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Campo>
-                    <Campo label="Recorrência"><select style={inputStyle} value={modeloForm.recorrencia} onChange={e => setModeloForm(f => ({ ...f, recorrencia: e.target.value }))}>{RECORRENCIAS.map(r => <option key={r.valor} value={r.valor}>{r.label}</option>)}</select></Campo>
+                    <Campo label="Recorrência">
+                      <select
+                        style={inputStyle}
+                        value={modeloForm.recorrencia}
+                        onChange={e => {
+                          const recorrencia = e.target.value
+                          setModeloForm(f => ({
+                            ...f,
+                            recorrencia,
+                            dia_semana: recorrencia === 'SEMANAL' ? valorRecorrenciaOuPadrao(f.dia_semana, diaSemanaDaData(dataSelecionada)) : f.dia_semana,
+                            dia_mes: recorrencia === 'MENSAL' ? valorRecorrenciaOuPadrao(f.dia_mes, diaMesDaData(dataSelecionada)) : f.dia_mes,
+                          }))
+                        }}
+                      >
+                        {RECORRENCIAS.map(r => <option key={r.valor} value={r.valor}>{r.label}</option>)}
+                      </select>
+                    </Campo>
                   </div>
+                  {modeloForm.recorrencia === 'SEMANAL' && (
+                    <Campo label="Calendário semanal">
+                      <select style={inputStyle} value={valorRecorrenciaOuPadrao(modeloForm.dia_semana, diaSemanaDaData(dataSelecionada))} onChange={e => setModeloForm(f => ({ ...f, dia_semana: e.target.value }))}>
+                        {DIAS_SEMANA.map(dia => <option key={dia.valor} value={dia.valor}>{dia.label}</option>)}
+                      </select>
+                    </Campo>
+                  )}
+                  {modeloForm.recorrencia === 'MENSAL' && (
+                    <Campo label="Calendário mensal">
+                      <select style={inputStyle} value={valorRecorrenciaOuPadrao(modeloForm.dia_mes, diaMesDaData(dataSelecionada))} onChange={e => setModeloForm(f => ({ ...f, dia_mes: e.target.value }))}>
+                        {DIAS_MES.map(dia => <option key={dia} value={dia}>Dia {dia}</option>)}
+                      </select>
+                    </Campo>
+                  )}
+                  {modeloForm.recorrencia !== 'DIARIA' && (
+                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800 }}>
+                      Alerta programado: {rotuloProgramacao({
+                        recorrencia: modeloForm.recorrencia,
+                        dia_semana: valorRecorrenciaOuPadrao(modeloForm.dia_semana, diaSemanaDaData(dataSelecionada)),
+                        dia_mes: valorRecorrenciaOuPadrao(modeloForm.dia_mes, diaMesDaData(dataSelecionada)),
+                      })}.
+                    </div>
+                  )}
                   <BuscaUsuarioLogin label="Responsável por login" value={modeloForm.responsavel_login} onChange={valor => setModeloForm(f => ({ ...f, responsavel_login: valor }))} usuarios={sugestoes.usuarios} placeholder="Opcional: login do usuário" />
                   <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
                   <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
@@ -889,7 +1042,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     <div>
                       <div style={{ fontWeight: 900, color: '#0f172a' }}>{intervaloHora(m)} · {m.titulo}</div>
                       {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloRecorrencia(m.recorrencia)}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloProgramacao(m)}</div>
                     </div>
                     {podeConfigurar && (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
