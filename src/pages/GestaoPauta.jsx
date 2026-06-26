@@ -422,12 +422,20 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
       filtros.prefixosPermitidos])
 
-  const pautasExibidas = pautasFiltradasPainel.filter(p => {
-    const s = calcStatus(p)
-    if (statusTab === 'TODOS')   return true
-    if (statusTab === 'VENCIDA') return s === 'VENCIDA'
-    return p.status === statusTab
-  })
+  const dataGeracaoPautaMs = p => {
+    const valor = p.created_at || p.criado_em || (p.data_geracao ? `${p.data_geracao}T${p.hora_geracao || '00:00:00'}` : '')
+    const ts = valor ? new Date(valor).getTime() : 0
+    return Number.isFinite(ts) ? ts : 0
+  }
+
+  const pautasExibidas = pautasFiltradasPainel
+    .filter(p => {
+      const s = calcStatus(p)
+      if (statusTab === 'TODOS')   return true
+      if (statusTab === 'VENCIDA') return s === 'VENCIDA'
+      return p.status === statusTab
+    })
+    .sort((a, b) => dataGeracaoPautaMs(b) - dataGeracaoPautaMs(a) || (Number(b.id) || 0) - (Number(a.id) || 0))
 
   const counts = {
     PENDENTE:  pautasFiltradasPainel.filter(p => p.status === 'PENDENTE' && calcStatus(p) === 'PENDENTE').length,
