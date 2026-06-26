@@ -64,6 +64,28 @@ function statusConclusaoPauta(pauta, auditoria) {
   return dataPrevista < hoje ? 'PENDENTE VENCIDA' : 'PENDENTE NO PRAZO'
 }
 
+function separarDataHora(valor) {
+  if (!valor) return { data: '', hora: '' }
+  const texto = String(valor)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return { data: texto, hora: '' }
+  const data = new Date(texto)
+  if (!Number.isNaN(data.getTime())) {
+    const partes = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'America/Fortaleza',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(data)
+    const valorParte = tipo => partes.find(p => p.type === tipo)?.value || ''
+    return {
+      data: `${valorParte('year')}-${valorParte('month')}-${valorParte('day')}`,
+      hora: `${valorParte('hour')}:${valorParte('minute')}:${valorParte('second')}`,
+    }
+  }
+  const [dataTexto, horaTexto = ''] = texto.split(/[T ]/)
+  return { data: dataTexto || '', hora: horaTexto.slice(0, 8) }
+}
+
 function parseCsvLinhas(texto) {
   const linhas = texto.trim().split('\n').filter(l => l.trim())
   if (linhas.length < 2) return []
@@ -283,6 +305,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
 
+  const dadosCriacaoPauta = () => ({
+    usuario_criacao: usuarioLogado?.login || usuarioLogado?.nome || usuarioLogado?.matricula || '',
+    created_at: new Date().toISOString(),
+  })
+
   const carregar = async () => {
     setLoading(true)
     try {
@@ -350,7 +377,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       if (editando) {
         await atualizarPauta(editando.id, payload)
       } else {
-        await criarPauta({ ...payload, status: 'PENDENTE' })
+        await criarPauta({ ...payload, status: 'PENDENTE', ...dadosCriacaoPauta() })
         setStatusTab('PENDENTE')
       }
       await carregar(); fechar()
@@ -510,8 +537,15 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         const a = p.auditoria_id ? (mapAuditorias[p.auditoria_id] || {}) : {}
         const listaNcs = a.id ? (ncsPorAuditoria[a.id] || []) : []
         const registros = listaNcs.length > 0 ? listaNcs : [null]
+        const geracao = separarDataHora(p.created_at || p.criado_em)
+        const execucao = separarDataHora(a.created_at || a.criado_em)
+        const dataExecucao = a.data_auditoria || execucao.data
+        const horaExecucao = a.hora_auditoria || execucao.hora
         return registros.map(nc => ({
           pauta_id:                   p.id || '',
+          usuario_criacao:            p.usuario_criacao || p.usuario_criador || p.criado_por || p.created_by || p.usuario_registro || '',
+          data_geracao:               geracao.data,
+          hora_geracao:               geracao.hora,
           auditoria_id:               p.auditoria_id || a.id || '',
           fiscal:                     a.fiscal || p.fiscal_login || '',
           matricula:                  a.matricula || '',
@@ -519,8 +553,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           os:                         p.os || a.os || '',
           uc:                         p.uc || a.uc || '',
           data_prevista:              p.data_prevista || '',
-          data_auditoria:             a.data_auditoria || '',
-          hora_auditoria:             a.hora_auditoria || '',
+          data_execucao:              dataExecucao,
+          hora_execucao:              horaExecucao,
           tipo_servico:               p.tipo_servico || a.tipo_servico || '',
           produtivo:                  typeof a.produtivo === 'boolean' ? (a.produtivo ? 'PRODUTIVO' : 'IMPRODUTIVO') : '',
           status:                     p.status || '',
@@ -649,7 +683,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         return
       }
       pautasNovas = await enriquecerComEletricistas(pautasNovas)
-      for (const p of pautasNovas) await criarPauta(p)
+      for (const p of pautasNovas) await criarPauta({ ...p, ...dadosCriacaoPauta() })
       const comEletricistas = pautasNovas.filter(p => p.nome_eletricista || p.nome_eletricista2).length
       setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s)!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas.` : ''}`)
       setStatusTab('PENDENTE')
