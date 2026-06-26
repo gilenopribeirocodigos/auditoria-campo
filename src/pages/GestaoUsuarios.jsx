@@ -6,11 +6,12 @@ import {
 import { supabase } from '../lib/supabase.js'
 import { processoToKey } from '../components/PainelFiltros.jsx'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
   'SUPERV. OPERAÇÃO': { bg: '#d1fae5', color: '#065f46' },
+  'COORD. OPERAÇÃO':  { bg: '#e0f2fe', color: '#0369a1' },
   'SUPERV. CAMPO':    { bg: '#dbeafe', color: '#1e40af' },
   'ANALISTA':         { bg: '#fef3c7', color: '#92400e' },
   'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
