@@ -42,6 +42,7 @@ const modeloVazio = {
   recorrencia: 'DIARIA',
   dia_semana: '',
   dia_mes: '',
+  precisa_ciencia: false,
   responsavel_login: '',
   perfil_responsavel: '',
 }
@@ -425,6 +426,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       recorrencia: modelo.recorrencia || 'DIARIA',
       dia_semana: modelo.dia_semana ?? '',
       dia_mes: modelo.dia_mes ?? '',
+      precisa_ciencia: modelo.precisa_ciencia === true,
       responsavel_login: modelo.responsavel_login || '',
       perfil_responsavel: modelo.perfil_responsavel || '',
     })
@@ -481,6 +483,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     if (dataSelecionada !== hojeISO()) return []
     return visiveis.filter(r =>
       ['PENDENTE', 'ATRASADA'].includes(statusVisual(r)) &&
+      r.precisa_ciencia === true &&
       !r.alerta_ciente_em
     )
   }, [dataSelecionada, visiveis])
@@ -524,6 +527,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           recorrencia: m.recorrencia || 'DIARIA',
           dia_semana: m.dia_semana ?? null,
           dia_mes: m.dia_mes ?? null,
+          precisa_ciencia: m.precisa_ciencia === true,
           responsavel_login: m.responsavel_login || null,
           perfil_responsavel: m.perfil_responsavel || null,
           status: 'PENDENTE',
@@ -629,6 +633,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         recorrencia: recorrenciaModelo,
         dia_semana: diaSemanaModelo,
         dia_mes: diaMesModelo,
+        precisa_ciencia: modeloForm.precisa_ciencia === true,
         responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
         perfil_responsavel: modeloForm.perfil_responsavel || null,
       }
@@ -653,6 +658,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
             recorrencia: payloadBase.recorrencia,
             dia_semana: payloadBase.dia_semana,
             dia_mes: payloadBase.dia_mes,
+            precisa_ciencia: payloadBase.precisa_ciencia,
             responsavel_login: payloadBase.responsavel_login,
             perfil_responsavel: payloadBase.perfil_responsavel,
             updated_at: atualizadoEm,
@@ -882,6 +888,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           {numeroOuNulo(rotina.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(rotina)}</span>}
                           <strong style={{ fontSize: 16, color: '#0f172a' }}>{intervaloHora(rotina)}</strong>
                           <Pill meta={meta} />
+                          {rotina.precisa_ciencia === true && <span style={{ fontSize: 11, color: '#c2410c', background: '#ffedd5', borderRadius: 999, padding: '3px 8px', fontWeight: 900 }}>Exige ciência</span>}
                           {rotina.prioridade && rotina.prioridade !== 'NORMAL' && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 900 }}>Prioridade {rotina.prioridade}</span>}
                         </div>
                         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: '#0f172a' }}>{rotina.titulo_snapshot}</h2>
@@ -1056,6 +1063,23 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                       })}.
                     </div>
                   )}
+                  <label style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                    background: modeloForm.precisa_ciencia ? '#fff7ed' : '#f8fafc',
+                    border: '1px solid ' + (modeloForm.precisa_ciencia ? '#fdba74' : '#e2e8f0'),
+                    borderRadius: 10, padding: '11px 12px', cursor: 'pointer',
+                  }}>
+                    <span>
+                      <span style={{ display: 'block', fontSize: 12, fontWeight: 900, color: '#334155', textTransform: 'uppercase' }}>Exigir ciência do usuário</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 3 }}>Quando marcada, a rotina mostra alerta para o usuário dar ciência na data programada.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={modeloForm.precisa_ciencia === true}
+                      onChange={e => setModeloForm(f => ({ ...f, precisa_ciencia: e.target.checked }))}
+                      style={{ width: 20, height: 20, flexShrink: 0 }}
+                    />
+                  </label>
                   <BuscaUsuarioLogin label="Responsável por login" value={modeloForm.responsavel_login} onChange={valor => setModeloForm(f => ({ ...f, responsavel_login: valor }))} usuarios={sugestoes.usuarios} placeholder="Opcional: login do usuário" />
                   <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
                   <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
@@ -1083,6 +1107,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                       </div>
                       {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloProgramacao(m)}</div>
+                      {m.precisa_ciencia === true && <div style={{ display: 'inline-block', background: '#ffedd5', color: '#c2410c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900, marginTop: 7 }}>Exige ciência</div>}
                     </div>
                     {podeConfigurar && (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
