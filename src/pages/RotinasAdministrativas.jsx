@@ -138,6 +138,49 @@ function ordenarRotinas(lista) {
   )
 }
 
+function faixaHorariaRotinas(rotinas) {
+  const horarios = rotinas
+    .flatMap(r => [fmtHora(r?.horario_previsto), fmtHora(r?.horario_final)])
+    .filter(Boolean)
+    .sort()
+  if (horarios.length === 0) return 'Sem horário'
+  const inicio = horarios[0]
+  const fim = horarios[horarios.length - 1]
+  return inicio === fim ? inicio : inicio + ' às ' + fim
+}
+
+function agruparModelosPorResponsavel(lista) {
+  const mapa = new Map()
+
+  ordenarRotinas(lista).forEach(modelo => {
+    const responsavel = (modelo?.responsavel_login || '').trim()
+    const perfil = (modelo?.perfil_responsavel || '').trim()
+    const chave = responsavel ? 'usuario:' + responsavel.toLowerCase() : perfil ? 'perfil:' + normalizar(perfil) : 'geral'
+
+    if (!mapa.has(chave)) {
+      mapa.set(chave, {
+        chave,
+        titulo: responsavel || (perfil ? 'Perfil ' + perfil : 'Rotinas gerais'),
+        subtitulo: responsavel ? (perfil || 'Responsável por login') : perfil ? 'Liberadas por perfil' : 'Sem responsável específico',
+        tipoOrdem: responsavel ? 1 : perfil ? 2 : 3,
+        rotinas: [],
+      })
+    }
+
+    mapa.get(chave).rotinas.push(modelo)
+  })
+
+  return Array.from(mapa.values())
+    .map(grupo => ({
+      ...grupo,
+      ativas: grupo.rotinas.filter(r => r.ativa !== false).length,
+      inativas: grupo.rotinas.filter(r => r.ativa === false).length,
+      exigeCiencia: grupo.rotinas.filter(r => r.precisa_ciencia === true).length,
+      faixaHorario: faixaHorariaRotinas(grupo.rotinas),
+    }))
+    .sort((a, b) => a.tipoOrdem - b.tipoOrdem || a.titulo.localeCompare(b.titulo, 'pt-BR'))
+}
+
 function dataReferenciaRotina(rotina) {
   return (rotina?.created_at || rotina?.data_criacao || rotina?.data_execucao || hojeISO()).slice(0, 10)
 }
@@ -512,6 +555,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       !r.alerta_ciente_em
     )
   }, [dataSelecionada, visiveis])
+
+  const modelosAgrupados = useMemo(() => agruparModelosPorResponsavel(modelos), [modelos])
 
   const carregar = async () => {
     setLoading(true)
@@ -1129,25 +1174,53 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
               <div style={{ padding: 14, borderBottom: '1px solid #e2e8f0', fontWeight: 900 }}>Modelos cadastrados ({modelos.length})</div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {modelos.length === 0 && <div style={{ padding: 24, color: '#64748b', fontWeight: 800 }}>Nenhum modelo cadastrado.</div>}
-                {modelos.map(m => (
-                  <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1, background: modeloEditandoId === m.id ? '#eff6ff' : '#fff' }}>
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontWeight: 900, color: '#0f172a' }}>
-                        {numeroOuNulo(m.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(m)}</span>}
-                        <span>{intervaloHora(m)} · {m.titulo}</span>
+                {modelosAgrupados.map(grupo => (
+                  <section key={grupo.chave} style={{ borderBottom: '1px solid #e2e8f0' }}>
+                    <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, flexShrink: 0 }}>
+                            {grupo.titulo.slice(0, 1).toUpperCase()}
+                          </div>
+                          <div style={{ minWidth: 0 }}>
+                            <h4 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: '#0f172a', overflowWrap: 'anywhere' }}>{grupo.titulo}</h4>
+                            <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 12, lineHeight: 1.35 }}>
+                              {grupo.subtitulo} · {grupo.rotinas.length} rotina(s) · {grupo.faixaHorario}
+                            </p>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>{grupo.ativas} ativa(s)</span>
+                          {grupo.inativas > 0 && <span style={{ background: '#f1f5f9', color: '#475569', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>{grupo.inativas} inativa(s)</span>}
+                          {grupo.exigeCiencia > 0 && <span style={{ background: '#ffedd5', color: '#c2410c', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>{grupo.exigeCiencia} com ciência</span>}
+                        </div>
                       </div>
-                      {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloProgramacao(m)}</div>
-                      {m.precisa_ciencia === true && <div style={{ display: 'inline-block', background: '#ffedd5', color: '#c2410c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900, marginTop: 7 }}>Exige ciência</div>}
                     </div>
-                    {podeConfigurar && (
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                        <Botao onClick={() => editarModelo(m)} disabled={salvando || modeloEditandoId === m.id} style={{ background: '#2563eb', color: '#fff' }}>Editar</Botao>
-                        <Botao onClick={() => replicarModelo(m)} disabled={salvando} style={{ background: '#0f766e', color: '#fff' }}>Replicar</Botao>
-                        <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>
-                      </div>
-                    )}
-                  </div>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      {grupo.rotinas.map(m => (
+                        <div key={m.id} style={{ padding: 13, borderBottom: '1px solid #edf2f7', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1, background: modeloEditandoId === m.id ? '#eff6ff' : '#fff' }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap', color: '#0f172a', marginBottom: 5 }}>
+                              {numeroOuNulo(m.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(m)}</span>}
+                              <span style={{ fontSize: 13, fontWeight: 900, color: '#1e3a5f' }}>{intervaloHora(m) || 'Sem horário'}</span>
+                              {m.ativa === false && <span style={{ background: '#f1f5f9', color: '#64748b', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>Inativa</span>}
+                              {m.precisa_ciencia === true && <span style={{ background: '#ffedd5', color: '#c2410c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>Exige ciência</span>}
+                            </div>
+                            <h5 style={{ margin: 0, fontSize: 14, fontWeight: 900, color: '#0f172a', lineHeight: 1.25 }}>{m.titulo}</h5>
+                            {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
+                            <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.prioridade || 'NORMAL'} · {rotuloProgramacao(m)}</div>
+                          </div>
+                          {podeConfigurar && (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 92 }}>
+                              <Botao onClick={() => editarModelo(m)} disabled={salvando || modeloEditandoId === m.id} style={{ background: '#2563eb', color: '#fff', width: 86 }}>Editar</Botao>
+                              <Botao onClick={() => replicarModelo(m)} disabled={salvando} style={{ background: '#0f766e', color: '#fff', width: 86 }}>Replicar</Botao>
+                              <Botao onClick={() => alternarModelo(m)} disabled={salvando} style={{ width: 86 }}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 ))}
               </div>
             </div>
