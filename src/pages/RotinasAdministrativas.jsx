@@ -397,6 +397,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [selecionadaId, setSelecionadaId] = useState(null)
   const [modeloForm, setModeloForm] = useState(modeloVazio)
   const [modeloEditandoId, setModeloEditandoId] = useState(null)
+  const [modeloReplicandoTitulo, setModeloReplicandoTitulo] = useState('')
   const [acaoForm, setAcaoForm] = useState(acaoVazia)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -410,12 +411,14 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
 
   const limparEdicaoModelo = () => {
     setModeloEditandoId(null)
+    setModeloReplicandoTitulo('')
     setModeloForm(modeloVazio)
     setErro('')
   }
 
   const editarModelo = modelo => {
     setModeloEditandoId(modelo.id)
+    setModeloReplicandoTitulo('')
     setModeloForm({
       titulo: modelo.titulo || '',
       descricao: modelo.descricao || '',
@@ -432,6 +435,28 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     })
     setErro('')
     setMsg('')
+    setAba('modelos')
+  }
+
+  const replicarModelo = modelo => {
+    setModeloEditandoId(null)
+    setModeloReplicandoTitulo(modelo.titulo || 'modelo selecionado')
+    setModeloForm({
+      titulo: modelo.titulo || '',
+      descricao: modelo.descricao || '',
+      ordem_execucao: modelo.ordem_execucao ?? '',
+      horario_previsto: fmtHora(modelo.horario_previsto) || '08:00',
+      horario_final: fmtHora(modelo.horario_final) || '',
+      prioridade: modelo.prioridade || 'NORMAL',
+      recorrencia: modelo.recorrencia || 'DIARIA',
+      dia_semana: modelo.dia_semana ?? '',
+      dia_mes: modelo.dia_mes ?? '',
+      precisa_ciencia: modelo.precisa_ciencia === true,
+      responsavel_login: '',
+      perfil_responsavel: '',
+    })
+    setErro('')
+    setMsg('Modelo carregado para replicação. Informe o novo responsável, ajuste o horário se precisar e salve.')
     setAba('modelos')
   }
 
@@ -675,6 +700,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         return
       }
 
+      const replicandoModelo = Boolean(modeloReplicandoTitulo)
       const payload = {
         ...payloadBase,
         criado_por: usuarioLogado?.login || null,
@@ -683,9 +709,9 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       const { error } = await supabase.from('rotinas_modelos').insert(payload)
       if (error) throw error
       limparEdicaoModelo()
-      flash('✅ Modelo de rotina criado.')
+      flash(replicandoModelo ? '✅ Modelo de rotina replicado.' : '✅ Modelo de rotina criado.')
       await carregar()
-      setAba('hoje')
+      setAba(replicandoModelo ? 'modelos' : 'hoje')
     } catch (e) {
       setErro(e.message || String(e))
     } finally {
@@ -995,11 +1021,16 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
             {podeConfigurar && (
               <div style={{ background: '#fff', border: '1px solid #dbe3ef', borderRadius: 14, padding: 16 }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 900, color: '#0f172a' }}>
-                  {modeloEditandoId ? 'Editar modelo de rotina' : 'Criar modelo de rotina'}
+                  {modeloEditandoId ? 'Editar modelo de rotina' : modeloReplicandoTitulo ? 'Replicar modelo de rotina' : 'Criar modelo de rotina'}
                 </h3>
                 {modeloEditandoId && (
                   <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
                     Ajustando um modelo cadastrado. As rotinas de hoje/futuras ainda abertas também serão atualizadas.
+                  </div>
+                )}
+                {!modeloEditandoId && modeloReplicandoTitulo && (
+                  <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
+                    Replicando o modelo "{modeloReplicandoTitulo}". Informe o novo responsável por login e ajuste o horário antes de salvar.
                   </div>
                 )}
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -1083,11 +1114,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                   <BuscaUsuarioLogin label="Responsável por login" value={modeloForm.responsavel_login} onChange={valor => setModeloForm(f => ({ ...f, responsavel_login: valor }))} usuarios={sugestoes.usuarios} placeholder="Opcional: login do usuário" />
                   <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
                   <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
-                    {modeloEditandoId ? 'Salvar alterações' : 'Salvar modelo'}
+                    {modeloEditandoId ? 'Salvar alterações' : modeloReplicandoTitulo ? 'Salvar réplica' : 'Salvar modelo'}
                   </Botao>
-                  {modeloEditandoId && (
+                  {(modeloEditandoId || modeloReplicandoTitulo) && (
                     <Botao onClick={limparEdicaoModelo} disabled={salvando} style={{ width: '100%' }}>
-                      Cancelar edição
+                      {modeloEditandoId ? 'Cancelar edição' : 'Cancelar replicação'}
                     </Botao>
                   )}
                 </div>
@@ -1112,6 +1143,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     {podeConfigurar && (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <Botao onClick={() => editarModelo(m)} disabled={salvando || modeloEditandoId === m.id} style={{ background: '#2563eb', color: '#fff' }}>Editar</Botao>
+                        <Botao onClick={() => replicarModelo(m)} disabled={salvando} style={{ background: '#0f766e', color: '#fff' }}>Replicar</Botao>
                         <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>
                       </div>
                     )}
