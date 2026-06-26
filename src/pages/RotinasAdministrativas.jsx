@@ -15,7 +15,7 @@ const STATUS = {
 }
 
 const PRIORIDADES = ['BAIXA', 'NORMAL', 'ALTA', 'CRITICA']
-const PERFIS_DESTINO = ['', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
+const PERFIS_DESTINO = ['', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 const RECORRENCIAS = [
   { valor: 'DIARIA', label: 'Diária' },
   { valor: 'SEMANAL', label: 'Semanal' },
@@ -598,7 +598,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .filter(u => (u.status || 'ATIVO') === 'ATIVO' && (u.login || '').trim())
         .sort((a, b) => (a.nome || a.login || '').localeCompare(b.nome || b.login || '', 'pt-BR'))
       const supervisoresUsuarios = (usuarios || [])
-        .filter(u => (u.status || 'ATIVO') === 'ATIVO' && ['SUPERV. CAMPO', 'SUPERV. OPERAÇÃO'].includes(normalizar(u.perfil)))
+        .filter(u => (u.status || 'ATIVO') === 'ATIVO' && ['SUPERV. CAMPO', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO'].includes(normalizar(u.perfil)))
         .map(u => u.nome)
 
       setSugestoes({
