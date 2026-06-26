@@ -216,8 +216,8 @@ function Pill({ meta, children }) {
 
 function Campo({ label, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+      <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
       {children}
     </label>
   )
@@ -383,7 +383,7 @@ function BuscaUsuarioLogin({ label, value, onChange, usuarios, placeholder }) {
 }
 
 const inputStyle = {
-  width: '100%', border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
+  width: '100%', height: 42, border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
   fontSize: 14, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box',
 }
 
@@ -1005,7 +1005,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                 <div style={{ display: 'grid', gap: 12 }}>
                   <Campo label="Título da rotina"><input style={inputStyle} value={modeloForm.titulo} onChange={e => setModeloForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Conferir login da equipe no SIGA" /></Campo>
                   <Campo label="Descrição"><textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={modeloForm.descricao} onChange={e => setModeloForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhe o objetivo e o resultado esperado" /></Campo>
-                  <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1fr 1fr', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, alignItems: 'end' }}>
                     <Campo label="Ordem de execução">
                       <input
                         type="number"
