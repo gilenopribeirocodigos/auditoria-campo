@@ -35,6 +35,7 @@ const DIAS_MES = Array.from({ length: 31 }, (_, i) => i + 1)
 const modeloVazio = {
   titulo: '',
   descricao: '',
+  ordem_execucao: '',
   horario_previsto: '08:00',
   horario_final: '',
   prioridade: 'NORMAL',
@@ -116,6 +117,24 @@ function numeroOuNulo(valor) {
 
 function valorRecorrenciaOuPadrao(valor, padrao) {
   return valor === null || valor === undefined || valor === '' ? String(padrao) : String(valor)
+}
+
+function ordemRotina(rotina) {
+  const ordem = numeroOuNulo(rotina?.ordem_execucao)
+  return ordem === null ? Number.MAX_SAFE_INTEGER : ordem
+}
+
+function rotuloOrdem(rotina) {
+  const ordem = numeroOuNulo(rotina?.ordem_execucao)
+  return ordem === null ? 'Sem ordem' : `Ordem ${ordem}`
+}
+
+function ordenarRotinas(lista) {
+  return [...(lista || [])].sort((a, b) =>
+    ordemRotina(a) - ordemRotina(b) ||
+    fmtHora(a?.horario_previsto).localeCompare(fmtHora(b?.horario_previsto)) ||
+    (a?.titulo_snapshot || a?.titulo || '').localeCompare(b?.titulo_snapshot || b?.titulo || '', 'pt-BR')
+  )
 }
 
 function dataReferenciaRotina(rotina) {
@@ -399,6 +418,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     setModeloForm({
       titulo: modelo.titulo || '',
       descricao: modelo.descricao || '',
+      ordem_execucao: modelo.ordem_execucao ?? '',
       horario_previsto: fmtHora(modelo.horario_previsto) || '08:00',
       horario_final: fmtHora(modelo.horario_final) || '',
       prioridade: modelo.prioridade || 'NORMAL',
@@ -475,12 +495,13 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errMods) throw errMods
 
-      const modelosEscopo = (mods || []).filter(m =>
+      const modelosOrdenados = ordenarRotinas(mods || [])
+      const modelosEscopo = modelosOrdenados.filter(m =>
         m.ativa !== false &&
         dentroDoEscopo(m, usuarioLogado, acessoGeral) &&
         rotinaCabeNaData(m, dataSelecionada)
       )
-      setModelos(mods || [])
+      setModelos(modelosOrdenados)
 
       const { data: existentes, error: errExistentes } = await supabase
         .from('rotinas_execucoes')
@@ -496,6 +517,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           data_execucao: dataSelecionada,
           titulo_snapshot: m.titulo,
           descricao_snapshot: m.descricao || null,
+          ordem_execucao: m.ordem_execucao ?? null,
           horario_previsto: m.horario_previsto,
           horario_final: m.horario_final || null,
           prioridade: m.prioridade || 'NORMAL',
@@ -521,10 +543,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errExecs) throw errExecs
 
-      const execsEscopo = (execs || []).filter(e =>
+      const execsEscopo = ordenarRotinas((execs || []).filter(e =>
         dentroDoEscopo(e, usuarioLogado, acessoGeral) &&
         rotinaCabeNaData(e, dataSelecionada)
-      )
+      ))
       setExecucoes(execsEscopo)
       if (!selecionadaId || !execsEscopo.some(e => e.id === selecionadaId)) {
         setSelecionadaId(execsEscopo[0]?.id || null)
@@ -596,10 +618,12 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       const diaMesModelo = recorrenciaModelo === 'MENSAL'
         ? (numeroOuNulo(modeloForm.dia_mes) ?? diaMesDaData(dataSelecionada))
         : null
+      const ordemModelo = numeroOuNulo(modeloForm.ordem_execucao)
       const payloadBase = {
         ...modeloForm,
         titulo: modeloForm.titulo.trim(),
         descricao: modeloForm.descricao.trim() || null,
+        ordem_execucao: ordemModelo,
         horario_previsto: modeloForm.horario_previsto || '08:00',
         horario_final: modeloForm.horario_final || null,
         recorrencia: recorrenciaModelo,
@@ -622,6 +646,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           .update({
             titulo_snapshot: payloadBase.titulo,
             descricao_snapshot: payloadBase.descricao,
+            ordem_execucao: payloadBase.ordem_execucao,
             horario_previsto: payloadBase.horario_previsto,
             horario_final: payloadBase.horario_final,
             prioridade: payloadBase.prioridade,
@@ -854,6 +879,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+                          {numeroOuNulo(rotina.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(rotina)}</span>}
                           <strong style={{ fontSize: 16, color: '#0f172a' }}>{intervaloHora(rotina)}</strong>
                           <Pill meta={meta} />
                           {rotina.prioridade && rotina.prioridade !== 'NORMAL' && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 900 }}>Prioridade {rotina.prioridade}</span>}
@@ -972,7 +998,18 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                 <div style={{ display: 'grid', gap: 12 }}>
                   <Campo label="Título da rotina"><input style={inputStyle} value={modeloForm.titulo} onChange={e => setModeloForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Conferir login da equipe no SIGA" /></Campo>
                   <Campo label="Descrição"><textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={modeloForm.descricao} onChange={e => setModeloForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhe o objetivo e o resultado esperado" /></Campo>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '0.8fr 1fr 1fr', gap: 10 }}>
+                    <Campo label="Ordem de execução">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        style={inputStyle}
+                        value={modeloForm.ordem_execucao}
+                        onChange={e => setModeloForm(f => ({ ...f, ordem_execucao: e.target.value }))}
+                        placeholder="Ex: 1"
+                      />
+                    </Campo>
                     <Campo label="Horário inicial"><input type="time" style={inputStyle} value={modeloForm.horario_previsto} onChange={e => setModeloForm(f => ({ ...f, horario_previsto: e.target.value }))} /></Campo>
                     <Campo label="Horário final"><input type="time" style={inputStyle} value={modeloForm.horario_final} onChange={e => setModeloForm(f => ({ ...f, horario_final: e.target.value }))} /></Campo>
                   </div>
@@ -1040,7 +1077,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                 {modelos.map(m => (
                   <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1, background: modeloEditandoId === m.id ? '#eff6ff' : '#fff' }}>
                     <div>
-                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{intervaloHora(m)} · {m.titulo}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontWeight: 900, color: '#0f172a' }}>
+                        {numeroOuNulo(m.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(m)}</span>}
+                        <span>{intervaloHora(m)} · {m.titulo}</span>
+                      </div>
                       {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloProgramacao(m)}</div>
                     </div>
