@@ -213,6 +213,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [sugestoes, setSugestoes] = useState({ prefixos: [], supervisores: [], eletricistas: [] })
   const [selecionadaId, setSelecionadaId] = useState(null)
   const [modeloForm, setModeloForm] = useState(modeloVazio)
+  const [modeloEditandoId, setModeloEditandoId] = useState(null)
   const [acaoForm, setAcaoForm] = useState(acaoVazia)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -223,6 +224,27 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const podeConfigurar = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_configurar')
 
   const atualizarAcao = (campo, valor) => setAcaoForm(form => ({ ...form, [campo]: valor }))
+
+  const limparEdicaoModelo = () => {
+    setModeloEditandoId(null)
+    setModeloForm(modeloVazio)
+    setErro('')
+  }
+
+  const editarModelo = modelo => {
+    setModeloEditandoId(modelo.id)
+    setModeloForm({
+      titulo: modelo.titulo || '',
+      descricao: modelo.descricao || '',
+      horario_previsto: fmtHora(modelo.horario_previsto) || '08:00',
+      prioridade: modelo.prioridade || 'NORMAL',
+      responsavel_login: modelo.responsavel_login || '',
+      perfil_responsavel: modelo.perfil_responsavel || '',
+    })
+    setErro('')
+    setMsg('')
+    setAba('modelos')
+  }
 
   const vinculosNaoPreenchidos = useMemo(() => {
     const faltantes = []
@@ -377,18 +399,53 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     setSalvando(true)
     setErro('')
     try {
-      const payload = {
+      const payloadBase = {
         ...modeloForm,
         titulo: modeloForm.titulo.trim(),
         descricao: modeloForm.descricao.trim() || null,
         responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
         perfil_responsavel: modeloForm.perfil_responsavel || null,
+      }
+
+      if (modeloEditandoId) {
+        const atualizadoEm = agoraISO()
+        const { error } = await supabase
+          .from('rotinas_modelos')
+          .update({ ...payloadBase, updated_at: atualizadoEm })
+          .eq('id', modeloEditandoId)
+        if (error) throw error
+
+        const { error: errExecucoes } = await supabase
+          .from('rotinas_execucoes')
+          .update({
+            titulo_snapshot: payloadBase.titulo,
+            descricao_snapshot: payloadBase.descricao,
+            horario_previsto: payloadBase.horario_previsto,
+            prioridade: payloadBase.prioridade,
+            responsavel_login: payloadBase.responsavel_login,
+            perfil_responsavel: payloadBase.perfil_responsavel,
+            updated_at: atualizadoEm,
+          })
+          .eq('rotina_modelo_id', modeloEditandoId)
+          .gte('data_execucao', hojeISO())
+          .in('status', ['PENDENTE', 'EM_ANDAMENTO'])
+        if (errExecucoes) throw errExecucoes
+
+        limparEdicaoModelo()
+        flash('✅ Modelo de rotina atualizado.')
+        await carregar()
+        setAba('modelos')
+        return
+      }
+
+      const payload = {
+        ...payloadBase,
         criado_por: usuarioLogado?.login || null,
         ativa: true,
       }
       const { error } = await supabase.from('rotinas_modelos').insert(payload)
       if (error) throw error
-      setModeloForm(modeloVazio)
+      limparEdicaoModelo()
       flash('✅ Modelo de rotina criado.')
       await carregar()
       setAba('hoje')
@@ -408,6 +465,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .update({ ativa: !modelo.ativa, updated_at: agoraISO() })
         .eq('id', modelo.id)
       if (error) throw error
+      if (modeloEditandoId === modelo.id) limparEdicaoModelo()
       flash(modelo.ativa ? 'Modelo desativado.' : 'Modelo reativado.')
       await carregar()
     } catch (e) { setErro(e.message || String(e)) }
@@ -653,7 +711,14 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           <section style={{ display: 'grid', gridTemplateColumns: podeConfigurar ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr', gap: 16, alignItems: 'start' }}>
             {podeConfigurar && (
               <div style={{ background: '#fff', border: '1px solid #dbe3ef', borderRadius: 14, padding: 16 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 900, color: '#0f172a' }}>Criar modelo de rotina</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 900, color: '#0f172a' }}>
+                  {modeloEditandoId ? 'Editar modelo de rotina' : 'Criar modelo de rotina'}
+                </h3>
+                {modeloEditandoId && (
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
+                    Ajustando um modelo cadastrado. As rotinas de hoje/futuras ainda abertas também serão atualizadas.
+                  </div>
+                )}
                 <div style={{ display: 'grid', gap: 12 }}>
                   <Campo label="Título da rotina"><input style={inputStyle} value={modeloForm.titulo} onChange={e => setModeloForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Conferir login da equipe no SIGA" /></Campo>
                   <Campo label="Descrição"><textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={modeloForm.descricao} onChange={e => setModeloForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhe o objetivo e o resultado esperado" /></Campo>
@@ -663,7 +728,14 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                   </div>
                   <Campo label="Responsável por login"><input style={inputStyle} value={modeloForm.responsavel_login} onChange={e => setModeloForm(f => ({ ...f, responsavel_login: e.target.value }))} placeholder="Opcional: login do usuário" /></Campo>
                   <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
-                  <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>Salvar modelo</Botao>
+                  <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
+                    {modeloEditandoId ? 'Salvar alterações' : 'Salvar modelo'}
+                  </Botao>
+                  {modeloEditandoId && (
+                    <Botao onClick={limparEdicaoModelo} disabled={salvando} style={{ width: '100%' }}>
+                      Cancelar edição
+                    </Botao>
+                  )}
                 </div>
               </div>
             )}
@@ -673,13 +745,18 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {modelos.length === 0 && <div style={{ padding: 24, color: '#64748b', fontWeight: 800 }}>Nenhum modelo cadastrado.</div>}
                 {modelos.map(m => (
-                  <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1 }}>
+                  <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1, background: modeloEditandoId === m.id ? '#eff6ff' : '#fff' }}>
                     <div>
                       <div style={{ fontWeight: 900, color: '#0f172a' }}>{fmtHora(m.horario_previsto)} · {m.titulo}</div>
                       {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
                       <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'}</div>
                     </div>
-                    {podeConfigurar && <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>}
+                    {podeConfigurar && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <Botao onClick={() => editarModelo(m)} disabled={salvando || modeloEditandoId === m.id} style={{ background: '#2563eb', color: '#fff' }}>Editar</Botao>
+                        <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
