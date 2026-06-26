@@ -21,14 +21,28 @@ const RECORRENCIAS = [
   { valor: 'SEMANAL', label: 'Semanal' },
   { valor: 'MENSAL', label: 'Mensal' },
 ]
+const DIAS_SEMANA = [
+  { valor: 0, label: 'Domingo', alerta: 'todo domingo' },
+  { valor: 1, label: 'Segunda-feira', alerta: 'toda segunda-feira' },
+  { valor: 2, label: 'Terça-feira', alerta: 'toda terça-feira' },
+  { valor: 3, label: 'Quarta-feira', alerta: 'toda quarta-feira' },
+  { valor: 4, label: 'Quinta-feira', alerta: 'toda quinta-feira' },
+  { valor: 5, label: 'Sexta-feira', alerta: 'toda sexta-feira' },
+  { valor: 6, label: 'Sábado', alerta: 'todo sábado' },
+]
+const DIAS_MES = Array.from({ length: 31 }, (_, i) => i + 1)
 
 const modeloVazio = {
   titulo: '',
   descricao: '',
+  ordem_execucao: '',
   horario_previsto: '08:00',
   horario_final: '',
   prioridade: 'NORMAL',
   recorrencia: 'DIARIA',
+  dia_semana: '',
+  dia_mes: '',
+  precisa_ciencia: false,
   responsavel_login: '',
   perfil_responsavel: '',
 }
@@ -96,23 +110,76 @@ function intervaloHora(item) {
   return inicial || final || ''
 }
 
-function rotuloRecorrencia(valor) {
-  return RECORRENCIAS.find(r => r.valor === (valor || 'DIARIA'))?.label || 'Diária'
+function numeroOuNulo(valor) {
+  if (valor === null || valor === undefined || valor === '') return null
+  const numero = Number(valor)
+  return Number.isFinite(numero) ? numero : null
+}
+
+function valorRecorrenciaOuPadrao(valor, padrao) {
+  return valor === null || valor === undefined || valor === '' ? String(padrao) : String(valor)
+}
+
+function ordemRotina(rotina) {
+  const ordem = numeroOuNulo(rotina?.ordem_execucao)
+  return ordem === null ? Number.MAX_SAFE_INTEGER : ordem
+}
+
+function rotuloOrdem(rotina) {
+  const ordem = numeroOuNulo(rotina?.ordem_execucao)
+  return ordem === null ? 'Sem ordem' : `Ordem ${ordem}`
+}
+
+function ordenarRotinas(lista) {
+  return [...(lista || [])].sort((a, b) =>
+    ordemRotina(a) - ordemRotina(b) ||
+    fmtHora(a?.horario_previsto).localeCompare(fmtHora(b?.horario_previsto)) ||
+    (a?.titulo_snapshot || a?.titulo || '').localeCompare(b?.titulo_snapshot || b?.titulo || '', 'pt-BR')
+  )
 }
 
 function dataReferenciaRotina(rotina) {
   return (rotina?.created_at || rotina?.data_criacao || rotina?.data_execucao || hojeISO()).slice(0, 10)
 }
 
+function diaSemanaDaData(data) {
+  const dt = new Date(`${data}T00:00:00`)
+  return Number.isNaN(dt.getTime()) ? new Date().getDay() : dt.getDay()
+}
+
+function diaMesDaData(data) {
+  return Number(data.slice(8, 10)) || new Date().getDate()
+}
+
+function diaSemanaRecorrencia(rotina) {
+  const marcado = numeroOuNulo(rotina?.dia_semana)
+  if (marcado !== null) return marcado
+  return diaSemanaDaData(dataReferenciaRotina(rotina))
+}
+
+function diaMesRecorrencia(rotina) {
+  const marcado = numeroOuNulo(rotina?.dia_mes)
+  if (marcado !== null) return marcado
+  return diaMesDaData(dataReferenciaRotina(rotina))
+}
+
+function rotuloProgramacao(rotina) {
+  const recorrencia = normalizar(rotina?.recorrencia || 'DIARIA')
+  if (recorrencia === 'SEMANAL') {
+    const dia = DIAS_SEMANA.find(d => d.valor === diaSemanaRecorrencia(rotina))
+    return dia ? `Semanal · ${dia.alerta}` : 'Semanal'
+  }
+  if (recorrencia === 'MENSAL') {
+    return `Mensal · todo dia ${diaMesRecorrencia(rotina)}`
+  }
+  return 'Diária'
+}
+
 function rotinaCabeNaData(rotina, data) {
   const recorrencia = normalizar(rotina?.recorrencia || 'DIARIA')
   if (recorrencia === 'DIARIA') return true
-  const referencia = dataReferenciaRotina(rotina)
-  const dataRef = new Date(`${referencia}T00:00:00`)
-  const dataAgenda = new Date(`${data}T00:00:00`)
-  if (Number.isNaN(dataRef.getTime()) || Number.isNaN(dataAgenda.getTime())) return true
-  if (recorrencia === 'SEMANAL') return dataRef.getDay() === dataAgenda.getDay()
-  if (recorrencia === 'MENSAL') return referencia.slice(8, 10) === data.slice(8, 10)
+  if (recorrencia === 'SEMANAL') return diaSemanaRecorrencia(rotina) === diaSemanaDaData(data)
+  if (recorrencia === 'MENSAL') return diaMesRecorrencia(rotina) === diaMesDaData(data)
   return true
 }
 
@@ -149,8 +216,8 @@ function Pill({ meta, children }) {
 
 function Campo({ label, children }) {
   return (
-    <label style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <span style={{ fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+      <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
       {children}
     </label>
   )
@@ -316,7 +383,7 @@ function BuscaUsuarioLogin({ label, value, onChange, usuarios, placeholder }) {
 }
 
 const inputStyle = {
-  width: '100%', border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
+  width: '100%', height: 42, border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
   fontSize: 14, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box',
 }
 
@@ -330,6 +397,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [selecionadaId, setSelecionadaId] = useState(null)
   const [modeloForm, setModeloForm] = useState(modeloVazio)
   const [modeloEditandoId, setModeloEditandoId] = useState(null)
+  const [modeloReplicandoTitulo, setModeloReplicandoTitulo] = useState('')
   const [acaoForm, setAcaoForm] = useState(acaoVazia)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -343,24 +411,52 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
 
   const limparEdicaoModelo = () => {
     setModeloEditandoId(null)
+    setModeloReplicandoTitulo('')
     setModeloForm(modeloVazio)
     setErro('')
   }
 
   const editarModelo = modelo => {
     setModeloEditandoId(modelo.id)
+    setModeloReplicandoTitulo('')
     setModeloForm({
       titulo: modelo.titulo || '',
       descricao: modelo.descricao || '',
+      ordem_execucao: modelo.ordem_execucao ?? '',
       horario_previsto: fmtHora(modelo.horario_previsto) || '08:00',
       horario_final: fmtHora(modelo.horario_final) || '',
       prioridade: modelo.prioridade || 'NORMAL',
       recorrencia: modelo.recorrencia || 'DIARIA',
+      dia_semana: modelo.dia_semana ?? '',
+      dia_mes: modelo.dia_mes ?? '',
+      precisa_ciencia: modelo.precisa_ciencia === true,
       responsavel_login: modelo.responsavel_login || '',
       perfil_responsavel: modelo.perfil_responsavel || '',
     })
     setErro('')
     setMsg('')
+    setAba('modelos')
+  }
+
+  const replicarModelo = modelo => {
+    setModeloEditandoId(null)
+    setModeloReplicandoTitulo(modelo.titulo || 'modelo selecionado')
+    setModeloForm({
+      titulo: modelo.titulo || '',
+      descricao: modelo.descricao || '',
+      ordem_execucao: modelo.ordem_execucao ?? '',
+      horario_previsto: fmtHora(modelo.horario_previsto) || '08:00',
+      horario_final: fmtHora(modelo.horario_final) || '',
+      prioridade: modelo.prioridade || 'NORMAL',
+      recorrencia: modelo.recorrencia || 'DIARIA',
+      dia_semana: modelo.dia_semana ?? '',
+      dia_mes: modelo.dia_mes ?? '',
+      precisa_ciencia: modelo.precisa_ciencia === true,
+      responsavel_login: '',
+      perfil_responsavel: '',
+    })
+    setErro('')
+    setMsg('Modelo carregado para replicação. Informe o novo responsável, ajuste o horário se precisar e salve.')
     setAba('modelos')
   }
 
@@ -408,6 +504,15 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome))
   }, [visiveis])
 
+  const alertasPendentes = useMemo(() => {
+    if (dataSelecionada !== hojeISO()) return []
+    return visiveis.filter(r =>
+      ['PENDENTE', 'ATRASADA'].includes(statusVisual(r)) &&
+      r.precisa_ciencia === true &&
+      !r.alerta_ciente_em
+    )
+  }, [dataSelecionada, visiveis])
+
   const carregar = async () => {
     setLoading(true)
     setErro('')
@@ -418,12 +523,13 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errMods) throw errMods
 
-      const modelosEscopo = (mods || []).filter(m =>
+      const modelosOrdenados = ordenarRotinas(mods || [])
+      const modelosEscopo = modelosOrdenados.filter(m =>
         m.ativa !== false &&
         dentroDoEscopo(m, usuarioLogado, acessoGeral) &&
         rotinaCabeNaData(m, dataSelecionada)
       )
-      setModelos(mods || [])
+      setModelos(modelosOrdenados)
 
       const { data: existentes, error: errExistentes } = await supabase
         .from('rotinas_execucoes')
@@ -439,10 +545,14 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           data_execucao: dataSelecionada,
           titulo_snapshot: m.titulo,
           descricao_snapshot: m.descricao || null,
+          ordem_execucao: m.ordem_execucao ?? null,
           horario_previsto: m.horario_previsto,
           horario_final: m.horario_final || null,
           prioridade: m.prioridade || 'NORMAL',
           recorrencia: m.recorrencia || 'DIARIA',
+          dia_semana: m.dia_semana ?? null,
+          dia_mes: m.dia_mes ?? null,
+          precisa_ciencia: m.precisa_ciencia === true,
           responsavel_login: m.responsavel_login || null,
           perfil_responsavel: m.perfil_responsavel || null,
           status: 'PENDENTE',
@@ -462,10 +572,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errExecs) throw errExecs
 
-      const execsEscopo = (execs || []).filter(e =>
+      const execsEscopo = ordenarRotinas((execs || []).filter(e =>
         dentroDoEscopo(e, usuarioLogado, acessoGeral) &&
         rotinaCabeNaData(e, dataSelecionada)
-      )
+      ))
       setExecucoes(execsEscopo)
       if (!selecionadaId || !execsEscopo.some(e => e.id === selecionadaId)) {
         setSelecionadaId(execsEscopo[0]?.id || null)
@@ -530,13 +640,25 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     setSalvando(true)
     setErro('')
     try {
+      const recorrenciaModelo = modeloForm.recorrencia || 'DIARIA'
+      const diaSemanaModelo = recorrenciaModelo === 'SEMANAL'
+        ? (numeroOuNulo(modeloForm.dia_semana) ?? diaSemanaDaData(dataSelecionada))
+        : null
+      const diaMesModelo = recorrenciaModelo === 'MENSAL'
+        ? (numeroOuNulo(modeloForm.dia_mes) ?? diaMesDaData(dataSelecionada))
+        : null
+      const ordemModelo = numeroOuNulo(modeloForm.ordem_execucao)
       const payloadBase = {
         ...modeloForm,
         titulo: modeloForm.titulo.trim(),
         descricao: modeloForm.descricao.trim() || null,
+        ordem_execucao: ordemModelo,
         horario_previsto: modeloForm.horario_previsto || '08:00',
         horario_final: modeloForm.horario_final || null,
-        recorrencia: modeloForm.recorrencia || 'DIARIA',
+        recorrencia: recorrenciaModelo,
+        dia_semana: diaSemanaModelo,
+        dia_mes: diaMesModelo,
+        precisa_ciencia: modeloForm.precisa_ciencia === true,
         responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
         perfil_responsavel: modeloForm.perfil_responsavel || null,
       }
@@ -554,10 +676,14 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           .update({
             titulo_snapshot: payloadBase.titulo,
             descricao_snapshot: payloadBase.descricao,
+            ordem_execucao: payloadBase.ordem_execucao,
             horario_previsto: payloadBase.horario_previsto,
             horario_final: payloadBase.horario_final,
             prioridade: payloadBase.prioridade,
             recorrencia: payloadBase.recorrencia,
+            dia_semana: payloadBase.dia_semana,
+            dia_mes: payloadBase.dia_mes,
+            precisa_ciencia: payloadBase.precisa_ciencia,
             responsavel_login: payloadBase.responsavel_login,
             perfil_responsavel: payloadBase.perfil_responsavel,
             updated_at: atualizadoEm,
@@ -574,6 +700,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         return
       }
 
+      const replicandoModelo = Boolean(modeloReplicandoTitulo)
       const payload = {
         ...payloadBase,
         criado_por: usuarioLogado?.login || null,
@@ -582,9 +709,9 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       const { error } = await supabase.from('rotinas_modelos').insert(payload)
       if (error) throw error
       limparEdicaoModelo()
-      flash('✅ Modelo de rotina criado.')
+      flash(replicandoModelo ? '✅ Modelo de rotina replicado.' : '✅ Modelo de rotina criado.')
       await carregar()
-      setAba('hoje')
+      setAba(replicandoModelo ? 'modelos' : 'hoje')
     } catch (e) {
       setErro(e.message || String(e))
     } finally {
@@ -626,6 +753,27 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       const { error } = await supabase.from('rotinas_execucoes').update(payload).eq('id', rotina.id)
       if (error) throw error
       flash(status === 'CONCLUIDA' ? '✅ Rotina concluída.' : status === 'CANCELADA' ? 'Rotina cancelada.' : 'Rotina atualizada.')
+      await carregar()
+    } catch (e) { setErro(e.message || String(e)) }
+    finally { setSalvando(false) }
+  }
+
+  const confirmarCienciaAlerta = async rotina => {
+    if (!rotina) return
+    setSalvando(true)
+    setErro('')
+    try {
+      const { error } = await supabase
+        .from('rotinas_execucoes')
+        .update({
+          alerta_ciente_em: agoraISO(),
+          alerta_ciente_por: usuarioLogado?.login || null,
+          updated_at: agoraISO(),
+        })
+        .eq('id', rotina.id)
+      if (error) throw error
+      setSelecionadaId(rotina.id)
+      flash('✅ Ciência registrada para a rotina.')
       await carregar()
     } catch (e) { setErro(e.message || String(e)) }
     finally { setSalvando(false) }
@@ -698,6 +846,29 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         {erro && <div style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', borderRadius: 12, padding: 12, marginBottom: 14, fontWeight: 800 }}>{erro}</div>}
         {msg && <div style={{ background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0', borderRadius: 12, padding: 12, marginBottom: 14, fontWeight: 800 }}>{msg}</div>}
 
+        {alertasPendentes.length > 0 && (
+          <section style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 14, padding: 14, marginBottom: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+              <div>
+                <h3 style={{ margin: 0, color: '#9a3412', fontSize: 15, fontWeight: 900 }}>🔔 Alerta de rotina para hoje</h3>
+                <p style={{ margin: '4px 0 0', color: '#9a3412', fontSize: 12, fontWeight: 700 }}>Dê ciência para confirmar que viu a rotina e deve cumprir a atividade.</p>
+              </div>
+              <span style={{ background: '#fed7aa', color: '#9a3412', borderRadius: 999, padding: '5px 10px', fontSize: 12, fontWeight: 900 }}>{alertasPendentes.length} pendente(s)</span>
+            </div>
+            <div style={{ display: 'grid', gap: 8 }}>
+              {alertasPendentes.map(rotina => (
+                <div key={rotina.id} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', background: '#fff', border: '1px solid #fed7aa', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 900, color: '#0f172a', fontSize: 13 }}>{intervaloHora(rotina)} · {rotina.titulo_snapshot}</div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 3 }}>{rotuloProgramacao(rotina)} · {statusMeta(rotina).label}</div>
+                  </div>
+                  <Botao onClick={() => confirmarCienciaAlerta(rotina)} disabled={salvando} style={{ background: '#ea580c', color: '#fff', flexShrink: 0 }}>Dar ciência</Botao>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         <section style={{ background: '#fff', border: '1px solid #dbe3ef', borderRadius: 14, padding: 16, marginBottom: 16 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }}>
             <CardNumero valor={contadores.total} label="Rotinas do dia" />
@@ -740,8 +911,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
+                          {numeroOuNulo(rotina.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(rotina)}</span>}
                           <strong style={{ fontSize: 16, color: '#0f172a' }}>{intervaloHora(rotina)}</strong>
                           <Pill meta={meta} />
+                          {rotina.precisa_ciencia === true && <span style={{ fontSize: 11, color: '#c2410c', background: '#ffedd5', borderRadius: 999, padding: '3px 8px', fontWeight: 900 }}>Exige ciência</span>}
                           {rotina.prioridade && rotina.prioridade !== 'NORMAL' && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 900 }}>Prioridade {rotina.prioridade}</span>}
                         </div>
                         <h2 style={{ margin: 0, fontSize: 15, fontWeight: 900, color: '#0f172a' }}>{rotina.titulo_snapshot}</h2>
@@ -749,7 +922,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           <p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.35, color: '#475569' }}>{rotina.descricao_snapshot}</p>
                         )}
                         <p style={{ margin: '6px 0 0', fontSize: 12, color: '#64748b' }}>
-                          {(rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral') + ' · ' + rotuloRecorrencia(rotina.recorrencia)}
+                          {(rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral') + ' · ' + rotuloProgramacao(rotina)}
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
@@ -848,32 +1021,104 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
             {podeConfigurar && (
               <div style={{ background: '#fff', border: '1px solid #dbe3ef', borderRadius: 14, padding: 16 }}>
                 <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 900, color: '#0f172a' }}>
-                  {modeloEditandoId ? 'Editar modelo de rotina' : 'Criar modelo de rotina'}
+                  {modeloEditandoId ? 'Editar modelo de rotina' : modeloReplicandoTitulo ? 'Replicar modelo de rotina' : 'Criar modelo de rotina'}
                 </h3>
                 {modeloEditandoId && (
                   <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
                     Ajustando um modelo cadastrado. As rotinas de hoje/futuras ainda abertas também serão atualizadas.
                   </div>
                 )}
+                {!modeloEditandoId && modeloReplicandoTitulo && (
+                  <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
+                    Replicando o modelo "{modeloReplicandoTitulo}". Informe o novo responsável por login e ajuste o horário antes de salvar.
+                  </div>
+                )}
                 <div style={{ display: 'grid', gap: 12 }}>
                   <Campo label="Título da rotina"><input style={inputStyle} value={modeloForm.titulo} onChange={e => setModeloForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Conferir login da equipe no SIGA" /></Campo>
                   <Campo label="Descrição"><textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={modeloForm.descricao} onChange={e => setModeloForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhe o objetivo e o resultado esperado" /></Campo>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, alignItems: 'end' }}>
+                    <Campo label="Ordem de execução">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        style={inputStyle}
+                        value={modeloForm.ordem_execucao}
+                        onChange={e => setModeloForm(f => ({ ...f, ordem_execucao: e.target.value }))}
+                        placeholder="Ex: 1"
+                      />
+                    </Campo>
                     <Campo label="Horário inicial"><input type="time" style={inputStyle} value={modeloForm.horario_previsto} onChange={e => setModeloForm(f => ({ ...f, horario_previsto: e.target.value }))} /></Campo>
                     <Campo label="Horário final"><input type="time" style={inputStyle} value={modeloForm.horario_final} onChange={e => setModeloForm(f => ({ ...f, horario_final: e.target.value }))} /></Campo>
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                     <Campo label="Prioridade"><select style={inputStyle} value={modeloForm.prioridade} onChange={e => setModeloForm(f => ({ ...f, prioridade: e.target.value }))}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Campo>
-                    <Campo label="Recorrência"><select style={inputStyle} value={modeloForm.recorrencia} onChange={e => setModeloForm(f => ({ ...f, recorrencia: e.target.value }))}>{RECORRENCIAS.map(r => <option key={r.valor} value={r.valor}>{r.label}</option>)}</select></Campo>
+                    <Campo label="Recorrência">
+                      <select
+                        style={inputStyle}
+                        value={modeloForm.recorrencia}
+                        onChange={e => {
+                          const recorrencia = e.target.value
+                          setModeloForm(f => ({
+                            ...f,
+                            recorrencia,
+                            dia_semana: recorrencia === 'SEMANAL' ? valorRecorrenciaOuPadrao(f.dia_semana, diaSemanaDaData(dataSelecionada)) : f.dia_semana,
+                            dia_mes: recorrencia === 'MENSAL' ? valorRecorrenciaOuPadrao(f.dia_mes, diaMesDaData(dataSelecionada)) : f.dia_mes,
+                          }))
+                        }}
+                      >
+                        {RECORRENCIAS.map(r => <option key={r.valor} value={r.valor}>{r.label}</option>)}
+                      </select>
+                    </Campo>
                   </div>
+                  {modeloForm.recorrencia === 'SEMANAL' && (
+                    <Campo label="Calendário semanal">
+                      <select style={inputStyle} value={valorRecorrenciaOuPadrao(modeloForm.dia_semana, diaSemanaDaData(dataSelecionada))} onChange={e => setModeloForm(f => ({ ...f, dia_semana: e.target.value }))}>
+                        {DIAS_SEMANA.map(dia => <option key={dia.valor} value={dia.valor}>{dia.label}</option>)}
+                      </select>
+                    </Campo>
+                  )}
+                  {modeloForm.recorrencia === 'MENSAL' && (
+                    <Campo label="Calendário mensal">
+                      <select style={inputStyle} value={valorRecorrenciaOuPadrao(modeloForm.dia_mes, diaMesDaData(dataSelecionada))} onChange={e => setModeloForm(f => ({ ...f, dia_mes: e.target.value }))}>
+                        {DIAS_MES.map(dia => <option key={dia} value={dia}>Dia {dia}</option>)}
+                      </select>
+                    </Campo>
+                  )}
+                  {modeloForm.recorrencia !== 'DIARIA' && (
+                    <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800 }}>
+                      Alerta programado: {rotuloProgramacao({
+                        recorrencia: modeloForm.recorrencia,
+                        dia_semana: valorRecorrenciaOuPadrao(modeloForm.dia_semana, diaSemanaDaData(dataSelecionada)),
+                        dia_mes: valorRecorrenciaOuPadrao(modeloForm.dia_mes, diaMesDaData(dataSelecionada)),
+                      })}.
+                    </div>
+                  )}
+                  <label style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+                    background: modeloForm.precisa_ciencia ? '#fff7ed' : '#f8fafc',
+                    border: '1px solid ' + (modeloForm.precisa_ciencia ? '#fdba74' : '#e2e8f0'),
+                    borderRadius: 10, padding: '11px 12px', cursor: 'pointer',
+                  }}>
+                    <span>
+                      <span style={{ display: 'block', fontSize: 12, fontWeight: 900, color: '#334155', textTransform: 'uppercase' }}>Exigir ciência do usuário</span>
+                      <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 3 }}>Quando marcada, a rotina mostra alerta para o usuário dar ciência na data programada.</span>
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={modeloForm.precisa_ciencia === true}
+                      onChange={e => setModeloForm(f => ({ ...f, precisa_ciencia: e.target.checked }))}
+                      style={{ width: 20, height: 20, flexShrink: 0 }}
+                    />
+                  </label>
                   <BuscaUsuarioLogin label="Responsável por login" value={modeloForm.responsavel_login} onChange={valor => setModeloForm(f => ({ ...f, responsavel_login: valor }))} usuarios={sugestoes.usuarios} placeholder="Opcional: login do usuário" />
                   <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
                   <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
-                    {modeloEditandoId ? 'Salvar alterações' : 'Salvar modelo'}
+                    {modeloEditandoId ? 'Salvar alterações' : modeloReplicandoTitulo ? 'Salvar réplica' : 'Salvar modelo'}
                   </Botao>
-                  {modeloEditandoId && (
+                  {(modeloEditandoId || modeloReplicandoTitulo) && (
                     <Botao onClick={limparEdicaoModelo} disabled={salvando} style={{ width: '100%' }}>
-                      Cancelar edição
+                      {modeloEditandoId ? 'Cancelar edição' : 'Cancelar replicação'}
                     </Botao>
                   )}
                 </div>
@@ -887,13 +1132,18 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                 {modelos.map(m => (
                   <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1, background: modeloEditandoId === m.id ? '#eff6ff' : '#fff' }}>
                     <div>
-                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{intervaloHora(m)} · {m.titulo}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontWeight: 900, color: '#0f172a' }}>
+                        {numeroOuNulo(m.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(m)}</span>}
+                        <span>{intervaloHora(m)} · {m.titulo}</span>
+                      </div>
                       {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloRecorrencia(m.recorrencia)}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloProgramacao(m)}</div>
+                      {m.precisa_ciencia === true && <div style={{ display: 'inline-block', background: '#ffedd5', color: '#c2410c', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900, marginTop: 7 }}>Exige ciência</div>}
                     </div>
                     {podeConfigurar && (
                       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                         <Botao onClick={() => editarModelo(m)} disabled={salvando || modeloEditandoId === m.id} style={{ background: '#2563eb', color: '#fff' }}>Editar</Botao>
+                        <Botao onClick={() => replicarModelo(m)} disabled={salvando} style={{ background: '#0f766e', color: '#fff' }}>Replicar</Botao>
                         <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>
                       </div>
                     )}
