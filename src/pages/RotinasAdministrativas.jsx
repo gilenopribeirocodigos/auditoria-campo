@@ -16,12 +16,19 @@ const STATUS = {
 
 const PRIORIDADES = ['BAIXA', 'NORMAL', 'ALTA', 'CRITICA']
 const PERFIS_DESTINO = ['', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
+const RECORRENCIAS = [
+  { valor: 'DIARIA', label: 'Diária' },
+  { valor: 'SEMANAL', label: 'Semanal' },
+  { valor: 'MENSAL', label: 'Mensal' },
+]
 
 const modeloVazio = {
   titulo: '',
   descricao: '',
   horario_previsto: '08:00',
+  horario_final: '',
   prioridade: 'NORMAL',
+  recorrencia: 'DIARIA',
   responsavel_login: '',
   perfil_responsavel: '',
 }
@@ -80,6 +87,33 @@ function fmtData(data) {
 
 function fmtHora(valor) {
   return (valor || '').slice(0, 5)
+}
+
+function intervaloHora(item) {
+  const inicial = fmtHora(item?.horario_previsto)
+  const final = fmtHora(item?.horario_final)
+  if (inicial && final) return `${inicial} - ${final}`
+  return inicial || final || ''
+}
+
+function rotuloRecorrencia(valor) {
+  return RECORRENCIAS.find(r => r.valor === (valor || 'DIARIA'))?.label || 'Diária'
+}
+
+function dataReferenciaRotina(rotina) {
+  return (rotina?.created_at || rotina?.data_criacao || rotina?.data_execucao || hojeISO()).slice(0, 10)
+}
+
+function rotinaCabeNaData(rotina, data) {
+  const recorrencia = normalizar(rotina?.recorrencia || 'DIARIA')
+  if (recorrencia === 'DIARIA') return true
+  const referencia = dataReferenciaRotina(rotina)
+  const dataRef = new Date(`${referencia}T00:00:00`)
+  const dataAgenda = new Date(`${data}T00:00:00`)
+  if (Number.isNaN(dataRef.getTime()) || Number.isNaN(dataAgenda.getTime())) return true
+  if (recorrencia === 'SEMANAL') return dataRef.getDay() === dataAgenda.getDay()
+  if (recorrencia === 'MENSAL') return referencia.slice(8, 10) === data.slice(8, 10)
+  return true
 }
 
 function Botao({ children, ativo, onClick, style = {}, disabled = false }) {
@@ -199,6 +233,88 @@ function BuscaLista({ label, value, onChange, options, placeholder }) {
   )
 }
 
+function BuscaUsuarioLogin({ label, value, onChange, usuarios, placeholder }) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca] = useState(value || '')
+  const ref = useRef(null)
+
+  const filtrados = useMemo(() => {
+    const termo = normalizar(busca)
+    const lista = termo
+      ? usuarios.filter(u => normalizar(`${u.nome || ''} ${u.login || ''} ${u.perfil || ''}`).includes(termo))
+      : usuarios
+    return lista.slice(0, 80)
+  }, [busca, usuarios])
+
+  useEffect(() => {
+    if (!aberto) return undefined
+    const fecharAoClicarFora = event => {
+      if (ref.current && !ref.current.contains(event.target)) setAberto(false)
+    }
+    document.addEventListener('mousedown', fecharAoClicarFora)
+    return () => document.removeEventListener('mousedown', fecharAoClicarFora)
+  }, [aberto])
+
+  const abrir = () => {
+    setBusca(value || '')
+    setAberto(true)
+  }
+
+  const selecionar = usuario => {
+    const login = (usuario.login || '').trim().toLowerCase()
+    onChange(login)
+    setBusca(login)
+    setAberto(false)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
+      <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <button
+        type="button"
+        onClick={abrir}
+        style={{ ...inputStyle, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, textAlign: 'left', cursor: 'pointer', marginTop: 6 }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: value ? '#0f172a' : '#64748b' }}>{value || placeholder}</span>
+        <span style={{ color: '#94a3b8', fontSize: 12 }}>▼</span>
+      </button>
+      {aberto && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, minWidth: 280, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 14px 30px rgba(15,23,42,0.16)', zIndex: 30, overflow: 'hidden' }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>
+            <input
+              autoFocus
+              value={busca}
+              onChange={e => { setBusca(e.target.value); onChange(e.target.value.trim().toLowerCase()) }}
+              onKeyDown={e => { if (e.key === 'Escape') setAberto(false) }}
+              placeholder="Buscar usuário..."
+              style={{ ...inputStyle, height: 34, padding: '8px 10px', fontSize: 13 }}
+            />
+          </div>
+          <div style={{ maxHeight: 210, overflowY: 'auto' }}>
+            {filtrados.length === 0 ? (
+              <div style={{ padding: 12, color: '#dc2626', fontSize: 12, fontWeight: 800 }}>Nenhum usuário encontrado.</div>
+            ) : filtrados.map(usuario => {
+              const login = (usuario.login || '').trim().toLowerCase()
+              return (
+                <button
+                  key={login || usuario.nome}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => selecionar(usuario)}
+                  style={{ width: '100%', border: 'none', borderBottom: '1px solid #f1f5f9', background: login === value ? '#eff6ff' : '#fff', color: '#0f172a', padding: '10px 12px', textAlign: 'left', cursor: 'pointer' }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 900 }}>{usuario.nome || login}</div>
+                  <div style={{ fontSize: 11, color: '#64748b', marginTop: 3 }}>{login}{usuario.perfil ? ` · ${usuario.perfil}` : ''}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const inputStyle = {
   width: '100%', border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
   fontSize: 14, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box',
@@ -210,9 +326,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [modelos, setModelos] = useState([])
   const [execucoes, setExecucoes] = useState([])
   const [subrotinas, setSubrotinas] = useState([])
-  const [sugestoes, setSugestoes] = useState({ prefixos: [], supervisores: [], eletricistas: [] })
+  const [sugestoes, setSugestoes] = useState({ prefixos: [], supervisores: [], eletricistas: [], usuarios: [] })
   const [selecionadaId, setSelecionadaId] = useState(null)
   const [modeloForm, setModeloForm] = useState(modeloVazio)
+  const [modeloEditandoId, setModeloEditandoId] = useState(null)
   const [acaoForm, setAcaoForm] = useState(acaoVazia)
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
@@ -223,6 +340,29 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const podeConfigurar = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_configurar')
 
   const atualizarAcao = (campo, valor) => setAcaoForm(form => ({ ...form, [campo]: valor }))
+
+  const limparEdicaoModelo = () => {
+    setModeloEditandoId(null)
+    setModeloForm(modeloVazio)
+    setErro('')
+  }
+
+  const editarModelo = modelo => {
+    setModeloEditandoId(modelo.id)
+    setModeloForm({
+      titulo: modelo.titulo || '',
+      descricao: modelo.descricao || '',
+      horario_previsto: fmtHora(modelo.horario_previsto) || '08:00',
+      horario_final: fmtHora(modelo.horario_final) || '',
+      prioridade: modelo.prioridade || 'NORMAL',
+      recorrencia: modelo.recorrencia || 'DIARIA',
+      responsavel_login: modelo.responsavel_login || '',
+      perfil_responsavel: modelo.perfil_responsavel || '',
+    })
+    setErro('')
+    setMsg('')
+    setAba('modelos')
+  }
 
   const vinculosNaoPreenchidos = useMemo(() => {
     const faltantes = []
@@ -278,7 +418,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errMods) throw errMods
 
-      const modelosEscopo = (mods || []).filter(m => m.ativa !== false && dentroDoEscopo(m, usuarioLogado, acessoGeral))
+      const modelosEscopo = (mods || []).filter(m =>
+        m.ativa !== false &&
+        dentroDoEscopo(m, usuarioLogado, acessoGeral) &&
+        rotinaCabeNaData(m, dataSelecionada)
+      )
       setModelos(mods || [])
 
       const { data: existentes, error: errExistentes } = await supabase
@@ -296,7 +440,9 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           titulo_snapshot: m.titulo,
           descricao_snapshot: m.descricao || null,
           horario_previsto: m.horario_previsto,
+          horario_final: m.horario_final || null,
           prioridade: m.prioridade || 'NORMAL',
+          recorrencia: m.recorrencia || 'DIARIA',
           responsavel_login: m.responsavel_login || null,
           perfil_responsavel: m.perfil_responsavel || null,
           status: 'PENDENTE',
@@ -316,7 +462,10 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errExecs) throw errExecs
 
-      const execsEscopo = (execs || []).filter(e => dentroDoEscopo(e, usuarioLogado, acessoGeral))
+      const execsEscopo = (execs || []).filter(e =>
+        dentroDoEscopo(e, usuarioLogado, acessoGeral) &&
+        rotinaCabeNaData(e, dataSelecionada)
+      )
       setExecucoes(execsEscopo)
       if (!selecionadaId || !execsEscopo.some(e => e.id === selecionadaId)) {
         setSelecionadaId(execsEscopo[0]?.id || null)
@@ -333,8 +482,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     try {
       const [{ data: estrutura }, { data: usuarios }] = await Promise.all([
         supabase.from('estrutura_equipes').select('prefixo, superv_campo, colaborador'),
-        supabase.from('usuarios').select('nome, perfil, status'),
+        supabase.from('usuarios').select('nome, login, perfil, status'),
       ])
+      const usuariosAtivos = (usuarios || [])
+        .filter(u => (u.status || 'ATIVO') === 'ATIVO' && (u.login || '').trim())
+        .sort((a, b) => (a.nome || a.login || '').localeCompare(b.nome || b.login || '', 'pt-BR'))
       const supervisoresUsuarios = (usuarios || [])
         .filter(u => (u.status || 'ATIVO') === 'ATIVO' && ['SUPERV. CAMPO', 'SUPERV. OPERAÇÃO'].includes(normalizar(u.perfil)))
         .map(u => u.nome)
@@ -343,6 +495,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         prefixos: unicos((estrutura || []).map(r => r.prefixo)),
         supervisores: unicos([...(estrutura || []).map(r => r.superv_campo), ...supervisoresUsuarios]),
         eletricistas: unicos((estrutura || []).map(r => r.colaborador)),
+        usuarios: usuariosAtivos,
       })
     } catch (e) {
       console.warn('Erro carregando sugestões de ações:', e.message || String(e))
@@ -377,18 +530,58 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     setSalvando(true)
     setErro('')
     try {
-      const payload = {
+      const payloadBase = {
         ...modeloForm,
         titulo: modeloForm.titulo.trim(),
         descricao: modeloForm.descricao.trim() || null,
+        horario_previsto: modeloForm.horario_previsto || '08:00',
+        horario_final: modeloForm.horario_final || null,
+        recorrencia: modeloForm.recorrencia || 'DIARIA',
         responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
         perfil_responsavel: modeloForm.perfil_responsavel || null,
+      }
+
+      if (modeloEditandoId) {
+        const atualizadoEm = agoraISO()
+        const { error } = await supabase
+          .from('rotinas_modelos')
+          .update({ ...payloadBase, updated_at: atualizadoEm })
+          .eq('id', modeloEditandoId)
+        if (error) throw error
+
+        const { error: errExecucoes } = await supabase
+          .from('rotinas_execucoes')
+          .update({
+            titulo_snapshot: payloadBase.titulo,
+            descricao_snapshot: payloadBase.descricao,
+            horario_previsto: payloadBase.horario_previsto,
+            horario_final: payloadBase.horario_final,
+            prioridade: payloadBase.prioridade,
+            recorrencia: payloadBase.recorrencia,
+            responsavel_login: payloadBase.responsavel_login,
+            perfil_responsavel: payloadBase.perfil_responsavel,
+            updated_at: atualizadoEm,
+          })
+          .eq('rotina_modelo_id', modeloEditandoId)
+          .gte('data_execucao', hojeISO())
+          .in('status', ['PENDENTE', 'EM_ANDAMENTO'])
+        if (errExecucoes) throw errExecucoes
+
+        limparEdicaoModelo()
+        flash('✅ Modelo de rotina atualizado.')
+        await carregar()
+        setAba('modelos')
+        return
+      }
+
+      const payload = {
+        ...payloadBase,
         criado_por: usuarioLogado?.login || null,
         ativa: true,
       }
       const { error } = await supabase.from('rotinas_modelos').insert(payload)
       if (error) throw error
-      setModeloForm(modeloVazio)
+      limparEdicaoModelo()
       flash('✅ Modelo de rotina criado.')
       await carregar()
       setAba('hoje')
@@ -408,6 +601,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .update({ ativa: !modelo.ativa, updated_at: agoraISO() })
         .eq('id', modelo.id)
       if (error) throw error
+      if (modeloEditandoId === modelo.id) limparEdicaoModelo()
       flash(modelo.ativa ? 'Modelo desativado.' : 'Modelo reativado.')
       await carregar()
     } catch (e) { setErro(e.message || String(e)) }
@@ -546,7 +740,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
-                          <strong style={{ fontSize: 16, color: '#0f172a' }}>{fmtHora(rotina.horario_previsto)}</strong>
+                          <strong style={{ fontSize: 16, color: '#0f172a' }}>{intervaloHora(rotina)}</strong>
                           <Pill meta={meta} />
                           {rotina.prioridade && rotina.prioridade !== 'NORMAL' && <span style={{ fontSize: 11, color: '#b45309', fontWeight: 900 }}>Prioridade {rotina.prioridade}</span>}
                         </div>
@@ -555,7 +749,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           <p style={{ margin: '6px 0 0', fontSize: 12, lineHeight: 1.35, color: '#475569' }}>{rotina.descricao_snapshot}</p>
                         )}
                         <p style={{ margin: '6px 0 0', fontSize: 12, color: '#64748b' }}>
-                          {rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral'}
+                          {(rotina.responsavel_login ? 'Responsável: ' + rotina.responsavel_login : rotina.perfil_responsavel ? 'Perfil: ' + rotina.perfil_responsavel : 'Rotina geral') + ' · ' + rotuloRecorrencia(rotina.recorrencia)}
                         </p>
                       </div>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
@@ -581,7 +775,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                     <div>
                       <Pill meta={statusMeta(selecionada)} />
                       <h3 style={{ margin: '10px 0 4px', fontSize: 17, fontWeight: 900, color: '#0f172a' }}>{selecionada.titulo_snapshot}</h3>
-                      <p style={{ margin: 0, color: '#64748b', fontSize: 12 }}>{fmtHora(selecionada.horario_previsto)} · {selecionada.descricao_snapshot || 'Sem descrição'}</p>
+                      <p style={{ margin: 0, color: '#64748b', fontSize: 12 }}>{intervaloHora(selecionada)} · {selecionada.descricao_snapshot || 'Sem descrição'}</p>
                     </div>
                     {statusVisual(selecionada) !== 'CONCLUIDA' && statusVisual(selecionada) !== 'CANCELADA' && (
                       <Botao onClick={() => atualizarStatus(selecionada, 'CANCELADA')} disabled={salvando}>Cancelar</Botao>
@@ -653,17 +847,35 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           <section style={{ display: 'grid', gridTemplateColumns: podeConfigurar ? 'repeat(auto-fit, minmax(320px, 1fr))' : '1fr', gap: 16, alignItems: 'start' }}>
             {podeConfigurar && (
               <div style={{ background: '#fff', border: '1px solid #dbe3ef', borderRadius: 14, padding: 16 }}>
-                <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 900, color: '#0f172a' }}>Criar modelo de rotina</h3>
+                <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 900, color: '#0f172a' }}>
+                  {modeloEditandoId ? 'Editar modelo de rotina' : 'Criar modelo de rotina'}
+                </h3>
+                {modeloEditandoId && (
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
+                    Ajustando um modelo cadastrado. As rotinas de hoje/futuras ainda abertas também serão atualizadas.
+                  </div>
+                )}
                 <div style={{ display: 'grid', gap: 12 }}>
                   <Campo label="Título da rotina"><input style={inputStyle} value={modeloForm.titulo} onChange={e => setModeloForm(f => ({ ...f, titulo: e.target.value }))} placeholder="Ex: Conferir login da equipe no SIGA" /></Campo>
                   <Campo label="Descrição"><textarea style={{ ...inputStyle, minHeight: 90, resize: 'vertical' }} value={modeloForm.descricao} onChange={e => setModeloForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Detalhe o objetivo e o resultado esperado" /></Campo>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                    <Campo label="Horário"><input type="time" style={inputStyle} value={modeloForm.horario_previsto} onChange={e => setModeloForm(f => ({ ...f, horario_previsto: e.target.value }))} /></Campo>
-                    <Campo label="Prioridade"><select style={inputStyle} value={modeloForm.prioridade} onChange={e => setModeloForm(f => ({ ...f, prioridade: e.target.value }))}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Campo>
+                    <Campo label="Horário inicial"><input type="time" style={inputStyle} value={modeloForm.horario_previsto} onChange={e => setModeloForm(f => ({ ...f, horario_previsto: e.target.value }))} /></Campo>
+                    <Campo label="Horário final"><input type="time" style={inputStyle} value={modeloForm.horario_final} onChange={e => setModeloForm(f => ({ ...f, horario_final: e.target.value }))} /></Campo>
                   </div>
-                  <Campo label="Responsável por login"><input style={inputStyle} value={modeloForm.responsavel_login} onChange={e => setModeloForm(f => ({ ...f, responsavel_login: e.target.value }))} placeholder="Opcional: login do usuário" /></Campo>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <Campo label="Prioridade"><select style={inputStyle} value={modeloForm.prioridade} onChange={e => setModeloForm(f => ({ ...f, prioridade: e.target.value }))}>{PRIORIDADES.map(p => <option key={p}>{p}</option>)}</select></Campo>
+                    <Campo label="Recorrência"><select style={inputStyle} value={modeloForm.recorrencia} onChange={e => setModeloForm(f => ({ ...f, recorrencia: e.target.value }))}>{RECORRENCIAS.map(r => <option key={r.valor} value={r.valor}>{r.label}</option>)}</select></Campo>
+                  </div>
+                  <BuscaUsuarioLogin label="Responsável por login" value={modeloForm.responsavel_login} onChange={valor => setModeloForm(f => ({ ...f, responsavel_login: valor }))} usuarios={sugestoes.usuarios} placeholder="Opcional: login do usuário" />
                   <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
-                  <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>Salvar modelo</Botao>
+                  <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
+                    {modeloEditandoId ? 'Salvar alterações' : 'Salvar modelo'}
+                  </Botao>
+                  {modeloEditandoId && (
+                    <Botao onClick={limparEdicaoModelo} disabled={salvando} style={{ width: '100%' }}>
+                      Cancelar edição
+                    </Botao>
+                  )}
                 </div>
               </div>
             )}
@@ -673,13 +885,18 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {modelos.length === 0 && <div style={{ padding: 24, color: '#64748b', fontWeight: 800 }}>Nenhum modelo cadastrado.</div>}
                 {modelos.map(m => (
-                  <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1 }}>
+                  <div key={m.id} style={{ padding: 14, borderBottom: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', opacity: m.ativa === false ? 0.55 : 1, background: modeloEditandoId === m.id ? '#eff6ff' : '#fff' }}>
                     <div>
-                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{fmtHora(m.horario_previsto)} · {m.titulo}</div>
+                      <div style={{ fontWeight: 900, color: '#0f172a' }}>{intervaloHora(m)} · {m.titulo}</div>
                       {m.descricao && <div style={{ fontSize: 12, color: '#475569', marginTop: 5, lineHeight: 1.35 }}>{m.descricao}</div>}
-                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'}</div>
+                      <div style={{ fontSize: 12, color: '#64748b', marginTop: 5 }}>{m.responsavel_login || m.perfil_responsavel || 'Geral'} · {m.prioridade || 'NORMAL'} · {rotuloRecorrencia(m.recorrencia)}</div>
                     </div>
-                    {podeConfigurar && <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>}
+                    {podeConfigurar && (
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                        <Botao onClick={() => editarModelo(m)} disabled={salvando || modeloEditandoId === m.id} style={{ background: '#2563eb', color: '#fff' }}>Editar</Botao>
+                        <Botao onClick={() => alternarModelo(m)} disabled={salvando}>{m.ativa === false ? 'Reativar' : 'Desativar'}</Botao>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
