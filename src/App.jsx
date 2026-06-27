@@ -38,6 +38,24 @@ const STEPS = ['Serviço', 'Identificação', 'Checklist', 'Evidências', 'Assin
 
 const VERSAO = getVersaoApp()
 
+function separarDataHoraFortaleza(valor = new Date().toISOString()) {
+  const data = new Date(valor)
+  if (!Number.isNaN(data.getTime())) {
+    const partes = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'America/Fortaleza',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(data)
+    const valorParte = tipo => partes.find(p => p.type === tipo)?.value || ''
+    return {
+      data: `${valorParte('year')}-${valorParte('month')}-${valorParte('day')}`,
+      hora: `${valorParte('hour')}:${valorParte('minute')}:${valorParte('second')}`,
+    }
+  }
+  return { data: '', hora: '' }
+}
+
 export default function App() {
   const [usuario,             setUsuario]             = useState(getUsuarioLogado)
   const [tela,                setTela]                = useState('home')
@@ -261,9 +279,12 @@ export default function App() {
           form.statusMotivoAuditoria === true  ? 'CONFORME' :
           form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
           null
+        const execucao = separarDataHoraFortaleza()
         await concluirPauta(pautaAtiva.id, auditoria_id, {
           motivo_auditoria: form.motivoAuditoria || pautaAtiva.motivo_auditoria || null,
           avaliacao_motivo_auditoria: avaliacaoMotivoPauta,
+          data_execucao: form.data || execucao.data,
+          hora_execucao: form.hora || execucao.hora,
         })
         await criarProximaRecorrencia(pautaAtiva)
         setPautaAtiva(null)
@@ -648,7 +669,7 @@ export default function App() {
         {step === 2 && <S3Checklist     {...stepProps} />}
         {step === 3 && <S4Fotos         {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}
         {step === 4 && <S5Assinatura    {...stepProps} />}
-        {step === 5 && <S6Resultado     {...stepProps} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} isOnline={online} />}
+        {step === 5 && <S6Resultado     {...stepProps} pautaAtiva={pautaAtiva} onAuditoriaSalva={onAuditoriaSalva} auditoriaEditandoId={auditoriaEditando} fotosAntigas={fotosAntigas} isOnline={online} />}
       </main>
     </div>
   )

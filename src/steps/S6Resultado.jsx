@@ -4,7 +4,25 @@ import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, supabase } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 
-export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
+function separarDataHoraFortaleza(valor = new Date().toISOString()) {
+  const data = new Date(valor)
+  if (!Number.isNaN(data.getTime())) {
+    const partes = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'America/Fortaleza',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(data)
+    const valorParte = tipo => partes.find(p => p.type === tipo)?.value || ''
+    return {
+      data: `${valorParte('year')}-${valorParte('month')}-${valorParte('day')}`,
+      hora: `${valorParte('hour')}:${valorParte('minute')}:${valorParte('second')}`,
+    }
+  }
+  return { data: '', hora: '' }
+}
+
+export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const cl        = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
@@ -258,33 +276,43 @@ export default function S6Resultado({ form, setForm, setStep, onAuditoriaSalva, 
     form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
     null
 
-  const montarPayload = () => ({
-    fiscal:            form.fiscal,
-    matricula:         form.matricula,
-    prefixo:           form.prefixo,
-    os:                form.os,
-    uc:                form.uc,
-    endereco:          form.endereco,
-    lat:               form.lat,
-    lng:               form.lng,
-    data_auditoria:    form.data,
-    hora_auditoria:    form.hora,
-    tipo_auditoria:    form.tipoAuditoria,
-    tipo_servico:      form.tipoServico,
-    produtivo:         form.produtivo,
-    debito_pago:       form.debitoPago,
-    nota,
-    status:            st.label,
-    respostas:         form.respostas,
-    feedback:          form.feedback,
-    observacoes:                     form.observacoes,
-    nome_eletricista:                form.nomeEletricista,
-    nome_eletricista2:               form.nomeEletricista2 || null,
-    motivo_auditoria:                form.motivoAuditoria || null,
-    status_motivo_auditoria:         form.motivoAuditoria ? form.statusMotivoAuditoria : null,
-    avaliacao_motivo_auditoria:      form.motivoAuditoria ? avaliacaoMotivoTexto : null,
-    observacoes_motivo_auditoria:    form.motivoAuditoria ? (form.observacoesMotivoAuditoria || null) : null,
-  })
+  const montarPayload = () => {
+    const geracaoPauta = separarDataHoraFortaleza(pautaAtiva?.created_at || pautaAtiva?.criado_em)
+    const execucao = separarDataHoraFortaleza()
+    return {
+      fiscal:            form.fiscal,
+      matricula:         form.matricula,
+      prefixo:           form.prefixo,
+      os:                form.os,
+      uc:                form.uc,
+      endereco:          form.endereco,
+      lat:               form.lat,
+      lng:               form.lng,
+      data_auditoria:    form.data,
+      hora_auditoria:    form.hora,
+      tipo_auditoria:    form.tipoAuditoria,
+      tipo_servico:      form.tipoServico,
+      produtivo:         form.produtivo,
+      debito_pago:       form.debitoPago,
+      nota,
+      status:            st.label,
+      respostas:         form.respostas,
+      feedback:          form.feedback,
+      observacoes:                     form.observacoes,
+      nome_eletricista:                form.nomeEletricista,
+      nome_eletricista2:               form.nomeEletricista2 || null,
+      motivo_auditoria:                form.motivoAuditoria || null,
+      status_motivo_auditoria:         form.motivoAuditoria ? form.statusMotivoAuditoria : null,
+      avaliacao_motivo_auditoria:      form.motivoAuditoria ? avaliacaoMotivoTexto : null,
+      observacoes_motivo_auditoria:    form.motivoAuditoria ? (form.observacoesMotivoAuditoria || null) : null,
+      usuario_criacao:                 pautaAtiva?.usuario_criacao || null,
+      data_geracao:                    pautaAtiva?.data_geracao || geracaoPauta.data || null,
+      hora_geracao:                    pautaAtiva?.hora_geracao || geracaoPauta.hora || null,
+      data_prevista:                   pautaAtiva?.data_prevista || null,
+      data_execucao:                   form.data || execucao.data,
+      hora_execucao:                   form.hora || execucao.hora,
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Sincroniza as Não Conformidades da auditoria com a tabela auditorias_nao_conformes
