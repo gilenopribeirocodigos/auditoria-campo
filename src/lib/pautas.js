@@ -1,5 +1,23 @@
 import { supabase } from './supabase.js'
 
+function separarDataHoraFortaleza(valor = new Date().toISOString()) {
+  const data = new Date(valor)
+  if (!Number.isNaN(data.getTime())) {
+    const partes = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'America/Fortaleza',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(data)
+    const valorParte = tipo => partes.find(p => p.type === tipo)?.value || ''
+    return {
+      data: `${valorParte('year')}-${valorParte('month')}-${valorParte('day')}`,
+      hora: `${valorParte('hour')}:${valorParte('minute')}:${valorParte('second')}`,
+    }
+  }
+  return { data: '', hora: '' }
+}
+
 export async function listarPautas(filtros = {}) {
   let q = supabase.from('pautas').select('*').order('data_prevista')
   if (filtros.status)       q = q.eq('status', filtros.status)
@@ -52,6 +70,12 @@ export async function concluirPauta(id, auditoria_id, dadosConclusao = {}) {
   if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'avaliacao_motivo_auditoria')) {
     update.avaliacao_motivo_auditoria = dadosConclusao.avaliacao_motivo_auditoria || null
   }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'data_execucao')) {
+    update.data_execucao = dadosConclusao.data_execucao || null
+  }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'hora_execucao')) {
+    update.hora_execucao = dadosConclusao.hora_execucao || null
+  }
 
   const { error } = await supabase
     .from('pautas')
@@ -66,6 +90,8 @@ export async function criarProximaRecorrencia(pauta) {
   const proxData  = new Date(dataAtual)
   if (pauta.recorrencia === 'DIARIA')  proxData.setDate(dataAtual.getDate() + 1)
   if (pauta.recorrencia === 'SEMANAL') proxData.setDate(dataAtual.getDate() + 7)
+  const createdAt = new Date().toISOString()
+  const geracao = separarDataHoraFortaleza(createdAt)
   await criarPauta({
     prefixo:                pauta.prefixo,
     fiscal_login:           pauta.fiscal_login,
@@ -81,5 +107,9 @@ export async function criarProximaRecorrencia(pauta) {
     nome_eletricista:       pauta.nome_eletricista,
     nome_eletricista2:      pauta.nome_eletricista2,
     status:                 'PENDENTE',
+    usuario_criacao:        pauta.usuario_criacao || null,
+    data_geracao:           geracao.data,
+    hora_geracao:           geracao.hora,
+    created_at:             createdAt,
   })
 }

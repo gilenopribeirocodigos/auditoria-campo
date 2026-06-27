@@ -305,10 +305,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
 
-  const dadosCriacaoPauta = () => ({
-    usuario_criacao: usuarioLogado?.login || usuarioLogado?.nome || usuarioLogado?.matricula || '',
-    created_at: new Date().toISOString(),
-  })
+  const dadosCriacaoPauta = () => {
+    const createdAt = new Date().toISOString()
+    const geracao = separarDataHora(createdAt)
+    return {
+      usuario_criacao: usuarioLogado?.login || usuarioLogado?.nome || usuarioLogado?.matricula || '',
+      data_geracao: geracao.data,
+      hora_geracao: geracao.hora,
+      created_at: createdAt,
+    }
+  }
 
   const carregar = async () => {
     setLoading(true)
@@ -537,22 +543,28 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         const a = p.auditoria_id ? (mapAuditorias[p.auditoria_id] || {}) : {}
         const listaNcs = a.id ? (ncsPorAuditoria[a.id] || []) : []
         const registros = listaNcs.length > 0 ? listaNcs : [null]
-        const geracao = separarDataHora(p.created_at || p.criado_em)
-        const execucao = separarDataHora(a.created_at || a.criado_em)
-        const dataExecucao = a.data_auditoria || execucao.data
-        const horaExecucao = a.hora_auditoria || execucao.hora
+        const geracaoOrigem = p.data_geracao
+          ? `${p.data_geracao}T${p.hora_geracao || '00:00:00'}`
+          : p.created_at || p.criado_em
+        const execucaoOrigem = (p.data_execucao || a.data_execucao)
+          ? `${p.data_execucao || a.data_execucao}T${p.hora_execucao || a.hora_execucao || a.hora_auditoria || '00:00:00'}`
+          : a.created_at || a.criado_em
+        const geracao = separarDataHora(geracaoOrigem)
+        const execucao = separarDataHora(execucaoOrigem)
+        const dataExecucao = p.data_execucao || a.data_execucao || a.data_auditoria || execucao.data
+        const horaExecucao = p.hora_execucao || a.hora_execucao || a.hora_auditoria || execucao.hora
         return registros.map(nc => ({
           pauta_id:                   p.id || '',
           usuario_criacao:            p.usuario_criacao || p.usuario_criador || p.criado_por || p.created_by || p.usuario_registro || '',
-          data_geracao:               geracao.data,
-          hora_geracao:               geracao.hora,
+          data_geracao:               p.data_geracao || geracao.data,
+          hora_geracao:               p.hora_geracao || geracao.hora,
           auditoria_id:               p.auditoria_id || a.id || '',
           fiscal:                     a.fiscal || p.fiscal_login || '',
           matricula:                  a.matricula || '',
           prefixo:                    p.prefixo || a.prefixo || '',
           os:                         p.os || a.os || '',
           uc:                         p.uc || a.uc || '',
-          data_prevista:              p.data_prevista || '',
+          data_prevista:              p.data_prevista || a.data_prevista || '',
           data_execucao:              dataExecucao,
           hora_execucao:              horaExecucao,
           tipo_servico:               p.tipo_servico || a.tipo_servico || '',
