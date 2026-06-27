@@ -36,7 +36,14 @@ update dev.pautas p
 set
   data_geracao = coalesce(p.data_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::date),
   hora_geracao = coalesce(p.hora_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::time),
-  data_execucao = coalesce(p.data_execucao, a.data_execucao, a.data_auditoria),
+  data_execucao = coalesce(
+    p.data_execucao,
+    a.data_execucao,
+    case
+      when a.data_auditoria::text ~ '^\d{4}-\d{2}-\d{2}$' then a.data_auditoria::date
+      else null
+    end
+  ),
   hora_execucao = coalesce(
     p.hora_execucao,
     a.hora_execucao,
@@ -52,7 +59,14 @@ update public.pautas p
 set
   data_geracao = coalesce(p.data_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::date),
   hora_geracao = coalesce(p.hora_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::time),
-  data_execucao = coalesce(p.data_execucao, a.data_execucao, a.data_auditoria),
+  data_execucao = coalesce(
+    p.data_execucao,
+    a.data_execucao,
+    case
+      when a.data_auditoria::text ~ '^\d{4}-\d{2}-\d{2}$' then a.data_auditoria::date
+      else null
+    end
+  ),
   hora_execucao = coalesce(
     p.hora_execucao,
     a.hora_execucao,
@@ -69,8 +83,20 @@ set
   usuario_criacao = coalesce(a.usuario_criacao, p.usuario_criacao),
   data_geracao = coalesce(a.data_geracao, p.data_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::date),
   hora_geracao = coalesce(a.hora_geracao, p.hora_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::time),
-  data_prevista = coalesce(a.data_prevista, p.data_prevista),
-  data_execucao = coalesce(a.data_execucao, a.data_auditoria),
+  data_prevista = coalesce(
+    a.data_prevista,
+    case
+      when p.data_prevista::text ~ '^\d{4}-\d{2}-\d{2}$' then p.data_prevista::date
+      else null
+    end
+  ),
+  data_execucao = coalesce(
+    a.data_execucao,
+    case
+      when a.data_auditoria::text ~ '^\d{4}-\d{2}-\d{2}$' then a.data_auditoria::date
+      else null
+    end
+  ),
   hora_execucao = coalesce(
     a.hora_execucao,
     case
@@ -86,8 +112,20 @@ set
   usuario_criacao = coalesce(a.usuario_criacao, p.usuario_criacao),
   data_geracao = coalesce(a.data_geracao, p.data_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::date),
   hora_geracao = coalesce(a.hora_geracao, p.hora_geracao, (p.created_at::timestamptz at time zone 'America/Fortaleza')::time),
-  data_prevista = coalesce(a.data_prevista, p.data_prevista),
-  data_execucao = coalesce(a.data_execucao, a.data_auditoria),
+  data_prevista = coalesce(
+    a.data_prevista,
+    case
+      when p.data_prevista::text ~ '^\d{4}-\d{2}-\d{2}$' then p.data_prevista::date
+      else null
+    end
+  ),
+  data_execucao = coalesce(
+    a.data_execucao,
+    case
+      when a.data_auditoria::text ~ '^\d{4}-\d{2}-\d{2}$' then a.data_auditoria::date
+      else null
+    end
+  ),
   hora_execucao = coalesce(
     a.hora_execucao,
     case
