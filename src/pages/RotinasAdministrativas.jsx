@@ -31,6 +31,17 @@ const DIAS_SEMANA = [
   { valor: 6, label: 'Sábado', alerta: 'todo sábado' },
 ]
 const DIAS_MES = Array.from({ length: 31 }, (_, i) => i + 1)
+const CORES_ROTINAS = [
+  { valor: 'azul', nome: 'Azul', bg: '#eff6ff', border: '#bfdbfe', accent: '#2563eb', text: '#1e3a8a', chipBg: '#dbeafe', shadow: 'rgba(37,99,235,0.14)' },
+  { valor: 'verde', nome: 'Verde', bg: '#ecfdf5', border: '#bbf7d0', accent: '#16a34a', text: '#166534', chipBg: '#dcfce7', shadow: 'rgba(22,163,74,0.14)' },
+  { valor: 'amarelo', nome: 'Amarelo', bg: '#fffbeb', border: '#fde68a', accent: '#d97706', text: '#92400e', chipBg: '#fef3c7', shadow: 'rgba(217,119,6,0.14)' },
+  { valor: 'rosa', nome: 'Rosa', bg: '#fdf2f8', border: '#fbcfe8', accent: '#db2777', text: '#9d174d', chipBg: '#fce7f3', shadow: 'rgba(219,39,119,0.14)' },
+  { valor: 'lilas', nome: 'Lilas', bg: '#f5f3ff', border: '#ddd6fe', accent: '#7c3aed', text: '#5b21b6', chipBg: '#ede9fe', shadow: 'rgba(124,58,237,0.14)' },
+  { valor: 'ciano', nome: 'Ciano', bg: '#ecfeff', border: '#a5f3fc', accent: '#0891b2', text: '#155e75', chipBg: '#cffafe', shadow: 'rgba(8,145,178,0.14)' },
+  { valor: 'pessego', nome: 'Pessego', bg: '#fff7ed', border: '#fed7aa', accent: '#ea580c', text: '#9a3412', chipBg: '#ffedd5', shadow: 'rgba(234,88,12,0.14)' },
+  { valor: 'cinza', nome: 'Cinza', bg: '#f8fafc', border: '#cbd5e1', accent: '#475569', text: '#334155', chipBg: '#e2e8f0', shadow: 'rgba(71,85,105,0.14)' },
+]
+const COR_ROTINA_PADRAO = CORES_ROTINAS[0]
 
 const modeloVazio = {
   titulo: '',
@@ -42,6 +53,7 @@ const modeloVazio = {
   recorrencia: 'DIARIA',
   dia_semana: '',
   dia_mes: '',
+  cor_bloco: COR_ROTINA_PADRAO.valor,
   precisa_ciencia: false,
   responsavel_login: '',
   perfil_responsavel: '',
@@ -149,6 +161,15 @@ function faixaHorariaRotinas(rotinas) {
   return inicio === fim ? inicio : inicio + ' às ' + fim
 }
 
+function corRotina(valor) {
+  return CORES_ROTINAS.find(cor => cor.valor === valor) || COR_ROTINA_PADRAO
+}
+
+function corGrupoRotinas(rotinas) {
+  const corSelecionada = (rotinas || []).find(r => r.ativa !== false && r.cor_bloco)?.cor_bloco || (rotinas || []).find(r => r.cor_bloco)?.cor_bloco
+  return corRotina(corSelecionada)
+}
+
 function agruparModelosPorResponsavel(lista) {
   const mapa = new Map()
 
@@ -173,6 +194,7 @@ function agruparModelosPorResponsavel(lista) {
   return Array.from(mapa.values())
     .map(grupo => ({
       ...grupo,
+      cor: corGrupoRotinas(grupo.rotinas),
       ativas: grupo.rotinas.filter(r => r.ativa !== false).length,
       inativas: grupo.rotinas.filter(r => r.ativa === false).length,
       exigeCiencia: grupo.rotinas.filter(r => r.precisa_ciencia === true).length,
@@ -263,6 +285,46 @@ function Campo({ label, children }) {
       <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
       {children}
     </label>
+  )
+}
+
+function SeletorCorRotina({ value, onChange }) {
+  const selecionada = corRotina(value)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
+      <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>Cor do bloco</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+        {CORES_ROTINAS.map(cor => {
+          const ativo = selecionada.valor === cor.valor
+          return (
+            <button
+              key={cor.valor}
+              type="button"
+              onClick={() => onChange(cor.valor)}
+              style={{
+                border: '1.5px solid ' + (ativo ? cor.accent : cor.border),
+                background: cor.bg,
+                color: cor.text,
+                borderRadius: 10,
+                padding: '9px 8px',
+                fontSize: 12,
+                fontWeight: 900,
+                cursor: 'pointer',
+                boxShadow: ativo ? '0 0 0 2px ' + cor.border : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                minHeight: 38,
+              }}
+            >
+              <span style={{ width: 10, height: 10, borderRadius: 999, background: cor.accent, flexShrink: 0 }} />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{cor.nome}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -472,6 +534,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       recorrencia: modelo.recorrencia || 'DIARIA',
       dia_semana: modelo.dia_semana ?? '',
       dia_mes: modelo.dia_mes ?? '',
+      cor_bloco: modelo.cor_bloco || COR_ROTINA_PADRAO.valor,
       precisa_ciencia: modelo.precisa_ciencia === true,
       responsavel_login: modelo.responsavel_login || '',
       perfil_responsavel: modelo.perfil_responsavel || '',
@@ -494,6 +557,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       recorrencia: modelo.recorrencia || 'DIARIA',
       dia_semana: modelo.dia_semana ?? '',
       dia_mes: modelo.dia_mes ?? '',
+      cor_bloco: modelo.cor_bloco || COR_ROTINA_PADRAO.valor,
       precisa_ciencia: modelo.precisa_ciencia === true,
       responsavel_login: '',
       perfil_responsavel: '',
@@ -597,6 +661,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
           recorrencia: m.recorrencia || 'DIARIA',
           dia_semana: m.dia_semana ?? null,
           dia_mes: m.dia_mes ?? null,
+          cor_bloco: m.cor_bloco || COR_ROTINA_PADRAO.valor,
           precisa_ciencia: m.precisa_ciencia === true,
           responsavel_login: m.responsavel_login || null,
           perfil_responsavel: m.perfil_responsavel || null,
@@ -703,6 +768,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         recorrencia: recorrenciaModelo,
         dia_semana: diaSemanaModelo,
         dia_mes: diaMesModelo,
+        cor_bloco: modeloForm.cor_bloco || COR_ROTINA_PADRAO.valor,
         precisa_ciencia: modeloForm.precisa_ciencia === true,
         responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
         perfil_responsavel: modeloForm.perfil_responsavel || null,
@@ -728,6 +794,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
             recorrencia: payloadBase.recorrencia,
             dia_semana: payloadBase.dia_semana,
             dia_mes: payloadBase.dia_mes,
+            cor_bloco: payloadBase.cor_bloco,
             precisa_ciencia: payloadBase.precisa_ciencia,
             responsavel_login: payloadBase.responsavel_login,
             perfil_responsavel: payloadBase.perfil_responsavel,
@@ -947,16 +1014,18 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                 </div>
               ) : visiveis.map(rotina => {
                 const meta = statusMeta(rotina)
+                const cor = corRotina(rotina.cor_bloco)
                 const ativo = rotina.id === selecionada?.id
                 return (
                   <article key={rotina.id} onClick={() => setSelecionadaId(rotina.id)} style={{
-                    background: ativo ? '#eff6ff' : '#fff', border: '1.5px solid ' + (ativo ? '#60a5fa' : '#dbe3ef'),
-                    borderRadius: 14, padding: 14, cursor: 'pointer', boxShadow: ativo ? '0 8px 20px rgba(37,99,235,0.08)' : 'none',
+                    background: ativo ? cor.bg : '#fff', border: '1.5px solid ' + (ativo ? cor.accent : cor.border),
+                    borderRadius: 14, padding: 14, cursor: 'pointer', boxShadow: ativo ? '0 8px 20px ' + cor.shadow : 'none',
                   }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                       <div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 5 }}>
-                          {numeroOuNulo(rotina.ordem_execucao) !== null && <span style={{ background: '#e0f2fe', color: '#075985', borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(rotina)}</span>}
+                          {numeroOuNulo(rotina.ordem_execucao) !== null && <span style={{ background: cor.chipBg, color: cor.text, borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{rotuloOrdem(rotina)}</span>}
+                          <span style={{ background: cor.chipBg, color: cor.text, borderRadius: 999, padding: '3px 8px', fontSize: 11, fontWeight: 900 }}>{cor.nome}</span>
                           <strong style={{ fontSize: 16, color: '#0f172a' }}>{intervaloHora(rotina)}</strong>
                           <Pill meta={meta} />
                           {rotina.precisa_ciencia === true && <span style={{ fontSize: 11, color: '#c2410c', background: '#ffedd5', borderRadius: 999, padding: '3px 8px', fontWeight: 900 }}>Exige ciência</span>}
@@ -1139,6 +1208,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                       })}.
                     </div>
                   )}
+                  <SeletorCorRotina value={modeloForm.cor_bloco} onChange={valor => setModeloForm(f => ({ ...f, cor_bloco: valor }))} />
                   <label style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
                     background: modeloForm.precisa_ciencia ? '#fff7ed' : '#f8fafc',
@@ -1175,11 +1245,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {modelos.length === 0 && <div style={{ padding: 24, color: '#64748b', fontWeight: 800 }}>Nenhum modelo cadastrado.</div>}
                 {modelosAgrupados.map(grupo => (
-                  <section key={grupo.chave} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                    <div style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', padding: 14 }}>
+                  <section key={grupo.chave} style={{ borderBottom: '1px solid #e2e8f0', borderLeft: '5px solid ' + grupo.cor.accent, background: '#fff' }}>
+                    <div style={{ background: grupo.cor.bg, borderBottom: '1px solid ' + grupo.cor.border, padding: 14 }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                         <div style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
-                          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#dbeafe', color: '#1e40af', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, flexShrink: 0 }}>
+                          <div style={{ width: 34, height: 34, borderRadius: 10, background: grupo.cor.chipBg, color: grupo.cor.text, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, flexShrink: 0 }}>
                             {grupo.titulo.slice(0, 1).toUpperCase()}
                           </div>
                           <div style={{ minWidth: 0 }}>
@@ -1190,6 +1260,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                           </div>
                         </div>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                          <span style={{ background: grupo.cor.chipBg, color: grupo.cor.text, borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>Cor: {grupo.cor.nome}</span>
                           <span style={{ background: '#dcfce7', color: '#166534', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>{grupo.ativas} ativa(s)</span>
                           {grupo.inativas > 0 && <span style={{ background: '#f1f5f9', color: '#475569', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>{grupo.inativas} inativa(s)</span>}
                           {grupo.exigeCiencia > 0 && <span style={{ background: '#ffedd5', color: '#c2410c', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900 }}>{grupo.exigeCiencia} com ciência</span>}
