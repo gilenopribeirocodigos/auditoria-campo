@@ -46,7 +46,7 @@ set
     end
   )
 from dev.auditorias a
-where p.auditoria_id = a.id;
+where p.auditoria_id::text = a.id::text;
 
 update public.pautas p
 set
@@ -62,7 +62,7 @@ set
     end
   )
 from public.auditorias a
-where p.auditoria_id = a.id;
+where p.auditoria_id::text = a.id::text;
 
 update dev.auditorias a
 set
@@ -79,7 +79,7 @@ set
     end
   )
 from dev.pautas p
-where p.auditoria_id = a.id;
+where p.auditoria_id::text = a.id::text;
 
 update public.auditorias a
 set
@@ -96,4 +96,4 @@ set
     end
   )
 from public.pautas p
-where p.auditoria_id = a.id;
+where p.auditoria_id::text = a.id::text;
