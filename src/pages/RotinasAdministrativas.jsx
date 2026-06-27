@@ -487,6 +487,103 @@ function BuscaUsuarioLogin({ label, value, onChange, usuarios, placeholder }) {
   )
 }
 
+function BuscaUsuariosMultiplos({ label, values = [], onChange, usuarios, placeholder }) {
+  const [aberto, setAberto] = useState(false)
+  const [busca, setBusca] = useState('')
+  const ref = useRef(null)
+  const selecionados = useMemo(() => new Set((values || []).map(v => (v || '').trim().toLowerCase()).filter(Boolean)), [values])
+
+  const filtrados = useMemo(() => {
+    const termo = normalizar(busca)
+    const lista = termo
+      ? usuarios.filter(u => normalizar((u.nome || '') + ' ' + (u.login || '') + ' ' + (u.perfil || '')).includes(termo))
+      : usuarios
+    return lista.slice(0, 100)
+  }, [busca, usuarios])
+
+  useEffect(() => {
+    if (!aberto) return undefined
+    const fecharAoClicarFora = event => {
+      if (ref.current && !ref.current.contains(event.target)) setAberto(false)
+    }
+    document.addEventListener('mousedown', fecharAoClicarFora)
+    return () => document.removeEventListener('mousedown', fecharAoClicarFora)
+  }, [aberto])
+
+  const alternar = usuario => {
+    const login = (usuario.login || '').trim().toLowerCase()
+    if (!login) return
+    const proximo = new Set(selecionados)
+    if (proximo.has(login)) proximo.delete(login)
+    else proximo.add(login)
+    onChange(Array.from(proximo))
+  }
+
+  const remover = login => onChange((values || []).filter(v => v !== login))
+
+  return (
+    <div ref={ref} style={{ position: 'relative', minWidth: 0 }}>
+      <span style={{ minHeight: 30, display: 'flex', alignItems: 'flex-end', fontSize: 11, fontWeight: 900, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</span>
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        style={{ ...inputStyle, minHeight: 42, height: 'auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, textAlign: 'left', cursor: 'pointer', marginTop: 6 }}
+      >
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: values.length ? '#0f172a' : '#64748b' }}>
+          {values.length ? values.length + ' usuário(s) selecionado(s)' : placeholder}
+        </span>
+        <span style={{ color: '#94a3b8', fontSize: 12 }}>▼</span>
+      </button>
+      {values.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+          {values.map(login => (
+            <button key={login} type="button" onClick={() => remover(login)} style={{ border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1e40af', borderRadius: 999, padding: '4px 8px', fontSize: 11, fontWeight: 900, cursor: 'pointer' }}>
+              {login} ×
+            </button>
+          ))}
+        </div>
+      )}
+      {aberto && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, minWidth: 300, background: '#fff', border: '1px solid #cbd5e1', borderRadius: 10, boxShadow: '0 14px 30px rgba(15,23,42,0.16)', zIndex: 35, overflow: 'hidden' }}>
+          <div style={{ padding: 8, borderBottom: '1px solid #e2e8f0' }}>
+            <input
+              autoFocus
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Escape') setAberto(false) }}
+              placeholder="Buscar usuário..."
+              style={{ ...inputStyle, height: 34, padding: '8px 10px', fontSize: 13 }}
+            />
+          </div>
+          <div style={{ maxHeight: 240, overflowY: 'auto' }}>
+            {filtrados.length === 0 ? (
+              <div style={{ padding: 12, color: '#dc2626', fontSize: 12, fontWeight: 800 }}>Nenhum usuário encontrado.</div>
+            ) : filtrados.map(usuario => {
+              const login = (usuario.login || '').trim().toLowerCase()
+              const marcado = selecionados.has(login)
+              return (
+                <button
+                  key={login || usuario.nome}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => alternar(usuario)}
+                  style={{ width: '100%', border: 'none', borderBottom: '1px solid #f1f5f9', background: marcado ? '#eff6ff' : '#fff', color: '#0f172a', padding: '10px 12px', textAlign: 'left', cursor: 'pointer', display: 'grid', gridTemplateColumns: '22px minmax(0, 1fr)', gap: 8, alignItems: 'center' }}
+                >
+                  <span style={{ width: 16, height: 16, borderRadius: 4, border: '1.5px solid ' + (marcado ? '#2563eb' : '#cbd5e1'), background: marcado ? '#2563eb' : '#fff', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900 }}>{marcado ? '✓' : ''}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 13, fontWeight: 900, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{usuario.nome || login}</span>
+                    <span style={{ display: 'block', fontSize: 11, color: '#64748b', marginTop: 3 }}>{login}{usuario.perfil ? ' · ' + usuario.perfil : ''}</span>
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 const inputStyle = {
   width: '100%', height: 42, border: '1px solid #cbd5e1', borderRadius: 10, padding: '11px 12px',
   fontSize: 14, outline: 'none', background: '#fff', color: '#0f172a', boxSizing: 'border-box',
@@ -501,6 +598,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [sugestoes, setSugestoes] = useState({ prefixos: [], supervisores: [], eletricistas: [], usuarios: [] })
   const [selecionadaId, setSelecionadaId] = useState(null)
   const [modeloForm, setModeloForm] = useState(modeloVazio)
+  const [responsaveisModelo, setResponsaveisModelo] = useState([])
   const [modeloEditandoId, setModeloEditandoId] = useState(null)
   const [modeloReplicandoTitulo, setModeloReplicandoTitulo] = useState('')
   const [acaoForm, setAcaoForm] = useState(acaoVazia)
@@ -514,10 +612,21 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
 
   const atualizarAcao = (campo, valor) => setAcaoForm(form => ({ ...form, [campo]: valor }))
 
+  const atualizarResponsaveisModelo = logins => {
+    const normalizados = [...new Set((logins || []).map(login => (login || '').trim().toLowerCase()).filter(Boolean))]
+    setResponsaveisModelo(normalizados)
+    setModeloForm(form => ({
+      ...form,
+      responsavel_login: normalizados[0] || '',
+      perfil_responsavel: normalizados.length > 0 ? '' : form.perfil_responsavel,
+    }))
+  }
+
   const limparEdicaoModelo = () => {
     setModeloEditandoId(null)
     setModeloReplicandoTitulo('')
     setModeloForm(modeloVazio)
+    setResponsaveisModelo([])
     setErro('')
   }
 
@@ -539,6 +648,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       responsavel_login: modelo.responsavel_login || '',
       perfil_responsavel: modelo.perfil_responsavel || '',
     })
+    setResponsaveisModelo(modelo.responsavel_login ? [modelo.responsavel_login] : [])
     setErro('')
     setMsg('')
     setAba('modelos')
@@ -562,6 +672,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       responsavel_login: '',
       perfil_responsavel: '',
     })
+    setResponsaveisModelo([])
     setErro('')
     setMsg('Modelo carregado para replicação. Informe o novo responsável, ajuste o horário se precisar e salve.')
     setAba('modelos')
@@ -633,12 +744,15 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       if (errMods) throw errMods
 
       const modelosOrdenados = ordenarRotinas(mods || [])
+      const modelosVisiveis = acessoGeral
+        ? modelosOrdenados
+        : modelosOrdenados.filter(m => dentroDoEscopo(m, usuarioLogado, acessoGeral))
       const modelosEscopo = modelosOrdenados.filter(m =>
         m.ativa !== false &&
         dentroDoEscopo(m, usuarioLogado, acessoGeral) &&
         rotinaCabeNaData(m, dataSelecionada)
       )
-      setModelos(modelosOrdenados)
+      setModelos(modelosVisiveis)
 
       const { data: existentes, error: errExistentes } = await supabase
         .from('rotinas_execucoes')
@@ -758,6 +872,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         ? (numeroOuNulo(modeloForm.dia_mes) ?? diaMesDaData(dataSelecionada))
         : null
       const ordemModelo = numeroOuNulo(modeloForm.ordem_execucao)
+      const responsaveisSelecionados = [...new Set((responsaveisModelo || []).map(login => (login || '').trim().toLowerCase()).filter(Boolean))]
+      const responsavelPrincipal = responsaveisSelecionados[0] || modeloForm.responsavel_login.trim().toLowerCase()
       const payloadBase = {
         ...modeloForm,
         titulo: modeloForm.titulo.trim(),
@@ -770,8 +886,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         dia_mes: diaMesModelo,
         cor_bloco: modeloForm.cor_bloco || COR_ROTINA_PADRAO.valor,
         precisa_ciencia: modeloForm.precisa_ciencia === true,
-        responsavel_login: modeloForm.responsavel_login.trim().toLowerCase() || null,
-        perfil_responsavel: modeloForm.perfil_responsavel || null,
+        responsavel_login: responsavelPrincipal || null,
+        perfil_responsavel: responsavelPrincipal ? null : (modeloForm.perfil_responsavel || null),
       }
 
       if (modeloEditandoId) {
@@ -813,15 +929,25 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       }
 
       const replicandoModelo = Boolean(modeloReplicandoTitulo)
-      const payload = {
-        ...payloadBase,
-        criado_por: usuarioLogado?.login || null,
-        ativa: true,
-      }
-      const { error } = await supabase.from('rotinas_modelos').insert(payload)
+      const destinos = responsaveisSelecionados.length > 0 ? responsaveisSelecionados : [payloadBase.responsavel_login].filter(Boolean)
+      const payloads = destinos.length > 0
+        ? destinos.map(login => ({
+            ...payloadBase,
+            responsavel_login: login,
+            perfil_responsavel: null,
+            criado_por: usuarioLogado?.login || null,
+            ativa: true,
+          }))
+        : [{
+            ...payloadBase,
+            criado_por: usuarioLogado?.login || null,
+            ativa: true,
+          }]
+      const { error } = await supabase.from('rotinas_modelos').insert(payloads)
       if (error) throw error
       limparEdicaoModelo()
-      flash(replicandoModelo ? '✅ Modelo de rotina replicado.' : '✅ Modelo de rotina criado.')
+      const plural = payloads.length > 1 ? 's' : ''
+      flash(replicandoModelo ? `✅ ${payloads.length} modelo${plural} de rotina replicado${plural}.` : `✅ ${payloads.length} modelo${plural} de rotina criado${plural}.`)
       await carregar()
       setAba(replicandoModelo ? 'modelos' : 'hoje')
     } catch (e) {
@@ -1144,7 +1270,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                 )}
                 {!modeloEditandoId && modeloReplicandoTitulo && (
                   <div style={{ background: '#ecfdf5', border: '1px solid #bbf7d0', color: '#166534', borderRadius: 10, padding: '9px 10px', fontSize: 12, fontWeight: 800, marginBottom: 12 }}>
-                    Replicando o modelo "{modeloReplicandoTitulo}". Informe o novo responsável por login e ajuste o horário antes de salvar.
+                    Replicando o modelo "{modeloReplicandoTitulo}". Informe um ou mais responsáveis por login e ajuste o horário antes de salvar.
                   </div>
                 )}
                 <div style={{ display: 'grid', gap: 12 }}>
@@ -1226,8 +1352,8 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
                       style={{ width: 20, height: 20, flexShrink: 0 }}
                     />
                   </label>
-                  <BuscaUsuarioLogin label="Responsável por login" value={modeloForm.responsavel_login} onChange={valor => setModeloForm(f => ({ ...f, responsavel_login: valor }))} usuarios={sugestoes.usuarios} placeholder="Opcional: login do usuário" />
-                  <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => setModeloForm(f => ({ ...f, perfil_responsavel: e.target.value }))}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
+                  <BuscaUsuariosMultiplos label="Responsáveis por login" values={responsaveisModelo} onChange={atualizarResponsaveisModelo} usuarios={sugestoes.usuarios} placeholder="Selecionar um ou mais usuários" />
+                  <Campo label="Ou liberar para perfil"><select style={inputStyle} value={modeloForm.perfil_responsavel} onChange={e => { const perfil = e.target.value; setModeloForm(f => ({ ...f, perfil_responsavel: perfil, responsavel_login: perfil ? '' : f.responsavel_login })); if (perfil) setResponsaveisModelo([]) }}>{PERFIS_DESTINO.map(p => <option key={p} value={p}>{p || 'Sem perfil específico'}</option>)}</select></Campo>
                   <Botao onClick={salvarModelo} disabled={salvando} style={{ background: '#2563eb', color: '#fff', width: '100%' }}>
                     {modeloEditandoId ? 'Salvar alterações' : modeloReplicandoTitulo ? 'Salvar réplica' : 'Salvar modelo'}
                   </Botao>
