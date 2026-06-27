@@ -594,6 +594,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [dataSelecionada, setDataSelecionada] = useState(hojeISO())
   const [modelos, setModelos] = useState([])
   const [execucoes, setExecucoes] = useState([])
+  const [execucoesAcompanhamento, setExecucoesAcompanhamento] = useState([])
   const [subrotinas, setSubrotinas] = useState([])
   const [sugestoes, setSugestoes] = useState({ prefixos: [], supervisores: [], eletricistas: [], usuarios: [] })
   const [selecionadaId, setSelecionadaId] = useState(null)
@@ -607,7 +608,9 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
   const [erro, setErro] = useState('')
   const [msg, setMsg] = useState('')
 
-  const acessoGeral = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_dashboard')
+  const podeVerTodasRotinas = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_ver_todas')
+  const podeAcompanharGeral = podeVerTodasRotinas || temPermissao(usuarioLogado, 'rotinas_dashboard')
+  const acessoGeral = podeVerTodasRotinas
   const podeConfigurar = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'rotinas_configurar')
 
   const atualizarAcao = (campo, valor) => setAcaoForm(form => ({ ...form, [campo]: valor }))
@@ -705,9 +708,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
     return { total, pendentes, atrasadas, andamento, concluidas, canceladas }
   }, [visiveis])
 
+  const acompanhamentoBase = useMemo(() => (podeAcompanharGeral ? execucoesAcompanhamento : visiveis), [podeAcompanharGeral, execucoesAcompanhamento, visiveis])
+
   const acompanhamento = useMemo(() => {
     const mapa = new Map()
-    visiveis.forEach(r => {
+    acompanhamentoBase.forEach(r => {
       const chave = r.responsavel_login || r.perfil_responsavel || 'GERAL'
       if (!mapa.has(chave)) mapa.set(chave, { nome: chave, total: 0, pendentes: 0, atrasadas: 0, andamento: 0, concluidas: 0, canceladas: 0 })
       const linha = mapa.get(chave)
@@ -720,7 +725,7 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
       else linha.pendentes += 1
     })
     return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome))
-  }, [visiveis])
+  }, [acompanhamentoBase])
 
   const alertasPendentes = useMemo(() => {
     if (dataSelecionada !== hojeISO()) return []
@@ -796,11 +801,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
         .order('horario_previsto', { ascending: true })
       if (errExecs) throw errExecs
 
-      const execsEscopo = ordenarRotinas((execs || []).filter(e =>
-        dentroDoEscopo(e, usuarioLogado, acessoGeral) &&
-        rotinaCabeNaData(e, dataSelecionada)
-      ))
+      const execsOrdenadas = ordenarRotinas((execs || []).filter(e => rotinaCabeNaData(e, dataSelecionada)))
+      const execsEscopo = execsOrdenadas.filter(e => dentroDoEscopo(e, usuarioLogado, acessoGeral))
+      const execsAcompanhamento = execsOrdenadas.filter(e => dentroDoEscopo(e, usuarioLogado, podeAcompanharGeral))
       setExecucoes(execsEscopo)
+      setExecucoesAcompanhamento(execsAcompanhamento)
       if (!selecionadaId || !execsEscopo.some(e => e.id === selecionadaId)) {
         setSelecionadaId(execsEscopo[0]?.id || null)
       }
