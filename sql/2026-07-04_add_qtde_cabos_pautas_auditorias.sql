@@ -20,27 +20,27 @@ alter table if exists public.auditorias
 update dev.auditorias a
 set qtde_cabos_os = p.qtde_cabos_os
 from dev.pautas p
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and a.qtde_cabos_os is null
   and p.qtde_cabos_os is not null;
 
 update public.auditorias a
 set qtde_cabos_os = p.qtde_cabos_os
 from public.pautas p
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and a.qtde_cabos_os is null
   and p.qtde_cabos_os is not null;
 
 update dev.pautas p
 set qtde_cabos_em_campo = a.qtde_cabos_em_campo
 from dev.auditorias a
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and p.qtde_cabos_em_campo is null
   and a.qtde_cabos_em_campo is not null;
 
 update public.pautas p
 set qtde_cabos_em_campo = a.qtde_cabos_em_campo
 from public.auditorias a
-where p.auditoria_id = a.id
+where p.auditoria_id::text = a.id::text
   and p.qtde_cabos_em_campo is null
   and a.qtde_cabos_em_campo is not null;
