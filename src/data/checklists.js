@@ -56,7 +56,7 @@ export const CHECKLISTS = {
         items: [
           { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
           { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
@@ -87,7 +87,7 @@ export const CHECKLISTS = {
         label: 'Improdutivo',
         peso: 12.5,
         items: [
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
@@ -203,7 +203,7 @@ export const CHECKLISTS = {
         items: [
           { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
           { id: 2,  cat: 'COMPORTAMENTO', p: 'A conduta da equipe foi adequada (sem brigas, discussões ou desvios de comportamento)?' },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'O registro fotográfico do padrão foi feito conforme a diretriz?' },
@@ -230,7 +230,7 @@ export const CHECKLISTS = {
         label: 'Improdutivo',
         peso: 12.5,
         items: [
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'O registro fotográfico do padrão foi feito conforme a diretriz?' },
