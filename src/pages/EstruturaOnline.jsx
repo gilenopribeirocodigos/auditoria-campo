@@ -1,0 +1,843 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase.js'
+import { temPermissao } from '../lib/auth.js'
+
+const SITUACOES_PERMITIDAS = ['ATIVO', 'RESERVA']
+
+const COLUNAS_ESPERADAS = [
+  'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
+  'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
+  'superv_campo', 'superv_operacao', 'coordenador',
+]
+
+const MOTIVOS_PADRAO = [
+  { descricao: 'ATIVO', cor_fundo: '#dcfce7', cor_texto: '#166534', permite_importar_estrutura: true, ordem_exibicao: 1, ativo: true },
+  { descricao: 'RESERVA', cor_fundo: '#dbeafe', cor_texto: '#1e40af', permite_importar_estrutura: true, ordem_exibicao: 2, ativo: true },
+  { descricao: 'TRANSFERIDO', cor_fundo: '#f3e8ff', cor_texto: '#6b21a8', permite_importar_estrutura: false, ordem_exibicao: 10, ativo: true },
+  { descricao: 'AF.PREVIDENCIA', cor_fundo: '#fef3c7', cor_texto: '#92400e', permite_importar_estrutura: false, ordem_exibicao: 11, ativo: true },
+  { descricao: 'DESLIGADO', cor_fundo: '#fee2e2', cor_texto: '#991b1b', permite_importar_estrutura: false, ordem_exibicao: 12, ativo: true },
+  { descricao: 'DESAPARECIDO', cor_fundo: '#bbf7d0', cor_texto: '#166534', permite_importar_estrutura: false, ordem_exibicao: 13, ativo: true },
+  { descricao: 'BLOQUEADO', cor_fundo: '#ffedd5', cor_texto: '#9a3412', permite_importar_estrutura: false, ordem_exibicao: 14, ativo: true },
+  { descricao: 'NAO APRESENTADO', cor_fundo: '#ffffff', cor_texto: '#334155', permite_importar_estrutura: false, ordem_exibicao: 15, ativo: true },
+]
+
+const CORES_MOTIVO = [
+  { nome: 'Verde', fundo: '#dcfce7', texto: '#166534' },
+  { nome: 'Azul', fundo: '#dbeafe', texto: '#1e40af' },
+  { nome: 'Lilas', fundo: '#f3e8ff', texto: '#6b21a8' },
+  { nome: 'Amarelo', fundo: '#fef3c7', texto: '#92400e' },
+  { nome: 'Vermelho', fundo: '#fee2e2', texto: '#991b1b' },
+  { nome: 'Laranja', fundo: '#ffedd5', texto: '#9a3412' },
+  { nome: 'Branco', fundo: '#ffffff', texto: '#334155' },
+  { nome: 'Cinza', fundo: '#f1f5f9', texto: '#334155' },
+]
+
+const norm = s => (s || '').trim()
+const hojeISO = () => new Date().toISOString().split('T')[0]
+const formatBR = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca'
+
+function limparTexto(valor) {
+  if (valor === null || valor === undefined) return ''
+  return String(valor)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[–—−]/g, '-')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim()
+}
+
+function gerarIdTemporario() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return `${Date.now()}_${Math.random()}`
+}
+
+function novaLinha() {
+  return {
+    _tmpId: gerarIdTemporario(),
+    regional: '', polo: '', base: '', prefixo: '', matricula: '', colaborador: '',
+    descr_situacao: 'ATIVO', placas: '', tipo_equipe: '', processo_equipe: '',
+    superv_campo: '', superv_operacao: '', coordenador: '',
+  }
+}
+
+function linhaVazia(linha) {
+  return COLUNAS_ESPERADAS.every(c => !norm(linha?.[c]))
+}
+
+function normalizarLinha(linha) {
+  const out = {}
+  COLUNAS_ESPERADAS.forEach(c => {
+    out[c] = c === 'matricula' ? norm(linha?.[c]) : limparTexto(linha?.[c])
+  })
+  out.descr_situacao = limparTexto(out.descr_situacao).toUpperCase()
+  return out
+}
+
+function dadosParaLinha(dados) {
+  return { ...novaLinha(), ...(dados || {}) }
+}
+
+function mapaMotivos(motivos) {
+  return new Map((motivos || []).map(m => [normalizarSituacao(m.descricao), m]))
+}
+
+function normalizarSituacao(valor) {
+  return limparTexto(valor).toUpperCase()
+}
+
+function situacaoPermitida(s) {
+  return SITUACOES_PERMITIDAS.includes(normalizarSituacao(s))
+}
+
+function infoSituacao(situacao, motivos) {
+  const map = mapaMotivos(motivos)
+  const chave = normalizarSituacao(situacao)
+  return map.get(chave) || {
+    descricao: chave || 'SEM SITUACAO',
+    cor_fundo: '#f8fafc',
+    cor_texto: '#334155',
+    permite_importar_estrutura: false,
+    ordem_exibicao: 999,
+  }
+}
+
+function ordenarPorSituacao(linhas, motivos) {
+  return [...(linhas || [])].sort((a, b) => {
+    const ia = infoSituacao(a.descr_situacao, motivos)
+    const ib = infoSituacao(b.descr_situacao, motivos)
+    const ca = ia.permite_importar_estrutura ? 0 : 1
+    const cb = ib.permite_importar_estrutura ? 0 : 1
+    if (ca !== cb) return ca - cb
+    if ((ia.ordem_exibicao || 999) !== (ib.ordem_exibicao || 999)) return (ia.ordem_exibicao || 999) - (ib.ordem_exibicao || 999)
+    return String(a.colaborador || '').localeCompare(String(b.colaborador || ''))
+  })
+}
+
+function resumirSituacoes(linhas, motivos) {
+  const map = new Map()
+  ;(linhas || []).forEach(l => {
+    if (linhaVazia(l)) return
+    const info = infoSituacao(l.descr_situacao, motivos)
+    const desc = normalizarSituacao(info.descricao)
+    map.set(desc, { info, total: (map.get(desc)?.total || 0) + 1 })
+  })
+  return [...map.values()].sort((a, b) => (a.info.ordem_exibicao || 999) - (b.info.ordem_exibicao || 999))
+}
+
+function montarRegistro(r, idEletricista, timestamp) {
+  return {
+    id_eletricista: idEletricista,
+    regional: limparTexto(r.regional),
+    polo: limparTexto(r.polo),
+    base: limparTexto(r.base),
+    prefixo: limparTexto(r.prefixo),
+    matricula: norm(r.matricula),
+    colaborador: limparTexto(r.colaborador),
+    descr_situacao: limparTexto(r.descr_situacao),
+    placas: limparTexto(r.placas),
+    tipo_equipe: limparTexto(r.tipo_equipe),
+    processo_equipe: limparTexto(r.processo_equipe),
+    superv_campo: limparTexto(r.superv_campo),
+    superv_operacao: limparTexto(r.superv_operacao),
+    coordenador: limparTexto(r.coordenador),
+    carregado_em: timestamp,
+  }
+}
+
+function montarHistorico(linhaAtual, dataHoje, motivo) {
+  return {
+    id_eletricista: linhaAtual.id_eletricista,
+    regional: linhaAtual.regional,
+    polo: linhaAtual.polo,
+    base: linhaAtual.base,
+    prefixo: linhaAtual.prefixo,
+    matricula: linhaAtual.matricula,
+    colaborador: linhaAtual.colaborador,
+    descr_situacao: linhaAtual.descr_situacao,
+    placas: linhaAtual.placas,
+    tipo_equipe: linhaAtual.tipo_equipe,
+    processo_equipe: linhaAtual.processo_equipe,
+    superv_campo: linhaAtual.superv_campo,
+    superv_operacao: linhaAtual.superv_operacao,
+    coordenador: linhaAtual.coordenador,
+    vigencia_inicio: linhaAtual.carregado_em ? linhaAtual.carregado_em.split('T')[0] : null,
+    vigencia_fim: dataHoje,
+    motivo_saida: motivo,
+  }
+}
+
+function configMudou(atual, novo) {
+  const campos = ['regional', 'polo', 'base', 'prefixo', 'placas', 'tipo_equipe', 'processo_equipe', 'superv_campo', 'superv_operacao', 'coordenador', 'descr_situacao']
+  return campos.some(c => norm(atual[c]) !== norm(novo[c]))
+}
+
+async function importarEstrutura(rows) {
+  const rowsLimpos = (rows || []).map(normalizarLinha)
+  const ignoradas = []
+  const validas = []
+
+  for (const r of rowsLimpos) {
+    if (!norm(r.matricula) || !norm(r.colaborador)) {
+      ignoradas.push({ ...r, _motivo: !norm(r.matricula) ? 'sem matricula' : 'sem colaborador' })
+    } else if (!situacaoPermitida(r.descr_situacao)) {
+      ignoradas.push({ ...r, _motivo: `situacao "${r.descr_situacao || 'em branco'}" nao importavel` })
+    } else {
+      validas.push(r)
+    }
+  }
+
+  if (validas.length === 0) {
+    throw new Error('Nenhuma linha valida para importar. O Total precisa ter ao menos uma linha ATIVO ou RESERVA com matricula e colaborador.')
+  }
+
+  const matriculasCount = {}
+  const matriculaNomes = {}
+  for (const r of validas) {
+    matriculasCount[r.matricula] = (matriculasCount[r.matricula] || 0) + 1
+    if (!matriculaNomes[r.matricula]) matriculaNomes[r.matricula] = new Set()
+    matriculaNomes[r.matricula].add(r.colaborador)
+  }
+
+  const dups = Object.entries(matriculasCount)
+    .filter(([, c]) => c > 1)
+    .map(([m, c]) => ({ matricula: m, quantidade: c, nomes: Array.from(matriculaNomes[m]) }))
+
+  if (dups.length > 0) {
+    throw new Error(`${dups.length} matricula(s) duplicada(s) no Total Consolidado. Corrija antes de importar.`)
+  }
+
+  const { data: atualData, error: errAtual } = await supabase.from('estrutura_equipes').select('*')
+  if (errAtual) throw errAtual
+  const { data: mestreData, error: errMestre } = await supabase.from('eletricistas_cadastro').select('id_eletricista, matricula, nome')
+  if (errMestre) throw errMestre
+  const { data: histData, error: errHist } = await supabase.from('historico_estrutura_equipes').select('matricula')
+  if (errHist) throw errHist
+
+  const atualMap = new Map((atualData || []).map(a => [a.matricula, a]))
+  const mestreMap = new Map((mestreData || []).map(m => [m.matricula, m]))
+  const historicoSet = new Set((histData || []).map(h => h.matricula))
+
+  const novos = []
+  const voltaram = []
+  const mantidos = []
+  const movimentados = []
+
+  for (const r of validas) {
+    const noAtual = atualMap.get(r.matricula)
+    const noMestre = mestreMap.get(r.matricula)
+    const noHist = historicoSet.has(r.matricula)
+    if (noAtual) {
+      if (configMudou(noAtual, r)) movimentados.push({ atual: noAtual, novo: r, idEletricista: noMestre?.id_eletricista })
+      else mantidos.push({ atual: noAtual, novo: r, idEletricista: noMestre?.id_eletricista })
+    } else {
+      if (noMestre || noHist) voltaram.push({ novo: r, idEletricista: noMestre?.id_eletricista })
+      else novos.push({ novo: r })
+    }
+  }
+
+  const matriculasCsv = new Set(validas.map(r => r.matricula))
+  const removidos = (atualData || []).filter(a => a.matricula && !matriculasCsv.has(a.matricula))
+  const agora = new Date().toISOString()
+
+  const upsertPayload = validas.map(r => ({
+    matricula: r.matricula,
+    nome: limparTexto(r.colaborador),
+    atualizado_em: agora,
+  }))
+  for (let i = 0; i < upsertPayload.length; i += 100) {
+    const { error } = await supabase.from('eletricistas_cadastro').upsert(upsertPayload.slice(i, i + 100), { onConflict: 'matricula' })
+    if (error) throw error
+  }
+
+  const matriculas = validas.map(r => r.matricula)
+  const idsAtuais = []
+  for (let i = 0; i < matriculas.length; i += 200) {
+    const { data, error } = await supabase.from('eletricistas_cadastro').select('id_eletricista, matricula').in('matricula', matriculas.slice(i, i + 200))
+    if (error) throw error
+    idsAtuais.push(...(data || []))
+  }
+  const idMap = new Map(idsAtuais.map(i => [i.matricula, i.id_eletricista]))
+
+  const dataHoje = hojeISO()
+  const linhasHistorico = []
+  movimentados.forEach(m => linhasHistorico.push(montarHistorico(m.atual, dataHoje, `Alteracao de configuracao na carga online de ${dataHoje}`)))
+  removidos.forEach(r => linhasHistorico.push(montarHistorico(r, dataHoje, `Removido da estrutura na carga online de ${dataHoje}`)))
+  const linhasHistoricoValidas = linhasHistorico.filter(h => h.id_eletricista)
+  if (linhasHistoricoValidas.length > 0) {
+    for (let i = 0; i < linhasHistoricoValidas.length; i += 100) {
+      const { error } = await supabase.from('historico_estrutura_equipes').insert(linhasHistoricoValidas.slice(i, i + 100))
+      if (error) throw error
+    }
+  }
+
+  const { error: errDelete } = await supabase.from('estrutura_equipes').delete().neq('id', 0)
+  if (errDelete) throw errDelete
+
+  const novaEstrutura = []
+  novos.forEach(n => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
+  voltaram.forEach(v => { const id = idMap.get(v.novo.matricula); if (id) novaEstrutura.push(montarRegistro(v.novo, id, agora)) })
+  mantidos.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora)) })
+  movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora)) })
+
+  for (let i = 0; i < novaEstrutura.length; i += 100) {
+    const { error } = await supabase.from('estrutura_equipes').insert(novaEstrutura.slice(i, i + 100))
+    if (error) throw error
+  }
+
+  return {
+    novos: novos.length,
+    voltaram: voltaram.length,
+    mantidos: mantidos.length,
+    movimentados: movimentados.length,
+    removidos: removidos.length,
+    ignoradas: ignoradas.length,
+    total: novaEstrutura.length,
+  }
+}
+
+const cardStyle = {
+  background: '#fff',
+  border: '1px solid #dbe3ef',
+  borderRadius: 12,
+  padding: 12,
+}
+
+export default function EstruturaOnline({ usuarioLogado }) {
+  const [planilhas, setPlanilhas] = useState([])
+  const [linhasPorAba, setLinhasPorAba] = useState({})
+  const [abaAtiva, setAbaAtiva] = useState(null)
+  const [editando, setEditando] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [salvando, setSalvando] = useState(false)
+  const [erro, setErro] = useState('')
+  const [msg, setMsg] = useState('')
+  const [motivos, setMotivos] = useState(MOTIVOS_PADRAO)
+  const [mostrarMotivos, setMostrarMotivos] = useState(false)
+  const [motivoForm, setMotivoForm] = useState({ descricao: '', cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false })
+  const [confirmacao, setConfirmacao] = useState('')
+  const [relatorioImportacao, setRelatorioImportacao] = useState(null)
+
+  const isAdmin = usuarioLogado?.perfil === 'ADMIN'
+  const podeVisualizar = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_visualizar') || temPermissao(usuarioLogado, 'importar_equipes')
+  const podeEditar = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_editar')
+  const podeImportar = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_importar') || temPermissao(usuarioLogado, 'importar_equipes')
+  const podeConfigurarMotivos = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_motivos')
+
+  const linhasAtuais = linhasPorAba[abaAtiva] || []
+  const abaAtual = planilhas.find(p => p.id === abaAtiva)
+  const estaEditando = editando === abaAtiva
+
+  const linhasTotal = useMemo(() => {
+    return planilhas.flatMap(p => (linhasPorAba[p.id] || [])
+      .filter(l => !linhaVazia(l))
+      .map(l => ({ ...l, origem_aba: p.nome })))
+  }, [planilhas, linhasPorAba])
+
+  const linhasTotalImportaveis = useMemo(() => {
+    return linhasTotal.filter(l => situacaoPermitida(l.descr_situacao) && norm(l.matricula) && norm(l.colaborador))
+  }, [linhasTotal])
+
+  const matriculasDuplicadas = useMemo(() => {
+    const contagem = {}
+    linhasTotalImportaveis.forEach(l => { contagem[l.matricula] = (contagem[l.matricula] || 0) + 1 })
+    return Object.entries(contagem).filter(([, qtd]) => qtd > 1).map(([matricula]) => matricula)
+  }, [linhasTotalImportaveis])
+
+  const carregar = async () => {
+    setLoading(true)
+    setErro('')
+    try {
+      const { data: motivosData, error: motivosError } = await supabase
+        .from('motivos_situacao_estrutura')
+        .select('*')
+        .eq('ativo', true)
+        .order('ordem_exibicao')
+      if (!motivosError && motivosData?.length) setMotivos(motivosData)
+
+      const { data: abas, error: abasError } = await supabase
+        .from('estrutura_planilhas')
+        .select('*')
+        .eq('ativo', true)
+        .order('ordem')
+      if (abasError) throw abasError
+
+      const listaAbas = abas || []
+      setPlanilhas(listaAbas)
+      if (!abaAtiva && listaAbas[0]) setAbaAtiva(listaAbas[0].id)
+
+      if (listaAbas.length > 0) {
+        const ids = listaAbas.map(a => a.id)
+        const { data: linhas, error: linhasError } = await supabase
+          .from('estrutura_planilha_linhas')
+          .select('*')
+          .in('planilha_id', ids)
+          .order('ordem')
+        if (linhasError) throw linhasError
+        const mapa = {}
+        listaAbas.forEach(a => { mapa[a.id] = [] })
+        ;(linhas || []).forEach(l => {
+          if (!mapa[l.planilha_id]) mapa[l.planilha_id] = []
+          mapa[l.planilha_id].push(dadosParaLinha(l.dados))
+        })
+        Object.keys(mapa).forEach(k => {
+          if (mapa[k].length === 0) mapa[k] = [novaLinha(), novaLinha(), novaLinha()]
+        })
+        setLinhasPorAba(mapa)
+      } else {
+        setLinhasPorAba({})
+      }
+    } catch (e) {
+      setErro('Erro ao carregar Estrutura Online: ' + (e.message || String(e)))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { carregar() }, [])
+
+  const criarAbasIniciais = async () => {
+    if (!podeEditar) return
+    setSalvando(true)
+    try {
+      const payload = [
+        { nome: 'Plantao', ordem: 1, criado_por: usuarioLogado?.login, atualizado_por: usuarioLogado?.login },
+        { nome: 'Comercial', ordem: 2, criado_por: usuarioLogado?.login, atualizado_por: usuarioLogado?.login },
+      ]
+      const { error } = await supabase.from('estrutura_planilhas').insert(payload)
+      if (error) throw error
+      await carregar()
+      setMsg('Abas iniciais criadas.')
+    } catch (e) {
+      setErro(e.message || String(e))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const criarAba = async () => {
+    if (!podeEditar) return
+    if (planilhas.length >= 8) { setErro('Limite inicial de 8 abas atingido.'); return }
+    const nome = window.prompt('Nome da nova aba:', `Tabela ${planilhas.length + 1}`)
+    if (!nome) return
+    setSalvando(true)
+    try {
+      const { data, error } = await supabase.from('estrutura_planilhas')
+        .insert({
+          nome: limparTexto(nome),
+          ordem: planilhas.length + 1,
+          criado_por: usuarioLogado?.login,
+          atualizado_por: usuarioLogado?.login,
+        })
+        .select()
+        .single()
+      if (error) throw error
+      setPlanilhas(prev => [...prev, data])
+      setLinhasPorAba(prev => ({ ...prev, [data.id]: [novaLinha(), novaLinha(), novaLinha()] }))
+      setAbaAtiva(data.id)
+      setEditando(data.id)
+    } catch (e) {
+      setErro(e.message || String(e))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const renomearAba = async () => {
+    if (!podeEditar || !abaAtual) return
+    const nome = window.prompt('Novo nome da aba:', abaAtual.nome)
+    if (!nome) return
+    try {
+      const atualizado = { nome: limparTexto(nome), atualizado_por: usuarioLogado?.login, atualizado_em: new Date().toISOString() }
+      const { error } = await supabase.from('estrutura_planilhas').update(atualizado).eq('id', abaAtual.id)
+      if (error) throw error
+      setPlanilhas(prev => prev.map(p => p.id === abaAtual.id ? { ...p, ...atualizado } : p))
+      setMsg('Nome da aba atualizado.')
+    } catch (e) { setErro(e.message || String(e)) }
+  }
+
+  const atualizarCelula = (linhaId, coluna, valor) => {
+    setLinhasPorAba(prev => ({
+      ...prev,
+      [abaAtiva]: (prev[abaAtiva] || []).map(l => l._tmpId === linhaId ? { ...l, [coluna]: valor } : l),
+    }))
+  }
+
+  const colarExcel = (linhaId, colunaInicial, evento) => {
+    if (!estaEditando) return
+    const texto = evento.clipboardData?.getData('text/plain') || ''
+    if (!texto.includes('\t') && !texto.includes('\n')) return
+    evento.preventDefault()
+
+    const linhasTexto = texto.replace(/\r/g, '').split('\n').filter(l => l.length > 0)
+    const colInicio = COLUNAS_ESPERADAS.indexOf(colunaInicial)
+    const linhasBase = [...linhasAtuais]
+    let rowIndex = linhasBase.findIndex(l => l._tmpId === linhaId)
+    if (rowIndex < 0) rowIndex = 0
+
+    linhasTexto.forEach((txt, offsetLinha) => {
+      const valores = txt.split('\t')
+      const destino = rowIndex + offsetLinha
+      while (linhasBase.length <= destino) linhasBase.push(novaLinha())
+      valores.forEach((valor, offsetCol) => {
+        const col = COLUNAS_ESPERADAS[colInicio + offsetCol]
+        if (col) linhasBase[destino][col] = valor
+      })
+    })
+
+    setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: linhasBase }))
+    setMsg('Dados colados. Confira e clique em Salvar.')
+  }
+
+  const adicionarLinha = () => {
+    setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [...(prev[abaAtiva] || []), novaLinha()] }))
+  }
+
+  const removerLinha = (linhaId) => {
+    setLinhasPorAba(prev => ({
+      ...prev,
+      [abaAtiva]: (prev[abaAtiva] || []).filter(l => l._tmpId !== linhaId),
+    }))
+  }
+
+  const salvarAba = async () => {
+    if (!podeEditar || !abaAtiva) return
+    setSalvando(true)
+    setErro('')
+    try {
+      const normalizadas = linhasAtuais.map(normalizarLinha).filter(l => !linhaVazia(l))
+      await supabase.from('estrutura_planilha_linhas').delete().eq('planilha_id', abaAtiva)
+      if (normalizadas.length > 0) {
+        const payload = normalizadas.map((l, i) => ({
+          planilha_id: abaAtiva,
+          ordem: i + 1,
+          dados: l,
+          criado_por: usuarioLogado?.login,
+          atualizado_por: usuarioLogado?.login,
+        }))
+        const { error } = await supabase.from('estrutura_planilha_linhas').insert(payload)
+        if (error) throw error
+      }
+      const agora = new Date().toISOString()
+      const { error: errAba } = await supabase.from('estrutura_planilhas')
+        .update({ status: 'SALVO', atualizado_por: usuarioLogado?.login, atualizado_em: agora })
+        .eq('id', abaAtiva)
+      if (errAba) throw errAba
+      setPlanilhas(prev => prev.map(p => p.id === abaAtiva ? { ...p, atualizado_por: usuarioLogado?.login, atualizado_em: agora } : p))
+      setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: normalizadas.length ? normalizadas.map(dadosParaLinha) : [novaLinha(), novaLinha(), novaLinha()] }))
+      setEditando(null)
+      setMsg('Aba salva com sucesso.')
+    } catch (e) {
+      setErro(e.message || String(e))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  const salvarMotivo = async () => {
+    if (!podeConfigurarMotivos) return
+    const descricao = normalizarSituacao(motivoForm.descricao)
+    if (!descricao) { setErro('Informe a descricao do motivo.'); return }
+    try {
+      const { error } = await supabase.from('motivos_situacao_estrutura').upsert({
+        descricao,
+        cor_fundo: motivoForm.cor_fundo,
+        cor_texto: motivoForm.cor_texto,
+        permite_importar_estrutura: motivoForm.permite_importar_estrutura,
+        ativo: true,
+        ordem_exibicao: motivoForm.permite_importar_estrutura ? 3 : 50,
+        criado_por: usuarioLogado?.login,
+        atualizado_por: usuarioLogado?.login,
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: 'descricao' })
+      if (error) throw error
+      setMotivoForm({ descricao: '', cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false })
+      await carregar()
+      setMsg('Motivo salvo.')
+    } catch (e) {
+      setErro(e.message || String(e))
+    }
+  }
+
+  const importarTotal = async () => {
+    if (!podeImportar) return
+    if (confirmacao !== 'CONFIRMAR CARGA') {
+      setErro('Digite CONFIRMAR CARGA antes de importar o Total para o banco.')
+      return
+    }
+    if (matriculasDuplicadas.length > 0) {
+      setErro(`Existem matriculas duplicadas no Total: ${matriculasDuplicadas.join(', ')}`)
+      return
+    }
+    setSalvando(true)
+    setErro('')
+    setRelatorioImportacao(null)
+    try {
+      const resumo = await importarEstrutura(linhasTotal)
+      await supabase.from('estrutura_planilha_importacoes').insert({
+        usuario_login: usuarioLogado?.login,
+        usuario_nome: usuarioLogado?.nome,
+        total_linhas: linhasTotal.length,
+        linhas_importadas: resumo.total,
+        resumo,
+        status: 'CONCLUIDA',
+      })
+      setRelatorioImportacao(resumo)
+      setConfirmacao('')
+      setMsg(`Importacao online concluida: ${resumo.total} linha(s) na estrutura atual.`)
+    } catch (e) {
+      setErro(e.message || String(e))
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  if (!podeVisualizar) {
+    return <div style={cardStyle}>Seu perfil nao tem permissao para visualizar a Estrutura Online.</div>
+  }
+
+  if (loading) {
+    return <div style={cardStyle}>Carregando Estrutura Online...</div>
+  }
+
+  const linhasRender = abaAtiva === 'TOTAL'
+    ? ordenarPorSituacao(linhasTotal, motivos)
+    : ordenarPorSituacao(linhasAtuais, motivos)
+
+  return (
+    <div>
+      {erro && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, fontWeight: 700 }}>{erro}</div>}
+      {msg && <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, fontWeight: 700 }}>{msg}</div>}
+
+      <div style={{ ...cardStyle, marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 900, color: '#0f172a', margin: 0 }}>Estrutura Online</h2>
+            <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>Cole dados do Excel, salve por aba e importe o Total consolidado com seguranca.</p>
+          </div>
+          {podeEditar && planilhas.length === 0 && <button onClick={criarAbasIniciais} disabled={salvando} style={botao('#0f766e')}>Criar Plantao e Comercial</button>}
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          {planilhas.map(p => (
+            <button key={p.id} onClick={() => setAbaAtiva(p.id)} style={abaBtn(abaAtiva === p.id)}>
+              {p.nome}
+              <span style={{ display: 'block', fontSize: 10, opacity: 0.7 }}>Atualizado: {formatBR(p.atualizado_em)}</span>
+            </button>
+          ))}
+          {podeEditar && planilhas.length < 8 && <button onClick={criarAba} style={abaBtn(false)}>+ Nova aba</button>}
+          <button onClick={() => setAbaAtiva('TOTAL')} style={abaBtn(abaAtiva === 'TOTAL')}>Total Consolidado<span style={{ display: 'block', fontSize: 10, opacity: 0.7 }}>{linhasTotal.length} linha(s)</span></button>
+        </div>
+      </div>
+
+      <div style={{ ...cardStyle, marginBottom: 14 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 900, color: '#0f172a', margin: 0 }}>
+              {abaAtiva === 'TOTAL' ? 'Total Consolidado' : (abaAtual?.nome || 'Selecione uma aba')}
+            </p>
+            <p style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+              {abaAtiva === 'TOTAL'
+                ? 'Somente leitura. Apenas ATIVO e RESERVA entram no banco.'
+                : estaEditando ? 'Modo edicao liberado. Cole do Excel e salve para travar a aba.' : 'Modo leitura. Clique em Editar para alterar.'}
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
+            {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao('#7c3aed')}>Motivos</button>}
+          </div>
+        </div>
+
+        <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
+
+        {planilhas.length === 0 ? (
+          <div style={{ background: '#f8fafc', borderRadius: 12, padding: 24, textAlign: 'center', color: '#64748b', fontWeight: 800 }}>
+            Nenhuma aba criada ainda.
+          </div>
+        ) : (
+          <TabelaEstrutura
+            linhas={linhasRender}
+            motivos={motivos}
+            editando={estaEditando && abaAtiva !== 'TOTAL'}
+            onChange={atualizarCelula}
+            onPaste={colarExcel}
+            onRemove={removerLinha}
+            total={abaAtiva === 'TOTAL'}
+          />
+        )}
+      </div>
+
+      {mostrarMotivos && podeConfigurarMotivos && (
+        <div style={{ ...cardStyle, marginBottom: 14 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 900, margin: '0 0 10px' }}>Motivos padrao de descr_situacao</h3>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
+            <Campo label="Descricao"><input style={inputStyle} value={motivoForm.descricao} onChange={e => setMotivoForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: AFASTADO" /></Campo>
+            <Campo label="Cor"><select style={inputStyle} value={`${motivoForm.cor_fundo}|${motivoForm.cor_texto}`} onChange={e => { const [fundo, texto] = e.target.value.split('|'); setMotivoForm(f => ({ ...f, cor_fundo: fundo, cor_texto: texto })) }}>{CORES_MOTIVO.map(c => <option key={c.nome} value={`${c.fundo}|${c.texto}`}>{c.nome}</option>)}</select></Campo>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#334155' }}>
+              <input type="checkbox" checked={motivoForm.permite_importar_estrutura} onChange={e => setMotivoForm(f => ({ ...f, permite_importar_estrutura: e.target.checked }))} />
+              Permite importar
+            </label>
+            <button onClick={salvarMotivo} style={botao('#7c3aed')}>Salvar motivo</button>
+          </div>
+          <ResumoSituacoes linhas={motivos.map(m => ({ descr_situacao: m.descricao, matricula: '1', colaborador: 'x' }))} motivos={motivos} />
+        </div>
+      )}
+
+      <div style={{ ...cardStyle, borderColor: '#93c5fd', background: '#eff6ff' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 900, color: '#1e3a8a', margin: 0 }}>Importar Total para estrutura_equipes</p>
+            <p style={{ fontSize: 12, color: '#1e40af', marginTop: 4 }}>
+              Total: {linhasTotal.length} linha(s). Importaveis: {linhasTotalImportaveis.length}. Fora da carga: {linhasTotal.length - linhasTotalImportaveis.length}.
+            </p>
+            {matriculasDuplicadas.length > 0 && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 4, fontWeight: 800 }}>Duplicadas: {matriculasDuplicadas.join(', ')}</p>}
+          </div>
+          <div style={{ minWidth: 260 }}>
+            <input value={confirmacao} onChange={e => setConfirmacao(e.target.value)} placeholder="Digite CONFIRMAR CARGA" style={{ ...inputStyle, marginBottom: 8 }} />
+            <button onClick={importarTotal} disabled={!podeImportar || salvando || confirmacao !== 'CONFIRMAR CARGA'} style={{ ...botao('#0f766e'), width: '100%', opacity: (!podeImportar || salvando || confirmacao !== 'CONFIRMAR CARGA') ? 0.55 : 1 }}>
+              Importar Total para o banco
+            </button>
+          </div>
+        </div>
+        {relatorioImportacao && (
+          <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+            {Object.entries(relatorioImportacao).map(([k, v]) => (
+              <div key={k} style={{ background: '#fff', borderRadius: 10, padding: 10, textAlign: 'center' }}>
+                <p style={{ fontSize: 18, fontWeight: 900, color: '#0f766e', margin: 0 }}>{v}</p>
+                <p style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase', fontWeight: 800 }}>{k}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ResumoSituacoes({ linhas, motivos }) {
+  const resumo = resumirSituacoes(linhas, motivos)
+  if (resumo.length === 0) return null
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+      {resumo.map(({ info, total }) => (
+        <span key={info.descricao} style={{
+          borderRadius: 999,
+          padding: '5px 10px',
+          fontSize: 11,
+          fontWeight: 900,
+          background: info.cor_fundo,
+          color: info.cor_texto,
+          border: `1px solid ${info.cor_texto}22`,
+        }}>
+          {info.descricao}: {total}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function TabelaEstrutura({ linhas, motivos, editando, onChange, onPaste, onRemove, total }) {
+  return (
+    <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, maxHeight: 520 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1680, background: '#fff' }}>
+        <thead>
+          <tr>
+            {total && <Th>aba</Th>}
+            {COLUNAS_ESPERADAS.map(c => <Th key={c}>{c}</Th>)}
+            {editando && <Th>acao</Th>}
+          </tr>
+        </thead>
+        <tbody>
+          {linhas.map((linha) => {
+            const info = infoSituacao(linha.descr_situacao, motivos)
+            return (
+              <tr key={linha._tmpId || `${linha.origem_aba}_${linha.matricula}_${linha.prefixo}`} style={{ background: situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa' }}>
+                {total && <Td><span style={{ fontWeight: 800, color: '#0f766e' }}>{linha.origem_aba}</span></Td>}
+                {COLUNAS_ESPERADAS.map(c => {
+                  const ehSituacao = c === 'descr_situacao'
+                  const bg = ehSituacao ? info.cor_fundo : undefined
+                  const color = ehSituacao ? info.cor_texto : '#0f172a'
+                  return (
+                    <Td key={c} style={{ background: bg }}>
+                      {editando ? (
+                        <input
+                          value={linha[c] || ''}
+                          onChange={e => onChange(linha._tmpId, c, e.target.value)}
+                          onPaste={e => onPaste(linha._tmpId, c, e)}
+                          style={{
+                            width: '100%',
+                            border: 'none',
+                            outline: 'none',
+                            background: 'transparent',
+                            color,
+                            fontWeight: ehSituacao ? 900 : 600,
+                            fontSize: 12,
+                          }}
+                        />
+                      ) : (
+                        <span style={{ color, fontWeight: ehSituacao ? 900 : 600 }}>{linha[c] || ''}</span>
+                      )}
+                    </Td>
+                  )
+                })}
+                {editando && <Td><button onClick={() => onRemove(linha._tmpId)} style={botao('#dc2626')}>Remover</button></Td>}
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function Th({ children }) {
+  return <th style={{ position: 'sticky', top: 0, background: '#f8fafc', color: '#334155', fontSize: 11, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>{children}</th>
+}
+
+function Td({ children, style }) {
+  return <td style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f8fafc', fontSize: 12, minWidth: 120, ...style }}>{children}</td>
+}
+
+function Campo({ label, children }) {
+  return <div><label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', fontWeight: 900, color: '#334155', marginBottom: 5 }}>{label}</label>{children}</div>
+}
+
+function botao(bg) {
+  return {
+    background: bg,
+    border: 'none',
+    color: '#fff',
+    borderRadius: 9,
+    padding: '9px 12px',
+    fontSize: 12,
+    fontWeight: 900,
+    cursor: 'pointer',
+  }
+}
+
+function abaBtn(ativo) {
+  return {
+    background: ativo ? '#0f766e' : '#e2e8f0',
+    color: ativo ? '#fff' : '#1e293b',
+    border: 'none',
+    borderRadius: 10,
+    padding: '9px 14px',
+    fontWeight: 900,
+    cursor: 'pointer',
+    textAlign: 'left',
+  }
+}
+
+const inputStyle = {
+  width: '100%',
+  border: '1px solid #cbd5e1',
+  borderRadius: 9,
+  padding: '10px 12px',
+  fontSize: 13,
+  outline: 'none',
+  boxSizing: 'border-box',
+}

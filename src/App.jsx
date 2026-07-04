@@ -340,7 +340,7 @@ export default function App() {
 
   // ── Rotas das telas ──────────────────────────────────────────────────────────
   if (tela === 'gestao')               return <GestaoUsuarios           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
-  if (tela === 'importar')             return <ImportarEquipes          onVoltar={() => setTela('home')} />
+  if (tela === 'importar')             return <ImportarEquipes          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'pauta')                return <GestaoPauta              usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'historico')            return <HistoricoAuditorias      usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'metas')                return <Metas                    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
