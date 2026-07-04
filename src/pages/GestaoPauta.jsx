@@ -622,8 +622,40 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         if ((x.prefixo || '') !== (y.prefixo || '')) return (x.prefixo || '').localeCompare(y.prefixo || '')
         return String(x.pauta_id || '').localeCompare(String(y.pauta_id || ''))
       })
-      const ws = XLSX.utils.json_to_sheet(linhas)
-      const colNames = Object.keys(linhas[0])
+      const colNames = [
+        'pauta_id',
+        'usuario_criacao',
+        'data_geracao',
+        'hora_geracao',
+        'auditoria_id',
+        'fiscal',
+        'matricula',
+        'prefixo',
+        'os',
+        'uc',
+        'data_prevista',
+        'data_execucao',
+        'hora_execucao',
+        'tipo_servico',
+        'produtivo',
+        'status',
+        'Status_Conclusao_Pauta',
+        'feedback',
+        'observacao_pauta',
+        'observacao_auditoria',
+        'nome_eletricista',
+        'nome_eletricista2',
+        'tipo_auditoria',
+        'qtde_cabos_os',
+        'qtde_cabos_em_campo',
+        'reaberta',
+        'motivo_auditoria',
+        'avaliacao_motivo_auditoria',
+        'item_id',
+        'item_nao_conforme',
+        'status_tratamento',
+      ]
+      const ws = XLSX.utils.json_to_sheet(linhas, { header: colNames })
       ws['!cols'] = colNames.map(col => {
         const maxLen = Math.max(col.length, ...linhas.map(r => String(r[col] ?? '').length))
         return { wch: Math.min(maxLen + 2, 60) }
