@@ -244,6 +244,8 @@ export default function App() {
       feedback:         auditoria.feedback          || '',
       observacoes:      auditoria.observacoes       || '',
       motivoAuditoria:  auditoria.motivo_auditoria  || '',
+      qtdeCabosOs:      auditoria.qtde_cabos_os      ?? '',
+      qtdeCabosEmCampo: auditoria.qtde_cabos_em_campo ?? '',
       statusMotivoAuditoria: typeof auditoria.status_motivo_auditoria === 'boolean'
         ? auditoria.status_motivo_auditoria
         : auditoria.avaliacao_motivo_auditoria === 'CONFORME'
@@ -283,6 +285,8 @@ export default function App() {
         await concluirPauta(pautaAtiva.id, auditoria_id, {
           motivo_auditoria: form.motivoAuditoria || pautaAtiva.motivo_auditoria || null,
           avaliacao_motivo_auditoria: avaliacaoMotivoPauta,
+          qtde_cabos_os: form.qtdeCabosOs || pautaAtiva.qtde_cabos_os || null,
+          qtde_cabos_em_campo: form.qtdeCabosEmCampo || null,
           data_execucao: form.data || execucao.data,
           hora_execucao: form.hora || execucao.hora,
         })

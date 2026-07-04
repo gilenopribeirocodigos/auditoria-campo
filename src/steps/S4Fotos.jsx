@@ -2,6 +2,13 @@ import { useState } from 'react'
 import { SectionTitle, NavBar, Textarea } from '../components/Shared.jsx'
 
 const MIN_FOTOS = 2
+const MOTIVO_MATERIAL_APLICADO = 'MATERIAL APLICADO EM CAMPO'
+
+function normalizarDecimalTexto(valor) {
+  const texto = String(valor ?? '').replace(',', '.').replace(/[^\d.]/g, '')
+  const [inteiro, ...decimais] = texto.split('.')
+  return decimais.length > 0 ? `${inteiro}.${decimais.join('')}` : inteiro
+}
 
 function processarFoto(file, lat, lng, prefixo, fiscal) {
   return new Promise(resolve => {
@@ -105,12 +112,16 @@ export default function S4Fotos({ form, upd, setForm, next, prev, modoEdicao, fo
 
   // ── Bloco condicional: só existe se a auditoria tiver Motivo da Auditoria ──
   const temMotivo = !!form.motivoAuditoria
+  const motivoMaterialAplicado = form.motivoAuditoria === MOTIVO_MATERIAL_APLICADO
+  const qtdeCabosCampoObrigatoria = motivoMaterialAplicado && form.statusMotivoAuditoria === false
+  const qtdeCabosCampoOk = !qtdeCabosCampoObrigatoria || String(form.qtdeCabosEmCampo || '').trim().length > 0
 
   // Validação do bloco de motivo (só exige se temMotivo)
   const motivoOk = !temMotivo || (
     (form.fotosMotivo?.length || 0) >= 1 &&
     form.statusMotivoAuditoria !== null &&
     form.statusMotivoAuditoria !== undefined &&
+    qtdeCabosCampoOk &&
     (form.observacoesMotivoAuditoria || '').trim().length > 0
   )
 
@@ -222,6 +233,29 @@ export default function S4Fotos({ form, upd, setForm, next, prev, modoEdicao, fo
           }}>
             🎯 Motivo da Auditoria: {form.motivoAuditoria}
           </div>
+
+          {motivoMaterialAplicado && (
+            <div className="form-group" style={{ marginBottom: 14 }}>
+              <label className="form-label">
+                QTDE CABOS EM CAMPO (Em metros)
+                {form.statusMotivoAuditoria === false && (
+                  <span style={{ color: '#dc2626', marginLeft: 6 }}>*</span>
+                )}
+              </label>
+              <input
+                className="form-input"
+                value={form.qtdeCabosEmCampo || ''}
+                onChange={e => upd('qtdeCabosEmCampo', normalizarDecimalTexto(e.target.value))}
+                placeholder="Ex: 22 ou 22.5"
+                inputMode="decimal"
+              />
+              {qtdeCabosCampoObrigatoria && !qtdeCabosCampoOk && (
+                <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 700 }}>
+                  Obrigatorio informar a metragem de cabos em campo quando o motivo estiver nao conforme.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* ITEM 3: Fotos Motivo Auditoria */}
           <p style={{ fontSize: 12, fontWeight: 800, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>

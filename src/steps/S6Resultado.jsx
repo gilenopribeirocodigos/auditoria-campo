@@ -22,6 +22,13 @@ function separarDataHoraFortaleza(valor = new Date().toISOString()) {
   return { data: '', hora: '' }
 }
 
+function decimalOuNull(valor) {
+  const texto = String(valor ?? '').replace(',', '.').replace(/[^\d.]/g, '')
+  if (!texto) return null
+  const numero = Number(texto)
+  return Number.isFinite(numero) ? numero : null
+}
+
 export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
@@ -305,6 +312,8 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
       status_motivo_auditoria:         form.motivoAuditoria ? form.statusMotivoAuditoria : null,
       avaliacao_motivo_auditoria:      form.motivoAuditoria ? avaliacaoMotivoTexto : null,
       observacoes_motivo_auditoria:    form.motivoAuditoria ? (form.observacoesMotivoAuditoria || null) : null,
+      qtde_cabos_os:                   decimalOuNull(form.qtdeCabosOs || pautaAtiva?.qtde_cabos_os),
+      qtde_cabos_em_campo:             form.motivoAuditoria ? decimalOuNull(form.qtdeCabosEmCampo) : null,
       usuario_criacao:                 pautaAtiva?.usuario_criacao || null,
       data_geracao:                    pautaAtiva?.data_geracao || geracaoPauta.data || null,
       hora_geracao:                    pautaAtiva?.hora_geracao || geracaoPauta.hora || null,
@@ -526,6 +535,8 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
           <InfoRow label="Tipo de Serviço"  value={CHECKLISTS[form.tipoServico]?.label} />
           {form.motivoAuditoria && <InfoRow label="Motivo da Auditoria" value={form.motivoAuditoria} />}
+          {form.qtdeCabosOs && <InfoRow label="Qtde Cabos OS" value={`${form.qtdeCabosOs}m`} />}
+          {form.qtdeCabosEmCampo && <InfoRow label="Qtde Cabos em Campo" value={`${form.qtdeCabosEmCampo}m`} />}
           <InfoRow label="Status do Serviço" value={form.produtivo ? 'Produtivo' : 'Improdutivo'} />
           <InfoRow label="Fiscal"         value={form.fiscal} />
           <InfoRow label="Matrícula"      value={form.matricula} />

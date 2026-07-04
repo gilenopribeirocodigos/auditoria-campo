@@ -70,6 +70,12 @@ export async function concluirPauta(id, auditoria_id, dadosConclusao = {}) {
   if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'avaliacao_motivo_auditoria')) {
     update.avaliacao_motivo_auditoria = dadosConclusao.avaliacao_motivo_auditoria || null
   }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'qtde_cabos_os')) {
+    update.qtde_cabos_os = dadosConclusao.qtde_cabos_os ?? null
+  }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'qtde_cabos_em_campo')) {
+    update.qtde_cabos_em_campo = dadosConclusao.qtde_cabos_em_campo ?? null
+  }
   if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'data_execucao')) {
     update.data_execucao = dadosConclusao.data_execucao || null
   }
@@ -101,6 +107,8 @@ export async function criarProximaRecorrencia(pauta) {
     recorrencia:            pauta.recorrencia,
     observacao:             pauta.observacao,
     motivo_auditoria:       pauta.motivo_auditoria,
+    qtde_cabos_os:          pauta.qtde_cabos_os ?? null,
+    qtde_cabos_em_campo:    null,
     avaliacao_motivo_auditoria: null,
     matricula_eletricista1: pauta.matricula_eletricista1,
     matricula_eletricista2: pauta.matricula_eletricista2,

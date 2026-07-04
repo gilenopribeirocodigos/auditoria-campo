@@ -16,14 +16,28 @@ const MOTIVOS_AUDITORIA = [
   'MATERIAL APLICADO EM CAMPO',
   'RELIGA VINCULADA',
 ]
+const MOTIVO_MATERIAL_APLICADO = 'MATERIAL APLICADO EM CAMPO'
 
 const FORM_VAZIO = {
   prefixo: '', fiscal_login: '', data_prevista: new Date().toISOString().split('T')[0],
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
   recorrencia: 'UNICA', observacao: '', os: '', uc: '',
-  motivo_auditoria: '',
+  motivo_auditoria: '', qtde_cabos_os: '',
   matricula_eletricista1: '', matricula_eletricista2: '',
   nome_eletricista: '', nome_eletricista2: '',
+}
+
+function normalizarDecimalTexto(valor) {
+  const texto = String(valor ?? '').replace(',', '.').replace(/[^\d.]/g, '')
+  const [inteiro, ...decimais] = texto.split('.')
+  return decimais.length > 0 ? `${inteiro}.${decimais.join('')}` : inteiro
+}
+
+function decimalOuNull(valor) {
+  const texto = normalizarDecimalTexto(valor)
+  if (!texto) return null
+  const numero = Number(texto)
+  return Number.isFinite(numero) ? numero : null
 }
 
 function limparTexto(texto) {
@@ -128,6 +142,9 @@ function normalizarPauta(obj) {
     recorrencia,
     observacao:             c.observacao || '',
     motivo_auditoria:       motivoAuditoria,
+    qtde_cabos_os:          motivoAuditoria === MOTIVO_MATERIAL_APLICADO
+      ? decimalOuNull(c.qtde_cabos_os || c.qtde_cabo_os || c.qtd_cabos_os || c.qtd_cabo_os)
+      : null,
     os:                     c.os || '',
     uc:                     c.uc || '',
     matricula_eletricista1: (c.matricula_eletricista1 || c.matricula_eletricista || '').replace(/\D/g, ''),
@@ -339,7 +356,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const upd       = (k, v) => setFormData(f => ({ ...f, [k]: v }))
   const abrirNovo = () => {
     setEditando(null)
-    setFormData(FORM_VAZIO)
+    setFormData({ ...FORM_VAZIO })
     setPrefixoValido(false)
     setErro('')
     setModal(true)
@@ -351,6 +368,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       ...p,
       os: p.os || '', uc: p.uc || '',
       motivo_auditoria: p.motivo_auditoria || '',
+      qtde_cabos_os: p.qtde_cabos_os ?? '',
     })
     // Ao editar, o prefixo já existe — será validado silenciosamente pelo componente
     setPrefixoValido(false)
@@ -375,6 +393,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         observacao:             limparTexto(formData.observacao),
         os:                     limparTexto(formData.os),
         uc:                     limparTexto(formData.uc),
+        qtde_cabos_os:          formData.motivo_auditoria === MOTIVO_MATERIAL_APLICADO
+          ? decimalOuNull(formData.qtde_cabos_os)
+          : null,
         matricula_eletricista1: (formData.matricula_eletricista1 || '').replace(/\D/g, ''),
         matricula_eletricista2: (formData.matricula_eletricista2 || '').replace(/\D/g, ''),
       }
@@ -585,6 +606,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           nome_eletricista:           p.nome_eletricista || a.nome_eletricista || '',
           nome_eletricista2:          p.nome_eletricista2 || a.nome_eletricista2 || '',
           tipo_auditoria:             p.tipo_auditoria || a.tipo_auditoria || '',
+          qtde_cabos_os:              p.qtde_cabos_os ?? a.qtde_cabos_os ?? '',
+          qtde_cabos_em_campo:        a.qtde_cabos_em_campo ?? p.qtde_cabos_em_campo ?? '',
           reaberta:                   a.reaberta ? 'SIM' : (a.id ? 'NAO' : ''),
           motivo_auditoria:           p.motivo_auditoria || a.motivo_auditoria || '',
           avaliacao_motivo_auditoria: a.avaliacao_motivo_auditoria || p.avaliacao_motivo_auditoria || nc?.avaliacao_motivo_auditoria || '',
@@ -841,6 +864,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                           🎯 Motivo: {p.motivo_auditoria}
                         </div>
                       )}
+                      {p.qtde_cabos_os && (
+                        <div style={{ marginTop: 6, fontSize: 12, color: '#92400e', fontWeight: 700 }}>
+                          Cabos OS: {p.qtde_cabos_os}m
+                        </div>
+                      )}
                       {p.observacao && (
                         <div style={{ marginTop: 6, background: '#f0f9ff', border: '1px solid #bae6fd', padding: '8px 12px', borderRadius: 8, lineHeight: 1.5 }}>
                           <span style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase', letterSpacing: 0.5 }}>💬 Observação:</span>
@@ -930,11 +958,32 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div className="form-group">
               <label className="form-label">🎯 Motivo da Auditoria</label>
-              <select className="form-input" value={formData.motivo_auditoria} onChange={e => upd('motivo_auditoria', e.target.value)}>
+              <select
+                className="form-input"
+                value={formData.motivo_auditoria}
+                onChange={e => setFormData(f => ({
+                  ...f,
+                  motivo_auditoria: e.target.value,
+                  qtde_cabos_os: e.target.value === MOTIVO_MATERIAL_APLICADO ? f.qtde_cabos_os : '',
+                }))}
+              >
                 <option value="">— Sem motivo específico —</option>
                 {MOTIVOS_AUDITORIA.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
+
+            {formData.motivo_auditoria === MOTIVO_MATERIAL_APLICADO && (
+              <div className="form-group">
+                <label className="form-label">QTDE CABOS OS (Em metros)</label>
+                <input
+                  className="form-input"
+                  value={formData.qtde_cabos_os ?? ''}
+                  onChange={e => upd('qtde_cabos_os', normalizarDecimalTexto(e.target.value))}
+                  placeholder="Ex: 22 ou 22.5"
+                  inputMode="decimal"
+                />
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">
@@ -1005,7 +1054,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             </div>
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
-              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
+              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · <strong>qtde_cabos_os</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
               <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
               <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
@@ -1024,7 +1073,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             <div className="form-group">
               <textarea className="form-textarea" value={csvTexto}
                 onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
-                placeholder={`prefixo;fiscal_login;data_prevista\nPI-THE-C001M;gileno.ribeiro;2026-06-19`}
+                placeholder={`prefixo;fiscal_login;data_prevista;motivo_auditoria;qtde_cabos_os\nPI-THE-C001M;gileno.ribeiro;2026-06-19;MATERIAL APLICADO EM CAMPO;22`}
                 rows={6} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </div>
             {csvPreview.length > 0 && (
@@ -1034,6 +1083,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   <div key={i} style={{ color: '#475569', marginBottom: 4, lineHeight: 1.5 }}>
                     <strong>{p.prefixo}</strong> · {p.fiscal_login} · {p.data_prevista} · {p.tipo_servico}
                     {p.motivo_auditoria ? ` · 🎯 ${p.motivo_auditoria}` : ''}
+                    {p.qtde_cabos_os ? ` · Cabos OS: ${p.qtde_cabos_os}m` : ''}
                     {p.os ? ` · OS:${p.os}` : ''}{p.uc ? ` · UC:${p.uc}` : ''}
                   </div>
                 ))}
