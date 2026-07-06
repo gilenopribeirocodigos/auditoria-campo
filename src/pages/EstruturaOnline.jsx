@@ -48,6 +48,23 @@ function limparTexto(valor) {
     .trim()
 }
 
+function limparTextoEdicao(valor) {
+  if (valor === null || valor === undefined) return ''
+  return String(valor)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[â€“â€”âˆ’]/g, '-')
+    .replace(/[â€œâ€]/g, '"')
+    .replace(/[â€˜â€™]/g, "'")
+    .replace(/[^\x20-\x7E]/g, '')
+    .toUpperCase()
+}
+
+function normalizarValorCelula(coluna, valor) {
+  if (coluna === 'matricula') return norm(valor).toUpperCase()
+  return limparTextoEdicao(valor)
+}
+
 function gerarIdTemporario() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
   return `${Date.now()}_${Math.random()}`
@@ -69,7 +86,7 @@ function linhaVazia(linha) {
 function normalizarLinha(linha) {
   const out = {}
   COLUNAS_ESPERADAS.forEach(c => {
-    out[c] = c === 'matricula' ? norm(linha?.[c]) : limparTexto(linha?.[c])
+    out[c] = c === 'matricula' ? norm(linha?.[c]).toUpperCase() : limparTexto(linha?.[c]).toUpperCase()
   })
   out.descr_situacao = limparTexto(out.descr_situacao).toUpperCase()
   return out
@@ -103,13 +120,21 @@ function infoSituacao(situacao, motivos) {
   }
 }
 
-function ordenarPorSituacao(linhas, motivos) {
+function compararValores(a, b) {
+  return String(a || '').localeCompare(String(b || ''), 'pt-BR', { numeric: true, sensitivity: 'base' })
+}
+
+function ordenarPorSituacao(linhas, motivos, ordenacao = null) {
   return [...(linhas || [])].sort((a, b) => {
     const ia = infoSituacao(a.descr_situacao, motivos)
     const ib = infoSituacao(b.descr_situacao, motivos)
     const ca = ia.permite_importar_estrutura ? 0 : 1
     const cb = ib.permite_importar_estrutura ? 0 : 1
     if (ca !== cb) return ca - cb
+    if (ordenacao?.coluna) {
+      const resultado = compararValores(a[ordenacao.coluna], b[ordenacao.coluna])
+      if (resultado !== 0) return ordenacao.direcao === 'desc' ? -resultado : resultado
+    }
     if ((ia.ordem_exibicao || 999) !== (ib.ordem_exibicao || 999)) return (ia.ordem_exibicao || 999) - (ib.ordem_exibicao || 999)
     return String(a.colaborador || '').localeCompare(String(b.colaborador || ''))
   })
@@ -349,6 +374,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [motivoRapido, setMotivoRapido] = useState('')
   const [tabelaAmpliada, setTabelaAmpliada] = useState(false)
   const [largurasColunas, setLargurasColunas] = useState({})
+  const [ordenacao, setOrdenacao] = useState({ coluna: '', direcao: 'asc' })
   const [confirmacao, setConfirmacao] = useState('')
   const [relatorioImportacao, setRelatorioImportacao] = useState(null)
 
@@ -493,7 +519,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const atualizarCelula = (linhaId, coluna, valor) => {
     setLinhasPorAba(prev => ({
       ...prev,
-      [abaAtiva]: (prev[abaAtiva] || []).map(l => l._tmpId === linhaId ? { ...l, [coluna]: valor } : l),
+      [abaAtiva]: (prev[abaAtiva] || []).map(l => l._tmpId === linhaId ? { ...l, [coluna]: normalizarValorCelula(coluna, valor) } : l),
     }))
   }
 
@@ -515,7 +541,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
       while (linhasBase.length <= destino) linhasBase.push(novaLinha())
       valores.forEach((valor, offsetCol) => {
         const col = COLUNAS_ESPERADAS[colInicio + offsetCol]
-        if (col) linhasBase[destino][col] = valor
+        if (col) linhasBase[destino][col] = normalizarValorCelula(col, valor)
       })
     })
 
@@ -673,8 +699,15 @@ export default function EstruturaOnline({ usuarioLogado }) {
   }
 
   const linhasRender = abaAtiva === 'TOTAL'
-    ? ordenarPorSituacao(linhasTotal, motivos)
-    : ordenarPorSituacao(linhasAtuais, motivos)
+    ? ordenarPorSituacao(linhasTotal, motivos, ordenacao)
+    : ordenarPorSituacao(linhasAtuais, motivos, ordenacao)
+
+  const alternarOrdenacao = (coluna) => {
+    setOrdenacao(prev => ({
+      coluna,
+      direcao: prev.coluna === coluna && prev.direcao === 'asc' ? 'desc' : 'asc',
+    }))
+  }
 
   const redimensionarColuna = (coluna, largura) => {
     setLargurasColunas(prev => ({ ...prev, [coluna]: Math.max(80, Math.min(520, Math.round(largura))) }))
@@ -757,6 +790,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
             total={abaAtiva === 'TOTAL'}
             largurasColunas={largurasColunas}
             onResizeColuna={redimensionarColuna}
+            ordenacao={ordenacao}
+            onOrdenar={alternarOrdenacao}
           />
         )}
       </div>
@@ -795,6 +830,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
               altura="calc(100vh - 170px)"
               largurasColunas={largurasColunas}
               onResizeColuna={redimensionarColuna}
+              ordenacao={ordenacao}
+              onOrdenar={alternarOrdenacao}
             />
           </div>
         </div>
@@ -923,7 +960,7 @@ function ResumoSituacoes({ linhas, motivos }) {
   )
 }
 
-function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna }) {
+function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar }) {
   const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   const largura = coluna => largurasColunas[coluna] || larguraPadraoColuna(coluna)
   return (
@@ -937,7 +974,17 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
         <thead>
           <tr>
             {total && <Th width={140}>aba</Th>}
-            {COLUNAS_ESPERADAS.map(c => <Th key={c} width={largura(c)} onResize={onResizeColuna ? w => onResizeColuna(c, w) : undefined}>{c}</Th>)}
+            {COLUNAS_ESPERADAS.map(c => (
+              <Th
+                key={c}
+                width={largura(c)}
+                onResize={onResizeColuna ? w => onResizeColuna(c, w) : undefined}
+                onSort={onOrdenar ? () => onOrdenar(c) : undefined}
+                sortDirection={ordenacao?.coluna === c ? ordenacao.direcao : ''}
+              >
+                {c}
+              </Th>
+            ))}
             {editando && <Th width={110}>acao</Th>}
           </tr>
         </thead>
@@ -1030,7 +1077,7 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
   )
 }
 
-function Th({ children, width, onResize }) {
+function Th({ children, width, onResize, onSort, sortDirection }) {
   const iniciarResize = (evento) => {
     if (!onResize) return
     evento.preventDefault()
@@ -1054,7 +1101,7 @@ function Th({ children, width, onResize }) {
       color: '#334155',
       fontSize: 11,
       textAlign: 'left',
-      padding: '8px 10px',
+      padding: onSort ? '8px 48px 8px 10px' : '8px 10px',
       borderBottom: '1px solid #e2e8f0',
       borderRight: '1px solid #e2e8f0',
       whiteSpace: 'nowrap',
@@ -1062,11 +1109,43 @@ function Th({ children, width, onResize }) {
       width,
       minWidth: width,
       maxWidth: width,
-    }}>
+      cursor: onSort ? 'pointer' : 'default',
+      userSelect: 'none',
+    }}
+    onClick={onSort}
+    title={onSort ? 'Clique para ordenar esta coluna' : undefined}
+    >
       <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{children}</span>
+      {onSort && (
+        <button
+          type="button"
+          onClick={(evento) => {
+            evento.stopPropagation()
+            onSort()
+          }}
+          title={sortDirection === 'desc' ? 'Ordenado Z-A. Clique para A-Z.' : sortDirection === 'asc' ? 'Ordenado A-Z. Clique para Z-A.' : 'Ordenar coluna'}
+          style={{
+            position: 'absolute',
+            top: 5,
+            right: onResize ? 12 : 5,
+            border: sortDirection ? '1px solid #93c5fd' : '1px solid #cbd5e1',
+            background: sortDirection ? '#dbeafe' : '#fff',
+            color: sortDirection ? '#1d4ed8' : '#64748b',
+            borderRadius: 999,
+            padding: '2px 6px',
+            fontSize: 9,
+            fontWeight: 900,
+            cursor: 'pointer',
+            lineHeight: 1.2,
+          }}
+        >
+          {sortDirection === 'desc' ? 'Z-A' : 'A-Z'}
+        </button>
+      )}
       {onResize && (
         <span
           onMouseDown={iniciarResize}
+          onClick={evento => evento.stopPropagation()}
           title="Arraste para ajustar a largura da coluna"
           style={{
             position: 'absolute',
@@ -1126,11 +1205,11 @@ function botao(bg) {
 
 function abaBtn(ativo) {
   return {
-    background: ativo ? '#0f766e' : '#e2e8f0',
-    color: ativo ? '#fff' : '#1e293b',
     border: 'none',
     borderRadius: 10,
-    padding: '9px 14px',
+    padding: '10px 14px',
+    background: ativo ? '#0f766e' : '#e2e8f0',
+    color: ativo ? '#fff' : '#1e293b',
     fontWeight: 900,
     cursor: 'pointer',
     textAlign: 'left',
