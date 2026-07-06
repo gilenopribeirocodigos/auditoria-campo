@@ -306,6 +306,34 @@ const cardStyle = {
   padding: 12,
 }
 
+const LARGURAS_PADRAO = {
+  regional: 130,
+  polo: 120,
+  base: 140,
+  prefixo: 135,
+  matricula: 105,
+  colaborador: 250,
+  descr_secao: 150,
+  descr_situacao: 170,
+  placas: 120,
+  tipo_equipe: 190,
+  processo_equipe: 190,
+  superv_campo: 160,
+  superv_operacao: 170,
+  coordenador: 160,
+}
+
+function larguraPadraoColuna(coluna) {
+  return LARGURAS_PADRAO[coluna] || 130
+}
+
+function larguraAutomaticaColuna(coluna, linhas) {
+  const textos = [coluna, ...(linhas || []).slice(0, 120).map(l => l?.[coluna] || '')]
+  const maior = textos.reduce((max, valor) => Math.max(max, String(valor || '').length), 0)
+  const estimada = Math.round(maior * 7.5 + 42)
+  return Math.max(95, Math.min(420, estimada))
+}
+
 export default function EstruturaOnline({ usuarioLogado }) {
   const [planilhas, setPlanilhas] = useState([])
   const [linhasPorAba, setLinhasPorAba] = useState({})
@@ -320,6 +348,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [motivoForm, setMotivoForm] = useState({ descricao: '', cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false })
   const [motivoRapido, setMotivoRapido] = useState('')
   const [tabelaAmpliada, setTabelaAmpliada] = useState(false)
+  const [largurasColunas, setLargurasColunas] = useState({})
   const [confirmacao, setConfirmacao] = useState('')
   const [relatorioImportacao, setRelatorioImportacao] = useState(null)
 
@@ -576,6 +605,32 @@ export default function EstruturaOnline({ usuarioLogado }) {
     }
   }
 
+  const excluirMotivo = async (motivo) => {
+    if (!podeConfigurarMotivos) return
+    const descricao = normalizarSituacao(motivo?.descricao)
+    if (!descricao) return
+    if (motivo?.permite_importar_estrutura) {
+      setErro('Motivos que permitem importar para a estrutura nao podem ser excluidos por seguranca.')
+      return
+    }
+    if (!window.confirm(`Excluir o motivo ${descricao}? Ele sera removido da lista de escolha, mas registros ja preenchidos permanecem com o texto salvo.`)) return
+    try {
+      const { error } = await supabase.from('motivos_situacao_estrutura')
+        .update({
+          ativo: false,
+          atualizado_por: usuarioLogado?.login,
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq('descricao', descricao)
+      if (error) throw error
+      setMotivos(prev => prev.filter(m => normalizarSituacao(m.descricao) !== descricao))
+      if (motivoRapido === descricao) setMotivoRapido('')
+      setMsg(`Motivo ${descricao} excluido da lista.`)
+    } catch (e) {
+      setErro(e.message || String(e))
+    }
+  }
+
   const importarTotal = async () => {
     if (!podeImportar) return
     if (confirmacao !== 'CONFIRMAR CARGA') {
@@ -621,6 +676,19 @@ export default function EstruturaOnline({ usuarioLogado }) {
     ? ordenarPorSituacao(linhasTotal, motivos)
     : ordenarPorSituacao(linhasAtuais, motivos)
 
+  const redimensionarColuna = (coluna, largura) => {
+    setLargurasColunas(prev => ({ ...prev, [coluna]: Math.max(80, Math.min(520, Math.round(largura))) }))
+  }
+
+  const autoAjustarColunas = () => {
+    const proximas = {}
+    COLUNAS_ESPERADAS.forEach(coluna => {
+      proximas[coluna] = larguraAutomaticaColuna(coluna, linhasRender)
+    })
+    setLargurasColunas(prev => ({ ...prev, ...proximas }))
+    setMsg('Largura das colunas ajustada ao conteudo visivel.')
+  }
+
   return (
     <div>
       {erro && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, fontWeight: 700 }}>{erro}</div>}
@@ -664,9 +732,10 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
+            {planilhas.length > 0 && <button onClick={autoAjustarColunas} style={botao('#0369a1')}>Ajustar colunas</button>}
             {planilhas.length > 0 && <button onClick={() => setTabelaAmpliada(true)} style={botao('#0f172a')}>Tela cheia</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
-            {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao('#7c3aed')}>Motivos</button>}
+            {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar motivos' : 'Motivos'}</button>}
           </div>
         </div>
 
@@ -686,6 +755,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
             onPaste={colarExcel}
             onRemove={removerLinha}
             total={abaAtiva === 'TOTAL'}
+            largurasColunas={largurasColunas}
+            onResizeColuna={redimensionarColuna}
           />
         )}
       </div>
@@ -707,6 +778,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
+                <button onClick={autoAjustarColunas} style={botao('#0369a1')}>Ajustar colunas</button>
                 <button onClick={() => setTabelaAmpliada(false)} style={botao('#334155')}>Fechar</button>
               </div>
             </div>
@@ -721,6 +793,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
               onRemove={removerLinha}
               total={abaAtiva === 'TOTAL'}
               altura="calc(100vh - 170px)"
+              largurasColunas={largurasColunas}
+              onResizeColuna={redimensionarColuna}
             />
           </div>
         </div>
@@ -728,7 +802,10 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
       {mostrarMotivos && podeConfigurarMotivos && (
         <div style={{ ...cardStyle, marginBottom: 14 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 900, margin: '0 0 10px' }}>Motivos padrao de descr_situacao</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <h3 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Motivos padrao de descr_situacao</h3>
+            <button onClick={() => setMostrarMotivos(false)} style={botao('#334155')}>Fechar</button>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
             <Campo label="Descricao"><input style={inputStyle} value={motivoForm.descricao} onChange={e => setMotivoForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: AFASTADO" /></Campo>
             <Campo label="Cor"><select style={inputStyle} value={`${motivoForm.cor_fundo}|${motivoForm.cor_texto}`} onChange={e => { const [fundo, texto] = e.target.value.split('|'); setMotivoForm(f => ({ ...f, cor_fundo: fundo, cor_texto: texto })) }}>{CORES_MOTIVO.map(c => <option key={c.nome} value={`${c.fundo}|${c.texto}`}>{c.nome}</option>)}</select></Campo>
@@ -747,6 +824,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
                   <Th>motivo</Th>
                   <Th>importa</Th>
                   <Th>cor</Th>
+                  <Th>excluir</Th>
                 </tr>
               </thead>
               <tbody>
@@ -770,6 +848,20 @@ export default function EstruturaOnline({ usuarioLogado }) {
                     </Td>
                     <Td>{m.permite_importar_estrutura ? 'Sim' : 'Nao'}</Td>
                     <Td><span style={{ display: 'inline-block', width: 48, height: 18, borderRadius: 999, background: m.cor_fundo, border: `1px solid ${m.cor_texto}44` }} /></Td>
+                    <Td>
+                      <button
+                        onClick={() => excluirMotivo(m)}
+                        disabled={m.permite_importar_estrutura}
+                        title={m.permite_importar_estrutura ? 'Motivo protegido porque entra na importacao da estrutura' : 'Excluir motivo da lista'}
+                        style={{
+                          ...botao(m.permite_importar_estrutura ? '#cbd5e1' : '#dc2626'),
+                          color: m.permite_importar_estrutura ? '#64748b' : '#fff',
+                          cursor: m.permite_importar_estrutura ? 'not-allowed' : 'pointer',
+                        }}
+                      >
+                        Excluir
+                      </button>
+                    </Td>
                   </tr>
                 ))}
               </tbody>
@@ -831,19 +923,22 @@ function ResumoSituacoes({ linhas, motivos }) {
   )
 }
 
-function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, onPaste, onRemove, total, altura = 520 }) {
+function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna }) {
   const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
+  const largura = coluna => largurasColunas[coluna] || larguraPadraoColuna(coluna)
   return (
     <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, maxHeight: altura }}>
-      <datalist id="motivos-situacao-estrutura">
-        {opcoesMotivos.map(m => <option key={m} value={m} />)}
-      </datalist>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1840, background: '#fff' }}>
+      <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff' }}>
+        <colgroup>
+          {total && <col style={{ width: 140 }} />}
+          {COLUNAS_ESPERADAS.map(c => <col key={c} style={{ width: largura(c) }} />)}
+          {editando && <col style={{ width: 110 }} />}
+        </colgroup>
         <thead>
           <tr>
-            {total && <Th>aba</Th>}
-            {COLUNAS_ESPERADAS.map(c => <Th key={c}>{c}</Th>)}
-            {editando && <Th>acao</Th>}
+            {total && <Th width={140}>aba</Th>}
+            {COLUNAS_ESPERADAS.map(c => <Th key={c} width={largura(c)} onResize={onResizeColuna ? w => onResizeColuna(c, w) : undefined}>{c}</Th>)}
+            {editando && <Th width={110}>acao</Th>}
           </tr>
         </thead>
         <tbody>
@@ -860,21 +955,44 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
                     <Td key={c} style={{ background: bg }}>
                       {editando ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          <input
-                            list={ehSituacao ? 'motivos-situacao-estrutura' : undefined}
-                            value={linha[c] || ''}
-                            onChange={e => onChange(linha._tmpId, c, e.target.value)}
-                            onPaste={e => onPaste(linha._tmpId, c, e)}
-                            style={{
-                              width: '100%',
-                              border: 'none',
-                              outline: 'none',
-                              background: 'transparent',
-                              color,
-                              fontWeight: ehSituacao ? 900 : 600,
-                              fontSize: 12,
-                            }}
-                          />
+                          {ehSituacao ? (
+                            <select
+                              value={normalizarSituacao(linha[c])}
+                              onChange={e => onChange(linha._tmpId, c, e.target.value)}
+                              onPaste={e => onPaste(linha._tmpId, c, e)}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                outline: 'none',
+                                background: 'transparent',
+                                color,
+                                fontWeight: 900,
+                                fontSize: 12,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <option value="">Selecione...</option>
+                              {normalizarSituacao(linha[c]) && !opcoesMotivos.includes(normalizarSituacao(linha[c])) && (
+                                <option value={normalizarSituacao(linha[c])}>{normalizarSituacao(linha[c])}</option>
+                              )}
+                              {opcoesMotivos.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                          ) : (
+                            <input
+                              value={linha[c] || ''}
+                              onChange={e => onChange(linha._tmpId, c, e.target.value)}
+                              onPaste={e => onPaste(linha._tmpId, c, e)}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                outline: 'none',
+                                background: 'transparent',
+                                color,
+                                fontWeight: 600,
+                                fontSize: 12,
+                              }}
+                            />
+                          )}
                           {ehSituacao && motivoRapido && (
                             <button
                               type="button"
@@ -912,12 +1030,60 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
   )
 }
 
-function Th({ children }) {
-  return <th style={{ position: 'sticky', top: 0, background: '#f8fafc', color: '#334155', fontSize: 11, textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid #e2e8f0', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>{children}</th>
+function Th({ children, width, onResize }) {
+  const iniciarResize = (evento) => {
+    if (!onResize) return
+    evento.preventDefault()
+    evento.stopPropagation()
+    const inicioX = evento.clientX
+    const inicioLargura = width || 120
+    const mover = e => onResize(inicioLargura + e.clientX - inicioX)
+    const soltar = () => {
+      window.removeEventListener('mousemove', mover)
+      window.removeEventListener('mouseup', soltar)
+    }
+    window.addEventListener('mousemove', mover)
+    window.addEventListener('mouseup', soltar)
+  }
+
+  return (
+    <th style={{
+      position: 'sticky',
+      top: 0,
+      background: '#f8fafc',
+      color: '#334155',
+      fontSize: 11,
+      textAlign: 'left',
+      padding: '8px 10px',
+      borderBottom: '1px solid #e2e8f0',
+      borderRight: '1px solid #e2e8f0',
+      whiteSpace: 'nowrap',
+      textTransform: 'uppercase',
+      width,
+      minWidth: width,
+      maxWidth: width,
+    }}>
+      <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}>{children}</span>
+      {onResize && (
+        <span
+          onMouseDown={iniciarResize}
+          title="Arraste para ajustar a largura da coluna"
+          style={{
+            position: 'absolute',
+            top: 0,
+            right: -3,
+            width: 7,
+            height: '100%',
+            cursor: 'col-resize',
+          }}
+        />
+      )}
+    </th>
+  )
 }
 
 function Td({ children, style }) {
-  return <td style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f8fafc', fontSize: 12, minWidth: 120, ...style }}>{children}</td>
+  return <td style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f8fafc', fontSize: 12, verticalAlign: 'middle', overflowWrap: 'break-word', ...style }}>{children}</td>
 }
 
 const overlayStyle = {
