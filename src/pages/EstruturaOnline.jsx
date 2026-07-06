@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
 import { temPermissao } from '../lib/auth.js'
 
@@ -35,6 +36,7 @@ const CORES_MOTIVO = [
 const norm = s => (s || '').trim()
 const hojeISO = () => new Date().toISOString().split('T')[0]
 const formatBR = d => d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'Nunca'
+const nomeArquivoSeguro = s => limparTexto(s || 'estrutura').replace(/[^A-Z0-9_-]+/gi, '_').replace(/^_+|_+$/g, '') || 'estrutura'
 
 function limparTexto(valor) {
   if (valor === null || valor === undefined) return ''
@@ -722,6 +724,35 @@ export default function EstruturaOnline({ usuarioLogado }) {
     setMsg('Largura das colunas ajustada ao conteudo visivel.')
   }
 
+  const exportarExcel = () => {
+    const linhas = linhasRender.filter(l => !linhaVazia(l))
+    if (linhas.length === 0) {
+      setErro('Nao ha linhas para exportar nesta aba.')
+      return
+    }
+
+    const incluirAba = abaAtiva === 'TOTAL'
+    const colunas = incluirAba ? ['aba', ...COLUNAS_ESPERADAS] : COLUNAS_ESPERADAS
+    const dados = linhas.map(linha => {
+      const item = {}
+      if (incluirAba) item.aba = linha.origem_aba || ''
+      COLUNAS_ESPERADAS.forEach(coluna => {
+        item[coluna] = linha[coluna] || ''
+      })
+      return item
+    })
+
+    const ws = XLSX.utils.json_to_sheet(dados, { header: colunas })
+    ws['!cols'] = colunas.map(coluna => ({
+      wch: Math.max(12, Math.min(45, Math.round((largurasColunas[coluna] || larguraPadraoColuna(coluna)) / 7))),
+    }))
+    const wb = XLSX.utils.book_new()
+    const nomeAba = (abaAtiva === 'TOTAL' ? 'Total Consolidado' : abaAtual?.nome || 'Estrutura').slice(0, 31)
+    XLSX.utils.book_append_sheet(wb, ws, nomeAba)
+    XLSX.writeFile(wb, `${nomeArquivoSeguro(nomeAba)}_${hojeISO()}.xlsx`)
+    setMsg(`Excel da aba ${nomeAba} gerado com sucesso.`)
+  }
+
   return (
     <div>
       {erro && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: 12, marginBottom: 12, fontSize: 13, fontWeight: 700 }}>{erro}</div>}
@@ -766,6 +797,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
             {planilhas.length > 0 && <button onClick={autoAjustarColunas} style={botao('#0369a1')}>Ajustar colunas</button>}
+            {planilhas.length > 0 && <button onClick={exportarExcel} style={botao('#16a34a')}>Exportar Excel</button>}
             {planilhas.length > 0 && <button onClick={() => setTabelaAmpliada(true)} style={botao('#0f172a')}>Tela cheia</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
             {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar motivos' : 'Motivos'}</button>}
@@ -814,6 +846,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
                 <button onClick={autoAjustarColunas} style={botao('#0369a1')}>Ajustar colunas</button>
+                <button onClick={exportarExcel} style={botao('#16a34a')}>Exportar Excel</button>
                 <button onClick={() => setTabelaAmpliada(false)} style={botao('#334155')}>Fechar</button>
               </div>
             </div>
