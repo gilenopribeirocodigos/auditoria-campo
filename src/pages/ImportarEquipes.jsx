@@ -57,7 +57,7 @@ function decodeArrayBuffer(buffer) {
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
-  'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
+  'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao', 'coordenador',
 ]
 
@@ -71,7 +71,7 @@ const CAMPOS_CONFIG = [
   'regional', 'polo', 'base', 'prefixo', 'placas',
   'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao',
-  'coordenador', 'descr_situacao',
+  'coordenador', 'descr_secao', 'descr_situacao',
 ]
 
 function configMudou(atual, novo) {
@@ -88,6 +88,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo:         limparTexto(r.prefixo),
     matricula:       norm(r.matricula),          // matrícula: só dígitos, não normalizar
     colaborador:     limparTexto(r.colaborador),
+    descr_secao:     limparTexto(r.descr_secao),
     descr_situacao:  limparTexto(r.descr_situacao),
     placas:          limparTexto(r.placas),
     tipo_equipe:     limparTexto(r.tipo_equipe),
@@ -108,6 +109,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo:         linhaAtual.prefixo,
     matricula:       linhaAtual.matricula,
     colaborador:     linhaAtual.colaborador,
+    descr_secao:     linhaAtual.descr_secao,
     descr_situacao:  linhaAtual.descr_situacao,
     placas:          linhaAtual.placas,
     tipo_equipe:     linhaAtual.tipo_equipe,

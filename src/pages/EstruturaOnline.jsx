@@ -6,7 +6,7 @@ const SITUACOES_PERMITIDAS = ['ATIVO', 'RESERVA']
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
-  'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
+  'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao', 'coordenador',
 ]
 
@@ -57,7 +57,7 @@ function novaLinha() {
   return {
     _tmpId: gerarIdTemporario(),
     regional: '', polo: '', base: '', prefixo: '', matricula: '', colaborador: '',
-    descr_situacao: 'ATIVO', placas: '', tipo_equipe: '', processo_equipe: '',
+    descr_secao: '', descr_situacao: 'ATIVO', placas: '', tipo_equipe: '', processo_equipe: '',
     superv_campo: '', superv_operacao: '', coordenador: '',
   }
 }
@@ -135,6 +135,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo: limparTexto(r.prefixo),
     matricula: norm(r.matricula),
     colaborador: limparTexto(r.colaborador),
+    descr_secao: limparTexto(r.descr_secao),
     descr_situacao: limparTexto(r.descr_situacao),
     placas: limparTexto(r.placas),
     tipo_equipe: limparTexto(r.tipo_equipe),
@@ -155,6 +156,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo: linhaAtual.prefixo,
     matricula: linhaAtual.matricula,
     colaborador: linhaAtual.colaborador,
+    descr_secao: linhaAtual.descr_secao,
     descr_situacao: linhaAtual.descr_situacao,
     placas: linhaAtual.placas,
     tipo_equipe: linhaAtual.tipo_equipe,
@@ -169,7 +171,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
 }
 
 function configMudou(atual, novo) {
-  const campos = ['regional', 'polo', 'base', 'prefixo', 'placas', 'tipo_equipe', 'processo_equipe', 'superv_campo', 'superv_operacao', 'coordenador', 'descr_situacao']
+  const campos = ['regional', 'polo', 'base', 'prefixo', 'placas', 'tipo_equipe', 'processo_equipe', 'superv_campo', 'superv_operacao', 'coordenador', 'descr_secao', 'descr_situacao']
   return campos.some(c => norm(atual[c]) !== norm(novo[c]))
 }
 
@@ -316,6 +318,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [motivos, setMotivos] = useState(MOTIVOS_PADRAO)
   const [mostrarMotivos, setMostrarMotivos] = useState(false)
   const [motivoForm, setMotivoForm] = useState({ descricao: '', cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false })
+  const [motivoRapido, setMotivoRapido] = useState('')
+  const [tabelaAmpliada, setTabelaAmpliada] = useState(false)
   const [confirmacao, setConfirmacao] = useState('')
   const [relatorioImportacao, setRelatorioImportacao] = useState(null)
 
@@ -501,6 +505,18 @@ export default function EstruturaOnline({ usuarioLogado }) {
     }))
   }
 
+  const limparTabelaAtual = () => {
+    if (!podeEditar || !abaAtiva || abaAtiva === 'TOTAL') return
+    const ok = window.confirm(
+      'Limpar todas as linhas desta aba?\n\n' +
+      'A alteracao so sera gravada no banco depois que voce clicar em Salvar.'
+    )
+    if (!ok) return
+    setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [novaLinha(), novaLinha(), novaLinha()] }))
+    setEditando(abaAtiva)
+    setMsg('Tabela limpa. Clique em Salvar para gravar a limpeza desta aba.')
+  }
+
   const salvarAba = async () => {
     if (!podeEditar || !abaAtiva) return
     setSalvando(true)
@@ -647,6 +663,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
+            {planilhas.length > 0 && <button onClick={() => setTabelaAmpliada(true)} style={botao('#0f172a')}>Tela cheia</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
             {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao('#7c3aed')}>Motivos</button>}
           </div>
@@ -662,6 +680,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
           <TabelaEstrutura
             linhas={linhasRender}
             motivos={motivos}
+            motivoRapido={motivoRapido}
             editando={estaEditando && abaAtiva !== 'TOTAL'}
             onChange={atualizarCelula}
             onPaste={colarExcel}
@@ -670,6 +689,42 @@ export default function EstruturaOnline({ usuarioLogado }) {
           />
         )}
       </div>
+
+      {tabelaAmpliada && planilhas.length > 0 && (
+        <div style={overlayStyle}>
+          <div style={fullPanelStyle}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div>
+                <h3 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0 }}>
+                  {abaAtiva === 'TOTAL' ? 'Total Consolidado' : (abaAtual?.nome || 'Estrutura Online')}
+                </h3>
+                <p style={{ fontSize: 12, color: '#64748b', marginTop: 4 }}>
+                  Visualizacao ampliada em formato de planilha. {estaEditando && abaAtiva !== 'TOTAL' ? 'Modo edicao ativo.' : 'Modo leitura.'}
+                </p>
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
+                {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
+                {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
+                {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
+                <button onClick={() => setTabelaAmpliada(false)} style={botao('#334155')}>Fechar</button>
+              </div>
+            </div>
+            <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
+            <TabelaEstrutura
+              linhas={linhasRender}
+              motivos={motivos}
+              motivoRapido={motivoRapido}
+              editando={estaEditando && abaAtiva !== 'TOTAL'}
+              onChange={atualizarCelula}
+              onPaste={colarExcel}
+              onRemove={removerLinha}
+              total={abaAtiva === 'TOTAL'}
+              altura="calc(100vh - 170px)"
+            />
+          </div>
+        </div>
+      )}
 
       {mostrarMotivos && podeConfigurarMotivos && (
         <div style={{ ...cardStyle, marginBottom: 14 }}>
@@ -684,6 +739,42 @@ export default function EstruturaOnline({ usuarioLogado }) {
             <button onClick={salvarMotivo} style={botao('#7c3aed')}>Salvar motivo</button>
           </div>
           <ResumoSituacoes linhas={motivos.map(m => ({ descr_situacao: m.descricao, matricula: '1', colaborador: 'x' }))} motivos={motivos} />
+          <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640, background: '#fff' }}>
+              <thead>
+                <tr>
+                  <Th>usar</Th>
+                  <Th>motivo</Th>
+                  <Th>importa</Th>
+                  <Th>cor</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {motivos.map(m => (
+                  <tr key={m.descricao}>
+                    <Td>
+                      <button
+                        onClick={() => {
+                          setMotivoRapido(normalizarSituacao(m.descricao))
+                          setMsg(`Motivo ${normalizarSituacao(m.descricao)} selecionado para ajuste manual na coluna DESCR_SITUACAO.`)
+                        }}
+                        style={botao(motivoRapido === normalizarSituacao(m.descricao) ? '#0f766e' : '#64748b')}
+                      >
+                        {motivoRapido === normalizarSituacao(m.descricao) ? 'Selecionado' : 'Selecionar'}
+                      </button>
+                    </Td>
+                    <Td>
+                      <span style={{ borderRadius: 999, padding: '5px 10px', fontSize: 11, fontWeight: 900, background: m.cor_fundo, color: m.cor_texto, border: `1px solid ${m.cor_texto}22` }}>
+                        {normalizarSituacao(m.descricao)}
+                      </span>
+                    </Td>
+                    <Td>{m.permite_importar_estrutura ? 'Sim' : 'Nao'}</Td>
+                    <Td><span style={{ display: 'inline-block', width: 48, height: 18, borderRadius: 999, background: m.cor_fundo, border: `1px solid ${m.cor_texto}44` }} /></Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -740,10 +831,14 @@ function ResumoSituacoes({ linhas, motivos }) {
   )
 }
 
-function TabelaEstrutura({ linhas, motivos, editando, onChange, onPaste, onRemove, total }) {
+function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, onPaste, onRemove, total, altura = 520 }) {
+  const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   return (
-    <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, maxHeight: 520 }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1680, background: '#fff' }}>
+    <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, maxHeight: altura }}>
+      <datalist id="motivos-situacao-estrutura">
+        {opcoesMotivos.map(m => <option key={m} value={m} />)}
+      </datalist>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 1840, background: '#fff' }}>
         <thead>
           <tr>
             {total && <Th>aba</Th>}
@@ -764,20 +859,43 @@ function TabelaEstrutura({ linhas, motivos, editando, onChange, onPaste, onRemov
                   return (
                     <Td key={c} style={{ background: bg }}>
                       {editando ? (
-                        <input
-                          value={linha[c] || ''}
-                          onChange={e => onChange(linha._tmpId, c, e.target.value)}
-                          onPaste={e => onPaste(linha._tmpId, c, e)}
-                          style={{
-                            width: '100%',
-                            border: 'none',
-                            outline: 'none',
-                            background: 'transparent',
-                            color,
-                            fontWeight: ehSituacao ? 900 : 600,
-                            fontSize: 12,
-                          }}
-                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                          <input
+                            list={ehSituacao ? 'motivos-situacao-estrutura' : undefined}
+                            value={linha[c] || ''}
+                            onChange={e => onChange(linha._tmpId, c, e.target.value)}
+                            onPaste={e => onPaste(linha._tmpId, c, e)}
+                            style={{
+                              width: '100%',
+                              border: 'none',
+                              outline: 'none',
+                              background: 'transparent',
+                              color,
+                              fontWeight: ehSituacao ? 900 : 600,
+                              fontSize: 12,
+                            }}
+                          />
+                          {ehSituacao && motivoRapido && (
+                            <button
+                              type="button"
+                              title={`Aplicar ${motivoRapido} nesta linha`}
+                              onClick={() => onChange(linha._tmpId, c, motivoRapido)}
+                              style={{
+                                border: '1px solid #99f6e4',
+                                background: '#ecfdf5',
+                                color: '#0f766e',
+                                borderRadius: 6,
+                                padding: '3px 6px',
+                                fontSize: 10,
+                                fontWeight: 900,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              Usar
+                            </button>
+                          )}
+                        </div>
                       ) : (
                         <span style={{ color, fontWeight: ehSituacao ? 900 : 600 }}>{linha[c] || ''}</span>
                       )}
@@ -800,6 +918,27 @@ function Th({ children }) {
 
 function Td({ children, style }) {
   return <td style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f8fafc', fontSize: 12, minWidth: 120, ...style }}>{children}</td>
+}
+
+const overlayStyle = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 9999,
+  background: 'rgba(15, 23, 42, 0.58)',
+  padding: 16,
+  display: 'flex',
+  alignItems: 'stretch',
+  justifyContent: 'center',
+}
+
+const fullPanelStyle = {
+  width: '100%',
+  maxWidth: 'calc(100vw - 32px)',
+  background: '#fff',
+  borderRadius: 14,
+  padding: 14,
+  boxShadow: '0 24px 80px rgba(15, 23, 42, 0.35)',
+  overflow: 'hidden',
 }
 
 function Campo({ label, children }) {
