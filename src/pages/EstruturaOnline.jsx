@@ -137,18 +137,29 @@ function compararValores(a, b) {
   return String(a || '').localeCompare(String(b || ''), 'pt-BR', { numeric: true, sensitivity: 'base' })
 }
 
+function prioridadeSituacao(info) {
+  const descricao = normalizarSituacao(info?.descricao)
+  if (descricao === 'ATIVO') return 0
+  if (descricao === 'RESERVA') return 1
+  return 2
+}
+
 function ordenarPorSituacao(linhas, motivos, ordenacao = null) {
   return [...(linhas || [])].sort((a, b) => {
     const ia = infoSituacao(a.descr_situacao, motivos)
     const ib = infoSituacao(b.descr_situacao, motivos)
-    const ca = ia.permite_importar_estrutura ? 0 : 1
-    const cb = ib.permite_importar_estrutura ? 0 : 1
+    const ca = prioridadeSituacao(ia)
+    const cb = prioridadeSituacao(ib)
     if (ca !== cb) return ca - cb
+    if ((ia.ordem_exibicao || 999) !== (ib.ordem_exibicao || 999)) return (ia.ordem_exibicao || 999) - (ib.ordem_exibicao || 999)
+    const da = normalizarSituacao(ia.descricao)
+    const db = normalizarSituacao(ib.descricao)
+    const grupo = compararValores(da, db)
+    if (grupo !== 0) return grupo
     if (ordenacao?.coluna) {
       const resultado = compararValores(a[ordenacao.coluna], b[ordenacao.coluna])
       if (resultado !== 0) return ordenacao.direcao === 'desc' ? -resultado : resultado
     }
-    if ((ia.ordem_exibicao || 999) !== (ib.ordem_exibicao || 999)) return (ia.ordem_exibicao || 999) - (ib.ordem_exibicao || 999)
     return String(a.colaborador || '').localeCompare(String(b.colaborador || ''))
   })
 }
