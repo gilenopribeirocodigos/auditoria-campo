@@ -21,6 +21,8 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
       tipoServico:   pauta.tipo_servico,
       tipoAuditoria: pauta.tipo_auditoria,
       prefixo:       pauta.prefixo,
+      qtdeCabosOs:   pauta.qtde_cabos_os ?? '',
+      qtdeCabosEmCampo: '',
       produtivo:     null,
       respostas:     {},
       debitoPago:    null,
@@ -30,7 +32,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
   // Desmarca pauta
   const desmarcarPauta = () => {
     setPautaAtiva(null)
-    setForm(f => ({ ...f, tipoServico: '', tipoAuditoria: '', produtivo: null, respostas: {}, debitoPago: null }))
+    setForm(f => ({ ...f, tipoServico: '', tipoAuditoria: '', produtivo: null, qtdeCabosOs: '', qtdeCabosEmCampo: '', respostas: {}, debitoPago: null }))
   }
 
   // SE TEM PAUTAS OBRIGATÓRIAS — modo bloqueado
@@ -92,6 +94,12 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                       }}>
                         🎯 Motivo: {p.motivo_auditoria}
                       </div>
+                    )}
+
+                    {p.qtde_cabos_os && (
+                      <p style={{ fontSize: 12, color: '#92400e', fontWeight: 700, marginTop: 4 }}>
+                        Cabos OS: {p.qtde_cabos_os}m
+                      </p>
                     )}
 
                     {/* ─── Observação (destacada em azul, texto completo) ─── */}

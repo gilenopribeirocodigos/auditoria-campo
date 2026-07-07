@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import EstruturaOnline from './EstruturaOnline.jsx'
 
 // ═══════════════════════════════════════════════════════════════════════
 // 📌 SITUAÇÕES PERMITIDAS NA CARGA — EDITE AQUI PARA INCLUIR/REMOVER
@@ -56,7 +57,7 @@ function decodeArrayBuffer(buffer) {
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
-  'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
+  'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao', 'coordenador',
 ]
 
@@ -70,7 +71,7 @@ const CAMPOS_CONFIG = [
   'regional', 'polo', 'base', 'prefixo', 'placas',
   'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao',
-  'coordenador', 'descr_situacao',
+  'coordenador', 'descr_secao', 'descr_situacao',
 ]
 
 function configMudou(atual, novo) {
@@ -87,6 +88,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo:         limparTexto(r.prefixo),
     matricula:       norm(r.matricula),          // matrícula: só dígitos, não normalizar
     colaborador:     limparTexto(r.colaborador),
+    descr_secao:     limparTexto(r.descr_secao),
     descr_situacao:  limparTexto(r.descr_situacao),
     placas:          limparTexto(r.placas),
     tipo_equipe:     limparTexto(r.tipo_equipe),
@@ -107,6 +109,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo:         linhaAtual.prefixo,
     matricula:       linhaAtual.matricula,
     colaborador:     linhaAtual.colaborador,
+    descr_secao:     linhaAtual.descr_secao,
     descr_situacao:  linhaAtual.descr_situacao,
     placas:          linhaAtual.placas,
     tipo_equipe:     linhaAtual.tipo_equipe,
@@ -122,7 +125,8 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
 
 // ─── Componente ───────────────────────────────────────────────────────
 
-export default function ImportarEquipes({ onVoltar }) {
+export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
+  const [modoCarga,  setModoCarga]  = useState('csv')
   const [arquivo,    setArquivo]    = useState(null)
   const [preview,    setPreview]    = useState([])
   const [colunasCsv, setColunasCsv] = useState([])
@@ -390,7 +394,25 @@ export default function ImportarEquipes({ onVoltar }) {
         </div>
       </div>
 
-      <div style={{ maxWidth: 700, margin: '0 auto', padding: '20px 16px 60px' }}>
+      <div style={{ maxWidth: modoCarga === 'online' ? 1180 : 700, margin: '0 auto', padding: '20px 16px 60px' }}>
+
+        <div style={{ display: 'flex', gap: 8, background: '#e2e8f0', borderRadius: 12, padding: 4, marginBottom: 16 }}>
+          <button onClick={() => setModoCarga('csv')} style={{
+            flex: 1, border: 'none', borderRadius: 9, padding: '10px 12px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+            background: modoCarga === 'csv' ? '#0f766e' : 'transparent',
+            color: modoCarga === 'csv' ? '#fff' : '#334155',
+          }}>Arquivo CSV</button>
+          <button onClick={() => setModoCarga('online')} style={{
+            flex: 1, border: 'none', borderRadius: 9, padding: '10px 12px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+            background: modoCarga === 'online' ? '#0f766e' : 'transparent',
+            color: modoCarga === 'online' ? '#fff' : '#334155',
+          }}>Estrutura Online</button>
+        </div>
+
+        {modoCarga === 'online' ? (
+          <EstruturaOnline usuarioLogado={usuarioLogado} />
+        ) : (
+          <>
 
         {/* Banner — situações permitidas */}
         <div style={{ background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'flex-start' }}>
@@ -588,6 +610,8 @@ export default function ImportarEquipes({ onVoltar }) {
           ℹ️ A importação <strong>não apaga histórico</strong>: alterações geram snapshots em <code>historico_estrutura_equipes</code>.
           Cada eletricista mantém seu ID permanente vinculado pela matrícula.
         </div>
+          </>
+        )}
       </div>
     </div>
   )

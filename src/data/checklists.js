@@ -56,7 +56,7 @@ export const CHECKLISTS = {
         items: [
           { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
           { id: 2,  cat: 'COMPORTAMENTO', p: 'Conduta adequada? (bom comportamento, relacionamento, sem brigas ou discussões)' },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
@@ -87,7 +87,7 @@ export const CHECKLISTS = {
         label: 'Improdutivo',
         peso: 12.5,
         items: [
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'Preenchido corretamente as informações no PDA?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'Registrado com foto o conforme diretriz (fachada/motivo impedimento/outro)?' },
@@ -191,10 +191,14 @@ export const CHECKLISTS = {
           { id: 2,  cat: 'COMPORTAMENTO', p: 'A conduta da equipe foi adequada (sem brigas, discussões ou desvios de comportamento)?' },
           { id: 3,  cat: 'QUALIDADE',     p: 'Foi confirmada a unidade consumidora antes da execução?' },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou a religação?', disqualify: true },
-          { id: 5,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
-          { id: 6,  cat: 'QUALIDADE',     p: 'O registro fotográfico foi feito conforme a diretriz (local do corte, fachada, mini toi, etc.)?' },
-          { id: 9,  cat: 'QUALIDADE',     p: 'A nota foi baixada com o motivo correto?' },
-          { id: 10, cat: 'DESEMPENHO',    p: 'A atividade foi executada em tempo adequado (23 min)?' },
+          { id: 5,  cat: 'DESEMPENHO',    p: 'Houve instalação de medidor?',               marriedGroup: 'medidor', marriedRole: 'pai' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do medidor na OS?',  marriedGroup: 'medidor', marriedRole: 'filho' },
+          { id: 7,  cat: 'DESEMPENHO',    p: 'Houve instalação de ramal?',                  marriedGroup: 'ramal',   marriedRole: 'pai' },
+          { id: 8,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do ramal na OS?',    marriedGroup: 'ramal',   marriedRole: 'filho' },
+          { id: 9,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
+          { id: 10, cat: 'QUALIDADE',     p: 'O registro fotográfico foi feito conforme a diretriz (local do corte, fachada, mini toi, etc.)?' },
+          { id: 11, cat: 'QUALIDADE',     p: 'A nota foi baixada com o motivo correto?' },
+          { id: 12, cat: 'DESEMPENHO',    p: 'A atividade foi executada em tempo adequado (23 min)?' },
         ],
       },
       IMPRODUTIVO: {
@@ -203,7 +207,7 @@ export const CHECKLISTS = {
         items: [
           { id: 1,  cat: 'COMPORTAMENTO', p: 'A equipe seguiu padrão de abordagem ao cliente?' },
           { id: 2,  cat: 'COMPORTAMENTO', p: 'A conduta da equipe foi adequada (sem brigas, discussões ou desvios de comportamento)?' },
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'O registro fotográfico do padrão foi feito conforme a diretriz?' },
@@ -220,17 +224,21 @@ export const CHECKLISTS = {
         items: [
           { id: 3,  cat: 'QUALIDADE',     p: 'A unidade consumidora estava energizada (olhar se o medidor está com LED piscando)?' },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe realmente executou a religação?', disqualify: true },
-          { id: 5,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
-          { id: 6,  cat: 'QUALIDADE',     p: 'O registro fotográfico foi feito conforme a diretriz (local do corte, fachada, mini toi, etc.)?' },
-          { id: 9,  cat: 'QUALIDADE',     p: 'A nota foi baixada com o motivo correto?' },
-          { id: 10, cat: 'DESEMPENHO',    p: 'A atividade foi executada em tempo adequado (23 min)?' },
+          { id: 5,  cat: 'DESEMPENHO',    p: 'Houve instalação de medidor?',               marriedGroup: 'medidor', marriedRole: 'pai' },
+          { id: 6,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do medidor na OS?',  marriedGroup: 'medidor', marriedRole: 'filho' },
+          { id: 7,  cat: 'DESEMPENHO',    p: 'Houve instalação de ramal?',                  marriedGroup: 'ramal',   marriedRole: 'pai' },
+          { id: 8,  cat: 'QUALIDADE',     p: 'Equipe lançou instalação do ramal na OS?',    marriedGroup: 'ramal',   marriedRole: 'filho' },
+          { id: 9,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
+          { id: 10, cat: 'QUALIDADE',     p: 'O registro fotográfico foi feito conforme a diretriz (local do corte, fachada, mini toi, etc.)?' },
+          { id: 11, cat: 'QUALIDADE',     p: 'A nota foi baixada com o motivo correto?' },
+          { id: 12, cat: 'DESEMPENHO',    p: 'A atividade foi executada em tempo adequado (23 min)?' },
         ],
       },
       IMPRODUTIVO: {
         label: 'Improdutivo',
         peso: 12.5,
         items: [
-          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?' },
+          { id: 3,  cat: 'DESEMPENHO',    p: 'A equipe deixou de executar o serviço de forma adequada?', inverted: true },
           { id: 4,  cat: 'DESEMPENHO',    p: 'A equipe apontou o motivo correto da não execução?' },
           { id: 5,  cat: 'QUALIDADE',     p: 'As informações no PDA foram preenchidas corretamente (medidor instalado, medidores vizinhos, leitura, poste, placa trafo, etc.)?' },
           { id: 6,  cat: 'QUALIDADE',     p: 'O registro fotográfico do padrão foi feito conforme a diretriz?' },
@@ -465,6 +473,8 @@ export const FORM_INICIAL = () => {
     debitoPago: null, // null = ainda não respondeu o check "Foi débito pago?"
     // ── Motivo da Auditoria (vem da pauta, ex: "MATERIAL APLICADO EM CAMPO") ──
     motivoAuditoria:            '',   // '' = sem motivo específico nesta auditoria
+    qtdeCabosOs:                '',
+    qtdeCabosEmCampo:           '',
     fotosMotivo:                [],   // fotos exclusivas do motivo (mesmo formato de `fotos`)
     statusMotivoAuditoria:      null, // null | true (CONFORME) | false (NÃO CONFORME)
     observacoesMotivoAuditoria: '',

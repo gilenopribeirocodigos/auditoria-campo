@@ -295,6 +295,9 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     if (pautaAtiva.motivo_auditoria && !form.motivoAuditoria) {
       upd('motivoAuditoria', pautaAtiva.motivo_auditoria)
     }
+    if (pautaAtiva.qtde_cabos_os && !form.qtdeCabosOs) {
+      upd('qtdeCabosOs', pautaAtiva.qtde_cabos_os)
+    }
   }, [pautaAtiva])
 
   useEffect(() => {
@@ -364,7 +367,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     )
   }
 
-  const temInfoPauta = pautaAtiva && (pautaAtiva.motivo_auditoria || pautaAtiva.observacao)
+  const temInfoPauta = pautaAtiva && (pautaAtiva.motivo_auditoria || pautaAtiva.qtde_cabos_os || pautaAtiva.observacao)
 
   return (
     <div>
@@ -442,9 +445,17 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               background: '#fff', border: '1.5px solid #fed7aa',
               color: '#c2410c', fontWeight: 800, fontSize: 13,
               padding: '6px 12px', borderRadius: 8,
-              marginBottom: pautaAtiva.observacao ? 10 : 0,
+              marginBottom: (pautaAtiva.qtde_cabos_os || pautaAtiva.observacao) ? 10 : 0,
             }}>
               🎯 Motivo: {pautaAtiva.motivo_auditoria}
+            </div>
+          )}
+          {pautaAtiva.qtde_cabos_os && (
+            <div style={{
+              fontSize: 12, color: '#92400e', fontWeight: 800,
+              marginBottom: pautaAtiva.observacao ? 10 : 0,
+            }}>
+              Cabos OS: {pautaAtiva.qtde_cabos_os}m
             </div>
           )}
           {pautaAtiva.observacao && (

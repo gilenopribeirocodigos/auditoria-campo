@@ -18,6 +18,10 @@ const PERFIL_CORES = {
 }
 
 const TODAS_PERMISSOES = [
+  { id: 'estrutura_online_visualizar', label: 'Estrutura Online - visualizar' },
+  { id: 'estrutura_online_editar',     label: 'Estrutura Online - editar abas' },
+  { id: 'estrutura_online_importar',   label: 'Estrutura Online - importar total' },
+  { id: 'estrutura_online_motivos',    label: 'Estrutura Online - botão Motivos (cadastrar/excluir)' },
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },

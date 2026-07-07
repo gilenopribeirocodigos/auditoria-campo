@@ -20,6 +20,11 @@ const STATUS_COR = {
 // Tipos de serviço puxados DINAMICAMENTE de CHECKLISTS
 const getTipoEmoji = (tipo) => CHECKLISTS[tipo]?.emoji || '📋'
 const getTipoLabel = (tipo) => CHECKLISTS[tipo]?.label || tipo
+const TIPO_AUDITORIA_LABEL = {
+  DESEMPENHO: 'Desempenho Operacional',
+  POS_SERVICO: 'Pós Serviço',
+}
+const getTipoAuditoriaLabel = (tipo) => TIPO_AUDITORIA_LABEL[tipo] || tipo
 
 // Calcula itens não conformes a partir dos dados salvos
 function calcNcItems(auditoria) {
@@ -158,8 +163,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
 
   // ─── Filtros EXTRAS desta tela ───
-  const [tipoServico, setTipoServico] = useState([]) // multi
-  const [resultado,   setResultado]   = useState('') // single
+  const [tipoServico,    setTipoServico]    = useState([]) // multi
+  const [tipoAuditoria,  setTipoAuditoria]  = useState([]) // multi
+  const [motivoAuditoria, setMotivoAuditoria] = useState([]) // multi
+  const [resultado,      setResultado]      = useState('') // single
+  const [opcoesMotivoAuditoria, setOpcoesMotivoAuditoria] = useState([])
 
   const [auditorias, setAuditorias] = useState([])
   const [loading,    setLoading]    = useState(true)
@@ -203,6 +211,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       // usuário logado (cruzamento natural + processos liberados).
       // Aqui aplicamos os filtros do painel POR CIMA disso.
       const filtroHierarquicoAtivo =
+        filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
@@ -212,6 +221,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         // Itera só sobre prefixos que o usuário JÁ pode ver (mapPrefixo segregado)
         const set = new Set()
         Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+          if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return
           if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
           if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
           if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
@@ -235,19 +245,37 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         }
       }
 
-      // ── 2) Query principal ──
+      const podeVerTodos = podeVerTodas
+
+      // ── 2) Opções dinâmicas do filtro Motivo Auditoria ──
+      let qOpcoesMotivo = supabase
+        .from('auditorias')
+        .select('motivo_auditoria')
+        .gte('data_auditoria', ini).lte('data_auditoria', fim)
+
+      if (!podeVerTodos)     qOpcoesMotivo = qOpcoesMotivo.eq('matricula', usuarioLogado.matricula)
+      if (prefixosFiltrados) qOpcoesMotivo = qOpcoesMotivo.in('prefixo', prefixosFiltrados)
+
+      const { data: motivosData, error: motivosError } = await qOpcoesMotivo
+      if (motivosError) throw motivosError
+      setOpcoesMotivoAuditoria(
+        [...new Set((motivosData || []).map(r => r.motivo_auditoria).filter(Boolean))]
+          .sort((a, b) => a.localeCompare(b))
+      )
+
+      // ── 3) Query principal ──
       let q = supabase
         .from('auditorias').select('*')
         .gte('data_auditoria', ini).lte('data_auditoria', fim)
         .order('data_auditoria', { ascending: false })
         .order('hora_auditoria', { ascending: false })
 
-      const podeVerTodos = podeVerTodas
-
-      if (!podeVerTodos)          q = q.eq('matricula', usuarioLogado.matricula)
-      if (tipoServico.length > 0) q = q.in('tipo_servico', tipoServico)
-      if (resultado)              q = q.eq('status', resultado)
-      if (prefixosFiltrados)      q = q.in('prefixo', prefixosFiltrados)
+      if (!podeVerTodos)              q = q.eq('matricula', usuarioLogado.matricula)
+      if (tipoServico.length > 0)     q = q.in('tipo_servico', tipoServico)
+      if (tipoAuditoria.length > 0)   q = q.in('tipo_auditoria', tipoAuditoria)
+      if (motivoAuditoria.length > 0) q = q.in('motivo_auditoria', motivoAuditoria)
+      if (resultado)                  q = q.eq('status', resultado)
+      if (prefixosFiltrados)          q = q.in('prefixo', prefixosFiltrados)
 
       const { data, error } = await q
       if (error) throw error
@@ -314,7 +342,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           'Supervisor Operacional': sup.op || '',
           'OS':                     a.os || '',
           'UC':                     a.uc || '',
-          'Tipo Auditoria':         a.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho Operacional' : 'Pós Serviço',
+          'Tipo Auditoria':         getTipoAuditoriaLabel(a.tipo_auditoria),
+          'Motivo Auditoria':       a.motivo_auditoria || '',
           'Tipo Serviço':           a.tipo_servico || '',
           'Produtivo':              a.produtivo ? 'SIM' : 'NÃO',
           'Nota':                   Number(a.nota).toFixed(1),
@@ -334,7 +363,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       ws['!cols'] = [
         { wch: 12 }, { wch: 8  }, { wch: 30 }, { wch: 12 }, { wch: 16 },
         { wch: 22 }, { wch: 22 },
-        { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 12 },
+        { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 30 }, { wch: 14 }, { wch: 12 },
         { wch: 8  }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 12 },
         { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 40 }, { wch: 10 },
       ]
@@ -350,8 +379,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         ['Gerado em', new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })],
         [''],
         ['FILTROS APLICADOS', ''],
+        ['Regional',               filtros.selRegional.length > 0 ? filtros.selRegional.join(', ') : '(todas)'],
         ['Prefixo(s)',             filtros.selPrefixos.length > 0 ? filtros.selPrefixos.join(', ') : '(todos)'],
         ['Tipo de Serviço',        tipoServico.length > 0 ? tipoServico.join(', ') : '(todos)'],
+        ['Tipo Auditoria',         tipoAuditoria.length > 0 ? tipoAuditoria.map(getTipoAuditoriaLabel).join(', ') : '(todos)'],
+        ['Motivo Auditoria',       motivoAuditoria.length > 0 ? motivoAuditoria.join(', ') : '(todos)'],
         ['Supervisor de Campo',    filtros.selSupCampo.length > 0 ? filtros.selSupCampo.join(', ') : '(todos)'],
         ['Supervisor Operacional', filtros.selSupOp.length    > 0 ? filtros.selSupOp.join(', ')    : '(todos)'],
         ['Resultado',              resultado || '(todos)'],
@@ -378,8 +410,13 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
   const detalheNcItems = detalhe ? calcNcItems(detalhe) : []
   const tiposServicoOpcoes = Object.keys(CHECKLISTS)
+  const tiposAuditoriaOpcoes = Object.keys(TIPO_AUDITORIA_LABEL)
+  const motivosAuditoriaOpcoes = useMemo(
+    () => [...new Set([...opcoesMotivoAuditoria, ...motivoAuditoria])].sort((a, b) => a.localeCompare(b)),
+    [opcoesMotivoAuditoria, motivoAuditoria]
+  )
 
-  // ─── Filtros EXTRAS no painel: Tipo Serviço + Resultado ───
+  // ─── Filtros EXTRAS no painel: Tipo Serviço + Tipo Auditoria + Motivo + Resultado ───
   const extras = (
     <>
       <div>
@@ -390,6 +427,26 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           onChange={setTipoServico}
           placeholder="Todos"
           formatOption={(t) => `${getTipoEmoji(t)} ${getTipoLabel(t)}`}
+        />
+      </div>
+      <div>
+        <label style={LABEL_STYLE}>Tipo Auditoria</label>
+        <MultiSelect
+          opcoes={tiposAuditoriaOpcoes}
+          selecionados={tipoAuditoria}
+          onChange={setTipoAuditoria}
+          placeholder="Todos"
+          formatOption={getTipoAuditoriaLabel}
+        />
+      </div>
+      <div>
+        <label style={LABEL_STYLE}>Motivo Auditoria</label>
+        <MultiSelect
+          opcoes={motivosAuditoriaOpcoes}
+          selecionados={motivoAuditoria}
+          onChange={setMotivoAuditoria}
+          placeholder="Todos"
+          disabled={motivosAuditoriaOpcoes.length === 0}
         />
       </div>
       <div>
