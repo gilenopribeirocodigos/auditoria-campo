@@ -114,7 +114,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
 
                     {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
                     {p.numero_as && (
-                      <p style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 800, marginTop: 3 }}>
+                      <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
                         No. AS: {p.numero_as}
                       </p>
                     )}

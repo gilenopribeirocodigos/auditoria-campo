@@ -587,7 +587,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                         <span>📅 {formatData(a.data_auditoria)} às {a.hora_auditoria}</span>
                         {a.numero_as && <>
                           <span style={{ margin: '0 8px' }}>·</span>
-                          <span>AS: <strong>{a.numero_as}</strong></span>
+                          <span>No. AS: <strong>{a.numero_as}</strong></span>
                         </>}
                         <span style={{ margin: '0 8px' }}>·</span>
                         <span>OS: <strong>{a.os}</strong></span>

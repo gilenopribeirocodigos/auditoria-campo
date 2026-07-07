@@ -428,7 +428,6 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               value={form.numeroAS}
               readOnly
               onFocus={e => e.target.select()}
-              style={{ fontWeight: 700 }}
             />
             <button
               type="button"

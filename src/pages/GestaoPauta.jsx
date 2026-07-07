@@ -6,7 +6,8 @@ import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
-  FIELD_HEIGHT,
+  LABEL_STYLE,
+  INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
 
 const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
@@ -318,6 +319,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [csvStatus,    setCsvStatus]    = useState('')
   const [csvPreview,   setCsvPreview]   = useState([])
   const [baixandoNcs,  setBaixandoNcs]  = useState(false)
+  const [numeroASFiltro, setNumeroASFiltro] = useState('')
   // ── Novo estado: prefixo validado no modal ──
   const [prefixoValido, setPrefixoValido] = useState(false)
 
@@ -432,10 +434,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     const setPermitidos = filtros.prefixosPermitidos
       ? new Set(filtros.prefixosPermitidos)
       : null
+    const buscaAS = numeroASFiltro.trim().toUpperCase()
     return pautas.filter(p => {
       if (setPermitidos && !setPermitidos.has(p.prefixo)) return false
       if (ini && p.data_prevista < ini) return false
       if (fim && p.data_prevista > fim) return false
+      if (buscaAS && !String(p.numero_as || '').toUpperCase().includes(buscaAS)) return false
       const filtroAtivo =
         filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
@@ -450,7 +454,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
       return true
     })
-  }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
+  }, [pautas, numeroASFiltro, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
       filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
       filtros.prefixosPermitidos])
 
@@ -591,7 +595,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         const horaExecucao = p.hora_execucao || a.hora_execucao || a.hora_auditoria || execucao.hora
         return registros.map(nc => ({
           pauta_id:                   p.id || '',
-          numero_as:                  p.numero_as || a.numero_as || '',
+          'No. AS':                   p.numero_as || a.numero_as || '',
           usuario_criacao:            p.usuario_criacao || p.usuario_criador || p.criado_por || p.created_by || p.usuario_registro || '',
           data_geracao:               p.data_geracao || geracao.data,
           hora_geracao:               p.hora_geracao || geracao.hora,
@@ -632,6 +636,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       })
       const colNames = [
         'pauta_id',
+        'No. AS',
         'usuario_criacao',
         'data_geracao',
         'hora_geracao',
@@ -820,6 +825,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           filtros={filtros}
           titulo="🔍 Filtros das Pautas"
           badge="período por data prevista"
+          extras={
+            <div>
+              <label style={LABEL_STYLE}>No. AS</label>
+              <input
+                value={numeroASFiltro}
+                onChange={e => setNumeroASFiltro(e.target.value.toUpperCase())}
+                placeholder="AS-..."
+                style={INPUT_STYLE}
+              />
+            </div>
+          }
         />
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -881,8 +897,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>🔁 {RECORRENCIA_LABEL[p.recorrencia]}</span>
                       </div>
                       {p.numero_as && (
-                        <div style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 800, lineHeight: 1.6, marginBottom: 2 }}>
-                          AS: {p.numero_as}
+                        <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, lineHeight: 1.6, marginBottom: 2 }}>
+                          No. AS: {p.numero_as}
                         </div>
                       )}
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
