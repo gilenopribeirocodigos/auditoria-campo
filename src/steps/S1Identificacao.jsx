@@ -270,11 +270,31 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
   const [elet2Sugs,       setElet2Sugs]       = useState([])
   const [eletricistas,    setEletricistas]    = useState([])
   const [prefixoValido,   setPrefixoValido]   = useState(false)
+  const [asCopiada,       setAsCopiada]       = useState(false)
 
   const offline = !navigator.onLine
 
   // Prefixo válido = selecionado da lista OU offline
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat && (prefixoValido || offline)
+
+  const copiarNumeroAS = async () => {
+    if (!form.numeroAS) return
+    try {
+      await navigator.clipboard.writeText(form.numeroAS)
+    } catch {
+      const el = document.createElement('textarea')
+      el.value = form.numeroAS
+      el.setAttribute('readonly', '')
+      el.style.position = 'fixed'
+      el.style.opacity = '0'
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    setAsCopiada(true)
+    window.setTimeout(() => setAsCopiada(false), 1800)
+  }
 
   // Pré-preenche OS, UC, eletricistas e MOTIVO DA AUDITORIA a partir da pauta
   // ativa, sempre que os campos correspondentes ainda estiverem vazios no form.
@@ -400,21 +420,31 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
 
       {/* ── Prefixo com validação online/offline ── */}
       {form.numeroAS && (
-        <div style={{
-          background: '#eff6ff',
-          border: '1px solid #bfdbfe',
-          borderRadius: 10,
-          padding: '10px 12px',
-          marginBottom: 10,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-        }}>
-          <span style={{ fontSize: 11, fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-            No. AS
-          </span>
-          <strong style={{ fontSize: 14, color: '#1e3a8a' }}>{form.numeroAS}</strong>
+        <div className="form-group">
+          <label className="form-label">No. AS</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
+            <input
+              className="form-input"
+              value={form.numeroAS}
+              readOnly
+              onFocus={e => e.target.select()}
+              style={{ fontWeight: 700 }}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={copiarNumeroAS}
+              style={{ height: 46, padding: '0 14px', whiteSpace: 'nowrap' }}
+              title="Copiar No. AS"
+            >
+              Copiar
+            </button>
+          </div>
+          {asCopiada && (
+            <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4, fontWeight: 700 }}>
+              AS copiada.
+            </p>
+          )}
         </div>
       )}
 
