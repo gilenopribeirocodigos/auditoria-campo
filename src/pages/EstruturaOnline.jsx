@@ -73,8 +73,8 @@ function limparTextoEdicao(valor) {
 }
 
 function normalizarValorCelula(coluna, valor) {
-  if (coluna === 'matricula') return norm(valor).toUpperCase()
-  return limparTextoEdicao(valor)
+  if (coluna === 'matricula') return limparTexto(valor).toUpperCase()
+  return limparTexto(valor).toUpperCase()
 }
 
 function gerarIdTemporario() {
@@ -115,14 +115,14 @@ function aplicarSituacaoAutomatica(linha) {
 function normalizarLinha(linha) {
   const out = {}
   COLUNAS_ESPERADAS.forEach(c => {
-    out[c] = c === 'matricula' ? norm(linha?.[c]).toUpperCase() : limparTexto(linha?.[c]).toUpperCase()
+    out[c] = limparTexto(linha?.[c]).toUpperCase()
   })
   out.descr_situacao = limparTexto(out.descr_situacao).toUpperCase()
   return aplicarSituacaoAutomatica(out)
 }
 
 function dadosParaLinha(dados) {
-  return aplicarSituacaoAutomatica({ ...novaLinha(), ...(dados || {}) })
+  return { ...novaLinha(), ...normalizarLinha(dados || {}) }
 }
 
 function mapaMotivos(motivos) {
@@ -196,22 +196,23 @@ function resumirSituacoes(linhas, motivos) {
 }
 
 function montarRegistro(r, idEletricista, timestamp) {
+  const linha = normalizarLinha(r)
   return {
     id_eletricista: idEletricista,
-    regional: limparTexto(r.regional),
-    polo: limparTexto(r.polo),
-    base: limparTexto(r.base),
-    prefixo: limparTexto(r.prefixo),
-    matricula: norm(r.matricula),
-    colaborador: limparTexto(r.colaborador),
-    descr_secao: limparTexto(r.descr_secao),
-    descr_situacao: limparTexto(r.descr_situacao),
-    placas: limparTexto(r.placas),
-    tipo_equipe: limparTexto(r.tipo_equipe),
-    processo_equipe: limparTexto(r.processo_equipe),
-    superv_campo: limparTexto(r.superv_campo),
-    superv_operacao: limparTexto(r.superv_operacao),
-    coordenador: limparTexto(r.coordenador),
+    regional: linha.regional,
+    polo: linha.polo,
+    base: linha.base,
+    prefixo: linha.prefixo,
+    matricula: linha.matricula,
+    colaborador: linha.colaborador,
+    descr_secao: linha.descr_secao,
+    descr_situacao: linha.descr_situacao,
+    placas: linha.placas,
+    tipo_equipe: linha.tipo_equipe,
+    processo_equipe: linha.processo_equipe,
+    superv_campo: linha.superv_campo,
+    superv_operacao: linha.superv_operacao,
+    coordenador: linha.coordenador,
     carregado_em: timestamp,
   }
 }
@@ -439,7 +440,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const linhasTotal = useMemo(() => {
     return planilhas.flatMap(p => (linhasPorAba[p.id] || [])
       .filter(l => !linhaVazia(l))
-      .map(l => ({ ...l, origem_aba: p.nome })))
+      .map(l => ({ ...normalizarLinha(l), origem_aba: limparTexto(p.nome).toUpperCase() })))
   }, [planilhas, linhasPorAba])
 
   const linhasTotalImportaveis = useMemo(() => {
@@ -836,10 +837,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
     const incluirAba = abaAtiva === 'TOTAL'
     const colunas = incluirAba ? ['aba', ...COLUNAS_ESPERADAS] : COLUNAS_ESPERADAS
     const dados = linhas.map(linha => {
+      const linhaNormalizada = normalizarLinha(linha)
       const item = {}
       if (incluirAba) item.aba = linha.origem_aba || ''
       COLUNAS_ESPERADAS.forEach(coluna => {
-        item[coluna] = linha[coluna] || ''
+        item[coluna] = linhaNormalizada[coluna] || ''
       })
       return item
     })
