@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
 import { temPermissao } from '../lib/auth.js'
 
+const SITUACAO_SEM_ELETRICISTA = 'SEM ELETRICISTA'
 const SITUACOES_PERMITIDAS = ['ATIVO', 'RESERVA']
 
 const COLUNAS_ESPERADAS = [
@@ -10,6 +11,7 @@ const COLUNAS_ESPERADAS = [
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao', 'coordenador',
 ]
+const COLUNAS_CONTEUDO = COLUNAS_ESPERADAS.filter(c => c !== 'descr_situacao')
 
 const MOTIVOS_PADRAO = [
   { descricao: 'ATIVO', cor_fundo: '#dcfce7', cor_texto: '#166534', permite_importar_estrutura: true, ordem_exibicao: 1, ativo: true },
@@ -20,6 +22,7 @@ const MOTIVOS_PADRAO = [
   { descricao: 'DESAPARECIDO', cor_fundo: '#bbf7d0', cor_texto: '#166534', permite_importar_estrutura: false, ordem_exibicao: 13, ativo: true },
   { descricao: 'BLOQUEADO', cor_fundo: '#ffedd5', cor_texto: '#9a3412', permite_importar_estrutura: false, ordem_exibicao: 14, ativo: true },
   { descricao: 'NAO APRESENTADO', cor_fundo: '#ffffff', cor_texto: '#334155', permite_importar_estrutura: false, ordem_exibicao: 15, ativo: true },
+  { descricao: SITUACAO_SEM_ELETRICISTA, cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false, ordem_exibicao: 99, ativo: true },
 ]
 
 const PROCESSOS_EQUIPE_PADRAO = [
@@ -89,7 +92,24 @@ function novaLinha() {
 }
 
 function linhaVazia(linha) {
-  return COLUNAS_ESPERADAS.every(c => !norm(linha?.[c]))
+  return COLUNAS_CONTEUDO.every(c => !norm(linha?.[c]))
+}
+
+function aplicarSituacaoAutomatica(linha) {
+  const out = { ...(linha || {}) }
+  if (linhaVazia(out)) return out
+
+  const semMatricula = !norm(out.matricula)
+  const semColaborador = !norm(out.colaborador)
+  const situacao = normalizarSituacao(out.descr_situacao)
+
+  if (semMatricula || semColaborador) {
+    out.descr_situacao = SITUACAO_SEM_ELETRICISTA
+  } else if (!situacao || situacao === SITUACAO_SEM_ELETRICISTA) {
+    out.descr_situacao = 'ATIVO'
+  }
+
+  return out
 }
 
 function normalizarLinha(linha) {
@@ -98,11 +118,11 @@ function normalizarLinha(linha) {
     out[c] = c === 'matricula' ? norm(linha?.[c]).toUpperCase() : limparTexto(linha?.[c]).toUpperCase()
   })
   out.descr_situacao = limparTexto(out.descr_situacao).toUpperCase()
-  return out
+  return aplicarSituacaoAutomatica(out)
 }
 
 function dadosParaLinha(dados) {
-  return { ...novaLinha(), ...(dados || {}) }
+  return aplicarSituacaoAutomatica({ ...novaLinha(), ...(dados || {}) })
 }
 
 function mapaMotivos(motivos) {
@@ -554,7 +574,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const atualizarCelula = (linhaId, coluna, valor) => {
     setLinhasPorAba(prev => ({
       ...prev,
-      [abaAtiva]: (prev[abaAtiva] || []).map(l => l._tmpId === linhaId ? { ...l, [coluna]: normalizarValorCelula(coluna, valor) } : l),
+      [abaAtiva]: (prev[abaAtiva] || []).map(l => (
+        l._tmpId === linhaId
+          ? aplicarSituacaoAutomatica({ ...l, [coluna]: normalizarValorCelula(coluna, valor) })
+          : l
+      )),
     }))
   }
 
@@ -578,6 +602,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
         const col = COLUNAS_ESPERADAS[colInicio + offsetCol]
         if (col) linhasBase[destino][col] = normalizarValorCelula(col, valor)
       })
+      linhasBase[destino] = aplicarSituacaoAutomatica(linhasBase[destino])
     })
 
     setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: linhasBase }))

@@ -31,7 +31,8 @@ values
   ('DESLIGADO', '#fee2e2', '#991b1b', false, true, 12),
   ('DESAPARECIDO', '#bbf7d0', '#166534', false, true, 13),
   ('BLOQUEADO', '#ffedd5', '#9a3412', false, true, 14),
-  ('NAO APRESENTADO', '#ffffff', '#334155', false, true, 15)
+  ('NAO APRESENTADO', '#ffffff', '#334155', false, true, 15),
+  ('SEM ELETRICISTA', '#f1f5f9', '#334155', false, true, 99)
 on conflict (descricao) do update set
   cor_fundo = excluded.cor_fundo,
   cor_texto = excluded.cor_texto,
@@ -108,7 +109,8 @@ values
   ('DESLIGADO', '#fee2e2', '#991b1b', false, true, 12),
   ('DESAPARECIDO', '#bbf7d0', '#166534', false, true, 13),
   ('BLOQUEADO', '#ffedd5', '#9a3412', false, true, 14),
-  ('NAO APRESENTADO', '#ffffff', '#334155', false, true, 15)
+  ('NAO APRESENTADO', '#ffffff', '#334155', false, true, 15),
+  ('SEM ELETRICISTA', '#f1f5f9', '#334155', false, true, 99)
 on conflict (descricao) do update set
   cor_fundo = excluded.cor_fundo,
   cor_texto = excluded.cor_texto,
