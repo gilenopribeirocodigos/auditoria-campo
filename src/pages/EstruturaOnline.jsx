@@ -22,6 +22,13 @@ const MOTIVOS_PADRAO = [
   { descricao: 'NAO APRESENTADO', cor_fundo: '#ffffff', cor_texto: '#334155', permite_importar_estrutura: false, ordem_exibicao: 15, ativo: true },
 ]
 
+const PROCESSOS_EQUIPE_PADRAO = [
+  { descricao: 'CORTE', ordem_exibicao: 1, ativo: true },
+  { descricao: 'LIGACAO NOVA', ordem_exibicao: 2, ativo: true },
+  { descricao: 'EMERGENCIAL', ordem_exibicao: 3, ativo: true },
+  { descricao: 'PLANTAO', ordem_exibicao: 4, ativo: true },
+]
+
 const CORES_MOTIVO = [
   { nome: 'Verde', fundo: '#dcfce7', texto: '#166534' },
   { nome: 'Azul', fundo: '#dbeafe', texto: '#1e40af' },
@@ -103,6 +110,10 @@ function mapaMotivos(motivos) {
 }
 
 function normalizarSituacao(valor) {
+  return limparTexto(valor).toUpperCase()
+}
+
+function normalizarProcesso(valor) {
   return limparTexto(valor).toUpperCase()
 }
 
@@ -371,9 +382,13 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [erro, setErro] = useState('')
   const [msg, setMsg] = useState('')
   const [motivos, setMotivos] = useState(MOTIVOS_PADRAO)
+  const [processosEquipe, setProcessosEquipe] = useState(PROCESSOS_EQUIPE_PADRAO)
   const [mostrarMotivos, setMostrarMotivos] = useState(false)
+  const [abaPadroes, setAbaPadroes] = useState('situacoes')
   const [motivoForm, setMotivoForm] = useState({ descricao: '', cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false })
+  const [processoForm, setProcessoForm] = useState({ descricao: '' })
   const [motivoRapido, setMotivoRapido] = useState('')
+  const [processoRapido, setProcessoRapido] = useState('')
   const [tabelaAmpliada, setTabelaAmpliada] = useState(false)
   const [largurasColunas, setLargurasColunas] = useState({})
   const [ordenacao, setOrdenacao] = useState({ coluna: '', direcao: 'asc' })
@@ -416,6 +431,13 @@ export default function EstruturaOnline({ usuarioLogado }) {
         .eq('ativo', true)
         .order('ordem_exibicao')
       if (!motivosError && motivosData?.length) setMotivos(motivosData)
+
+      const { data: processosData, error: processosError } = await supabase
+        .from('processos_equipe_estrutura')
+        .select('*')
+        .eq('ativo', true)
+        .order('ordem_exibicao')
+      if (!processosError && processosData?.length) setProcessosEquipe(processosData)
 
       const { data: abas, error: abasError } = await supabase
         .from('estrutura_planilhas')
@@ -659,6 +681,50 @@ export default function EstruturaOnline({ usuarioLogado }) {
     }
   }
 
+  const salvarProcessoEquipe = async () => {
+    if (!podeConfigurarMotivos) return
+    const descricao = normalizarProcesso(processoForm.descricao)
+    if (!descricao) { setErro('Informe a descricao do processo.'); return }
+    try {
+      const { error } = await supabase.from('processos_equipe_estrutura').upsert({
+        descricao,
+        ativo: true,
+        ordem_exibicao: (processosEquipe?.length || 0) + 1,
+        criado_por: usuarioLogado?.login,
+        atualizado_por: usuarioLogado?.login,
+        atualizado_em: new Date().toISOString(),
+      }, { onConflict: 'descricao' })
+      if (error) throw error
+      setProcessoForm({ descricao: '' })
+      await carregar()
+      setMsg('Processo salvo.')
+    } catch (e) {
+      setErro(e.message || String(e))
+    }
+  }
+
+  const excluirProcessoEquipe = async (processo) => {
+    if (!podeConfigurarMotivos) return
+    const descricao = normalizarProcesso(processo?.descricao)
+    if (!descricao) return
+    if (!window.confirm(`Excluir o processo ${descricao}? Ele sera removido da lista de escolha, mas registros ja preenchidos permanecem com o texto salvo.`)) return
+    try {
+      const { error } = await supabase.from('processos_equipe_estrutura')
+        .update({
+          ativo: false,
+          atualizado_por: usuarioLogado?.login,
+          atualizado_em: new Date().toISOString(),
+        })
+        .eq('descricao', descricao)
+      if (error) throw error
+      setProcessosEquipe(prev => prev.filter(p => normalizarProcesso(p.descricao) !== descricao))
+      if (processoRapido === descricao) setProcessoRapido('')
+      setMsg(`Processo ${descricao} excluido da lista.`)
+    } catch (e) {
+      setErro(e.message || String(e))
+    }
+  }
+
   const importarTotal = async () => {
     if (!podeImportar) return
     if (confirmacao !== 'CONFIRMAR CARGA') {
@@ -800,7 +866,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {planilhas.length > 0 && <button onClick={exportarExcel} style={botao('#16a34a')}>Exportar Excel</button>}
             {planilhas.length > 0 && <button onClick={() => setTabelaAmpliada(true)} style={botao('#0f172a')}>Tela cheia</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
-            {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar motivos' : 'Motivos'}</button>}
+            {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar padroes' : 'Padroes'}</button>}
           </div>
         </div>
 
@@ -814,7 +880,9 @@ export default function EstruturaOnline({ usuarioLogado }) {
           <TabelaEstrutura
             linhas={linhasRender}
             motivos={motivos}
+            processosEquipe={processosEquipe}
             motivoRapido={motivoRapido}
+            processoRapido={processoRapido}
             editando={estaEditando && abaAtiva !== 'TOTAL'}
             onChange={atualizarCelula}
             onPaste={colarExcel}
@@ -854,7 +922,9 @@ export default function EstruturaOnline({ usuarioLogado }) {
             <TabelaEstrutura
               linhas={linhasRender}
               motivos={motivos}
+              processosEquipe={processosEquipe}
               motivoRapido={motivoRapido}
+              processoRapido={processoRapido}
               editando={estaEditando && abaAtiva !== 'TOTAL'}
               onChange={atualizarCelula}
               onPaste={colarExcel}
@@ -873,70 +943,123 @@ export default function EstruturaOnline({ usuarioLogado }) {
       {mostrarMotivos && podeConfigurarMotivos && (
         <div style={{ ...cardStyle, marginBottom: 14 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-            <h3 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Motivos padrao de descr_situacao</h3>
+            <div>
+              <h3 style={{ fontSize: 14, fontWeight: 900, margin: 0 }}>Padroes da Estrutura Online</h3>
+              <p style={{ margin: '4px 0 0', fontSize: 11, color: '#64748b', fontWeight: 700 }}>Cadastre listas oficiais para as colunas DESCR_SITUACAO e PROCESSO_EQUIPE.</p>
+            </div>
             <button onClick={() => setMostrarMotivos(false)} style={botao('#334155')}>Fechar</button>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
-            <Campo label="Descricao"><input style={inputStyle} value={motivoForm.descricao} onChange={e => setMotivoForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: AFASTADO" /></Campo>
-            <Campo label="Cor"><select style={inputStyle} value={`${motivoForm.cor_fundo}|${motivoForm.cor_texto}`} onChange={e => { const [fundo, texto] = e.target.value.split('|'); setMotivoForm(f => ({ ...f, cor_fundo: fundo, cor_texto: texto })) }}>{CORES_MOTIVO.map(c => <option key={c.nome} value={`${c.fundo}|${c.texto}`}>{c.nome}</option>)}</select></Campo>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#334155' }}>
-              <input type="checkbox" checked={motivoForm.permite_importar_estrutura} onChange={e => setMotivoForm(f => ({ ...f, permite_importar_estrutura: e.target.checked }))} />
-              Permite importar
-            </label>
-            <button onClick={salvarMotivo} style={botao('#7c3aed')}>Salvar motivo</button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            <button onClick={() => setAbaPadroes('situacoes')} style={botao(abaPadroes === 'situacoes' ? '#1e40af' : '#e2e8f0', abaPadroes === 'situacoes' ? '#fff' : '#0f172a')}>DESCR_SITUACAO</button>
+            <button onClick={() => setAbaPadroes('processos')} style={botao(abaPadroes === 'processos' ? '#1e40af' : '#e2e8f0', abaPadroes === 'processos' ? '#fff' : '#0f172a')}>PROCESSO_EQUIPE</button>
           </div>
-          <ResumoSituacoes linhas={motivos.map(m => ({ descr_situacao: m.descricao, matricula: '1', colaborador: 'x' }))} motivos={motivos} />
-          <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640, background: '#fff' }}>
-              <thead>
-                <tr>
-                  <Th>usar</Th>
-                  <Th>motivo</Th>
-                  <Th>importa</Th>
-                  <Th>cor</Th>
-                  <Th>excluir</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {motivos.map(m => (
-                  <tr key={m.descricao}>
-                    <Td>
-                      <button
-                        onClick={() => {
-                          setMotivoRapido(normalizarSituacao(m.descricao))
-                          setMsg(`Motivo ${normalizarSituacao(m.descricao)} selecionado para ajuste manual na coluna DESCR_SITUACAO.`)
-                        }}
-                        style={botao(motivoRapido === normalizarSituacao(m.descricao) ? '#0f766e' : '#64748b')}
-                      >
-                        {motivoRapido === normalizarSituacao(m.descricao) ? 'Selecionado' : 'Selecionar'}
-                      </button>
-                    </Td>
-                    <Td>
-                      <span style={{ borderRadius: 999, padding: '5px 10px', fontSize: 11, fontWeight: 900, background: m.cor_fundo, color: m.cor_texto, border: `1px solid ${m.cor_texto}22` }}>
-                        {normalizarSituacao(m.descricao)}
-                      </span>
-                    </Td>
-                    <Td>{m.permite_importar_estrutura ? 'Sim' : 'Nao'}</Td>
-                    <Td><span style={{ display: 'inline-block', width: 48, height: 18, borderRadius: 999, background: m.cor_fundo, border: `1px solid ${m.cor_texto}44` }} /></Td>
-                    <Td>
-                      <button
-                        onClick={() => excluirMotivo(m)}
-                        disabled={m.permite_importar_estrutura}
-                        title={m.permite_importar_estrutura ? 'Motivo protegido porque entra na importacao da estrutura' : 'Excluir motivo da lista'}
-                        style={{
-                          ...botao(m.permite_importar_estrutura ? '#cbd5e1' : '#dc2626'),
-                          color: m.permite_importar_estrutura ? '#64748b' : '#fff',
-                          cursor: m.permite_importar_estrutura ? 'not-allowed' : 'pointer',
-                        }}
-                      >
-                        Excluir
-                      </button>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+
+          {abaPadroes === 'situacoes' && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr auto auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
+                <Campo label="Descricao"><input style={inputStyle} value={motivoForm.descricao} onChange={e => setMotivoForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Ex: AFASTADO" /></Campo>
+                <Campo label="Cor"><select style={inputStyle} value={`${motivoForm.cor_fundo}|${motivoForm.cor_texto}`} onChange={e => { const [fundo, texto] = e.target.value.split('|'); setMotivoForm(f => ({ ...f, cor_fundo: fundo, cor_texto: texto })) }}>{CORES_MOTIVO.map(c => <option key={c.nome} value={`${c.fundo}|${c.texto}`}>{c.nome}</option>)}</select></Campo>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#334155' }}>
+                  <input type="checkbox" checked={motivoForm.permite_importar_estrutura} onChange={e => setMotivoForm(f => ({ ...f, permite_importar_estrutura: e.target.checked }))} />
+                  Permite importar
+                </label>
+                <button onClick={salvarMotivo} style={botao('#7c3aed')}>Salvar situacao</button>
+              </div>
+              <ResumoSituacoes linhas={motivos.map(m => ({ descr_situacao: m.descricao, matricula: '1', colaborador: 'x' }))} motivos={motivos} />
+              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640, background: '#fff' }}>
+                  <thead>
+                    <tr>
+                      <Th>usar</Th>
+                      <Th>situacao</Th>
+                      <Th>importa</Th>
+                      <Th>cor</Th>
+                      <Th>excluir</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {motivos.map(m => (
+                      <tr key={m.descricao}>
+                        <Td>
+                          <button
+                            onClick={() => {
+                              setMotivoRapido(normalizarSituacao(m.descricao))
+                              setMsg(`Situacao ${normalizarSituacao(m.descricao)} selecionada para ajuste manual na coluna DESCR_SITUACAO.`)
+                            }}
+                            style={botao(motivoRapido === normalizarSituacao(m.descricao) ? '#0f766e' : '#64748b')}
+                          >
+                            {motivoRapido === normalizarSituacao(m.descricao) ? 'Selecionada' : 'Selecionar'}
+                          </button>
+                        </Td>
+                        <Td>
+                          <span style={{ borderRadius: 999, padding: '5px 10px', fontSize: 11, fontWeight: 900, background: m.cor_fundo, color: m.cor_texto, border: `1px solid ${m.cor_texto}22` }}>
+                            {normalizarSituacao(m.descricao)}
+                          </span>
+                        </Td>
+                        <Td>{m.permite_importar_estrutura ? 'Sim' : 'Nao'}</Td>
+                        <Td><span style={{ display: 'inline-block', width: 48, height: 18, borderRadius: 999, background: m.cor_fundo, border: `1px solid ${m.cor_texto}44` }} /></Td>
+                        <Td>
+                          <button
+                            onClick={() => excluirMotivo(m)}
+                            disabled={m.permite_importar_estrutura}
+                            title={m.permite_importar_estrutura ? 'Situacao protegida porque entra na importacao da estrutura' : 'Excluir situacao da lista'}
+                            style={{
+                              ...botao(m.permite_importar_estrutura ? '#cbd5e1' : '#dc2626'),
+                              color: m.permite_importar_estrutura ? '#64748b' : '#fff',
+                              cursor: m.permite_importar_estrutura ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            Excluir
+                          </button>
+                        </Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {abaPadroes === 'processos' && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end', marginBottom: 12 }}>
+                <Campo label="Processo equipe"><input style={inputStyle} value={processoForm.descricao} onChange={e => setProcessoForm({ descricao: e.target.value })} placeholder="Ex: CORTE" /></Campo>
+                <button onClick={salvarProcessoEquipe} style={botao('#7c3aed')}>Salvar processo</button>
+              </div>
+              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520, background: '#fff' }}>
+                  <thead>
+                    <tr>
+                      <Th>usar</Th>
+                      <Th>processo</Th>
+                      <Th>ordem</Th>
+                      <Th>excluir</Th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {processosEquipe.map(p => (
+                      <tr key={p.descricao}>
+                        <Td>
+                          <button
+                            onClick={() => {
+                              setProcessoRapido(normalizarProcesso(p.descricao))
+                              setMsg(`Processo ${normalizarProcesso(p.descricao)} selecionado para ajuste manual na coluna PROCESSO_EQUIPE.`)
+                            }}
+                            style={botao(processoRapido === normalizarProcesso(p.descricao) ? '#0f766e' : '#64748b')}
+                          >
+                            {processoRapido === normalizarProcesso(p.descricao) ? 'Selecionado' : 'Selecionar'}
+                          </button>
+                        </Td>
+                        <Td><span style={{ borderRadius: 999, padding: '5px 10px', fontSize: 11, fontWeight: 900, background: '#e0f2fe', color: '#075985', border: '1px solid #07598522' }}>{normalizarProcesso(p.descricao)}</span></Td>
+                        <Td>{p.ordem_exibicao || '-'}</Td>
+                        <Td><button onClick={() => excluirProcessoEquipe(p)} style={botao('#dc2626')}>Excluir</button></Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -993,8 +1116,9 @@ function ResumoSituacoes({ linhas, motivos }) {
   )
 }
 
-function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar }) {
+function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, processoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar }) {
   const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
+  const opcoesProcessos = (processosEquipe || []).map(p => normalizarProcesso(p.descricao)).filter(Boolean)
   const largura = coluna => largurasColunas[coluna] || larguraPadraoColuna(coluna)
   return (
     <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, maxHeight: altura }}>
@@ -1029,15 +1153,19 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
                 {total && <Td><span style={{ fontWeight: 800, color: '#0f766e' }}>{linha.origem_aba}</span></Td>}
                 {COLUNAS_ESPERADAS.map(c => {
                   const ehSituacao = c === 'descr_situacao'
+                  const ehProcesso = c === 'processo_equipe'
+                  const opcoesSelect = ehSituacao ? opcoesMotivos : opcoesProcessos
+                  const valorSelect = ehSituacao ? normalizarSituacao(linha[c]) : normalizarProcesso(linha[c])
+                  const valorRapido = ehSituacao ? motivoRapido : processoRapido
                   const bg = ehSituacao ? info.cor_fundo : undefined
                   const color = ehSituacao ? info.cor_texto : '#0f172a'
                   return (
                     <Td key={c} style={{ background: bg }}>
                       {editando ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {ehSituacao ? (
+                          {ehSituacao || ehProcesso ? (
                             <select
-                              value={normalizarSituacao(linha[c])}
+                              value={valorSelect}
                               onChange={e => onChange(linha._tmpId, c, e.target.value)}
                               onPaste={e => onPaste(linha._tmpId, c, e)}
                               style={{
@@ -1052,10 +1180,10 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
                               }}
                             >
                               <option value="">Selecione...</option>
-                              {normalizarSituacao(linha[c]) && !opcoesMotivos.includes(normalizarSituacao(linha[c])) && (
-                                <option value={normalizarSituacao(linha[c])}>{normalizarSituacao(linha[c])}</option>
+                              {valorSelect && !opcoesSelect.includes(valorSelect) && (
+                                <option value={valorSelect}>{valorSelect}</option>
                               )}
-                              {opcoesMotivos.map(m => <option key={m} value={m}>{m}</option>)}
+                              {opcoesSelect.map(m => <option key={m} value={m}>{m}</option>)}
                             </select>
                           ) : (
                             <input
@@ -1073,11 +1201,11 @@ function TabelaEstrutura({ linhas, motivos, motivoRapido, editando, onChange, on
                               }}
                             />
                           )}
-                          {ehSituacao && motivoRapido && (
+                          {(ehSituacao || ehProcesso) && valorRapido && (
                             <button
                               type="button"
-                              title={`Aplicar ${motivoRapido} nesta linha`}
-                              onClick={() => onChange(linha._tmpId, c, motivoRapido)}
+                              title={`Aplicar ${valorRapido} nesta linha`}
+                              onClick={() => onChange(linha._tmpId, c, valorRapido)}
                               style={{
                                 border: '1px solid #99f6e4',
                                 background: '#ecfdf5',
@@ -1223,11 +1351,11 @@ function Campo({ label, children }) {
   return <div><label style={{ display: 'block', fontSize: 10, textTransform: 'uppercase', fontWeight: 900, color: '#334155', marginBottom: 5 }}>{label}</label>{children}</div>
 }
 
-function botao(bg) {
+function botao(bg, color = '#fff') {
   return {
     background: bg,
     border: 'none',
-    color: '#fff',
+    color,
     borderRadius: 9,
     padding: '9px 12px',
     fontSize: 12,
