@@ -3,6 +3,7 @@ import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConfor
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, supabase } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
+import { obterNumeroAS } from '../lib/numeroAS.js'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
   const data = new Date(valor)
@@ -142,6 +143,7 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
             <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Auditoria</p>
             ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
             ${infoRow('Tipo de Serviço', CHECKLISTS[form.tipoServico]?.label)}
+            ${infoRow('No. AS', form.numeroAS || pautaAtiva?.numero_as)}
             ${form.motivoAuditoria ? infoRow('Motivo da Auditoria', form.motivoAuditoria) : ''}
             ${infoRow('Status do Serviço', form.produtivo ? 'Produtivo' : 'Improdutivo')}
             ${infoRow('Fiscal',         form.fiscal)}
@@ -283,10 +285,12 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
     form.statusMotivoAuditoria === false ? 'NÃO CONFORME' :
     null
 
-  const montarPayload = () => {
+  const montarPayload = (numeroASSalvo = null) => {
     const geracaoPauta = separarDataHoraFortaleza(pautaAtiva?.created_at || pautaAtiva?.criado_em)
     const execucao = separarDataHoraFortaleza()
+    const numeroAS = obterNumeroAS(numeroASSalvo || form.numeroAS || pautaAtiva?.numero_as)
     return {
+      numero_as:         numeroAS,
       fiscal:            form.fiscal,
       matricula:         form.matricula,
       prefixo:           form.prefixo,
@@ -384,11 +388,13 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
   const salvar = async () => {
     setSaveStatus('saving')
     setSaveError('')
+    const numeroASSalvo = obterNumeroAS(form.numeroAS || pautaAtiva?.numero_as)
+    if (!form.numeroAS) setForm(f => ({ ...f, numeroAS: numeroASSalvo }))
 
     if (!online && !modoEdicao) {
       try {
         const payload = {
-          ...montarPayload(),
+          ...montarPayload(numeroASSalvo),
           ...(form.motivoAuditoria && {
             status_motivo_auditoria:      form.statusMotivoAuditoria,
             avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
@@ -418,7 +424,7 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
     try {
       const auditId = modoEdicao
         ? auditoriaEditandoId
-        : `${Date.now()}_OS${form.os}_${form.prefixo}`.replace(/\s+/g, '_')
+        : numeroASSalvo.replace(/[^A-Z0-9_-]/gi, '_')
 
       const fotosNovas = []
       for (let i = 0; i < form.fotos.length; i++) {
@@ -443,7 +449,7 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
       if (form.assinatura2) assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
 
       const payload = {
-        ...montarPayload(),
+        ...montarPayload(numeroASSalvo),
         fotos_urls: fotosUrls,
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
@@ -534,6 +540,7 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Dados da Auditoria</p>
           <InfoRow label="Tipo Auditoria" value={labelTipoAuditoria} />
           <InfoRow label="Tipo de Serviço"  value={CHECKLISTS[form.tipoServico]?.label} />
+          <InfoRow label="No. AS" value={form.numeroAS || pautaAtiva?.numero_as} />
           {form.motivoAuditoria && <InfoRow label="Motivo da Auditoria" value={form.motivoAuditoria} />}
           {form.qtdeCabosOs && <InfoRow label="Qtde Cabos OS" value={`${form.qtdeCabosOs}m`} />}
           {form.qtdeCabosEmCampo && <InfoRow label="Qtde Cabos em Campo" value={`${form.qtdeCabosEmCampo}m`} />}

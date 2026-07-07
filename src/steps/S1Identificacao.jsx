@@ -282,6 +282,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
   // e no Resultado (S6) — sem essa cópia, `form.motivoAuditoria` nunca chega lá.
   useEffect(() => {
     if (!pautaAtiva) return
+    if (pautaAtiva.numero_as && !form.numeroAS) upd('numeroAS', pautaAtiva.numero_as)
     if (pautaAtiva.os && !form.os) upd('os', pautaAtiva.os)
     if (pautaAtiva.uc && !form.uc) upd('uc', pautaAtiva.uc)
     if (pautaAtiva.nome_eletricista && !form.nomeEletricista) {
@@ -398,6 +399,25 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
       <p className="section-title" style={{ marginTop: 18 }}>Dados do Serviço</p>
 
       {/* ── Prefixo com validação online/offline ── */}
+      {form.numeroAS && (
+        <div style={{
+          background: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          borderRadius: 10,
+          padding: '10px 12px',
+          marginBottom: 10,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 10,
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: '#1d4ed8', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            No. AS
+          </span>
+          <strong style={{ fontSize: 14, color: '#1e3a8a' }}>{form.numeroAS}</strong>
+        </div>
+      )}
+
       <PrefixoInputValidado
         value={form.prefixo}
         onChange={v => upd('prefixo', v)}

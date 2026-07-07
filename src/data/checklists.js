@@ -461,7 +461,7 @@ export const FORM_INICIAL = () => {
   return {
     tipoServico: '', produtivo: null,
     data: dt.data, hora: dt.hora,
-    fiscal: '', matricula: '', prefixo: '', os: '', uc: '', endereco: '',
+    fiscal: '', matricula: '', prefixo: '', os: '', uc: '', numeroAS: '', endereco: '',
     lat: null, lng: null, gpsStatus: 'idle',
     respostas: {}, fotos: [], observacoes: '', feedback: '',
     nomeEletricista: '', assinatura: null,

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
+import { gerarNumeroAS } from '../lib/numeroAS.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
@@ -25,6 +26,7 @@ const FORM_VAZIO = {
   motivo_auditoria: '', qtde_cabos_os: '',
   matricula_eletricista1: '', matricula_eletricista2: '',
   nome_eletricista: '', nome_eletricista2: '',
+  numero_as: '',
 }
 
 function normalizarDecimalTexto(valor) {
@@ -330,6 +332,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       data_geracao: geracao.data,
       hora_geracao: geracao.hora,
       created_at: createdAt,
+      numero_as: gerarNumeroAS(),
     }
   }
 
@@ -588,6 +591,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         const horaExecucao = p.hora_execucao || a.hora_execucao || a.hora_auditoria || execucao.hora
         return registros.map(nc => ({
           pauta_id:                   p.id || '',
+          numero_as:                  p.numero_as || a.numero_as || '',
           usuario_criacao:            p.usuario_criacao || p.usuario_criador || p.criado_por || p.created_by || p.usuario_registro || '',
           data_geracao:               p.data_geracao || geracao.data,
           hora_geracao:               p.hora_geracao || geracao.hora,
@@ -876,6 +880,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>{sc.label}</span>
                         <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>🔁 {RECORRENCIA_LABEL[p.recorrencia]}</span>
                       </div>
+                      {p.numero_as && (
+                        <div style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 800, lineHeight: 1.6, marginBottom: 2 }}>
+                          AS: {p.numero_as}
+                        </div>
+                      )}
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
                         <span>👤 {p.fiscal_login}</span>
                         <span style={{ margin: '0 8px' }}>·</span>
@@ -1093,7 +1102,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · <strong>qtde_cabos_os</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
               <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
-              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
+              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br />
+              <strong>No. AS:</strong> gerado automaticamente para cada pauta importada
             </div>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.txt" onChange={onFileChange} style={{ display: 'none' }} />
             <button onClick={() => fileRef.current?.click()} style={{

@@ -90,6 +90,7 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
       ${infoRow('Fiscal',         a.fiscal)}
       ${infoRow('Matrícula',      a.matricula)}
       ${infoRow('Equipe',         a.prefixo)}
+      ${infoRow('No. AS',         a.numero_as)}
       ${infoRow('OS',             a.os)}
       ${infoRow('UC',             a.uc)}
       ${infoRow('Endereço',       a.endereco)}
@@ -166,6 +167,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [tipoServico,    setTipoServico]    = useState([]) // multi
   const [tipoAuditoria,  setTipoAuditoria]  = useState([]) // multi
   const [motivoAuditoria, setMotivoAuditoria] = useState([]) // multi
+  const [numeroAS,       setNumeroAS]       = useState('')
   const [resultado,      setResultado]      = useState('') // single
   const [opcoesMotivoAuditoria, setOpcoesMotivoAuditoria] = useState([])
 
@@ -246,6 +248,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       }
 
       const podeVerTodos = podeVerTodas
+      const buscaAS = numeroAS.trim().toUpperCase()
 
       // ── 2) Opções dinâmicas do filtro Motivo Auditoria ──
       let qOpcoesMotivo = supabase
@@ -274,6 +277,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       if (tipoServico.length > 0)     q = q.in('tipo_servico', tipoServico)
       if (tipoAuditoria.length > 0)   q = q.in('tipo_auditoria', tipoAuditoria)
       if (motivoAuditoria.length > 0) q = q.in('motivo_auditoria', motivoAuditoria)
+      if (buscaAS)                    q = q.ilike('numero_as', `%${buscaAS}%`)
       if (resultado)                  q = q.eq('status', resultado)
       if (prefixosFiltrados)          q = q.in('prefixo', prefixosFiltrados)
 
@@ -340,6 +344,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           'Equipe (Prefixo)':       a.prefixo || '',
           'Supervisor de Campo':    sup.campo || '',
           'Supervisor Operacional': sup.op || '',
+          'No. AS':                 a.numero_as || '',
           'OS':                     a.os || '',
           'UC':                     a.uc || '',
           'Tipo Auditoria':         getTipoAuditoriaLabel(a.tipo_auditoria),
@@ -362,7 +367,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       const ws = XLSX.utils.json_to_sheet(linhas)
       ws['!cols'] = [
         { wch: 12 }, { wch: 8  }, { wch: 30 }, { wch: 12 }, { wch: 16 },
-        { wch: 22 }, { wch: 22 },
+        { wch: 22 }, { wch: 22 }, { wch: 24 },
         { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 30 }, { wch: 14 }, { wch: 12 },
         { wch: 8  }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 12 },
         { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 40 }, { wch: 10 },
@@ -384,6 +389,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         ['Tipo de Serviço',        tipoServico.length > 0 ? tipoServico.join(', ') : '(todos)'],
         ['Tipo Auditoria',         tipoAuditoria.length > 0 ? tipoAuditoria.map(getTipoAuditoriaLabel).join(', ') : '(todos)'],
         ['Motivo Auditoria',       motivoAuditoria.length > 0 ? motivoAuditoria.join(', ') : '(todos)'],
+        ['No. AS',                 numeroAS || '(todos)'],
         ['Supervisor de Campo',    filtros.selSupCampo.length > 0 ? filtros.selSupCampo.join(', ') : '(todos)'],
         ['Supervisor Operacional', filtros.selSupOp.length    > 0 ? filtros.selSupOp.join(', ')    : '(todos)'],
         ['Resultado',              resultado || '(todos)'],
@@ -419,6 +425,15 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   // ─── Filtros EXTRAS no painel: Tipo Serviço + Tipo Auditoria + Motivo + Resultado ───
   const extras = (
     <>
+      <div>
+        <label style={LABEL_STYLE}>No. AS</label>
+        <input
+          value={numeroAS}
+          onChange={e => setNumeroAS(e.target.value.toUpperCase())}
+          placeholder="AS-..."
+          style={INPUT_STYLE}
+        />
+      </div>
       <div>
         <label style={LABEL_STYLE}>Tipo Serviço</label>
         <MultiSelect
@@ -570,6 +585,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                         <span>👤 {a.fiscal}</span>
                         <span style={{ margin: '0 8px' }}>·</span>
                         <span>📅 {formatData(a.data_auditoria)} às {a.hora_auditoria}</span>
+                        {a.numero_as && <>
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>AS: <strong>{a.numero_as}</strong></span>
+                        </>}
                         <span style={{ margin: '0 8px' }}>·</span>
                         <span>OS: <strong>{a.os}</strong></span>
                         <span style={{ margin: '0 8px' }}>·</span>
@@ -625,6 +644,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 ['Equipe',         detalhe.prefixo],
                 ['Sup. Campo',     filtros.mapPrefixo[detalhe.prefixo]?.campo],
                 ['Sup. Operacional', filtros.mapPrefixo[detalhe.prefixo]?.op],
+                ['No. AS',         detalhe.numero_as],
                 ['OS',             detalhe.os],
                 ['UC',             detalhe.uc],
                 ['Endereço',       detalhe.endereco],
@@ -735,6 +755,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                       ${infoRow('Fiscal', detalhe.fiscal)}
                       ${infoRow('Matrícula', detalhe.matricula)}
                       ${infoRow('Equipe', detalhe.prefixo)}
+                      ${infoRow('No. AS', detalhe.numero_as)}
                       ${infoRow('OS', detalhe.os)}
                       ${infoRow('UC', detalhe.uc)}
                       ${infoRow('Endereço', detalhe.endereco)}

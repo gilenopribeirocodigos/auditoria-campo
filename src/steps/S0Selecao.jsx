@@ -1,5 +1,6 @@
 import { CHECKLISTS, getChecklist } from '../data/checklists.js'
 import { NavBar, Alert } from '../components/Shared.jsx'
+import { obterNumeroAS } from '../lib/numeroAS.js'
 
 const TIPOS_AUDITORIA = [
   { id: 'DESEMPENHO',  label: 'Desempenho Operacional', emoji: '📊', sub: 'Acompanhamento em tempo real' },
@@ -15,14 +16,27 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
 
   // Seleciona uma pauta obrigatória e pré-preenche o formulário
   const selecionarPauta = (pauta) => {
-    setPautaAtiva(pauta)
+    const numeroAS = obterNumeroAS(pauta.numero_as)
+    const pautaComAS = { ...pauta, numero_as: numeroAS }
+    setPautaAtiva(pautaComAS)
     setForm(f => ({
       ...f,
-      tipoServico:   pauta.tipo_servico,
-      tipoAuditoria: pauta.tipo_auditoria,
-      prefixo:       pauta.prefixo,
-      qtdeCabosOs:   pauta.qtde_cabos_os ?? '',
+      numeroAS,
+      tipoServico:   pautaComAS.tipo_servico,
+      tipoAuditoria: pautaComAS.tipo_auditoria,
+      prefixo:       pautaComAS.prefixo,
+      os:            pautaComAS.os || '',
+      uc:            pautaComAS.uc || '',
+      motivoAuditoria: pautaComAS.motivo_auditoria || '',
+      qtdeCabosOs:   pautaComAS.qtde_cabos_os ?? '',
       qtdeCabosEmCampo: '',
+      nomeEletricista: pautaComAS.nome_eletricista || '',
+      nomeEletricista2: pautaComAS.nome_eletricista2 || '',
+      matriculaEletricista1: pautaComAS.matricula_eletricista1 || '',
+      matriculaEletricista2: pautaComAS.matricula_eletricista2 || '',
+      statusMotivoAuditoria: null,
+      observacoesMotivoAuditoria: '',
+      fotosMotivo: [],
       produtivo:     null,
       respostas:     {},
       debitoPago:    null,
@@ -32,7 +46,28 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
   // Desmarca pauta
   const desmarcarPauta = () => {
     setPautaAtiva(null)
-    setForm(f => ({ ...f, tipoServico: '', tipoAuditoria: '', produtivo: null, qtdeCabosOs: '', qtdeCabosEmCampo: '', respostas: {}, debitoPago: null }))
+    setForm(f => ({
+      ...f,
+      numeroAS: obterNumeroAS(),
+      tipoServico: '',
+      tipoAuditoria: '',
+      prefixo: '',
+      os: '',
+      uc: '',
+      motivoAuditoria: '',
+      qtdeCabosOs: '',
+      qtdeCabosEmCampo: '',
+      nomeEletricista: '',
+      nomeEletricista2: '',
+      matriculaEletricista1: '',
+      matriculaEletricista2: '',
+      statusMotivoAuditoria: null,
+      observacoesMotivoAuditoria: '',
+      fotosMotivo: [],
+      produtivo: null,
+      respostas: {},
+      debitoPago: null,
+    }))
   }
 
   // SE TEM PAUTAS OBRIGATÓRIAS — modo bloqueado
@@ -78,6 +113,20 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                     </p>
 
                     {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
+                    {p.numero_as && (
+                      <p style={{ fontSize: 12, color: '#1d4ed8', fontWeight: 800, marginTop: 3 }}>
+                        No. AS: {p.numero_as}
+                      </p>
+                    )}
+
+                    {(p.os || p.uc) && (
+                      <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
+                        {p.os && <>OS: {p.os}</>}
+                        {p.os && p.uc && <span style={{ margin: '0 6px' }}>Â·</span>}
+                        {p.uc && <>UC: {p.uc}</>}
+                      </p>
+                    )}
+
                     {(p.nome_eletricista || p.nome_eletricista2) && (
                       <p style={{ fontSize: 12, color: '#0c4a6e', fontWeight: 600, marginTop: 3 }}>
                         👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
@@ -157,6 +206,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
               <Alert type="info">
                 <strong>Pauta: {pautaAtiva.prefixo}</strong> — {CHECKLISTS[form.tipoServico]?.label} —{' '}
                 {cl.label} — <strong>{cl.items.length} perguntas</strong>
+                {pautaAtiva.numero_as && <><br /><strong>No. AS:</strong> {pautaAtiva.numero_as}</>}
               </Alert>
             )}
           </>

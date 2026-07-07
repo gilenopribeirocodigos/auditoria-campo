@@ -7,6 +7,7 @@ import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
 import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/registros_offline.js'
+import { gerarNumeroAS } from './lib/numeroAS.js'
 
 import Login                    from './pages/Login.jsx'
 import GestaoUsuarios           from './pages/GestaoUsuarios.jsx'
@@ -217,7 +218,7 @@ export default function App() {
     finally { setLoadingPauta(false) }
     setAuditoriaEditando(null)
     setFotosAntigas([])
-    setForm({ ...FORM_INICIAL(), fiscal: usuario.nome || '', matricula: usuario.matricula || '' })
+    setForm({ ...FORM_INICIAL(), fiscal: usuario.nome || '', matricula: usuario.matricula || '', numeroAS: gerarNumeroAS() })
     setStep(0)
     setTela('auditoria')
   }
@@ -232,6 +233,7 @@ export default function App() {
       prefixo:          auditoria.prefixo           || '',
       os:               auditoria.os               || '',
       uc:               auditoria.uc               || '',
+      numeroAS:         auditoria.numero_as         || '',
       endereco:         auditoria.endereco          || '',
       lat:              auditoria.lat               || '',
       lng:              auditoria.lng               || '',
@@ -289,6 +291,7 @@ export default function App() {
           qtde_cabos_em_campo: form.qtdeCabosEmCampo || null,
           data_execucao: form.data || execucao.data,
           hora_execucao: form.hora || execucao.hora,
+          numero_as: form.numeroAS || pautaAtiva.numero_as || null,
         })
         await criarProximaRecorrencia(pautaAtiva)
         setPautaAtiva(null)
