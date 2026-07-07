@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js'
 import { reabrirAuditoria } from '../lib/supabase.js'
 import { CHECKLISTS, getItemsNaoConformes } from '../data/checklists.js'
 import { getVersaoApp } from '../lib/auth.js'
+import { numeroASDaAuditoria } from '../lib/numeroAS.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
@@ -277,19 +278,22 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       if (tipoServico.length > 0)     q = q.in('tipo_servico', tipoServico)
       if (tipoAuditoria.length > 0)   q = q.in('tipo_auditoria', tipoAuditoria)
       if (motivoAuditoria.length > 0) q = q.in('motivo_auditoria', motivoAuditoria)
-      if (buscaAS)                    q = q.ilike('numero_as', `%${buscaAS}%`)
       if (resultado)                  q = q.eq('status', resultado)
       if (prefixosFiltrados)          q = q.in('prefixo', prefixosFiltrados)
 
       const { data, error } = await q
       if (error) throw error
 
-      setAuditorias(data || [])
+      const auditoriasNormalizadas = (data || [])
+        .map(a => ({ ...a, numero_as: numeroASDaAuditoria(a) }))
+        .filter(a => !buscaAS || String(a.numero_as || '').toUpperCase().includes(buscaAS))
+
+      setAuditorias(auditoriasNormalizadas)
       setTotais({
-        total:     data.length,
-        atende:    data.filter(a => a.status === 'ATENDE').length,
-        parcial:   data.filter(a => a.status === 'ATENDE PARCIAL').length,
-        naoAtende: data.filter(a => a.status === 'NÃO ATENDE').length,
+        total:     auditoriasNormalizadas.length,
+        atende:    auditoriasNormalizadas.filter(a => a.status === 'ATENDE').length,
+        parcial:   auditoriasNormalizadas.filter(a => a.status === 'ATENDE PARCIAL').length,
+        naoAtende: auditoriasNormalizadas.filter(a => a.status === 'NÃO ATENDE').length,
       })
     } catch (e) { console.error(e) }
     finally { setLoading(false) }

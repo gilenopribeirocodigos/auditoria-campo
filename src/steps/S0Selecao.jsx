@@ -1,6 +1,6 @@
 import { CHECKLISTS, getChecklist } from '../data/checklists.js'
 import { NavBar, Alert } from '../components/Shared.jsx'
-import { obterNumeroAS } from '../lib/numeroAS.js'
+import { obterNumeroAS, numeroASDaPauta } from '../lib/numeroAS.js'
 
 const TIPOS_AUDITORIA = [
   { id: 'DESEMPENHO',  label: 'Desempenho Operacional', emoji: '📊', sub: 'Acompanhamento em tempo real' },
@@ -16,7 +16,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
 
   // Seleciona uma pauta obrigatória e pré-preenche o formulário
   const selecionarPauta = (pauta) => {
-    const numeroAS = obterNumeroAS(pauta.numero_as)
+    const numeroAS = numeroASDaPauta(pauta)
     const pautaComAS = { ...pauta, numero_as: numeroAS }
     setPautaAtiva(pautaComAS)
     setForm(f => ({
@@ -93,6 +93,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
           {pautasHoje.map(p => {
             const ativa = pautaAtiva?.id === p.id
+            const numeroAS = numeroASDaPauta(p)
             return (
               <button key={p.id} onClick={() => ativa ? desmarcarPauta() : selecionarPauta(p)} style={{
                 background: ativa ? '#eff6ff' : '#fff',
@@ -113,16 +114,14 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                     </p>
 
                     {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
-                    {p.numero_as && (
-                      <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
-                        No. AS: {p.numero_as}
-                      </p>
-                    )}
+                    <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
+                      No. AS: {numeroAS}
+                    </p>
 
                     {(p.os || p.uc) && (
                       <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
                         {p.os && <>OS: {p.os}</>}
-                        {p.os && p.uc && <span style={{ margin: '0 6px' }}>Â·</span>}
+                        {p.os && p.uc && <span style={{ margin: '0 6px' }}>-</span>}
                         {p.uc && <>UC: {p.uc}</>}
                       </p>
                     )}

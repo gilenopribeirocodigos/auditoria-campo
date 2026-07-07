@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
-import { gerarNumeroAS } from '../lib/numeroAS.js'
+import { gerarNumeroAS, numeroASDaPauta } from '../lib/numeroAS.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
@@ -581,6 +581,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   
       const linhas = pautasRel.flatMap(p => {
         const a = p.auditoria_id ? (mapAuditorias[p.auditoria_id] || {}) : {}
+        const numeroAS = numeroASDaPauta(p) || a.numero_as || ''
         const listaNcs = a.id ? (ncsPorAuditoria[a.id] || []) : []
         const registros = listaNcs.length > 0 ? listaNcs : [null]
         const geracaoOrigem = p.data_geracao
@@ -595,7 +596,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         const horaExecucao = p.hora_execucao || a.hora_execucao || a.hora_auditoria || execucao.hora
         return registros.map(nc => ({
           pauta_id:                   p.id || '',
-          'No. AS':                   p.numero_as || a.numero_as || '',
+          'No. AS':                   numeroAS,
           usuario_criacao:            p.usuario_criacao || p.usuario_criador || p.criado_por || p.created_by || p.usuario_registro || '',
           data_geracao:               p.data_geracao || geracao.data,
           hora_geracao:               p.hora_geracao || geracao.hora,

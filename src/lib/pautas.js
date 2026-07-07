@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { normalizarNumeroAS, obterNumeroAS } from './numeroAS.js'
+import { normalizarNumeroAS, obterNumeroAS, numeroASDaPauta } from './numeroAS.js'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
   const data = new Date(valor)
@@ -26,7 +26,7 @@ export async function listarPautas(filtros = {}) {
   if (filtros.data)         q = q.eq('data_prevista', filtros.data)
   const { data, error } = await q
   if (error) throw error
-  return data || []
+  return (data || []).map(p => ({ ...p, numero_as: numeroASDaPauta(p) }))
 }
 
 export async function pautasHojeFiscal(fiscal_login) {
@@ -39,7 +39,7 @@ export async function pautasHojeFiscal(fiscal_login) {
     .lte('data_prevista', hoje)
     .order('data_prevista')
   if (error) throw error
-  return data || []
+  return (data || []).map(p => ({ ...p, numero_as: numeroASDaPauta(p) }))
 }
 
 export async function criarPauta(payload) {
