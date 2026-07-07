@@ -211,6 +211,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       // usuário logado (cruzamento natural + processos liberados).
       // Aqui aplicamos os filtros do painel POR CIMA disso.
       const filtroHierarquicoAtivo =
+        filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
@@ -220,6 +221,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         // Itera só sobre prefixos que o usuário JÁ pode ver (mapPrefixo segregado)
         const set = new Set()
         Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+          if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return
           if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
           if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
           if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
@@ -377,6 +379,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         ['Gerado em', new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })],
         [''],
         ['FILTROS APLICADOS', ''],
+        ['Regional',               filtros.selRegional.length > 0 ? filtros.selRegional.join(', ') : '(todas)'],
         ['Prefixo(s)',             filtros.selPrefixos.length > 0 ? filtros.selPrefixos.join(', ') : '(todos)'],
         ['Tipo de Serviço',        tipoServico.length > 0 ? tipoServico.join(', ') : '(todos)'],
         ['Tipo Auditoria',         tipoAuditoria.length > 0 ? tipoAuditoria.map(getTipoAuditoriaLabel).join(', ') : '(todos)'],

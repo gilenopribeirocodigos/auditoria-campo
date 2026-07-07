@@ -37,6 +37,7 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
   // então iterar sobre ele já respeita a segregação automaticamente.
   const prefixosFiltrados = useMemo(() => {
     const filtroAtivo =
+      filtros.selRegional.length > 0 ||
       filtros.selSupOp.length    > 0 ||
       filtros.selSupCampo.length > 0 ||
       filtros.selPrefixos.length > 0
@@ -51,13 +52,14 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
     // Com filtros do painel: itera sobre mapPrefixo (já segregado)
     const set = new Set()
     Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+      if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return
       if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
       if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
       if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
       set.add(pref)
     })
     return [...set].sort()
-  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
+  }, [filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
   const buscar = async () => {
     if (prefixosFiltrados.length === 0) {
@@ -264,6 +266,11 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                 <p style={{ fontSize: 12, opacity: 0.8 }}>Relatório de Fiscalizações — DPL Construções</p>
                 <p style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>Contrato Equatorial Energia 1021/2024</p>
                 <p style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>Período: {formatPeriodo()}</p>
+                {filtros.selRegional.length > 0 && (
+                  <p style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
+                    Regional: {filtros.selRegional.join(', ')}
+                  </p>
+                )}
                 {filtros.selSupOp.length > 0 && (
                   <p style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
                     Sup. Operacional: {filtros.selSupOp.join(', ')}

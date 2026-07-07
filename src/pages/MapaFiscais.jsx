@@ -48,6 +48,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   // ─── Supervisores permitidos (segregação + filtros) ───
   const supervisoresAlvo = useMemo(() => {
     const filtroAtivo =
+      filtros.selRegional.length > 0 ||
       filtros.selSupOp.length    > 0 ||
       filtros.selSupCampo.length > 0 ||
       filtros.selPrefixos.length > 0
@@ -64,13 +65,14 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
     const set = new Set()
     Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+      if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return
       if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
       if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
       if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return
       if (info.campo) set.add(info.campo.toLowerCase())
     })
     return set
-  }, [filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
+  }, [filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
   const fiscalPermitido = (nome) => {
     if (!supervisoresAlvo) return true

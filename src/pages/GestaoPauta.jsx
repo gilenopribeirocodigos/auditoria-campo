@@ -434,19 +434,21 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       if (ini && p.data_prevista < ini) return false
       if (fim && p.data_prevista > fim) return false
       const filtroAtivo =
+        filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
       if (!filtroAtivo) return true
       const info = filtros.mapPrefixo[p.prefixo]
       if (!info) return false
+      if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return false
       if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(p.prefixo)) return false
       if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))      return false
       if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
       return true
     })
   }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
-      filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
+      filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
       filtros.prefixosPermitidos])
 
   const dataGeracaoPautaMs = p => {
@@ -507,6 +509,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         ? new Set(filtros.prefixosPermitidos)
         : null
       const filtroHierarquicoAtivo =
+        filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
@@ -516,6 +519,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         prefixosPermitidos = Object.entries(filtros.mapPrefixo)
           .filter(([pref, info]) => {
             if (prefixosBase && !prefixosBase.has(pref)) return false
+            if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return false
             if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref)) return false
             if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op)) return false
             if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false

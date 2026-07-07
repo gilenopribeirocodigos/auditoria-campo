@@ -167,6 +167,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       // Matching com registros.fiscal é fuzzy (substring case-insensitive)
       // porque fiscal tem nome completo e superv_campo pode ter só primeiro nome.
       const filtroHierarquicoAtivo =
+        filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
         filtros.selSupCampo.length > 0 ||
         filtros.selPrefixos.length > 0
@@ -177,6 +178,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         // Aplica filtros do painel sobre mapPrefixo (já segregado)
         const sups = new Set()
         Object.entries(filtros.mapPrefixo).forEach(([pref, info]) => {
+          if (filtros.selRegional.length > 0 && !filtros.selRegional.includes(info.regional)) return
           if (filtros.selSupOp.length    > 0 && !filtros.selSupOp.includes(info.op))       return
           if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return
           if (filtros.selPrefixos.length > 0 && !filtros.selPrefixos.includes(pref))       return

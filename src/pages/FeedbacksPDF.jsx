@@ -176,6 +176,11 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
                 <p style={{ fontSize: 13, marginTop: 8, fontWeight: 600 }}>
                   Período: {formatPeriodo()}
                 </p>
+                {filtros.selRegional.length > 0 && (
+                  <p style={{ fontSize: 12, marginTop: 4, fontWeight: 600, opacity: 0.9 }}>
+                    Regional: {filtros.selRegional.join(', ')}
+                  </p>
+                )}
                 {filtros.selSupOp.length > 0 && (
                   <p style={{ fontSize: 12, marginTop: 4, fontWeight: 600, opacity: 0.9 }}>
                     Sup. Operacional: {filtros.selSupOp.join(', ')}

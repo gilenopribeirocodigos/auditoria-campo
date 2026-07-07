@@ -118,11 +118,12 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
 
   // ── auditorias FILTRADAS (filtros.filtrar aplica Sup. Op + Sup. Campo + Prefixo + SEGREGAÇÃO) ──
   const realizadas     = useMemo(() => filtros.filtrar(audsRaw),
-    [audsRaw, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
+    [audsRaw, filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
   const realizadasHoje = useMemo(() => filtros.filtrar(audsHojeRaw),
-    [audsHojeRaw, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
+    [audsHojeRaw, filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo, filtros.prefixosPermitidos])
 
   const filtroHierarquicoAtivo =
+    filtros.selRegional.length > 0 ||
     filtros.selSupOp.length    > 0 ||
     filtros.selSupCampo.length > 0 ||
     filtros.selPrefixos.length > 0

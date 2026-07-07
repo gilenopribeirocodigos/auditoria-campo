@@ -250,6 +250,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
     filtros.mesAno || '',
     filtros.dataIni || '',
     filtros.dataFim || '',
+    filtros.selRegional.join('|'),
     filtros.selSupOp.join('|'),
     filtros.selSupCampo.join('|'),
     filtros.selPrefixos.join('|'),

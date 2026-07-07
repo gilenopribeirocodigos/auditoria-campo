@@ -355,6 +355,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     // Remanejados pertencem ao supervisor de destino no dia do registro.
     // Por isso nao podem ser cortados pela segregacao do prefixo original.
     const remanejadosVisiveis = remanejados.filter(e => {
+      const infoPrefixo = filtros.mapPrefixo?.[e.prefixo]
+      if (filtros.selRegional?.length > 0 && (!infoPrefixo || !filtros.selRegional.includes(infoPrefixo.regional))) return false
+      if (filtros.selSupOp?.length > 0 && (!infoPrefixo || !filtros.selSupOp.includes(infoPrefixo.op))) return false
       if (filtros.selPrefixos?.length > 0 && !filtros.selPrefixos.includes(e.prefixo)) return false
       if (filtros.selSupCampo?.length > 0 && !filtros.selSupCampo.includes(e.superv_campo)) return false
       return true

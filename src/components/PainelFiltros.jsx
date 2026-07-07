@@ -282,6 +282,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   const [mesAno,      setMesAno]      = useState(inicializarMes ? calcMesAtual() : '')
   const [dataIni,     setDataIni]     = useState('')
   const [dataFim,     setDataFim]     = useState('')
+  const [selRegional, setSelRegional] = useState([])
   const [selSupOp,    setSelSupOp]    = useState([])
   const [selSupCampo, setSelSupCampo] = useState([])
   const [selPrefixos, setSelPrefixos] = useState([])
@@ -296,10 +297,11 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   }
 
   const [estrutura, setEstrutura] = useState({
+    regionais: [],
     supervOps: [],
     supervCampos: [],
     prefixosTodos: [],
-    mapPrefixo: {},    // { prefixo: { op, campo } }
+    mapPrefixo: {},    // { prefixo: { regional, op, campo } }
     mapOpToCampo: {},  // { op: Set<campo> }
     prefixosPermitidos: null,  // null = sem restrição; array = lista de prefixos permitidos
     carregado: false,
@@ -310,13 +312,14 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   // os filtros visíveis são limitados aos prefixos permitidos pela regra cumulativa.
   useEffect(() => {
     supabase.from('estrutura_equipes')
-      .select('prefixo, superv_campo, superv_operacao, coordenador, matricula, colaborador, processo_equipe')
+      .select('regional, prefixo, superv_campo, superv_operacao, coordenador, matricula, colaborador, processo_equipe')
       .then(({ data }) => {
         // ─── 1) Calcula prefixos permitidos pelo usuário logado ───
         const prefixosPermitidos = calcularPrefixosPermitidos(data, usuarioLogado)
         const setPermitidos      = prefixosPermitidos ? new Set(prefixosPermitidos) : null
 
         // ─── 2) Processa estrutura aplicando segregação ───
+        const regionalSet = new Set()
         const opSet    = new Set()
         const campoSet = new Set()
         const prefSet  = new Set()
@@ -328,18 +331,21 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
           // Se há restrição e o prefixo NÃO está permitido, ignora a linha inteira
           if (setPermitidos && !setPermitidos.has(pref)) return
 
+          const regional = r.regional?.trim() || ''
           const op    = r.superv_operacao?.trim() || ''
           const campo = r.superv_campo?.trim()    || ''
+          if (regional) regionalSet.add(regional)
           if (op)    opSet.add(op)
           if (campo) campoSet.add(campo)
           prefSet.add(pref)
-          mp[pref] = { op, campo }
+          mp[pref] = { regional, op, campo }
           if (op && campo) {
             if (!op2c[op]) op2c[op] = new Set()
             op2c[op].add(campo)
           }
         })
         setEstrutura({
+          regionais:          [...regionalSet].sort(),
           supervOps:          [...opSet].sort(),
           supervCampos:       [...campoSet].sort(),
           prefixosTodos:      [...prefSet].sort(),
@@ -353,42 +359,80 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
 
   // ── Cascata 1: Sup. Op → limita Sup. Campo selecionados ──
   useEffect(() => {
-    if (selSupOp.length === 0) return
+    if (selRegional.length === 0) return
+    const validOps = new Set()
+    const validCampos = new Set()
+    const validPrefs = new Set()
+
+    Object.entries(estrutura.mapPrefixo).forEach(([pref, info]) => {
+      if (!selRegional.includes(info.regional)) return
+      if (info.op) validOps.add(info.op)
+      if (info.campo) validCampos.add(info.campo)
+      validPrefs.add(pref)
+    })
+
+    setSelSupOp(prev => prev.filter(op => validOps.has(op)))
+    setSelSupCampo(prev => prev.filter(campo => validCampos.has(campo)))
+    setSelPrefixos(prev => prev.filter(pref => validPrefs.has(pref)))
+  }, [selRegional, estrutura.mapPrefixo])
+
+  useEffect(() => {
+    if (selRegional.length === 0 && selSupOp.length === 0) return
     const validos = new Set()
-    selSupOp.forEach(op => estrutura.mapOpToCampo[op]?.forEach(c => validos.add(c)))
+    Object.values(estrutura.mapPrefixo).forEach(info => {
+      if (selRegional.length > 0 && !selRegional.includes(info.regional)) return
+      if (selSupOp.length > 0 && !selSupOp.includes(info.op)) return
+      if (info.campo) validos.add(info.campo)
+    })
     setSelSupCampo(prev => prev.filter(c => validos.has(c)))
-  }, [selSupOp, estrutura.mapOpToCampo])
+  }, [selRegional, selSupOp, estrutura.mapPrefixo])
 
   // ── Cascata 2: Sup. Op/Campo → limita Prefixos selecionados ──
   useEffect(() => {
-    if (selSupOp.length === 0 && selSupCampo.length === 0) return
+    if (selRegional.length === 0 && selSupOp.length === 0 && selSupCampo.length === 0) return
     setSelPrefixos(prev => prev.filter(p => {
       const info = estrutura.mapPrefixo[p]
       if (!info) return false
+      if (selRegional.length > 0 && !selRegional.includes(info.regional)) return false
       if (selSupOp.length    > 0 && !selSupOp.includes(info.op))       return false
       if (selSupCampo.length > 0 && !selSupCampo.includes(info.campo)) return false
       return true
     }))
-  }, [selSupOp, selSupCampo, estrutura.mapPrefixo])
+  }, [selRegional, selSupOp, selSupCampo, estrutura.mapPrefixo])
 
   // ── Opções visíveis (cascata aplicada) ──
-  const supervCamposVisiveis = useMemo(() => {
-    if (selSupOp.length === 0) return estrutura.supervCampos
+  const supervOpsVisiveis = useMemo(() => {
+    if (selRegional.length === 0) return estrutura.supervOps
     const validos = new Set()
-    selSupOp.forEach(op => estrutura.mapOpToCampo[op]?.forEach(c => validos.add(c)))
-    return estrutura.supervCampos.filter(c => validos.has(c))
-  }, [selSupOp, estrutura.mapOpToCampo, estrutura.supervCampos])
+    Object.values(estrutura.mapPrefixo).forEach(info => {
+      if (selRegional.includes(info.regional) && info.op) validos.add(info.op)
+    })
+    return estrutura.supervOps.filter(op => validos.has(op))
+  }, [selRegional, estrutura.mapPrefixo, estrutura.supervOps])
+
+  const supervCamposVisiveis = useMemo(() => {
+    if (selRegional.length === 0 && selSupOp.length === 0) return estrutura.supervCampos
+    return estrutura.supervCampos.filter(campo =>
+      Object.values(estrutura.mapPrefixo).some(info => {
+        if (info.campo !== campo) return false
+        if (selRegional.length > 0 && !selRegional.includes(info.regional)) return false
+        if (selSupOp.length > 0 && !selSupOp.includes(info.op)) return false
+        return true
+      })
+    )
+  }, [selRegional, selSupOp, estrutura.mapPrefixo, estrutura.supervCampos])
 
   const prefixosVisiveis = useMemo(() => {
-    if (selSupOp.length === 0 && selSupCampo.length === 0) return estrutura.prefixosTodos
+    if (selRegional.length === 0 && selSupOp.length === 0 && selSupCampo.length === 0) return estrutura.prefixosTodos
     return estrutura.prefixosTodos.filter(p => {
       const info = estrutura.mapPrefixo[p]
       if (!info) return false
+      if (selRegional.length > 0 && !selRegional.includes(info.regional)) return false
       if (selSupOp.length    > 0 && !selSupOp.includes(info.op))       return false
       if (selSupCampo.length > 0 && !selSupCampo.includes(info.campo)) return false
       return true
     })
-  }, [selSupOp, selSupCampo, estrutura.prefixosTodos, estrutura.mapPrefixo])
+  }, [selRegional, selSupOp, selSupCampo, estrutura.prefixosTodos, estrutura.mapPrefixo])
 
   // ── Datas para uso em queries (.gte/.lte) ──
   const getDatasQuery = () => {
@@ -423,7 +467,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   // filtra a lista pra incluir só itens com prefixo permitido, mesmo
   // sem nenhum filtro hierárquico ativo no painel.
   const filtrar = (lista, { prefixoField = 'prefixo' } = {}) => {
-    const temFiltro = selSupOp.length > 0 || selSupCampo.length > 0 || selPrefixos.length > 0
+    const temFiltro = selRegional.length > 0 || selSupOp.length > 0 || selSupCampo.length > 0 || selPrefixos.length > 0
     const setPermitidos = estrutura.prefixosPermitidos
       ? new Set(estrutura.prefixosPermitidos)
       : null
@@ -441,8 +485,9 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
       if (!temFiltro) return true
 
       // Filtros do painel
-      if (selPrefixos.length > 0 && !selPrefixos.includes(pref)) return false
       const info = estrutura.mapPrefixo[pref]
+      if (selRegional.length > 0 && (!info || !selRegional.includes(info.regional))) return false
+      if (selPrefixos.length > 0 && !selPrefixos.includes(pref)) return false
       if (selSupOp.length    > 0 && (!info || !selSupOp.includes(info.op)))       return false
       if (selSupCampo.length > 0 && (!info || !selSupCampo.includes(info.campo))) return false
       return true
@@ -451,6 +496,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
 
   // ── Limpar todos os filtros ──
   const limparTodos = () => {
+    setSelRegional([])
     setSelSupOp([])
     setSelSupCampo([])
     setSelPrefixos([])
@@ -462,6 +508,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
 
   // ── Algum filtro está ativo? ──
   const temFiltrosAtivos = (
+    selRegional.length > 0 ||
     selSupOp.length    > 0 ||
     selSupCampo.length > 0 ||
     selPrefixos.length > 0 ||
@@ -473,16 +520,18 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   return {
     // estados controlados
     tipoPeriodo, setTipoPeriodo,
-    tipoPeriodo, setTipoPeriodo,
     modoPeriodo, setModoPeriodo,
     mesAno,      setMesAno,
     dataIni,     setDataIni,
     dataFim,     setDataFim,
+    selRegional, setSelRegional,
     selSupOp,    setSelSupOp,
     selSupCampo, setSelSupCampo,
     selPrefixos, setSelPrefixos,
     // dados derivados de estrutura_equipes
+    regionais:           estrutura.regionais,
     supervOps:           estrutura.supervOps,
+    supervOpsVisiveis,
     supervCamposVisiveis,
     prefixosVisiveis,
     mapPrefixo:          estrutura.mapPrefixo,
@@ -517,10 +566,11 @@ export function PainelFiltros({
     mesAno,      setMesAno,
     dataIni,     setDataIni,
     dataFim,     setDataFim,
+    selRegional, setSelRegional,
     selSupOp,    setSelSupOp,
     selSupCampo, setSelSupCampo,
     selPrefixos, setSelPrefixos,
-    supervOps, supervCamposVisiveis, prefixosVisiveis,
+    regionais, supervOpsVisiveis, supervCamposVisiveis, prefixosVisiveis,
     periodoLabel, limparTodos, temFiltrosAtivos,
   } = filtros
 
@@ -666,11 +716,31 @@ export function PainelFiltros({
           </div>
         )}
 
+        {/* Regional */}
+        <div>
+          <label style={LABEL_STYLE}>Regional</label>
+          <MultiSelect
+            opcoes={regionais}
+            selecionados={selRegional}
+            onChange={setSelRegional}
+            placeholder="Todas"
+          />
+        </div>
+
         {/* Supervisor Operacional */}
         <div>
-          <label style={LABEL_STYLE}>Supervisor Operacional</label>
+          <label style={LABEL_STYLE}>
+            Supervisor Operacional
+            {selRegional.length > 0 && (
+              <span style={{
+                fontSize: 9, fontWeight: 700, color: '#2563eb',
+                background: '#dbeafe', padding: '2px 6px', borderRadius: 5,
+                marginLeft: 6, textTransform: 'none', letterSpacing: 0,
+              }}>cascata ativa</span>
+            )}
+          </label>
           <MultiSelect
-            opcoes={supervOps}
+            opcoes={supervOpsVisiveis}
             selecionados={selSupOp}
             onChange={setSelSupOp}
             placeholder="Todos"
@@ -681,7 +751,7 @@ export function PainelFiltros({
         <div>
           <label style={LABEL_STYLE}>
             Supervisor de Campo
-            {selSupOp.length > 0 && (
+            {(selRegional.length > 0 || selSupOp.length > 0) && (
               <span style={{
                 fontSize: 9, fontWeight: 700, color: '#2563eb',
                 background: '#dbeafe', padding: '2px 6px', borderRadius: 5,
@@ -702,7 +772,7 @@ export function PainelFiltros({
           <div>
             <label style={LABEL_STYLE}>
               Prefixo
-              {(selSupOp.length > 0 || selSupCampo.length > 0) && (
+              {(selRegional.length > 0 || selSupOp.length > 0 || selSupCampo.length > 0) && (
                 <span style={{
                   fontSize: 9, fontWeight: 700, color: '#2563eb',
                   background: '#dbeafe', padding: '2px 6px', borderRadius: 5,
