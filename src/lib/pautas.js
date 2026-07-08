@@ -19,6 +19,19 @@ function separarDataHoraFortaleza(valor = new Date().toISOString()) {
   return { data: '', hora: '' }
 }
 
+function prioridadePauta(p) {
+  const numero = Number(p?.prioridade_execucao)
+  return Number.isFinite(numero) && numero > 0 ? numero : null
+}
+
+function ordenarPautasExecucao(a, b) {
+  const pa = prioridadePauta(a)
+  const pb = prioridadePauta(b)
+  if (pa !== null || pb !== null) return (pa ?? 999999) - (pb ?? 999999)
+  return String(a.data_prevista || '').localeCompare(String(b.data_prevista || '')) ||
+    String(a.prefixo || '').localeCompare(String(b.prefixo || ''))
+}
+
 export async function listarPautas(filtros = {}) {
   let q = supabase.from('pautas').select('*').order('data_prevista')
   if (filtros.status)       q = q.eq('status', filtros.status)
@@ -39,7 +52,9 @@ export async function pautasHojeFiscal(fiscal_login) {
     .lte('data_prevista', hoje)
     .order('data_prevista')
   if (error) throw error
-  return (data || []).map(p => ({ ...p, numero_as: numeroASDaPauta(p) }))
+  return (data || [])
+    .map(p => ({ ...p, numero_as: numeroASDaPauta(p) }))
+    .sort(ordenarPautasExecucao)
 }
 
 export async function criarPauta(payload) {
@@ -117,6 +132,13 @@ export async function criarProximaRecorrencia(pauta) {
     observacao:             pauta.observacao,
     motivo_auditoria:       pauta.motivo_auditoria,
     qtde_cabos_os:          pauta.qtde_cabos_os ?? null,
+    latitude:               pauta.latitude ?? null,
+    longitude:              pauta.longitude ?? null,
+    cidade:                 pauta.cidade || null,
+    bairro:                 pauta.bairro || null,
+    endereco_referencia:    pauta.endereco_referencia || null,
+    data_os:                pauta.data_os || null,
+    prioridade_execucao:    pauta.prioridade_execucao ?? null,
     qtde_cabos_em_campo:    null,
     avaliacao_motivo_auditoria: null,
     matricula_eletricista1: pauta.matricula_eletricista1,

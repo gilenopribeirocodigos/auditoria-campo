@@ -264,6 +264,16 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
   )
 }
 
+function temCoordenadasPauta(p) {
+  return p?.latitude !== null && p?.latitude !== undefined && p?.latitude !== '' &&
+    p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
+}
+
+function linkRotaPauta(p) {
+  if (!temCoordenadasPauta(p)) return ''
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+}
+
 export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
   const [gpsLoading,      setGpsLoading]      = useState(false)
   const [gpsErro,         setGpsErro]         = useState('')
@@ -390,7 +400,17 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     )
   }
 
-  const temInfoPauta = pautaAtiva && (pautaAtiva.motivo_auditoria || pautaAtiva.qtde_cabos_os || pautaAtiva.observacao)
+  const temInfoPauta = pautaAtiva && (
+    pautaAtiva.motivo_auditoria ||
+    pautaAtiva.qtde_cabos_os ||
+    pautaAtiva.observacao ||
+    pautaAtiva.prioridade_execucao ||
+    pautaAtiva.data_os ||
+    pautaAtiva.cidade ||
+    pautaAtiva.bairro ||
+    pautaAtiva.endereco_referencia ||
+    temCoordenadasPauta(pautaAtiva)
+  )
 
   return (
     <div>
@@ -504,9 +524,33 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
           {pautaAtiva.qtde_cabos_os && (
             <div style={{
               fontSize: 12, color: '#92400e', fontWeight: 800,
-              marginBottom: pautaAtiva.observacao ? 10 : 0,
+              marginBottom: (pautaAtiva.prioridade_execucao || pautaAtiva.data_os || pautaAtiva.cidade || pautaAtiva.bairro || pautaAtiva.endereco_referencia || temCoordenadasPauta(pautaAtiva) || pautaAtiva.observacao) ? 10 : 0,
             }}>
               Cabos OS: {pautaAtiva.qtde_cabos_os}m
+            </div>
+          )}
+          {(pautaAtiva.prioridade_execucao || pautaAtiva.data_os || pautaAtiva.cidade || pautaAtiva.bairro || pautaAtiva.endereco_referencia || temCoordenadasPauta(pautaAtiva)) && (
+            <div style={{
+              background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 8,
+              padding: '8px 10px', fontSize: 12, color: '#475569',
+              fontWeight: 700, lineHeight: 1.6, marginBottom: pautaAtiva.observacao ? 10 : 0,
+            }}>
+              {pautaAtiva.prioridade_execucao && <div>Prioridade: {pautaAtiva.prioridade_execucao}</div>}
+              {pautaAtiva.data_os && <div>Data da OS: {pautaAtiva.data_os}</div>}
+              {(pautaAtiva.cidade || pautaAtiva.bairro) && (
+                <div>Local: {[pautaAtiva.cidade, pautaAtiva.bairro].filter(Boolean).join(' - ')}</div>
+              )}
+              {pautaAtiva.endereco_referencia && <div>Endereco: {pautaAtiva.endereco_referencia}</div>}
+              {temCoordenadasPauta(pautaAtiva) && (
+                <a
+                  href={linkRotaPauta(pautaAtiva)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#2563eb', fontWeight: 800, textDecoration: 'none' }}
+                >
+                  Abrir rota ate o local
+                </a>
+              )}
             </div>
           )}
           {pautaAtiva.observacao && (

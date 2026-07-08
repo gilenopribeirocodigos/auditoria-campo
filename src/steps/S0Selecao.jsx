@@ -9,6 +9,16 @@ const TIPOS_AUDITORIA = [
 
 const TIPO_AUDITORIA_LABEL = { DESEMPENHO: 'Desempenho Op.', POS_SERVICO: 'Pós Serviço' }
 
+function temCoordenadasPauta(p) {
+  return p?.latitude !== null && p?.latitude !== undefined && p?.latitude !== '' &&
+    p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
+}
+
+function linkRotaPauta(p) {
+  if (!temCoordenadasPauta(p)) return ''
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+}
+
 export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva }) {
   const temPautas = pautasHoje.length > 0
   const ok = form.tipoAuditoria && form.tipoServico && form.produtivo !== null
@@ -117,6 +127,26 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                     <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
                       No. AS: {numeroAS}
                     </p>
+
+                    {(p.prioridade_execucao || p.data_os || p.cidade || p.bairro || p.endereco_referencia || temCoordenadasPauta(p)) && (
+                      <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3, lineHeight: 1.5 }}>
+                        {p.prioridade_execucao && <div>Prioridade: {p.prioridade_execucao}</div>}
+                        {p.data_os && <div>Data da OS: {p.data_os}</div>}
+                        {(p.cidade || p.bairro) && <div>Local: {[p.cidade, p.bairro].filter(Boolean).join(' - ')}</div>}
+                        {p.endereco_referencia && <div>Endereco: {p.endereco_referencia}</div>}
+                        {temCoordenadasPauta(p) && (
+                          <span
+                            onClick={e => {
+                              e.stopPropagation()
+                              window.open(linkRotaPauta(p), '_blank', 'noopener,noreferrer')
+                            }}
+                            style={{ color: '#2563eb', fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            Abrir rota
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {(p.os || p.uc) && (
                       <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
