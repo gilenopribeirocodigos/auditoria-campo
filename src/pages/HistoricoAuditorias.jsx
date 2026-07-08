@@ -87,11 +87,11 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
       <span style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.8px;">Dados da Auditoria</span>
     </div>
     <table style="width:100%;border-collapse:collapse;">
+      ${infoRow('No. AS',         a.numero_as)}
       ${infoRow('Tipo Auditoria', a.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço')}
       ${infoRow('Fiscal',         a.fiscal)}
       ${infoRow('Matrícula',      a.matricula)}
       ${infoRow('Equipe',         a.prefixo)}
-      ${infoRow('No. AS',         a.numero_as)}
       ${infoRow('OS',             a.os)}
       ${infoRow('UC',             a.uc)}
       ${infoRow('Endereço',       a.endereco)}
@@ -641,6 +641,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
             <div style={{ background: '#f8fafc', borderRadius: 12, padding: '14px', marginBottom: 14 }}>
               {[
+                ['No. AS',         detalhe.numero_as],
                 ['Tipo Auditoria', detalhe.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Op.' : '✅ Pós Serviço'],
                 ['Tipo Serviço',   detalhe.tipo_servico + (detalhe.produtivo ? ' · Produtivo' : ' · Improdutivo')],
                 ['Fiscal',         detalhe.fiscal],
@@ -648,7 +649,6 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 ['Equipe',         detalhe.prefixo],
                 ['Sup. Campo',     filtros.mapPrefixo[detalhe.prefixo]?.campo],
                 ['Sup. Operacional', filtros.mapPrefixo[detalhe.prefixo]?.op],
-                ['No. AS',         detalhe.numero_as],
                 ['OS',             detalhe.os],
                 ['UC',             detalhe.uc],
                 ['Endereço',       detalhe.endereco],
@@ -756,10 +756,10 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                     </div>
                     <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
                       <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">Dados da Auditoria</p>
+                      ${infoRow('No. AS', detalhe.numero_as)}
                       ${infoRow('Fiscal', detalhe.fiscal)}
                       ${infoRow('Matrícula', detalhe.matricula)}
                       ${infoRow('Equipe', detalhe.prefixo)}
-                      ${infoRow('No. AS', detalhe.numero_as)}
                       ${infoRow('OS', detalhe.os)}
                       ${infoRow('UC', detalhe.uc)}
                       ${infoRow('Endereço', detalhe.endereco)}
