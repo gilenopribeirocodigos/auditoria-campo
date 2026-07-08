@@ -19,6 +19,10 @@ function linkRotaPauta(p) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
 }
 
+function localPauta(p) {
+  return [p?.cidade, p?.bairro].filter(Boolean).join('/')
+}
+
 export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva }) {
   const temPautas = pautasHoje.length > 0
   const ok = form.tipoAuditoria && form.tipoServico && form.produtivo !== null
@@ -132,7 +136,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                       <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3, lineHeight: 1.5 }}>
                         {p.prioridade_execucao && <div>Prioridade: {p.prioridade_execucao}</div>}
                         {p.data_os && <div>Data da OS: {p.data_os}</div>}
-                        {(p.cidade || p.bairro) && <div>Local: {[p.cidade, p.bairro].filter(Boolean).join(' - ')}</div>}
+                        {(p.cidade || p.bairro) && <div>{localPauta(p)}</div>}
                         {p.endereco_referencia && <div>Endereco: {p.endereco_referencia}</div>}
                         {temCoordenadasPauta(p) && (
                           <span

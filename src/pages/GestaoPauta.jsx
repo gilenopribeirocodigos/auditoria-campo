@@ -110,6 +110,35 @@ function temCoordenadasPauta(p) {
     p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
 }
 
+function localPauta(p) {
+  return [p?.cidade, p?.bairro].filter(Boolean).join('/')
+}
+
+async function buscarEnderecoPorCoordenadas(latitude, longitude) {
+  const lat = decimalAssinadoOuNull(latitude)
+  const lng = decimalAssinadoOuNull(longitude)
+  if (lat === null || lng === null) return null
+
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=pt-BR`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Nao foi possivel consultar o endereco pelas coordenadas.')
+
+  const data = await res.json()
+  const addr = data.address || {}
+  const cidade = addr.city || addr.town || addr.village || addr.municipality || addr.county || ''
+  const bairro = addr.suburb || addr.neighbourhood || addr.city_district || addr.quarter || addr.district || ''
+  const endereco = [
+    addr.road || addr.pedestrian || addr.footway || addr.residential,
+    addr.house_number,
+  ].filter(Boolean).join(', ') || data.display_name || ''
+
+  return {
+    cidade: limparTexto(cidade).toUpperCase(),
+    bairro: limparTexto(bairro).toUpperCase(),
+    endereco_referencia: limparTexto(endereco),
+  }
+}
+
 function linkRotaPauta(p) {
   if (!temCoordenadasPauta(p)) return ''
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
@@ -380,6 +409,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [csvPreview,   setCsvPreview]   = useState([])
   const [baixandoNcs,  setBaixandoNcs]  = useState(false)
   const [numeroASFiltro, setNumeroASFiltro] = useState('')
+  const [geoStatus,    setGeoStatus]    = useState('')
   // ── Novo estado: prefixo validado no modal ──
   const [prefixoValido, setPrefixoValido] = useState(false)
 
@@ -425,12 +455,46 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     return () => clearInterval(intervalRef.current)
   }, [])
 
+  useEffect(() => {
+    if (!modal) return
+    const lat = decimalAssinadoOuNull(formData.latitude)
+    const lng = decimalAssinadoOuNull(formData.longitude)
+    if (lat === null || lng === null) {
+      setGeoStatus('')
+      return
+    }
+
+    let cancelado = false
+    const timer = setTimeout(async () => {
+      setGeoStatus('consultando')
+      try {
+        const endereco = await buscarEnderecoPorCoordenadas(lat, lng)
+        if (cancelado || !endereco) return
+        setFormData(f => ({
+          ...f,
+          cidade: endereco.cidade || f.cidade,
+          bairro: endereco.bairro || f.bairro,
+          endereco_referencia: endereco.endereco_referencia || f.endereco_referencia,
+        }))
+        setGeoStatus('ok')
+      } catch {
+        if (!cancelado) setGeoStatus('erro')
+      }
+    }, 900)
+
+    return () => {
+      cancelado = true
+      clearTimeout(timer)
+    }
+  }, [modal, formData.latitude, formData.longitude])
+
   const upd       = (k, v) => setFormData(f => ({ ...f, [k]: v }))
   const abrirNovo = () => {
     if (!podeCriar) { setErro('Seu perfil nao possui permissao para criar pauta.'); return }
     setEditando(null)
     setFormData({ ...FORM_VAZIO })
     setPrefixoValido(false)
+    setGeoStatus('')
     setErro('')
     setModal(true)
   }
@@ -453,10 +517,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     })
     // Ao editar, o prefixo já existe — será validado silenciosamente pelo componente
     setPrefixoValido(false)
+    setGeoStatus('')
     setErro('')
     setModal(true)
   }
-  const fechar = () => { setModal(false); setErro(''); setPrefixoValido(false) }
+  const fechar = () => { setModal(false); setErro(''); setPrefixoValido(false); setGeoStatus('') }
 
   const salvar = async () => {
     if (editando && !podeEditarReprogramar) { setErro('Seu perfil nao possui permissao para editar/reprogramar pauta.'); return }
@@ -1013,7 +1078,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                       {(p.data_os || p.cidade || p.bairro || p.endereco_referencia || temCoordenadasPauta(p)) && (
                         <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, marginTop: 4 }}>
                           {p.data_os && <div>Data da OS: <strong>{p.data_os}</strong></div>}
-                          {(p.cidade || p.bairro) && <div>Local: {[p.cidade, p.bairro].filter(Boolean).join(' - ')}</div>}
+                          {(p.cidade || p.bairro) && <div>{localPauta(p)}</div>}
                           {p.endereco_referencia && <div>Endereco: {p.endereco_referencia}</div>}
                           {temCoordenadasPauta(p) && (
                             <a href={linkRotaPauta(p)} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 800, textDecoration: 'none' }}>
@@ -1146,6 +1211,22 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   <input className="form-input" value={formData.longitude ?? ''} onChange={e => upd('longitude', normalizarDecimalAssinadoTexto(e.target.value))} placeholder="Ex: -42.73958" inputMode="decimal" />
                 </div>
               </div>
+              {geoStatus && (
+                <div style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: geoStatus === 'ok' ? '#15803d' : geoStatus === 'erro' ? '#b91c1c' : '#475569',
+                  background: geoStatus === 'ok' ? '#dcfce7' : geoStatus === 'erro' ? '#fee2e2' : '#f1f5f9',
+                  border: `1px solid ${geoStatus === 'ok' ? '#86efac' : geoStatus === 'erro' ? '#fecaca' : '#cbd5e1'}`,
+                  borderRadius: 8,
+                  padding: '7px 10px',
+                  marginBottom: 10,
+                }}>
+                  {geoStatus === 'consultando' && 'Consultando endereco pelas coordenadas...'}
+                  {geoStatus === 'ok' && 'Endereco preenchido automaticamente pelas coordenadas.'}
+                  {geoStatus === 'erro' && 'Nao foi possivel calcular o endereco. Preencha cidade, bairro e endereco manualmente.'}
+                </div>
+              )}
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <div className="form-group">
                   <label className="form-label">Cidade</label>

@@ -274,6 +274,10 @@ function linkRotaPauta(p) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
 }
 
+function localPauta(p) {
+  return [p?.cidade, p?.bairro].filter(Boolean).join('/')
+}
+
 export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
   const [gpsLoading,      setGpsLoading]      = useState(false)
   const [gpsErro,         setGpsErro]         = useState('')
@@ -538,7 +542,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               {pautaAtiva.prioridade_execucao && <div>Prioridade: {pautaAtiva.prioridade_execucao}</div>}
               {pautaAtiva.data_os && <div>Data da OS: {pautaAtiva.data_os}</div>}
               {(pautaAtiva.cidade || pautaAtiva.bairro) && (
-                <div>Local: {[pautaAtiva.cidade, pautaAtiva.bairro].filter(Boolean).join(' - ')}</div>
+                <div>{localPauta(pautaAtiva)}</div>
               )}
               {pautaAtiva.endereco_referencia && <div>Endereco: {pautaAtiva.endereco_referencia}</div>}
               {temCoordenadasPauta(pautaAtiva) && (
