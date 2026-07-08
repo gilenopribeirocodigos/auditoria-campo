@@ -671,7 +671,7 @@ export default function App() {
       </header>
 
       <main className="app-content">
-        {step === 0 && <S0Selecao       {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} />}
+        {step === 0 && <S0Selecao       {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} permiteAuditoriaAvulsa={isAdmin(usuario) || temPermissao(usuario, 'auditoria_avulsa_com_pauta')} />}
         {step === 1 && <S1Identificacao {...stepProps} pautaAtiva={pautaAtiva} />}
         {step === 2 && <S3Checklist     {...stepProps} />}
         {step === 3 && <S4Fotos         {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}

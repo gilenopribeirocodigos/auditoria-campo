@@ -24,6 +24,7 @@ const TODAS_PERMISSOES = [
   { id: 'estrutura_online_importar',   label: 'Estrutura Online - importar total' },
   { id: 'estrutura_online_motivos',    label: 'Estrutura Online - botão Motivos (cadastrar/excluir)' },
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
+  { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
   { id: 'dashboard_indisponibilidade', label: '📈 Dashboard Indisponibilidade' },
