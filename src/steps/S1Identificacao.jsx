@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Field, NavBar, Alert } from '../components/Shared.jsx'
 import { supabase } from '../lib/supabase.js'
 
+const SITUACOES_AUDITORIA = ['ATIVO', 'RESERVA']
+
 async function buscarFiscais(texto) {
   if (!texto || texto.length < 2) return []
   const { data } = await supabase
@@ -32,7 +34,7 @@ async function buscarEletricistas(prefixo) {
     .from('estrutura_equipes')
     .select('matricula, colaborador')
     .eq('prefixo', prefixo)
-    .eq('descr_situacao', 'ATIVO')
+    .in('descr_situacao', SITUACOES_AUDITORIA)
     .order('colaborador')
   return data || []
 }
@@ -43,7 +45,7 @@ async function buscarPorNome(texto) {
     .from('estrutura_equipes')
     .select('matricula, colaborador')
     .ilike('colaborador', `%${texto}%`)
-    .eq('descr_situacao', 'ATIVO')
+    .in('descr_situacao', SITUACOES_AUDITORIA)
     .order('colaborador')
     .limit(10)
   return data || []
