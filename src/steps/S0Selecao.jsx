@@ -19,8 +19,12 @@ function linkRotaPauta(p) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
 }
 
+function textoPadrao(valor) {
+  return String(valor ?? '').trim().toLocaleUpperCase('pt-BR')
+}
+
 function localPauta(p) {
-  return [p?.cidade, p?.bairro].filter(Boolean).join('/')
+  return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
 }
 
 export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva }) {
@@ -129,15 +133,15 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
 
                     {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
                     <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
-                      No. AS: {numeroAS}
+                      NO. AS: {textoPadrao(numeroAS)}
                     </p>
 
                     {(p.prioridade_execucao || p.data_os || p.cidade || p.bairro || p.endereco_referencia || temCoordenadasPauta(p)) && (
                       <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3, lineHeight: 1.5 }}>
-                        {p.prioridade_execucao && <div>Prioridade: {p.prioridade_execucao}</div>}
-                        {p.data_os && <div>Data da OS: {p.data_os}</div>}
-                        {(p.cidade || p.bairro) && <div>{localPauta(p)}</div>}
-                        {p.endereco_referencia && <div>Endereco: {p.endereco_referencia}</div>}
+                        {p.prioridade_execucao && <div>PRIORIDADE: {p.prioridade_execucao}</div>}
+                        {p.data_os && <div>DATA DA OS: {p.data_os}</div>}
+                        {(p.cidade || p.bairro) && <div>CIDADE/BAIRRO: {localPauta(p)}</div>}
+                        {p.endereco_referencia && <div>ENDERECO: {textoPadrao(p.endereco_referencia)}</div>}
                         {temCoordenadasPauta(p) && (
                           <span
                             onClick={e => {
@@ -239,7 +243,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
               <Alert type="info">
                 <strong>Pauta: {pautaAtiva.prefixo}</strong> — {CHECKLISTS[form.tipoServico]?.label} —{' '}
                 {cl.label} — <strong>{cl.items.length} perguntas</strong>
-                {pautaAtiva.numero_as && <><br /><strong>No. AS:</strong> {pautaAtiva.numero_as}</>}
+                {pautaAtiva.numero_as && <><br /><strong>NO. AS:</strong> {textoPadrao(pautaAtiva.numero_as)}</>}
               </Alert>
             )}
           </>

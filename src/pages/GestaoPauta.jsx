@@ -110,8 +110,12 @@ function temCoordenadasPauta(p) {
     p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
 }
 
+function textoPadrao(valor) {
+  return limparTexto(valor).toLocaleUpperCase('pt-BR')
+}
+
 function localPauta(p) {
-  return [p?.cidade, p?.bairro].filter(Boolean).join('/')
+  return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
 }
 
 async function buscarEnderecoPorCoordenadas(latitude, longitude) {
@@ -127,15 +131,19 @@ async function buscarEnderecoPorCoordenadas(latitude, longitude) {
   const addr = data.address || {}
   const cidade = addr.city || addr.town || addr.village || addr.municipality || addr.county || ''
   const bairro = addr.suburb || addr.neighbourhood || addr.city_district || addr.quarter || addr.district || ''
+  const uf = String(addr['ISO3166-2-lvl4'] || addr.state_code || '').split('-').pop() || addr.state || ''
+  const cidadeUf = cidade && uf ? `${cidade} - ${uf}` : (cidade || uf)
   const endereco = [
     addr.road || addr.pedestrian || addr.footway || addr.residential,
     addr.house_number,
+    bairro,
+    cidadeUf,
   ].filter(Boolean).join(', ') || data.display_name || ''
 
   return {
-    cidade: limparTexto(cidade).toUpperCase(),
-    bairro: limparTexto(bairro).toUpperCase(),
-    endereco_referencia: limparTexto(endereco),
+    cidade: textoPadrao(cidade),
+    bairro: textoPadrao(bairro),
+    endereco_referencia: textoPadrao(endereco),
   }
 }
 
@@ -1053,12 +1061,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                       </div>
                       {p.numero_as && (
                         <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, lineHeight: 1.6, marginBottom: 2 }}>
-                          No. AS: {p.numero_as}
+                          NO. AS: {textoPadrao(p.numero_as)}
                         </div>
                       )}
                       {prioridadePauta(p) && (
                         <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, lineHeight: 1.6, marginBottom: 2 }}>
-                          Prioridade: {prioridadePauta(p)}
+                          PRIORIDADE: {prioridadePauta(p)}
                         </div>
                       )}
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
@@ -1077,9 +1085,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                       )}
                       {(p.data_os || p.cidade || p.bairro || p.endereco_referencia || temCoordenadasPauta(p)) && (
                         <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, marginTop: 4 }}>
-                          {p.data_os && <div>Data da OS: <strong>{p.data_os}</strong></div>}
-                          {(p.cidade || p.bairro) && <div>{localPauta(p)}</div>}
-                          {p.endereco_referencia && <div>Endereco: {p.endereco_referencia}</div>}
+                          {p.data_os && <div>DATA DA OS: <strong>{p.data_os}</strong></div>}
+                          {(p.cidade || p.bairro) && <div>CIDADE/BAIRRO: {localPauta(p)}</div>}
+                          {p.endereco_referencia && <div>ENDERECO: {textoPadrao(p.endereco_referencia)}</div>}
                           {temCoordenadasPauta(p) && (
                             <a href={linkRotaPauta(p)} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 800, textDecoration: 'none' }}>
                               Abrir rota

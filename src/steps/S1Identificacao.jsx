@@ -274,8 +274,12 @@ function linkRotaPauta(p) {
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
 }
 
+function textoPadrao(valor) {
+  return String(valor ?? '').trim().toLocaleUpperCase('pt-BR')
+}
+
 function localPauta(p) {
-  return [p?.cidade, p?.bairro].filter(Boolean).join('/')
+  return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
 }
 
 export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
@@ -539,12 +543,12 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
               padding: '8px 10px', fontSize: 12, color: '#475569',
               fontWeight: 700, lineHeight: 1.6, marginBottom: pautaAtiva.observacao ? 10 : 0,
             }}>
-              {pautaAtiva.prioridade_execucao && <div>Prioridade: {pautaAtiva.prioridade_execucao}</div>}
-              {pautaAtiva.data_os && <div>Data da OS: {pautaAtiva.data_os}</div>}
+              {pautaAtiva.prioridade_execucao && <div>PRIORIDADE: {pautaAtiva.prioridade_execucao}</div>}
+              {pautaAtiva.data_os && <div>DATA DA OS: {pautaAtiva.data_os}</div>}
               {(pautaAtiva.cidade || pautaAtiva.bairro) && (
-                <div>{localPauta(pautaAtiva)}</div>
+                <div>CIDADE/BAIRRO: {localPauta(pautaAtiva)}</div>
               )}
-              {pautaAtiva.endereco_referencia && <div>Endereco: {pautaAtiva.endereco_referencia}</div>}
+              {pautaAtiva.endereco_referencia && <div>ENDERECO: {textoPadrao(pautaAtiva.endereco_referencia)}</div>}
               {temCoordenadasPauta(pautaAtiva) && (
                 <a
                   href={linkRotaPauta(pautaAtiva)}
