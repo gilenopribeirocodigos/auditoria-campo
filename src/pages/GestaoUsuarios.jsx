@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react'
 import {
   listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp,
   listarProcessosUsuario, salvarProcessosUsuario,
+  listarRegionaisUsuario, salvarRegionaisUsuario,
 } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
-import { processoToKey } from '../components/PainelFiltros.jsx'
+import { processoToKey, regionalToKey } from '../components/PainelFiltros.jsx'
 
 const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 
@@ -86,9 +87,11 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
 
   // Processos distintos da estrutura_equipes (pra gerar toggles dinâmicos)
   const [processosDisponiveis, setProcessosDisponiveis] = useState([]) // [{ label, key }]
+  const [regionaisDisponiveis, setRegionaisDisponiveis] = useState([]) // [{ label, key }]
 
   // Processos atribuídos ao usuário atual no modal (granularidade individual)
   const [processosUsuario, setProcessosUsuario] = useState([])
+  const [regionaisUsuario, setRegionaisUsuario] = useState([])
 
   const carregar = async () => {
     setLoading(true)
@@ -139,12 +142,31 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     }
   }
 
-  useEffect(() => { carregar(); carregarVersaoSistema(); carregarProcessosDisponiveis() }, [])
+  const carregarRegionaisDisponiveis = async () => {
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select('regional')
+      const set = new Set()
+      ;(data || []).forEach(r => {
+        const p = (r.regional || '').trim()
+        if (p) set.add(p)
+      })
+      const lista = [...set].sort().map(label => ({
+        label, key: regionalToKey(label),
+      })).filter(p => p.key)
+      setRegionaisDisponiveis(lista)
+    } catch (e) {
+      console.warn('Erro carregando regionais:', e.message)
+    }
+  }
+
+  useEffect(() => { carregar(); carregarVersaoSistema(); carregarProcessosDisponiveis(); carregarRegionaisDisponiveis() }, [])
   useEffect(() => { if (abaAtiva === 'permissoes') carregarPermissoes() }, [abaAtiva])
 
   const abrirNovo   = () => {
     setEditando(null); setFormData(FORM_VAZIO); setErro('')
     setProcessosUsuario([])
+    setRegionaisUsuario([])
     setModal(true)
   }
   const abrirEditar = async u  => {
@@ -157,13 +179,26 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
       console.warn('Erro carregando processos do usuário:', e.message)
       setProcessosUsuario([])
     }
+    try {
+      const regs = await listarRegionaisUsuario(u.id)
+      setRegionaisUsuario(regs)
+    } catch (e) {
+      console.warn('Erro carregando regionais do usuário:', e.message)
+      setRegionaisUsuario([])
+    }
     setModal(true)
   }
-  const fechar      = () => { setModal(false); setErro(''); setProcessosUsuario([]) }
+  const fechar      = () => { setModal(false); setErro(''); setProcessosUsuario([]); setRegionaisUsuario([]) }
   const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
 
   const toggleProcessoUsuario = chave => {
     setProcessosUsuario(prev =>
+      prev.includes(chave) ? prev.filter(p => p !== chave) : [...prev, chave]
+    )
+  }
+
+  const toggleRegionalUsuario = chave => {
+    setRegionaisUsuario(prev =>
       prev.includes(chave) ? prev.filter(p => p !== chave) : [...prev, chave]
     )
   }
@@ -183,11 +218,11 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
       if (editando) usuarioSalvo = await atualizarUsuario(editando.id, payload)
       else          usuarioSalvo = await criarUsuario(payload)
 
-      console.log('💾 Usuário salvo:', usuarioSalvo?.id, '— processos a salvar:', processosUsuario)
+      console.log('💾 Usuário salvo:', usuarioSalvo?.id, '— processos/regionais a salvar:', processosUsuario, regionaisUsuario)
 
-      // Salva os processos atribuídos a esse usuário (granularidade individual)
       if (usuarioSalvo?.id) {
         await salvarProcessosUsuario(usuarioSalvo.id, processosUsuario)
+        await salvarRegionaisUsuario(usuarioSalvo.id, regionaisUsuario)
         console.log('✅ Processos salvos com sucesso pro usuário', usuarioSalvo.id)
       }
 
@@ -624,6 +659,54 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                         <div style={{
                           width: 40, height: 22, borderRadius: 11,
                           background: ativo ? '#10b981' : '#cbd5e1',
+                          position: 'relative', transition: 'background 0.2s',
+                        }}>
+                          <div style={{
+                            position: 'absolute', top: 3,
+                            left: ativo ? 21 : 3,
+                            width: 16, height: 16, borderRadius: '50%',
+                            background: '#fff', transition: 'left 0.2s',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+                          }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ─── Regionais da Estrutura que o usuário pode ver ─── */}
+            {regionaisDisponiveis.length > 0 && (
+              <div style={{
+                background: '#eff6ff', border: '1.5px solid #93c5fd',
+                borderRadius: 12, padding: '14px', marginBottom: 16,
+              }}>
+                <p style={{ fontSize: 13, fontWeight: 800, color: '#1e3a8a', marginBottom: 4 }}>
+                  🌎 Regionais que este usuário pode ver
+                </p>
+                <p style={{ fontSize: 11, color: '#1d4ed8', marginBottom: 12, lineHeight: 1.5 }}>
+                  Marque as regionais da estrutura que este usuário pode acessar.
+                  Quando houver regional marcada, ela limita a hierarquia natural e os processos liberados.
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {regionaisDisponiveis.map(reg => {
+                    const ativo = regionaisUsuario.includes(reg.key)
+                    return (
+                      <div key={reg.key} onClick={() => toggleRegionalUsuario(reg.key)} style={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '10px 12px', borderRadius: 8, cursor: 'pointer',
+                        background: ativo ? '#ecfeff' : '#fff',
+                        border: `1.5px solid ${ativo ? '#0891b2' : '#e2e8f0'}`,
+                        transition: 'all 0.2s',
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: ativo ? '#155e75' : '#64748b' }}>
+                          📍 {reg.label}
+                        </span>
+                        <div style={{
+                          width: 40, height: 22, borderRadius: 11,
+                          background: ativo ? '#0891b2' : '#cbd5e1',
                           position: 'relative', transition: 'background 0.2s',
                         }}>
                           <div style={{
