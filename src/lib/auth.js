@@ -42,11 +42,18 @@ export async function fazerLogin(login, senha) {
     .select('processo_chave')
     .eq('usuario_id', usuario.id)
 
-  // União: permissões do perfil + processos do usuário (chaves processo_XXX)
+  // Carrega regionais atribuídas especificamente ao usuário (granularidade individual)
+  const { data: regionaisUsuario } = await supabase
+    .from('usuarios_regionais')
+    .select('regional_chave')
+    .eq('usuario_id', usuario.id)
+
+  // União: permissões do perfil + processos/regionais do usuário
   // O PainelFiltros lê tudo de uma lista única `permissoes`, então basta juntar.
   const permissoes = [
-    ...(perms        || []).map(p => p.permissao),
-    ...(procsUsuario || []).map(p => p.processo_chave),
+    ...(perms            || []).map(p => p.permissao),
+    ...(procsUsuario     || []).map(p => p.processo_chave),
+    ...(regionaisUsuario || []).map(p => p.regional_chave),
   ]
 
   const usuarioSessao = {
@@ -217,5 +224,36 @@ export async function salvarProcessosUsuario(usuarioId, processosChaves) {
       throw new Error('Erro ao salvar processos novos: ' + errIns.message)
     }
     console.log('✅ INSERT ok:', data)
+  }
+}
+
+// ─── CRUD Regionais do Usuário (granularidade individual) ───
+export async function listarRegionaisUsuario(usuarioId) {
+  const { data, error } = await supabase
+    .from('usuarios_regionais')
+    .select('regional_chave')
+    .eq('usuario_id', usuarioId)
+  if (error) throw error
+  return (data || []).map(r => r.regional_chave)
+}
+
+// Salva a lista COMPLETA de regionais do usuário (substitui tudo).
+export async function salvarRegionaisUsuario(usuarioId, regionaisChaves) {
+  const { error: errDel } = await supabase
+    .from('usuarios_regionais')
+    .delete()
+    .eq('usuario_id', usuarioId)
+  if (errDel) throw new Error('Erro ao limpar regionais antigas: ' + errDel.message)
+
+  if (regionaisChaves.length > 0) {
+    const payload = regionaisChaves.map(chave => ({
+      usuario_id: usuarioId,
+      regional_chave: chave,
+    }))
+
+    const { error: errIns } = await supabase
+      .from('usuarios_regionais')
+      .insert(payload)
+    if (errIns) throw new Error('Erro ao salvar regionais novas: ' + errIns.message)
   }
 }

@@ -1,5 +1,7 @@
+import { useState } from 'react'
 import { CHECKLISTS, getChecklist } from '../data/checklists.js'
 import { NavBar, Alert } from '../components/Shared.jsx'
+import { obterNumeroAS, numeroASDaPauta } from '../lib/numeroAS.js'
 
 const TIPOS_AUDITORIA = [
   { id: 'DESEMPENHO',  label: 'Desempenho Operacional', emoji: '📊', sub: 'Acompanhamento em tempo real' },
@@ -8,21 +10,53 @@ const TIPOS_AUDITORIA = [
 
 const TIPO_AUDITORIA_LABEL = { DESEMPENHO: 'Desempenho Op.', POS_SERVICO: 'Pós Serviço' }
 
-export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva }) {
+function temCoordenadasPauta(p) {
+  return p?.latitude !== null && p?.latitude !== undefined && p?.latitude !== '' &&
+    p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
+}
+
+function linkRotaPauta(p) {
+  if (!temCoordenadasPauta(p)) return ''
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+}
+
+function textoPadrao(valor) {
+  return String(valor ?? '').trim().toLocaleUpperCase('pt-BR')
+}
+
+function localPauta(p) {
+  return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
+}
+
+export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva, permiteAuditoriaAvulsa = false }) {
+  const [modoAvulso, setModoAvulso] = useState(false)
   const temPautas = pautasHoje.length > 0
   const ok = form.tipoAuditoria && form.tipoServico && form.produtivo !== null
   const cl = ok ? getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo) : null
 
   // Seleciona uma pauta obrigatória e pré-preenche o formulário
   const selecionarPauta = (pauta) => {
-    setPautaAtiva(pauta)
+    const numeroAS = numeroASDaPauta(pauta)
+    const pautaComAS = { ...pauta, numero_as: numeroAS }
+    setPautaAtiva(pautaComAS)
     setForm(f => ({
       ...f,
-      tipoServico:   pauta.tipo_servico,
-      tipoAuditoria: pauta.tipo_auditoria,
-      prefixo:       pauta.prefixo,
-      qtdeCabosOs:   pauta.qtde_cabos_os ?? '',
+      numeroAS,
+      tipoServico:   pautaComAS.tipo_servico,
+      tipoAuditoria: pautaComAS.tipo_auditoria,
+      prefixo:       pautaComAS.prefixo,
+      os:            pautaComAS.os || '',
+      uc:            pautaComAS.uc || '',
+      motivoAuditoria: pautaComAS.motivo_auditoria || '',
+      qtdeCabosOs:   pautaComAS.qtde_cabos_os ?? '',
       qtdeCabosEmCampo: '',
+      nomeEletricista: pautaComAS.nome_eletricista || '',
+      nomeEletricista2: pautaComAS.nome_eletricista2 || '',
+      matriculaEletricista1: pautaComAS.matricula_eletricista1 || '',
+      matriculaEletricista2: pautaComAS.matricula_eletricista2 || '',
+      statusMotivoAuditoria: null,
+      observacoesMotivoAuditoria: '',
+      fotosMotivo: [],
       produtivo:     null,
       respostas:     {},
       debitoPago:    null,
@@ -32,11 +66,42 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
   // Desmarca pauta
   const desmarcarPauta = () => {
     setPautaAtiva(null)
-    setForm(f => ({ ...f, tipoServico: '', tipoAuditoria: '', produtivo: null, qtdeCabosOs: '', qtdeCabosEmCampo: '', respostas: {}, debitoPago: null }))
+    setForm(f => ({
+      ...f,
+      numeroAS: obterNumeroAS(),
+      tipoServico: '',
+      tipoAuditoria: '',
+      prefixo: '',
+      os: '',
+      uc: '',
+      motivoAuditoria: '',
+      qtdeCabosOs: '',
+      qtdeCabosEmCampo: '',
+      nomeEletricista: '',
+      nomeEletricista2: '',
+      matriculaEletricista1: '',
+      matriculaEletricista2: '',
+      statusMotivoAuditoria: null,
+      observacoesMotivoAuditoria: '',
+      fotosMotivo: [],
+      produtivo: null,
+      respostas: {},
+      debitoPago: null,
+    }))
   }
 
   // SE TEM PAUTAS OBRIGATÓRIAS — modo bloqueado
-  if (temPautas) {
+  const iniciarModoAvulso = () => {
+    desmarcarPauta()
+    setModoAvulso(true)
+  }
+
+  const voltarParaPautas = () => {
+    desmarcarPauta()
+    setModoAvulso(false)
+  }
+
+  if (temPautas && !modoAvulso) {
     return (
       <div>
         {/* Alerta obrigatório */}
@@ -49,7 +114,9 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
             Você tem {pautasHoje.length} pauta(s) obrigatória(s) hoje!
           </p>
           <p style={{ color: '#fecaca', fontSize: 12 }}>
-            Selecione uma equipe para fiscalizar. Você só pode auditar as equipes listadas abaixo.
+            {permiteAuditoriaAvulsa
+              ? 'Selecione uma pauta para cumprir ou use auditoria avulsa quando houver necessidade operacional.'
+              : 'Selecione uma equipe para fiscalizar. Você só pode auditar as equipes listadas abaixo.'}
           </p>
         </div>
 
@@ -58,6 +125,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
           {pautasHoje.map(p => {
             const ativa = pautaAtiva?.id === p.id
+            const numeroAS = numeroASDaPauta(p)
             return (
               <button key={p.id} onClick={() => ativa ? desmarcarPauta() : selecionarPauta(p)} style={{
                 background: ativa ? '#eff6ff' : '#fff',
@@ -78,6 +146,38 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
                     </p>
 
                     {/* ─── Eletricistas pré-atribuídos (se houver) ─── */}
+                    <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
+                      NO. AS: {textoPadrao(numeroAS)}
+                    </p>
+
+                    {(p.prioridade_execucao || p.data_os || p.cidade || p.bairro || p.endereco_referencia || temCoordenadasPauta(p)) && (
+                      <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3, lineHeight: 1.5 }}>
+                        {p.prioridade_execucao && <div>PRIORIDADE: {p.prioridade_execucao}</div>}
+                        {p.data_os && <div>DATA DA OS: {p.data_os}</div>}
+                        {(p.cidade || p.bairro) && <div>CIDADE/BAIRRO: {localPauta(p)}</div>}
+                        {p.endereco_referencia && <div>ENDERECO: {textoPadrao(p.endereco_referencia)}</div>}
+                        {temCoordenadasPauta(p) && (
+                          <span
+                            onClick={e => {
+                              e.stopPropagation()
+                              window.open(linkRotaPauta(p), '_blank', 'noopener,noreferrer')
+                            }}
+                            style={{ color: '#2563eb', fontWeight: 800, cursor: 'pointer' }}
+                          >
+                            Abrir rota
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {(p.os || p.uc) && (
+                      <p style={{ fontSize: 12, color: '#475569', fontWeight: 600, marginTop: 3 }}>
+                        {p.os && <>OS: {p.os}</>}
+                        {p.os && p.uc && <span style={{ margin: '0 6px' }}>-</span>}
+                        {p.uc && <>UC: {p.uc}</>}
+                      </p>
+                    )}
+
                     {(p.nome_eletricista || p.nome_eletricista2) && (
                       <p style={{ fontSize: 12, color: '#0c4a6e', fontWeight: 600, marginTop: 3 }}>
                         👷 {[p.nome_eletricista, p.nome_eletricista2].filter(Boolean).join(' | ')}
@@ -133,6 +233,27 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
         </div>
 
         {/* Status do Serviço — só aparece após selecionar pauta */}
+        {permiteAuditoriaAvulsa && (
+          <Alert type="warning">
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+              <div>
+                <strong>Auditoria avulsa autorizada.</strong><br />
+                As pautas obrigatórias continuam pendentes. Use esta opção apenas para uma auditoria fora da pauta programada.
+              </div>
+              <button
+                type="button"
+                onClick={iniciarModoAvulso}
+                style={{
+                  background: '#1e40af', color: '#fff', border: 'none', borderRadius: 10,
+                  padding: '10px 14px', fontWeight: 800, cursor: 'pointer',
+                }}
+              >
+                Iniciar auditoria avulsa
+              </button>
+            </div>
+          </Alert>
+        )}
+
         {pautaAtiva && (
           <>
             <p className="section-title">Status do Serviço</p>
@@ -157,6 +278,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
               <Alert type="info">
                 <strong>Pauta: {pautaAtiva.prefixo}</strong> — {CHECKLISTS[form.tipoServico]?.label} —{' '}
                 {cl.label} — <strong>{cl.items.length} perguntas</strong>
+                {pautaAtiva.numero_as && <><br /><strong>NO. AS:</strong> {textoPadrao(pautaAtiva.numero_as)}</>}
               </Alert>
             )}
           </>
@@ -171,6 +293,27 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
   // SEM PAUTAS — modo livre normal
   return (
     <div>
+      {temPautas && modoAvulso && (
+        <Alert type="warning">
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div>
+              <strong>Auditoria avulsa liberada.</strong><br />
+              Existem {pautasHoje.length} pauta(s) obrigatória(s) pendente(s) para este usuário.
+            </div>
+            <button
+              type="button"
+              onClick={voltarParaPautas}
+              style={{
+                background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: 10,
+                padding: '10px 14px', fontWeight: 800, cursor: 'pointer',
+              }}
+            >
+              Voltar para pautas obrigatórias
+            </button>
+          </div>
+        </Alert>
+      )}
+
       <p className="section-title">Tipo de Auditoria</p>
       <div className="type-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
         {TIPOS_AUDITORIA.map(t => (

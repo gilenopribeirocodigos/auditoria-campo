@@ -209,6 +209,15 @@ export function processoToKey(processo) {
   return norm ? `processo_${norm}` : ''
 }
 
+export function regionalToKey(regional) {
+  const norm = (regional || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return norm ? `regional_${norm}` : ''
+}
+
 // Calcula quais prefixos o usuário tem acesso baseado em:
 //   1. Cruzamento com estrutura_equipes (hierarquia natural)
 //   2. Processos liberados via permissões (chaves processo_XXX)
@@ -222,8 +231,19 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
 
   const perms = usuarioLogado.permissoes || []
 
-  // Override total
-  if (perms.includes('acesso_todos_processos')) return null
+  const regionaisLiberadas = new Set(
+    perms.filter(p => typeof p === 'string' && p.startsWith('regional_'))
+  )
+  const filtrarPorRegionais = linhas => {
+    if (regionaisLiberadas.size === 0) return linhas
+    return (linhas || []).filter(r => regionaisLiberadas.has(regionalToKey(r.regional)))
+  }
+
+  // Override total. Se houver regional marcada, ela limita o acesso total.
+  if (perms.includes('acesso_todos_processos')) {
+    if (regionaisLiberadas.size === 0) return null
+    return [...new Set(filtrarPorRegionais(estruturaData || []).map(r => r.prefixo).filter(Boolean))]
+  }
 
   // ─── 1. Hierarquia natural (regra que já existia) ───
   const nome      = usuarioLogado.nome || ''
@@ -246,14 +266,18 @@ function calcularPrefixosPermitidos(estruturaData, usuarioLogado) {
 
   // Regra cumulativa do manual: hierarquia natural + processos marcados.
   // Se não houver cruzamento natural nem processo marcado, mantém o padrão liberal.
-  if (linhasMinhas.length === 0 && processosLiberados.size === 0) return null
+  if (linhasMinhas.length === 0 && processosLiberados.size === 0 && regionaisLiberadas.size === 0) return null
 
   const linhasDosProcessos = processosLiberados.size > 0
     ? (estruturaData || []).filter(r => processosLiberados.has(processoToKey(r.processo_equipe)))
     : []
 
+  const base = (linhasMinhas.length || linhasDosProcessos.length)
+    ? [...linhasMinhas, ...linhasDosProcessos]
+    : (estruturaData || [])
+
   const todosPrefixos = new Set()
-  ;[...linhasMinhas, ...linhasDosProcessos].forEach(r => {
+  ;filtrarPorRegionais(base).forEach(r => {
     if (r.prefixo) todosPrefixos.add(r.prefixo)
   })
 

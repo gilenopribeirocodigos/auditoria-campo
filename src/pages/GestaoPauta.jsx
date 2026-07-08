@@ -1,11 +1,14 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
+import { gerarNumeroAS, numeroASDaPauta } from '../lib/numeroAS.js'
+import { isAdmin, temPermissao } from '../lib/auth.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
-  FIELD_HEIGHT,
+  LABEL_STYLE,
+  INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
 
 const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
@@ -23,8 +26,11 @@ const FORM_VAZIO = {
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
   recorrencia: 'UNICA', observacao: '', os: '', uc: '',
   motivo_auditoria: '', qtde_cabos_os: '',
+  latitude: '', longitude: '', cidade: '', bairro: '', endereco_referencia: '',
+  data_os: '', prioridade_execucao: '',
   matricula_eletricista1: '', matricula_eletricista2: '',
   nome_eletricista: '', nome_eletricista2: '',
+  numero_as: '',
 }
 
 function normalizarDecimalTexto(valor) {
@@ -33,11 +39,42 @@ function normalizarDecimalTexto(valor) {
   return decimais.length > 0 ? `${inteiro}.${decimais.join('')}` : inteiro
 }
 
+function normalizarDecimalAssinadoTexto(valor) {
+  let texto = String(valor ?? '').replace(',', '.').replace(/[^\d.-]/g, '')
+  const negativo = texto.trim().startsWith('-')
+  texto = texto.replace(/-/g, '')
+  const [inteiro, ...decimais] = texto.split('.')
+  const base = decimais.length > 0 ? `${inteiro}.${decimais.join('')}` : inteiro
+  return `${negativo ? '-' : ''}${base}`
+}
+
 function decimalOuNull(valor) {
   const texto = normalizarDecimalTexto(valor)
   if (!texto) return null
   const numero = Number(texto)
   return Number.isFinite(numero) ? numero : null
+}
+
+function decimalAssinadoOuNull(valor) {
+  const texto = normalizarDecimalAssinadoTexto(valor)
+  if (!texto || texto === '-') return null
+  const numero = Number(texto)
+  return Number.isFinite(numero) ? numero : null
+}
+
+function inteiroOuNull(valor) {
+  const numero = parseInt(String(valor ?? '').replace(/[^\d]/g, ''), 10)
+  return Number.isFinite(numero) && numero > 0 ? numero : null
+}
+
+function normalizarDataOuNull(valor) {
+  let data = limparTexto(valor)
+  if (!data) return null
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
+    const [d, m, a] = data.split('/')
+    data = `${a}-${m}-${d}`
+  }
+  return /^\d{4}-\d{2}-\d{2}$/.test(data) ? data : null
 }
 
 function limparTexto(texto) {
@@ -66,6 +103,66 @@ function calcStatus(p) {
   const hoje = new Date().toISOString().split('T')[0]
   if (p.data_prevista < hoje) return 'VENCIDA'
   return 'PENDENTE'
+}
+
+function temCoordenadasPauta(p) {
+  return p?.latitude !== null && p?.latitude !== undefined && p?.latitude !== '' &&
+    p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
+}
+
+function textoPadrao(valor) {
+  return limparTexto(valor).toLocaleUpperCase('pt-BR')
+}
+
+function localPauta(p) {
+  return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
+}
+
+async function buscarEnderecoPorCoordenadas(latitude, longitude) {
+  const lat = decimalAssinadoOuNull(latitude)
+  const lng = decimalAssinadoOuNull(longitude)
+  if (lat === null || lng === null) return null
+
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}&accept-language=pt-BR`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Nao foi possivel consultar o endereco pelas coordenadas.')
+
+  const data = await res.json()
+  const addr = data.address || {}
+  const cidade = addr.city || addr.town || addr.village || addr.municipality || addr.county || ''
+  const bairro = addr.suburb || addr.neighbourhood || addr.city_district || addr.quarter || addr.district || ''
+  const uf = String(addr['ISO3166-2-lvl4'] || addr.state_code || '').split('-').pop() || addr.state || ''
+  const cidadeUf = cidade && uf ? `${cidade} - ${uf}` : (cidade || uf)
+  const endereco = [
+    addr.road || addr.pedestrian || addr.footway || addr.residential,
+    addr.house_number,
+    bairro,
+    cidadeUf,
+  ].filter(Boolean).join(', ') || data.display_name || ''
+
+  return {
+    cidade: textoPadrao(cidade),
+    bairro: textoPadrao(bairro),
+    endereco_referencia: textoPadrao(endereco),
+  }
+}
+
+function linkRotaPauta(p) {
+  if (!temCoordenadasPauta(p)) return ''
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+}
+
+function prioridadePauta(p) {
+  const n = Number(p?.prioridade_execucao)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+function ordenarPautasExecucao(a, b) {
+  const pa = prioridadePauta(a)
+  const pb = prioridadePauta(b)
+  if (pa !== null || pb !== null) return (pa ?? 999999) - (pb ?? 999999)
+  return String(a.data_prevista || '').localeCompare(String(b.data_prevista || '')) ||
+    String(a.prefixo || '').localeCompare(String(b.prefixo || ''))
 }
 
 function statusConclusaoPauta(pauta, auditoria) {
@@ -127,11 +224,7 @@ function normalizarPauta(obj) {
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
   const ma = (c.motivo_auditoria || '').toUpperCase()
   const motivoAuditoria = MOTIVOS_AUDITORIA.includes(ma) ? ma : ''
-  let data = c.data_prevista || ''
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(data)) {
-    const [d, m, a] = data.split('/')
-    data = `${a}-${m}-${d}`
-  }
+  let data = normalizarDataOuNull(c.data_prevista) || ''
   if (!data) data = new Date().toISOString().split('T')[0]
   return {
     prefixo:                (c.prefixo || '').toUpperCase(),
@@ -147,6 +240,13 @@ function normalizarPauta(obj) {
       : null,
     os:                     c.os || '',
     uc:                     c.uc || '',
+    latitude:               decimalAssinadoOuNull(c.latitude || c.lat),
+    longitude:              decimalAssinadoOuNull(c.longitude || c.lng || c.long),
+    cidade:                 c.cidade || '',
+    bairro:                 c.bairro || '',
+    endereco_referencia:    c.endereco_referencia || c.endereco || c.endereco_os || '',
+    data_os:                normalizarDataOuNull(c.data_os || c.data_da_os),
+    prioridade_execucao:    inteiroOuNull(c.prioridade_execucao || c.prioridade || c.ordem_prioridade),
     matricula_eletricista1: (c.matricula_eletricista1 || c.matricula_eletricista || '').replace(/\D/g, ''),
     matricula_eletricista2: (c.matricula_eletricista2 || '').replace(/\D/g, ''),
     nome_eletricista:       '',
@@ -316,11 +416,20 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [csvStatus,    setCsvStatus]    = useState('')
   const [csvPreview,   setCsvPreview]   = useState([])
   const [baixandoNcs,  setBaixandoNcs]  = useState(false)
+  const [numeroASFiltro, setNumeroASFiltro] = useState('')
+  const [geoStatus,    setGeoStatus]    = useState('')
   // ── Novo estado: prefixo validado no modal ──
   const [prefixoValido, setPrefixoValido] = useState(false)
 
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
+
+  const admin = isAdmin(usuarioLogado)
+  const podeCriar = admin || temPermissao(usuarioLogado, 'pauta_criar')
+  const podeImportar = admin || temPermissao(usuarioLogado, 'pauta_importar_csv')
+  const podeEditarReprogramar = admin || temPermissao(usuarioLogado, 'pauta_editar_reprogramar')
+  const podeCancelar = admin || temPermissao(usuarioLogado, 'pauta_cancelar')
+  const podeExcluir = admin || temPermissao(usuarioLogado, 'pauta_excluir')
 
   const dadosCriacaoPauta = () => {
     const createdAt = new Date().toISOString()
@@ -330,6 +439,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       data_geracao: geracao.data,
       hora_geracao: geracao.hora,
       created_at: createdAt,
+      numero_as: gerarNumeroAS(),
     }
   }
 
@@ -353,15 +463,51 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     return () => clearInterval(intervalRef.current)
   }, [])
 
+  useEffect(() => {
+    if (!modal) return
+    const lat = decimalAssinadoOuNull(formData.latitude)
+    const lng = decimalAssinadoOuNull(formData.longitude)
+    if (lat === null || lng === null) {
+      setGeoStatus('')
+      return
+    }
+
+    let cancelado = false
+    const timer = setTimeout(async () => {
+      setGeoStatus('consultando')
+      try {
+        const endereco = await buscarEnderecoPorCoordenadas(lat, lng)
+        if (cancelado || !endereco) return
+        setFormData(f => ({
+          ...f,
+          cidade: endereco.cidade || f.cidade,
+          bairro: endereco.bairro || f.bairro,
+          endereco_referencia: endereco.endereco_referencia || f.endereco_referencia,
+        }))
+        setGeoStatus('ok')
+      } catch {
+        if (!cancelado) setGeoStatus('erro')
+      }
+    }, 900)
+
+    return () => {
+      cancelado = true
+      clearTimeout(timer)
+    }
+  }, [modal, formData.latitude, formData.longitude])
+
   const upd       = (k, v) => setFormData(f => ({ ...f, [k]: v }))
   const abrirNovo = () => {
+    if (!podeCriar) { setErro('Seu perfil nao possui permissao para criar pauta.'); return }
     setEditando(null)
     setFormData({ ...FORM_VAZIO })
     setPrefixoValido(false)
+    setGeoStatus('')
     setErro('')
     setModal(true)
   }
   const abrirEditar = p => {
+    if (!podeEditarReprogramar) { setErro('Seu perfil nao possui permissao para editar/reprogramar pauta.'); return }
     setEditando(p)
     setFormData({
       ...FORM_VAZIO,
@@ -369,15 +515,25 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       os: p.os || '', uc: p.uc || '',
       motivo_auditoria: p.motivo_auditoria || '',
       qtde_cabos_os: p.qtde_cabos_os ?? '',
+      latitude: p.latitude ?? '',
+      longitude: p.longitude ?? '',
+      cidade: p.cidade || '',
+      bairro: p.bairro || '',
+      endereco_referencia: p.endereco_referencia || '',
+      data_os: p.data_os || '',
+      prioridade_execucao: p.prioridade_execucao ?? '',
     })
     // Ao editar, o prefixo já existe — será validado silenciosamente pelo componente
     setPrefixoValido(false)
+    setGeoStatus('')
     setErro('')
     setModal(true)
   }
-  const fechar = () => { setModal(false); setErro(''); setPrefixoValido(false) }
+  const fechar = () => { setModal(false); setErro(''); setPrefixoValido(false); setGeoStatus('') }
 
   const salvar = async () => {
+    if (editando && !podeEditarReprogramar) { setErro('Seu perfil nao possui permissao para editar/reprogramar pauta.'); return }
+    if (!editando && !podeCriar) { setErro('Seu perfil nao possui permissao para criar pauta.'); return }
     if (!formData.prefixo || !formData.fiscal_login || !formData.data_prevista) {
       setErro('Prefixo, fiscal e data são obrigatórios.'); return
     }
@@ -393,6 +549,13 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         observacao:             limparTexto(formData.observacao),
         os:                     limparTexto(formData.os),
         uc:                     limparTexto(formData.uc),
+        latitude:               decimalAssinadoOuNull(formData.latitude),
+        longitude:              decimalAssinadoOuNull(formData.longitude),
+        cidade:                 limparTexto(formData.cidade).toUpperCase(),
+        bairro:                 limparTexto(formData.bairro).toUpperCase(),
+        endereco_referencia:    limparTexto(formData.endereco_referencia),
+        data_os:                normalizarDataOuNull(formData.data_os),
+        prioridade_execucao:    inteiroOuNull(formData.prioridade_execucao),
         qtde_cabos_os:          formData.motivo_auditoria === MOTIVO_MATERIAL_APLICADO
           ? decimalOuNull(formData.qtde_cabos_os)
           : null,
@@ -413,12 +576,14 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   }
 
   const cancelar = async p => {
+    if (!podeCancelar) { alert('Seu perfil nao possui permissao para cancelar pauta.'); return }
     if (!window.confirm(`Cancelar pauta ${p.prefixo}?`)) return
     try { await atualizarPauta(p.id, { status: 'CANCELADA' }); await carregar() }
     catch (e) { alert(e.message) }
   }
 
   const excluir = async p => {
+    if (!podeExcluir) { alert('Seu perfil nao possui permissao para excluir pauta.'); return }
     if (!window.confirm(`Excluir pauta ${p.prefixo}?`)) return
     try { await deletarPauta(p.id); await carregar() }
     catch (e) { alert(e.message) }
@@ -429,10 +594,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     const setPermitidos = filtros.prefixosPermitidos
       ? new Set(filtros.prefixosPermitidos)
       : null
+    const buscaAS = numeroASFiltro.trim().toUpperCase()
     return pautas.filter(p => {
       if (setPermitidos && !setPermitidos.has(p.prefixo)) return false
       if (ini && p.data_prevista < ini) return false
       if (fim && p.data_prevista > fim) return false
+      if (buscaAS && !String(p.numero_as || '').toUpperCase().includes(buscaAS)) return false
       const filtroAtivo =
         filtros.selRegional.length > 0 ||
         filtros.selSupOp.length    > 0 ||
@@ -447,7 +614,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       if (filtros.selSupCampo.length > 0 && !filtros.selSupCampo.includes(info.campo)) return false
       return true
     })
-  }, [pautas, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
+  }, [pautas, numeroASFiltro, filtros.modoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim,
       filtros.selRegional, filtros.selSupOp, filtros.selSupCampo, filtros.selPrefixos, filtros.mapPrefixo,
       filtros.prefixosPermitidos])
 
@@ -574,6 +741,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   
       const linhas = pautasRel.flatMap(p => {
         const a = p.auditoria_id ? (mapAuditorias[p.auditoria_id] || {}) : {}
+        const numeroAS = numeroASDaPauta(p) || a.numero_as || ''
         const listaNcs = a.id ? (ncsPorAuditoria[a.id] || []) : []
         const registros = listaNcs.length > 0 ? listaNcs : [null]
         const geracaoOrigem = p.data_geracao
@@ -588,6 +756,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         const horaExecucao = p.hora_execucao || a.hora_execucao || a.hora_auditoria || execucao.hora
         return registros.map(nc => ({
           pauta_id:                   p.id || '',
+          'No. AS':                   numeroAS,
           usuario_criacao:            p.usuario_criacao || p.usuario_criador || p.criado_por || p.created_by || p.usuario_registro || '',
           data_geracao:               p.data_geracao || geracao.data,
           hora_geracao:               p.hora_geracao || geracao.hora,
@@ -628,6 +797,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       })
       const colNames = [
         'pauta_id',
+        'No. AS',
         'usuario_criacao',
         'data_geracao',
         'hora_geracao',
@@ -752,6 +922,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const onFileChange = e => { const file = e.target.files?.[0]; if (file) lerArquivo(file); e.target.value = '' }
 
   const importarCsv = async () => {
+    if (!podeImportar) { setCsvStatus('Seu perfil nao possui permissao para importar pautas.'); return }
     if (!csvTexto.trim()) { setCsvStatus('❌ Nenhum dado para importar.'); return }
     setCsvStatus('importando')
     try {
@@ -816,17 +987,29 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           filtros={filtros}
           titulo="🔍 Filtros das Pautas"
           badge="período por data prevista"
+          extras={
+            <div>
+              <label style={LABEL_STYLE}>No. AS</label>
+              <input
+                value={numeroASFiltro}
+                onChange={e => setNumeroASFiltro(e.target.value.toUpperCase())}
+                placeholder="AS-..."
+                style={INPUT_STYLE}
+              />
+            </div>
+          }
         />
 
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <button onClick={abrirNovo} style={{
+          {podeCriar && <button onClick={abrirNovo} style={{
             background: '#d97706', color: '#fff', border: 'none',
             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-          }}>+ Nova Pauta</button>
-          <button onClick={() => setCsvModal(true)} style={{
+          }}>+ Nova Pauta</button>}
+          {podeImportar && <button onClick={() => setCsvModal(true)} style={{
             background: '#0f766e', color: '#fff', border: 'none',
             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer',
           }}>📥 Importar CSV</button>
+          }
           <button onClick={baixarRelatorioNCs} disabled={baixandoNcs} style={{
             background: baixandoNcs ? '#94a3b8' : '#dc2626', color: '#fff', border: 'none',
             padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700,
@@ -876,6 +1059,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>{sc.label}</span>
                         <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>🔁 {RECORRENCIA_LABEL[p.recorrencia]}</span>
                       </div>
+                      {p.numero_as && (
+                        <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, lineHeight: 1.6, marginBottom: 2 }}>
+                          NO. AS: {textoPadrao(p.numero_as)}
+                        </div>
+                      )}
+                      {prioridadePauta(p) && (
+                        <div style={{ fontSize: 12, color: '#475569', fontWeight: 700, lineHeight: 1.6, marginBottom: 2 }}>
+                          PRIORIDADE: {prioridadePauta(p)}
+                        </div>
+                      )}
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>
                         <span>👤 {p.fiscal_login}</span>
                         <span style={{ margin: '0 8px' }}>·</span>
@@ -888,6 +1081,18 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                           {p.os && <span>📄 OS: <strong>{p.os}</strong></span>}
                           {p.os && p.uc && <span style={{ margin: '0 8px' }}>·</span>}
                           {p.uc && <span>🏠 UC: <strong>{p.uc}</strong></span>}
+                        </div>
+                      )}
+                      {(p.data_os || p.cidade || p.bairro || p.endereco_referencia || temCoordenadasPauta(p)) && (
+                        <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.6, marginTop: 4 }}>
+                          {p.data_os && <div>DATA DA OS: <strong>{p.data_os}</strong></div>}
+                          {(p.cidade || p.bairro) && <div>CIDADE/BAIRRO: {localPauta(p)}</div>}
+                          {p.endereco_referencia && <div>ENDERECO: {textoPadrao(p.endereco_referencia)}</div>}
+                          {temCoordenadasPauta(p) && (
+                            <a href={linkRotaPauta(p)} target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 800, textDecoration: 'none' }}>
+                              Abrir rota
+                            </a>
+                          )}
                         </div>
                       )}
                       {(p.nome_eletricista || p.nome_eletricista2) && (
@@ -912,13 +1117,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         </div>
                       )}
                     </div>
-                    {p.status === 'PENDENTE' && (
+                    {p.status === 'PENDENTE' && (podeEditarReprogramar || podeCancelar) && (
                       <div style={{ display: 'flex', gap: 6, marginLeft: 10 }}>
-                        <button onClick={() => abrirEditar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 14 }}>✏️</button>
-                        <button onClick={() => cancelar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                        {podeEditarReprogramar && (
+                          <button onClick={() => abrirEditar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 14 }}>✏️</button>
+                        )}
+                        {podeCancelar && (
+                          <button onClick={() => cancelar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                        )}
                       </div>
                     )}
-                    {(p.status === 'CONCLUIDA' || p.status === 'CANCELADA') && (
+                    {(p.status === 'CONCLUIDA' || p.status === 'CANCELADA') && podeExcluir && (
                       <button onClick={() => excluir(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', marginLeft: 10, background: '#f1f5f9', color: '#7c3aed', cursor: 'pointer', fontSize: 14 }}>🗑️</button>
                     )}
                   </div>
@@ -960,6 +1169,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
+                <label className="form-label">Prioridade de Execucao</label>
+                <input className="form-input" value={formData.prioridade_execucao ?? ''} onChange={e => upd('prioridade_execucao', e.target.value.replace(/\D/g, ''))} placeholder="Ex: 1" inputMode="numeric" />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Data da OS</label>
+                <input className="form-input" type="date" value={formData.data_os || ''} onChange={e => upd('data_os', e.target.value)} />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div className="form-group">
                 <label className="form-label">Nº da OS</label>
                 <input className="form-input" value={formData.os} onChange={e => upd('os', e.target.value)} placeholder="Ordem de Serviço" />
               </div>
@@ -982,6 +1202,52 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   <option value="DESEMPENHO">Desempenho Op.</option>
                   <option value="POS_SERVICO">Pós Serviço</option>
                 </select>
+              </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+              <p style={{ fontSize: 11, fontWeight: 800, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
+                Localizacao da OS (opcional)
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-group">
+                  <label className="form-label">Latitude</label>
+                  <input className="form-input" value={formData.latitude ?? ''} onChange={e => upd('latitude', normalizarDecimalAssinadoTexto(e.target.value))} placeholder="Ex: -5.08947" inputMode="decimal" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Longitude</label>
+                  <input className="form-input" value={formData.longitude ?? ''} onChange={e => upd('longitude', normalizarDecimalAssinadoTexto(e.target.value))} placeholder="Ex: -42.73958" inputMode="decimal" />
+                </div>
+              </div>
+              {geoStatus && (
+                <div style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: geoStatus === 'ok' ? '#15803d' : geoStatus === 'erro' ? '#b91c1c' : '#475569',
+                  background: geoStatus === 'ok' ? '#dcfce7' : geoStatus === 'erro' ? '#fee2e2' : '#f1f5f9',
+                  border: `1px solid ${geoStatus === 'ok' ? '#86efac' : geoStatus === 'erro' ? '#fecaca' : '#cbd5e1'}`,
+                  borderRadius: 8,
+                  padding: '7px 10px',
+                  marginBottom: 10,
+                }}>
+                  {geoStatus === 'consultando' && 'Consultando endereco pelas coordenadas...'}
+                  {geoStatus === 'ok' && 'Endereco preenchido automaticamente pelas coordenadas.'}
+                  {geoStatus === 'erro' && 'Nao foi possivel calcular o endereco. Preencha cidade, bairro e endereco manualmente.'}
+                </div>
+              )}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-group">
+                  <label className="form-label">Cidade</label>
+                  <input className="form-input" value={formData.cidade || ''} onChange={e => upd('cidade', e.target.value.toUpperCase())} placeholder="Ex: TERESINA" />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Bairro</label>
+                  <input className="form-input" value={formData.bairro || ''} onChange={e => upd('bairro', e.target.value.toUpperCase())} placeholder="Ex: CENTRO" />
+                </div>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Endereco / Referencia</label>
+                <input className="form-input" value={formData.endereco_referencia || ''} onChange={e => upd('endereco_referencia', e.target.value)} placeholder="Rua, numero, ponto de referencia..." />
               </div>
             </div>
 
@@ -1090,10 +1356,11 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             </div>
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
-              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · <strong>qtde_cabos_os</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong><br /><br />
+              <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · <strong>qtde_cabos_os</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong> · latitude · longitude · cidade · bairro · endereco_referencia · data_os · prioridade_execucao<br /><br />
               <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
-              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD
+              <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br />
+              <strong>No. AS:</strong> gerado automaticamente para cada pauta importada
             </div>
             <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.txt" onChange={onFileChange} style={{ display: 'none' }} />
             <button onClick={() => fileRef.current?.click()} style={{
@@ -1109,7 +1376,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             <div className="form-group">
               <textarea className="form-textarea" value={csvTexto}
                 onChange={e => { setCsvTexto(e.target.value); setCsvPreview([]); setCsvStatus('') }}
-                placeholder={`prefixo;fiscal_login;data_prevista;motivo_auditoria;qtde_cabos_os\nPI-THE-C001M;gileno.ribeiro;2026-06-19;MATERIAL APLICADO EM CAMPO;22`}
+                placeholder={`prefixo;fiscal_login;data_prevista;motivo_auditoria;qtde_cabos_os;latitude;longitude;cidade;bairro;endereco_referencia;data_os;prioridade_execucao\nPI-THE-C001M;gileno.ribeiro;2026-06-19;MATERIAL APLICADO EM CAMPO;22;-5.08947;-42.73958;TERESINA;CENTRO;Rua exemplo;2026-06-18;1`}
                 rows={6} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </div>
             {csvPreview.length > 0 && (

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { Field, NavBar, Alert } from '../components/Shared.jsx'
 import { supabase } from '../lib/supabase.js'
 
+const SITUACOES_AUDITORIA = ['ATIVO', 'RESERVA']
+
 async function buscarFiscais(texto) {
   if (!texto || texto.length < 2) return []
   const { data } = await supabase
@@ -32,7 +34,7 @@ async function buscarEletricistas(prefixo) {
     .from('estrutura_equipes')
     .select('matricula, colaborador')
     .eq('prefixo', prefixo)
-    .eq('descr_situacao', 'ATIVO')
+    .in('descr_situacao', SITUACOES_AUDITORIA)
     .order('colaborador')
   return data || []
 }
@@ -43,7 +45,7 @@ async function buscarPorNome(texto) {
     .from('estrutura_equipes')
     .select('matricula, colaborador')
     .ilike('colaborador', `%${texto}%`)
-    .eq('descr_situacao', 'ATIVO')
+    .in('descr_situacao', SITUACOES_AUDITORIA)
     .order('colaborador')
     .limit(10)
   return data || []
@@ -262,6 +264,24 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
   )
 }
 
+function temCoordenadasPauta(p) {
+  return p?.latitude !== null && p?.latitude !== undefined && p?.latitude !== '' &&
+    p?.longitude !== null && p?.longitude !== undefined && p?.longitude !== ''
+}
+
+function linkRotaPauta(p) {
+  if (!temCoordenadasPauta(p)) return ''
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${p.latitude},${p.longitude}`)}`
+}
+
+function textoPadrao(valor) {
+  return String(valor ?? '').trim().toLocaleUpperCase('pt-BR')
+}
+
+function localPauta(p) {
+  return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
+}
+
 export default function S1Identificacao({ form, upd, setForm, next, prev, pautaAtiva }) {
   const [gpsLoading,      setGpsLoading]      = useState(false)
   const [gpsErro,         setGpsErro]         = useState('')
@@ -270,11 +290,31 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
   const [elet2Sugs,       setElet2Sugs]       = useState([])
   const [eletricistas,    setEletricistas]    = useState([])
   const [prefixoValido,   setPrefixoValido]   = useState(false)
+  const [asCopiada,       setAsCopiada]       = useState(false)
 
   const offline = !navigator.onLine
 
   // Prefixo válido = selecionado da lista OU offline
   const ok = form.fiscal && form.matricula && form.prefixo && form.os && form.uc && form.lat && (prefixoValido || offline)
+
+  const copiarNumeroAS = async () => {
+    if (!form.numeroAS) return
+    try {
+      await navigator.clipboard.writeText(form.numeroAS)
+    } catch {
+      const el = document.createElement('textarea')
+      el.value = form.numeroAS
+      el.setAttribute('readonly', '')
+      el.style.position = 'fixed'
+      el.style.opacity = '0'
+      document.body.appendChild(el)
+      el.select()
+      document.execCommand('copy')
+      document.body.removeChild(el)
+    }
+    setAsCopiada(true)
+    window.setTimeout(() => setAsCopiada(false), 1800)
+  }
 
   // Pré-preenche OS, UC, eletricistas e MOTIVO DA AUDITORIA a partir da pauta
   // ativa, sempre que os campos correspondentes ainda estiverem vazios no form.
@@ -282,6 +322,7 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
   // e no Resultado (S6) — sem essa cópia, `form.motivoAuditoria` nunca chega lá.
   useEffect(() => {
     if (!pautaAtiva) return
+    if (pautaAtiva.numero_as && !form.numeroAS) upd('numeroAS', pautaAtiva.numero_as)
     if (pautaAtiva.os && !form.os) upd('os', pautaAtiva.os)
     if (pautaAtiva.uc && !form.uc) upd('uc', pautaAtiva.uc)
     if (pautaAtiva.nome_eletricista && !form.nomeEletricista) {
@@ -367,7 +408,17 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     )
   }
 
-  const temInfoPauta = pautaAtiva && (pautaAtiva.motivo_auditoria || pautaAtiva.qtde_cabos_os || pautaAtiva.observacao)
+  const temInfoPauta = pautaAtiva && (
+    pautaAtiva.motivo_auditoria ||
+    pautaAtiva.qtde_cabos_os ||
+    pautaAtiva.observacao ||
+    pautaAtiva.prioridade_execucao ||
+    pautaAtiva.data_os ||
+    pautaAtiva.cidade ||
+    pautaAtiva.bairro ||
+    pautaAtiva.endereco_referencia ||
+    temCoordenadasPauta(pautaAtiva)
+  )
 
   return (
     <div>
@@ -398,6 +449,34 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
       <p className="section-title" style={{ marginTop: 18 }}>Dados do Serviço</p>
 
       {/* ── Prefixo com validação online/offline ── */}
+      {form.numeroAS && (
+        <div className="form-group">
+          <label className="form-label">No. AS</label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'center' }}>
+            <input
+              className="form-input"
+              value={form.numeroAS}
+              readOnly
+              onFocus={e => e.target.select()}
+            />
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={copiarNumeroAS}
+              style={{ height: 46, padding: '0 14px', whiteSpace: 'nowrap' }}
+              title="Copiar No. AS"
+            >
+              Copiar
+            </button>
+          </div>
+          {asCopiada && (
+            <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4, fontWeight: 700 }}>
+              AS copiada.
+            </p>
+          )}
+        </div>
+      )}
+
       <PrefixoInputValidado
         value={form.prefixo}
         onChange={v => upd('prefixo', v)}
@@ -453,9 +532,33 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
           {pautaAtiva.qtde_cabos_os && (
             <div style={{
               fontSize: 12, color: '#92400e', fontWeight: 800,
-              marginBottom: pautaAtiva.observacao ? 10 : 0,
+              marginBottom: (pautaAtiva.prioridade_execucao || pautaAtiva.data_os || pautaAtiva.cidade || pautaAtiva.bairro || pautaAtiva.endereco_referencia || temCoordenadasPauta(pautaAtiva) || pautaAtiva.observacao) ? 10 : 0,
             }}>
               Cabos OS: {pautaAtiva.qtde_cabos_os}m
+            </div>
+          )}
+          {(pautaAtiva.prioridade_execucao || pautaAtiva.data_os || pautaAtiva.cidade || pautaAtiva.bairro || pautaAtiva.endereco_referencia || temCoordenadasPauta(pautaAtiva)) && (
+            <div style={{
+              background: '#fff', border: '1.5px solid #fed7aa', borderRadius: 8,
+              padding: '8px 10px', fontSize: 12, color: '#475569',
+              fontWeight: 700, lineHeight: 1.6, marginBottom: pautaAtiva.observacao ? 10 : 0,
+            }}>
+              {pautaAtiva.prioridade_execucao && <div>PRIORIDADE: {pautaAtiva.prioridade_execucao}</div>}
+              {pautaAtiva.data_os && <div>DATA DA OS: {pautaAtiva.data_os}</div>}
+              {(pautaAtiva.cidade || pautaAtiva.bairro) && (
+                <div>CIDADE/BAIRRO: {localPauta(pautaAtiva)}</div>
+              )}
+              {pautaAtiva.endereco_referencia && <div>ENDERECO: {textoPadrao(pautaAtiva.endereco_referencia)}</div>}
+              {temCoordenadasPauta(pautaAtiva) && (
+                <a
+                  href={linkRotaPauta(pautaAtiva)}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ color: '#2563eb', fontWeight: 800, textDecoration: 'none' }}
+                >
+                  Abrir rota ate o local
+                </a>
+              )}
             </div>
           )}
           {pautaAtiva.observacao && (
