@@ -787,6 +787,10 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           item_id:                    nc?.item_id || '',
           item_nao_conforme:          nc?.item_texto || '',
           status_tratamento:          nc?.status_tratamento || '',
+          tratamento_observacao:      nc?.tratamento_observacao || '',
+          tratado_por:                nc?.tratado_por || '',
+          tratado_em:                 nc?.tratado_em ? new Date(nc.tratado_em).toLocaleString('pt-BR') : '',
+          eletricista_cientificado:   [nc?.tratamento_assinatura_nome, nc?.tratamento_assinatura2_nome].filter(Boolean).join(' e '),
         }))
       })
   
@@ -828,6 +832,10 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         'item_id',
         'item_nao_conforme',
         'status_tratamento',
+        'tratamento_observacao',
+        'tratado_por',
+        'tratado_em',
+        'eletricista_cientificado',
       ]
       const ws = XLSX.utils.json_to_sheet(linhas, { header: colNames })
       ws['!cols'] = colNames.map(col => {
@@ -1057,6 +1065,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{p.prefixo}</span>
                         <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>{sc.label}</span>
+                        {p.nc_status === 'PENDENTE' && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef3c7', color: '#c2410c' }}>🟠 NC Pendente</span>}
+                        {p.nc_status === 'TRATADA'  && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#dcfce7', color: '#15803d' }}>🟢 NC Tratada</span>}
                         <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>🔁 {RECORRENCIA_LABEL[p.recorrencia]}</span>
                       </div>
                       {p.numero_as && (

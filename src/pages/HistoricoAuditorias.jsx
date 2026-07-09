@@ -170,6 +170,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [motivoAuditoria, setMotivoAuditoria] = useState([]) // multi
   const [numeroAS,       setNumeroAS]       = useState('')
   const [resultado,      setResultado]      = useState('') // single
+  const [ncStatusFiltro, setNcStatusFiltro] = useState('') // single
   const [opcoesMotivoAuditoria, setOpcoesMotivoAuditoria] = useState([])
 
   const [auditorias, setAuditorias] = useState([])
@@ -279,6 +280,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       if (tipoAuditoria.length > 0)   q = q.in('tipo_auditoria', tipoAuditoria)
       if (motivoAuditoria.length > 0) q = q.in('motivo_auditoria', motivoAuditoria)
       if (resultado)                  q = q.eq('status', resultado)
+      if (ncStatusFiltro)             q = q.eq('nc_status', ncStatusFiltro)
       if (prefixosFiltrados)          q = q.in('prefixo', prefixosFiltrados)
 
       const { data, error } = await q
@@ -334,12 +336,31 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     finally { setReabrindo(false) }
   }
 
+  const NC_STATUS_LABEL = { PENDENTE: '🟠 Pendente', TRATADA: '🟢 Tratada' }
+
   const exportarExcel = async () => {
     if (auditorias.length === 0) { alert('Nenhuma auditoria para exportar. Faça uma busca primeiro.'); return }
     setExportando(true)
     try {
+      // ─── Busca as NCs das auditorias listadas (join manual em JS) ───
+      const auditoriaIds = auditorias.map(a => a.id).filter(Boolean)
+      let ncsPorAuditoria = {}
+      let todasNcs = []
+      if (auditoriaIds.length > 0) {
+        const { data: ncsData } = await supabase
+          .from('auditorias_nao_conformes')
+          .select('*')
+          .in('auditoria_id', auditoriaIds)
+        todasNcs = ncsData || []
+        todasNcs.forEach(nc => {
+          if (!ncsPorAuditoria[nc.auditoria_id]) ncsPorAuditoria[nc.auditoria_id] = []
+          ncsPorAuditoria[nc.auditoria_id].push(nc)
+        })
+      }
+
       const linhas = auditorias.map(a => {
         const sup = filtros.mapPrefixo[a.prefixo] || {}
+        const ncsDaAuditoria = ncsPorAuditoria[a.id] || []
         return {
           'Data':                   formatData(a.data_auditoria),
           'Hora':                   a.hora_auditoria || '',
@@ -365,6 +386,9 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           'Feedback Fiscal':        a.feedback || '',
           'Observações':            a.observacoes || '',
           'Qtd Fotos':              Array.isArray(a.fotos_urls) ? a.fotos_urls.length : 0,
+          'NC Pendentes':           ncsDaAuditoria.filter(n => n.status_tratamento === 'PENDENTE').length,
+          'NC Tratadas':            ncsDaAuditoria.filter(n => n.status_tratamento === 'TRATADA').length,
+          'Status Tratamento NC':   a.nc_status ? (NC_STATUS_LABEL[a.nc_status] || a.nc_status) : (ncsDaAuditoria.length > 0 ? '' : 'Sem NC'),
         }
       })
 
@@ -375,9 +399,33 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         { wch: 10 }, { wch: 12 }, { wch: 22 }, { wch: 30 }, { wch: 14 }, { wch: 12 },
         { wch: 8  }, { wch: 16 }, { wch: 40 }, { wch: 12 }, { wch: 12 },
         { wch: 30 }, { wch: 30 }, { wch: 40 }, { wch: 40 }, { wch: 10 },
+        { wch: 14 }, { wch: 14 }, { wch: 20 },
       ]
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, ws, 'Auditorias')
+
+      // ─── Aba extra: 1 linha por item de não conformidade ───
+      if (todasNcs.length > 0) {
+        const linhasNc = todasNcs.map(nc => ({
+          'No. AS':               nc.numero_as || '',
+          'Fiscal':                nc.fiscal || '',
+          'Prefixo':               nc.prefixo || '',
+          'OS':                    nc.os || '',
+          'UC':                    nc.uc || '',
+          'Tipo Auditoria':        getTipoAuditoriaLabel(nc.tipo_auditoria),
+          'Item Não Conforme':     nc.item_texto || '',
+          'Status Tratamento':     NC_STATUS_LABEL[nc.status_tratamento] || nc.status_tratamento || '',
+          'Observação Tratamento': nc.tratamento_observacao || '',
+          'Tratado por':           nc.tratado_por || '',
+          'Tratado em':            nc.tratado_em ? new Date(nc.tratado_em).toLocaleString('pt-BR') : '',
+        }))
+        const wsNc = XLSX.utils.json_to_sheet(linhasNc)
+        wsNc['!cols'] = [
+          { wch: 24 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+          { wch: 22 }, { wch: 40 }, { wch: 16 }, { wch: 40 }, { wch: 20 }, { wch: 18 },
+        ]
+        XLSX.utils.book_append_sheet(wb, wsNc, 'Não Conformidades')
+      }
 
       const { ini, fim } = filtros.getDatasQuery()
       const resumo = [
@@ -479,6 +527,18 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
           <option value="ATENDE">Atende</option>
           <option value="ATENDE PARCIAL">Atende Parcial</option>
           <option value="NÃO ATENDE">Não Atende</option>
+        </select>
+      </div>
+      <div>
+        <label style={LABEL_STYLE}>Status Tratamento NC</label>
+        <select value={ncStatusFiltro} onChange={e => setNcStatusFiltro(e.target.value)} style={{
+          ...INPUT_STYLE, cursor: 'pointer', appearance: 'none',
+          backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' viewBox=\'0 0 10 6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E")',
+          backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32,
+        }}>
+          <option value="">Todos</option>
+          <option value="PENDENTE">🟠 NC Pendente</option>
+          <option value="TRATADA">🟢 NC Tratada</option>
         </select>
       </div>
     </>
@@ -583,6 +643,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                         <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{a.prefixo}</span>
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: sc.bg, color: sc.color }}>{a.status}</span>
                         {a.reaberta && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef3c7', color: '#d97706' }}>🔓 Reaberta</span>}
+                        {a.nc_status === 'PENDENTE' && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef3c7', color: '#c2410c' }}>🟠 NC Pendente</span>}
+                        {a.nc_status === 'TRATADA'  && <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#dcfce7', color: '#15803d' }}>🟢 NC Tratada</span>}
                         <span style={{ fontSize: 11, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>{a.produtivo ? 'Produtivo' : 'Improdutivo'}</span>
                       </div>
                       <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>

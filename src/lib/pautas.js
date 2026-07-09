@@ -106,6 +106,9 @@ export async function concluirPauta(id, auditoria_id, dadosConclusao = {}) {
   if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'numero_as')) {
     update.numero_as = normalizarNumeroAS(dadosConclusao.numero_as) || null
   }
+  if (Object.prototype.hasOwnProperty.call(dadosConclusao, 'nc_status')) {
+    update.nc_status = dadosConclusao.nc_status ?? null
+  }
 
   const { error } = await supabase
     .from('pautas')

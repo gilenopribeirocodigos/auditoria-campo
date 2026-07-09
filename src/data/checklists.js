@@ -478,5 +478,9 @@ export const FORM_INICIAL = () => {
     fotosMotivo:                [],   // fotos exclusivas do motivo (mesmo formato de `fotos`)
     statusMotivoAuditoria:      null, // null | true (CONFORME) | false (NÃO CONFORME)
     observacoesMotivoAuditoria: '',
+    // ── Tratamento instantâneo de NC (só Desempenho Operacional, tela S6) ──
+    tratamentoNcTempoReal:      false, // checkbox obrigatório quando há NC
+    fiscalAssinatura:           null,  // assinatura nova do fiscal — Termo de Ciência do Fiscal
+    fiscalAssinaturaNome:       '',
   }
 }

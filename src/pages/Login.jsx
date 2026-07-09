@@ -4,8 +4,9 @@ import { fazerLogin, getVersaoApp } from '../lib/auth.js'
 const VERSAO = getVersaoApp()
 
 export default function Login({ onLogin }) {
-  const [login,   setLogin]   = useState('')
-  const [senha,   setSenha]   = useState('')
+  const [login,        setLogin]        = useState('')
+  const [senha,        setSenha]        = useState('')
+  const [mostrarSenha, setMostrarSenha] = useState(false)
   const [erro,    setErro]    = useState('')
   const [debug,   setDebug]   = useState('')
   const [loading, setLoading] = useState(false)
@@ -91,8 +92,31 @@ export default function Login({ onLogin }) {
             </div>
             <div className="form-group" style={{ marginBottom: 20 }}>
               <label className="form-label">Senha</label>
-              <input className="form-input" type="password" placeholder="••••••••"
-                value={senha} onChange={e => setSenha(e.target.value)} />
+              <div style={{ position: 'relative' }}>
+                <input className="form-input" type={mostrarSenha ? 'text' : 'password'} placeholder="••••••••"
+                  value={senha} onChange={e => setSenha(e.target.value)}
+                  style={{ paddingRight: 44 }} />
+                <button type="button" onClick={() => setMostrarSenha(v => !v)}
+                  aria-label={mostrarSenha ? 'Ocultar senha' : 'Mostrar senha'}
+                  style={{
+                    position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+                    width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 0,
+                  }}>
+                  {mostrarSenha ? (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  ) : (
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 3l18 18" />
+                      <path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-3.4 4.2M6.6 6.6C3.6 8.5 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4.4-1" />
+                      <path d="M9.5 9.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1.06" />
+                    </svg>
+                  )}
+                </button>
+              </div>
             </div>
             {erro && (
               <div style={{
