@@ -27,6 +27,7 @@ import PaginaAssinar            from './pages/PaginaAssinar.jsx'
 import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
 import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
 import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
+import TratamentoNaoConformidades from './pages/TratamentoNaoConformidades.jsx'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -269,7 +270,7 @@ export default function App() {
     setTela('auditoria')
   }
 
-  const onAuditoriaSalva = async (auditoria_id) => {
+  const onAuditoriaSalva = async (auditoria_id, extras = {}) => {
     contarPendentes().then(setPendentesOffline)
     if (auditoriaEditando) {
       setAuditoriaEditando(null)
@@ -292,6 +293,7 @@ export default function App() {
           data_execucao: form.data || execucao.data,
           hora_execucao: form.hora || execucao.hora,
           numero_as: form.numeroAS || pautaAtiva.numero_as || null,
+          nc_status: extras.nc_status ?? null,
         })
         await criarProximaRecorrencia(pautaAtiva)
         setPautaAtiva(null)
@@ -358,6 +360,7 @@ export default function App() {
   if (tela === 'indisponibilidade')    return <IndisponibilidadePage    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'rotinas-admin')        return <RotinasAdministrativas   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -526,6 +529,14 @@ export default function App() {
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>📝 Registros Operacionais</button>
+
+          {temPermissao(usuario, 'tratar_nc') && (
+            <button onClick={() => setTela('tratamento-ncs')} style={{
+              background: 'linear-gradient(135deg, rgba(194,65,12,0.9), rgba(154,52,18,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🛠️ Tratamento de Não Conformidades</button>
+          )}
 
           {temPermissao(usuario, 'rotinas_administrativas') && (
             <button onClick={() => setTela('rotinas-admin')} style={{

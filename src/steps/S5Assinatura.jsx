@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState } from 'react'
 import { Field, NavBar, Alert } from '../components/Shared.jsx'
 
-function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrigatorio }) {
+export function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrigatorio }) {
   const canvasRef = useRef(null)
   const drawing = useRef(false)
   const [signed, setSigned] = useState(!!assinatura)

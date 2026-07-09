@@ -1,4 +1,5 @@
 import { uploadBase64, salvarAuditoriaBD } from './supabase.js'
+import { sincronizarNCs } from './naoConformidades.js'
 
 const DB_NAME    = 'auditoria-dpl'
 const DB_VERSION = 2              // ← CORRIGIDO: era 1 (conflitava com registros_offline.js)
@@ -26,7 +27,7 @@ function abrirDB() {
   })
 }
 
-export async function salvarAuditoriaOffline(payload, fotosBase64, assinaturaBase64, assinatura2Base64) {
+export async function salvarAuditoriaOffline(payload, fotosBase64, assinaturaBase64, assinatura2Base64, ncData) {
   const db = await abrirDB()
   return new Promise((resolve, reject) => {
     const tx    = db.transaction(STORE, 'readwrite')
@@ -36,6 +37,9 @@ export async function salvarAuditoriaOffline(payload, fotosBase64, assinaturaBas
       fotosBase64:       fotosBase64       || [],
       assinaturaBase64:  assinaturaBase64  || null,
       assinatura2Base64: assinatura2Base64 || null,
+      // NCs da auditoria (se houver) — sincronizadas em auditorias_nao_conformes
+      // junto com o restante, quando a conexão voltar (ver sincronizarPendentes)
+      ncData: ncData || null,
       sincronizado: 0,  // FIX: era false, IndexedDB não aceita boolean como chave
       criadoEm: new Date().toISOString(),
     }
@@ -106,7 +110,26 @@ export async function sincronizarPendentes(onProgresso) {
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
       }
-      await salvarAuditoriaBD(payload)
+      const saved = await salvarAuditoriaBD(payload)
+
+      // ─── Sincroniza Não Conformidades (se houver) na tabela auxiliar ───
+      if (item.ncData?.ncItems?.length > 0 && saved?.id) {
+        let fiscalAssinaturaUrl = null
+        if (item.ncData.fiscalAssinaturaBase64) {
+          fiscalAssinaturaUrl = await uploadBase64(item.ncData.fiscalAssinaturaBase64, `${auditId}/assinatura_fiscal_nc.png`)
+        }
+        const camposTratamento = item.ncData.tratamentoDesempenho ? {
+          status_tratamento:               'TRATADA',
+          tratamento_observacao:            'Não conformidade tratada em tempo real',
+          tratamento_assinatura_url:        assinaturaUrl || null,
+          tratamento_assinatura_nome:       item.ncData.contexto?.nomeEletricista || null,
+          tratamento_fiscal_assinatura_url: fiscalAssinaturaUrl,
+          tratado_por:                      item.ncData.contexto?.matricula || item.ncData.contexto?.fiscal || null,
+          tratado_em:                       new Date().toISOString(),
+        } : {}
+        await sincronizarNCs(saved.id, item.ncData.ncItems, false, item.ncData.contexto, camposTratamento)
+      }
+
       await marcarSincronizado(item.id)
       sincronizados++
       if (onProgresso) onProgresso(sincronizados, pendentes.length)

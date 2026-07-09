@@ -1,9 +1,11 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
-import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, supabase } from '../lib/supabase.js'
+import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 import { obterNumeroAS } from '../lib/numeroAS.js'
+import { sincronizarNCs } from '../lib/naoConformidades.js'
+import { PainelAssinatura } from './S5Assinatura.jsx'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
   const data = new Date(valor)
@@ -41,6 +43,14 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
   const nao     = items.length - sim
   const ncItems = getItemsNaoConformes(form)
 
+  // ── Tratamento instantâneo de NC (só Desempenho Operacional) ──
+  // Pós Serviço não trata aqui: a NC nasce PENDENTE e é tratada depois,
+  // na tela "Tratamento de Não Conformidades".
+  const isDesempenho   = form.tipoAuditoria === 'DESEMPENHO'
+  const precisaTratarNc = isDesempenho && ncItems.length > 0
+  const tratamentoNcOk  = !precisaTratarNc || (form.tratamentoNcTempoReal && !!form.fiscalAssinatura)
+  const ncStatusValor   = ncItems.length === 0 ? null : (precisaTratarNc ? 'TRATADA' : 'PENDENTE')
+
   const [saveStatus,      setSaveStatus]      = useState('idle')
   const [saveError,       setSaveError]       = useState('')
   const [capturando,      setCapturando]      = useState(false)
@@ -50,6 +60,12 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
   const printAreaRef = useRef(null)
   const modoEdicao   = !!auditoriaEditandoId
   const online       = isOnline !== undefined ? isOnline : navigator.onLine
+
+  useEffect(() => {
+    if (precisaTratarNc && !form.fiscalAssinaturaNome && form.fiscal) {
+      setForm(f => ({ ...f, fiscalAssinaturaNome: f.fiscal }))
+    }
+  }, [precisaTratarNc])
 
   const cats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO']
   const catStats = cats.map(cat => {
@@ -332,70 +348,29 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
       prioridade_execucao:             pautaAtiva?.prioridade_execucao || null,
       data_execucao:                   form.data || execucao.data,
       hora_execucao:                   form.hora || execucao.hora,
+      nc_status:                       ncStatusValor,
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // Sincroniza as Não Conformidades da auditoria com a tabela auditorias_nao_conformes
-  // - Nova auditoria: só INSERT
-  // - Reabertura (modoEdicao=true): DELETE das antigas + INSERT das atuais
-  //   (porque as respostas podem ter mudado e NCs antigas podem não ser mais NCs)
-  // - Cada linha agora leva também os dados de identificação da auditoria
-  //   (fiscal, matrícula, prefixo, OS, UC, eletricista 1 e 2), denormalizados
-  //   para facilitar relatórios e a tela de tratamento de NCs sem precisar
-  //   de JOIN com a tabela `auditorias`.
-  // - Falhas são silenciosas (console.warn) pra não bloquear o salvar da auditoria
-  // ═══════════════════════════════════════════════════════════════════════════
-  const sincronizarNCs = async (auditoriaId, ncs, isEdicao) => {
-    try {
-      // Em modo edição: limpa NCs antigas antes de inserir as novas
-      if (isEdicao) {
-        const { error: delErr } = await supabase
-          .from('auditorias_nao_conformes')
-          .delete()
-          .eq('auditoria_id', auditoriaId)
-        if (delErr) {
-          console.warn('⚠️ Erro ao limpar NCs antigas:', delErr.message)
-        }
-      }
-
-      // Insere as NCs atuais (se houver), já com os campos de identificação
-      if (ncs && ncs.length > 0) {
-        const linhas = ncs.map(item => ({
-          auditoria_id:                 auditoriaId,
-          item_id:                      String(item.id ?? ''),
-          item_texto:                   item.p || '',
-          fiscal:                       form.fiscal           || null,
-          matricula:                    form.matricula        || null,
-          prefixo:                      form.prefixo          || null,
-          os:                           form.os               || null,
-          uc:                           form.uc               || null,
-          nome_eletricista:             form.nomeEletricista   || null,
-          nome_eletricista2:            form.nomeEletricista2  || null,
-          motivo_auditoria:             form.motivoAuditoria   || null,
-          avaliacao_motivo_auditoria:   avaliacaoMotivoTexto,
-          observacoes_motivo_auditoria: form.observacoesMotivoAuditoria || null,
-        }))
-        const { error: insErr } = await supabase
-          .from('auditorias_nao_conformes')
-          .upsert(linhas, {
-            onConflict:       'auditoria_id,item_id',
-            ignoreDuplicates: true,
-          })
-        if (insErr) {
-          console.warn('⚠️ Erro ao salvar NCs na tabela auditorias_nao_conformes:', insErr.message)
-        } else {
-          console.log(`✅ ${linhas.length} NC(s) salvas em auditorias_nao_conformes`)
-        }
-      }
-    } catch (e) {
-      console.warn('⚠️ Erro ao sincronizar NCs (tabela pode não existir):', e.message)
-    }
-  }
+  // Contexto de identificação da auditoria, usado pra denormalizar cada linha
+  // de auditorias_nao_conformes (ver src/lib/naoConformidades.js)
+  const contextoNC = (numeroASSalvo) => ({
+    fiscal: form.fiscal, matricula: form.matricula, prefixo: form.prefixo,
+    os: form.os, uc: form.uc,
+    nomeEletricista: form.nomeEletricista, nomeEletricista2: form.nomeEletricista2,
+    motivoAuditoria: form.motivoAuditoria, avaliacaoMotivoTexto,
+    observacoesMotivoAuditoria: form.observacoesMotivoAuditoria,
+    numeroAS: numeroASSalvo || form.numeroAS || pautaAtiva?.numero_as || null,
+    tipoAuditoria: form.tipoAuditoria,
+  })
 
   const salvar = async () => {
     setSaveStatus('saving')
     setSaveError('')
+    if (!tratamentoNcOk) {
+      setSaveStatus('idle')
+      return
+    }
     const numeroASSalvo = obterNumeroAS(form.numeroAS || pautaAtiva?.numero_as)
     if (!form.numeroAS) setForm(f => ({ ...f, numeroAS: numeroASSalvo }))
 
@@ -418,10 +393,18 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
         const fotosBase64  = form.fotos.map(f => f.url)
         const assinBase64  = form.assinatura  || null
         const assin2Base64 = form.assinatura2 || null
-        await salvarAuditoriaOffline(payload, fotosBase64, assinBase64, assin2Base64)
+        // NCs (se houver) vão junto na fila offline — sincronizadas quando
+        // a conexão voltar (ver sincronizarPendentes em lib/offline.js)
+        const ncData = ncItems.length > 0 ? {
+          ncItems,
+          contexto: contextoNC(numeroASSalvo),
+          tratamentoDesempenho: precisaTratarNc,
+          fiscalAssinaturaBase64: precisaTratarNc ? (form.fiscalAssinatura || null) : null,
+        } : null
+        await salvarAuditoriaOffline(payload, fotosBase64, assinBase64, assin2Base64, ncData)
         setSalvoOffline(true)
         setSaveStatus('saved')
-        if (onAuditoriaSalva) onAuditoriaSalva(null)
+        if (onAuditoriaSalva) onAuditoriaSalva(null, { nc_status: ncStatusValor })
       } catch (err) {
         setSaveError('Erro ao salvar offline: ' + err.message)
         setSaveStatus('error')
@@ -456,6 +439,12 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
       if (form.assinatura)  assinaturaUrl  = await uploadBase64(form.assinatura,  `${auditId}/assinatura_1.png`)
       if (form.assinatura2) assinatura2Url = await uploadBase64(form.assinatura2, `${auditId}/assinatura_2.png`)
 
+      // ── Termo de Ciência do Fiscal (só Desempenho, quando há NC) ──
+      let fiscalAssinaturaUrl = null
+      if (precisaTratarNc && form.fiscalAssinatura) {
+        fiscalAssinaturaUrl = await uploadBase64(form.fiscalAssinatura, `${auditId}/assinatura_fiscal_nc.png`)
+      }
+
       const payload = {
         ...montarPayload(numeroASSalvo),
         fotos_urls: fotosUrls,
@@ -479,11 +468,22 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
       // ─── Sincroniza Não Conformidades na tabela auxiliar ───
       // (Falha silenciosa: não bloqueia o sucesso do salvar da auditoria)
       if (saved?.id) {
-        await sincronizarNCs(saved.id, ncItems, modoEdicao)
+        // Desempenho: já nasce TRATADA (tratamento instantâneo desta tela).
+        // Pós Serviço: nasce sem esses campos — fica PENDENTE (default do banco).
+        const camposTratamentoNc = precisaTratarNc ? {
+          status_tratamento:                'TRATADA',
+          tratamento_observacao:             'Não conformidade tratada em tempo real',
+          tratamento_assinatura_url:         assinaturaUrl || null,
+          tratamento_assinatura_nome:        form.nomeEletricista || null,
+          tratamento_fiscal_assinatura_url:  fiscalAssinaturaUrl,
+          tratado_por:                       form.matricula || form.fiscal || null,
+          tratado_em:                        new Date().toISOString(),
+        } : {}
+        await sincronizarNCs(saved.id, ncItems, modoEdicao, contextoNC(numeroASSalvo), camposTratamentoNc)
       }
 
       setSaveStatus('saved')
-      if (onAuditoriaSalva) onAuditoriaSalva(saved.id)
+      if (onAuditoriaSalva) onAuditoriaSalva(saved.id, { nc_status: ncStatusValor })
 
     } catch (err) {
       console.error('Erro ao salvar:', err)
@@ -644,12 +644,74 @@ export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAudi
         </div>
       </div>
 
+      {/* ── Tratamento instantâneo de NC (só Desempenho Operacional, antes de finalizar) ── */}
+      {precisaTratarNc && saveStatus === 'idle' && (
+        <div className="no-print card" style={{ background: '#fff7ed', border: '1px solid #fdba74', marginTop: 16 }}>
+          <p style={{ fontSize: 13, fontWeight: 800, color: '#9a3412', marginBottom: 12 }}>
+            🛠️ Tratamento da(s) Não Conformidade(s) — obrigatório antes de finalizar
+          </p>
+
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 14, marginBottom: 14 }}>
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📄 Termo de Ciência — Eletricista</p>
+            {form.assinatura ? (
+              <>
+                <img src={form.assinatura} alt="Assinatura eletricista" style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
+                <p style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
+                  {form.nomeEletricista || 'Eletricista 1'} — atesta ciência da não conformidade e da obrigação de corrigir.
+                </p>
+              </>
+            ) : (
+              <p style={{ fontSize: 12, color: '#94a3b8' }}>Nenhuma assinatura coletada nesta auditoria.</p>
+            )}
+          </div>
+
+          <div style={{ marginBottom: 4 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+              Observação do Tratamento da Não Conformidade
+            </p>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+              background: form.tratamentoNcTempoReal ? '#f0fdf4' : '#fffbeb',
+              border: `1.5px solid ${form.tratamentoNcTempoReal ? '#86efac' : '#fcd34d'}`,
+              borderRadius: 10, padding: '12px 14px', marginBottom: 14,
+            }}>
+              <input
+                type="checkbox"
+                checked={form.tratamentoNcTempoReal}
+                onChange={e => upd('tratamentoNcTempoReal', e.target.checked)}
+                style={{ width: 20, height: 20 }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 700, color: form.tratamentoNcTempoReal ? '#15803d' : '#92400e' }}>
+                Não conformidade tratada em tempo real
+              </span>
+            </label>
+          </div>
+
+          <PainelAssinatura
+            label="Fiscal"
+            nome={form.fiscalAssinaturaNome}
+            onNome={v => upd('fiscalAssinaturaNome', v)}
+            assinatura={form.fiscalAssinatura}
+            onAssinatura={v => upd('fiscalAssinatura', v)}
+            obrigatorio={true}
+          />
+          <p style={{ fontSize: 11, color: '#78350f' }}>
+            Termo de Ciência do Fiscal — atesto que expliquei a não conformidade ao eletricista e orientei a correção.
+          </p>
+        </div>
+      )}
+
       {/* ── AÇÕES ── */}
       <div className="no-print" style={{ marginBottom: 40, marginTop: 16 }}>
 
         {saveStatus === 'idle' && (
           <>
-            <button className="btn-primary" onClick={salvar}
+            {precisaTratarNc && !tratamentoNcOk && (
+              <div className="alert alert-warning" style={{ marginBottom: 10 }}>
+                ⚠️ Marque o check e colete a assinatura do fiscal (Termo de Ciência) para liberar o salvamento.
+              </div>
+            )}
+            <button className="btn-primary" onClick={salvar} disabled={!tratamentoNcOk}
               style={{ background: modoEdicao ? '#d97706' : online ? '#1e3a5f' : '#dc2626', marginBottom: 10, fontSize: 16 }}>
               {modoEdicao ? '💾 Salvar Correção' : online ? '💾 Salvar Auditoria' : '📵 Salvar Offline'}
             </button>

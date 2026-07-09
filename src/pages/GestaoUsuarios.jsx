@@ -32,6 +32,7 @@ const TODAS_PERMISSOES = [
   { id: 'rotinas_configurar',      label: '🛠️ Rotinas — configurar modelos' },
   { id: 'rotinas_dashboard',       label: '📊 Rotinas — acompanhamento geral' },
   { id: 'rotinas_ver_todas',     label: '👥 Rotinas — ver rotinas de todos' },
+  { id: 'tratar_nc',        label: '🛠️ Tratamento de Não Conformidades' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },
   { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
