@@ -651,18 +651,12 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
             🛠️ Tratamento da(s) Não Conformidade(s) — obrigatório antes de finalizar
           </p>
 
-          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: 14, marginBottom: 14 }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📄 Termo de Ciência — Eletricista</p>
-            {form.assinatura ? (
-              <>
-                <img src={form.assinatura} alt="Assinatura eletricista" style={{ width: '100%', borderRadius: 8, border: '1px solid #f1f5f9', background: '#fafafa' }} />
-                <p style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
-                  {form.nomeEletricista || 'Eletricista 1'} — atesta ciência da não conformidade e da obrigação de corrigir.
-                </p>
-              </>
-            ) : (
-              <p style={{ fontSize: 12, color: '#94a3b8' }}>Nenhuma assinatura coletada nesta auditoria.</p>
-            )}
+          <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+            <p style={{ fontSize: 12, fontWeight: 800, color: '#1e3a5f', marginBottom: 4 }}>📋 Termo de Ciência de Não Conformidade</p>
+            <p style={{ fontSize: 12, color: '#1e40af', lineHeight: 1.5 }}>
+              <strong>{[form.nomeEletricista, form.nomeEletricista2].filter(Boolean).join(' e ') || 'O eletricista'}</strong>{' '}
+              {form.nomeEletricista2 ? 'tiveram' : 'teve'} ciência, ao assinar esta auditoria, da(s) não conformidade(s) identificada(s) acima e da obrigação de corrigi-la(s).
+            </p>
           </div>
 
           <div style={{ marginBottom: 4 }}>

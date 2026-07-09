@@ -790,7 +790,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           tratamento_observacao:      nc?.tratamento_observacao || '',
           tratado_por:                nc?.tratado_por || '',
           tratado_em:                 nc?.tratado_em ? new Date(nc.tratado_em).toLocaleString('pt-BR') : '',
-          eletricista_cientificado:   nc?.tratamento_assinatura_nome || '',
+          eletricista_cientificado:   [nc?.tratamento_assinatura_nome, nc?.tratamento_assinatura2_nome].filter(Boolean).join(' e '),
         }))
       })
   

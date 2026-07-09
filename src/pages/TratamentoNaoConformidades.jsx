@@ -58,11 +58,15 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   const pendentes   = grupo.itens.filter(i => i.status_tratamento === 'PENDENTE')
   const temPendente = pendentes.length > 0
 
+  const temEletricista2 = !!grupo.itens[0]?.nome_eletricista2
+
   const [aberto,           setAberto]           = useState(false)
   const [observacao,      setObservacao]      = useState('')
   const [fotos,            setFotos]           = useState([])
   const [nomeEletricista,  setNomeEletricista]  = useState(grupo.itens[0]?.nome_eletricista || '')
   const [assinatura,       setAssinatura]       = useState(null)
+  const [nomeEletricista2, setNomeEletricista2] = useState(grupo.itens[0]?.nome_eletricista2 || '')
+  const [assinatura2,      setAssinatura2]      = useState(null)
   const [salvando,         setSalvando]         = useState(false)
   const [erro,             setErro]             = useState('')
   const [reabrindo,        setReabrindo]        = useState(false)
@@ -78,6 +82,7 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
 
   const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && !!assinatura
+    && (!temEletricista2 || !!assinatura2)
 
   const confirmarTratamento = async () => {
     if (!podeConfirmar || !grupo.auditoria_id) return
@@ -90,6 +95,10 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
         evidenciasUrls.push(url)
       }
       const assinaturaUrl = await uploadBase64(assinatura, `nc_tratamento/${grupo.auditoria_id}/assinatura_${Date.now()}.png`)
+      let assinatura2Url = null
+      if (temEletricista2 && assinatura2) {
+        assinatura2Url = await uploadBase64(assinatura2, `nc_tratamento/${grupo.auditoria_id}/assinatura2_${Date.now()}.png`)
+      }
 
       const { error } = await supabase
         .from('auditorias_nao_conformes')
@@ -99,6 +108,10 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
           tratamento_evidencias_urls:   evidenciasUrls,
           tratamento_assinatura_url:    assinaturaUrl,
           tratamento_assinatura_nome:   nomeEletricista || null,
+          ...(temEletricista2 && {
+            tratamento_assinatura2_url:  assinatura2Url,
+            tratamento_assinatura2_nome: nomeEletricista2 || null,
+          }),
           tratado_por:                  usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
           tratado_em:                   new Date().toISOString(),
         })
@@ -194,6 +207,12 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
           {grupo.itens[0]?.tratamento_observacao && (
             <p style={{ marginTop: 4 }}><strong>Observação:</strong> {grupo.itens[0].tratamento_observacao}</p>
           )}
+          {(grupo.itens[0]?.tratamento_assinatura_nome || grupo.itens[0]?.tratamento_assinatura2_nome) && (
+            <p style={{ marginTop: 4 }}>
+              <strong>Eletricista(s) cientificado(s):</strong>{' '}
+              {[grupo.itens[0]?.tratamento_assinatura_nome, grupo.itens[0]?.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}
+            </p>
+          )}
           {isAdmin(usuarioLogado) && (
             <button onClick={reabrir} disabled={reabrindo} style={{
               marginTop: 8, fontSize: 11, fontWeight: 700, color: '#dc2626',
@@ -250,13 +269,24 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
           </div>
 
           <PainelAssinatura
-            label="Eletricista"
+            label="Eletricista 1"
             nome={nomeEletricista}
             onNome={setNomeEletricista}
             assinatura={assinatura}
             onAssinatura={setAssinatura}
             obrigatorio={true}
           />
+
+          {temEletricista2 && (
+            <PainelAssinatura
+              label="Eletricista 2"
+              nome={nomeEletricista2}
+              onNome={setNomeEletricista2}
+              assinatura={assinatura2}
+              onAssinatura={setAssinatura2}
+              obrigatorio={true}
+            />
+          )}
 
           {erro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erro}</div>}
 
