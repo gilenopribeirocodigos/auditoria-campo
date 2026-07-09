@@ -159,7 +159,8 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: '#1e293b' }}>{grupo.numero_as || '—'}</span>
+            <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{grupo.prefixo || '—'}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{grupo.numero_as || '—'}</span>
             <span style={{
               fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
               background: temPendente ? '#fef3c7' : '#dcfce7', color: temPendente ? '#92400e' : '#15803d',
