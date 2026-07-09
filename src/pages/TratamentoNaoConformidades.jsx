@@ -201,12 +201,24 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
             <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
               Evidência (mín. 1 foto) *
             </p>
-            <label style={{ cursor: 'pointer' }}>
-              <input type="file" accept="image/*" capture="environment" multiple onChange={addFoto} style={{ display: 'none' }} />
-              <span className="btn-secondary" style={{ display: 'inline-block', padding: '9px 16px', fontSize: 12, cursor: 'pointer' }}>
-                📷 Anexar evidência
-              </span>
-            </label>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <label style={{ flex: 1, cursor: 'pointer' }}>
+                <input type="file" accept="image/*" capture="environment" multiple onChange={addFoto} style={{ display: 'none' }} />
+                <div className="upload-zone" style={{ marginBottom: 0 }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                  <p style={{ color: '#1e3a5f', fontWeight: 700, fontSize: 13 }}>Tirar foto</p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Câmera</p>
+                </div>
+              </label>
+              <label style={{ flex: 1, cursor: 'pointer' }}>
+                <input type="file" accept="image/*" multiple onChange={addFoto} style={{ display: 'none' }} />
+                <div className="upload-zone" style={{ marginBottom: 0 }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>🖼️</div>
+                  <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 13 }}>Da galeria</p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Galeria</p>
+                </div>
+              </label>
+            </div>
             {fotos.length > 0 && (
               <div className="photo-grid" style={{ marginTop: 10 }}>
                 {fotos.map((url, i) => (
