@@ -58,6 +58,7 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   const pendentes   = grupo.itens.filter(i => i.status_tratamento === 'PENDENTE')
   const temPendente = pendentes.length > 0
 
+  const [aberto,           setAberto]           = useState(false)
   const [observacao,      setObservacao]      = useState('')
   const [fotos,            setFotos]           = useState([])
   const [nomeEletricista,  setNomeEletricista]  = useState(grupo.itens[0]?.nome_eletricista || '')
@@ -139,26 +140,43 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   }
 
   return (
-    <div className="card" style={{ border: `1.5px solid ${temPendente ? '#fdba74' : '#86efac'}` }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4, flexWrap: 'wrap', gap: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: '#1e293b' }}>{grupo.numero_as || '—'}</span>
-        <span style={{
-          fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-          background: temPendente ? '#fef3c7' : '#dcfce7', color: temPendente ? '#92400e' : '#15803d',
-        }}>
-          {temPendente ? `🟠 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
-        </span>
+    <div className="card" style={{ border: `1.5px solid ${temPendente ? '#fdba74' : '#86efac'}`, cursor: 'pointer' }}
+      onClick={() => setAberto(a => !a)}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, fontFamily: 'monospace', color: '#1e293b' }}>{grupo.numero_as || '—'}</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+              background: temPendente ? '#fef3c7' : '#dcfce7', color: temPendente ? '#92400e' : '#15803d',
+            }}>
+              {temPendente ? `🟠 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: '#64748b' }}>
+            {grupo.fiscal} · {TIPO_LABEL[grupo.tipo_auditoria] || grupo.tipo_auditoria || '—'} · OS {grupo.os || '—'} · UC {grupo.uc || '—'}
+            {grupo.auditoria?.data_auditoria && ` · ${grupo.auditoria.data_auditoria}`}
+          </p>
+          {!aberto && (
+            <p style={{ fontSize: 12, color: '#334155', marginTop: 6 }}>
+              {grupo.itens.length} não conformidade(s) — toque para {temPendente ? 'tratar' : 'ver detalhes'}
+            </p>
+          )}
+        </div>
+        <span style={{ fontSize: 16, color: '#94a3b8', flexShrink: 0 }}>{aberto ? '▲' : '▼'}</span>
       </div>
-      <p style={{ fontSize: 11, color: '#64748b', marginBottom: 10 }}>
-        {grupo.fiscal} · {TIPO_LABEL[grupo.tipo_auditoria] || grupo.tipo_auditoria || '—'} · OS {grupo.os || '—'} · UC {grupo.uc || '—'}
-        {grupo.auditoria?.data_auditoria && ` · ${grupo.auditoria.data_auditoria}`}
-        {grupo.auditoria?.endereco && ` · ${grupo.auditoria.endereco}`}
-      </p>
 
-      <div style={{ marginBottom: temPendente ? 14 : 0 }}>
+      {aberto && <div onClick={e => e.stopPropagation()}>
+
+      <div style={{ marginTop: 10, marginBottom: temPendente ? 14 : 10 }}>
         {grupo.itens.map(item => (
-          <div key={item.id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 12 }}>
-            <span style={{ flex: 1, color: '#334155' }}>{item.item_texto}</span>
+          <div key={item.id} style={{
+            display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8,
+            background: '#fef2f2', borderLeft: '3px solid #dc2626', borderRadius: '0 8px 8px 0',
+            padding: '8px 10px', fontSize: 12,
+          }}>
+            <span style={{ flex: 1, color: '#991b1b', fontWeight: 600 }}>{item.item_texto}</span>
             <span style={{
               fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap',
               background: item.status_tratamento === 'PENDENTE' ? '#fef3c7' : '#dcfce7',
@@ -248,6 +266,7 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
           </button>
         </div>
       )}
+      </div>}
     </div>
   )
 }

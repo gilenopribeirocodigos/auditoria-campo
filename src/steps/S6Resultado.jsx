@@ -32,7 +32,7 @@ function decimalOuNull(valor) {
   return Number.isFinite(numero) ? numero : null
 }
 
-export default function S6Resultado({ form, setForm, setStep, pautaAtiva, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
+export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, onAuditoriaSalva, auditoriaEditandoId, fotosAntigas, isOnline }) {
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const cl        = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
