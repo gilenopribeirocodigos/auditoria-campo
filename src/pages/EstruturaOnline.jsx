@@ -184,6 +184,17 @@ function ordenarPorSituacao(linhas, motivos, ordenacao = null) {
   })
 }
 
+function ordenarLinhas(linhas, motivos, ordenacao, manterOrdemInsercao) {
+  if (manterOrdemInsercao) {
+    if (!ordenacao?.coluna) return [...(linhas || [])]
+    return [...(linhas || [])].sort((a, b) => {
+      const resultado = compararValores(a[ordenacao.coluna], b[ordenacao.coluna])
+      return ordenacao.direcao === 'desc' ? -resultado : resultado
+    })
+  }
+  return ordenarPorSituacao(linhas, motivos, ordenacao)
+}
+
 function resumirSituacoes(linhas, motivos) {
   const map = new Map()
   ;(linhas || []).forEach(l => {
@@ -635,10 +646,29 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
   const salvarAba = async () => {
     if (!podeEditar || !abaAtiva) return
-    setSalvando(true)
     setErro('')
+    const normalizadas = linhasAtuais.map(normalizarLinha).filter(l => !linhaVazia(l))
+
+    const situacoesValidas = new Set(motivos.map(m => normalizarSituacao(m.descricao)))
+    const processosValidos = new Set(processosEquipe.map(p => normalizarProcesso(p.descricao)))
+    const situacoesInvalidas = new Set()
+    const processosInvalidos = new Set()
+    normalizadas.forEach(l => {
+      const situacao = normalizarSituacao(l.descr_situacao)
+      if (situacao && !situacoesValidas.has(situacao)) situacoesInvalidas.add(situacao)
+      const processo = normalizarProcesso(l.processo_equipe)
+      if (processo && !processosValidos.has(processo)) processosInvalidos.add(processo)
+    })
+    if (situacoesInvalidas.size > 0 || processosInvalidos.size > 0) {
+      const partes = []
+      if (situacoesInvalidas.size > 0) partes.push(`DESCR_SITUACAO nao cadastrada(s) em Padroes: ${[...situacoesInvalidas].join(', ')}`)
+      if (processosInvalidos.size > 0) partes.push(`PROCESSO_EQUIPE nao cadastrado(s) em Padroes: ${[...processosInvalidos].join(', ')}`)
+      setErro(`Nao foi possivel salvar. Somente motivos/processos cadastrados em Padroes podem ser salvos. ${partes.join(' | ')}`)
+      return
+    }
+
+    setSalvando(true)
     try {
-      const normalizadas = linhasAtuais.map(normalizarLinha).filter(l => !linhaVazia(l))
       await supabase.from('estrutura_planilha_linhas').delete().eq('planilha_id', abaAtiva)
       if (normalizadas.length > 0) {
         const payload = normalizadas.map((l, i) => ({
@@ -805,7 +835,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
   const linhasRender = abaAtiva === 'TOTAL'
     ? ordenarPorSituacao(linhasTotal, motivos, ordenacao)
-    : ordenarPorSituacao(linhasAtuais, motivos, ordenacao)
+    : ordenarLinhas(linhasAtuais, motivos, ordenacao, estaEditando)
 
   const alternarOrdenacao = (coluna) => {
     setOrdenacao(prev => ({
