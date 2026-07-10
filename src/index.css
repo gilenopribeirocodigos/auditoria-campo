@@ -161,6 +161,23 @@ button {
   background: #fee2e2;
   color: #b91c1c;
 }
+.btn-nsa {
+  padding: 12px 8px;
+  border-radius: 10px;
+  border: 2px solid #e2e8f0;
+  background: #f8fafc;
+  color: #94a3b8;
+  font-weight: 800;
+  font-size: 13px;
+  min-height: 48px;
+  transition: all 0.15s;
+  width: 100%;
+}
+.btn-nsa.active {
+  border-color: #64748b;
+  background: #f1f5f9;
+  color: #334155;
+}
 
 /* =============================================
    FORMULÁRIOS
@@ -270,6 +287,7 @@ button {
 }
 .check-item.sim  { border-color: #86efac; }
 .check-item.nao  { border-color: #fca5a5; }
+.check-item.nsa  { border-color: #cbd5e1; background: #f8fafc; }
 .check-item-body { padding: 12px 14px; }
 .check-item-meta { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
 .check-item-text { font-size: 14px; color: #1e293b; line-height: 1.55; margin-bottom: 12px; }
