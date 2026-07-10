@@ -121,6 +121,10 @@ function normalizarLinha(linha) {
   return aplicarSituacaoAutomatica(out)
 }
 
+function assinaturaLinhas(linhas) {
+  return JSON.stringify((linhas || []).map(normalizarLinha).filter(l => !linhaVazia(l)))
+}
+
 function dadosParaLinha(dados) {
   return { ...novaLinha(), ...normalizarLinha(dados || {}) }
 }
@@ -182,6 +186,17 @@ function ordenarPorSituacao(linhas, motivos, ordenacao = null) {
     }
     return String(a.colaborador || '').localeCompare(String(b.colaborador || ''))
   })
+}
+
+function ordenarLinhas(linhas, motivos, ordenacao, manterOrdemInsercao) {
+  if (manterOrdemInsercao) {
+    if (!ordenacao?.coluna) return [...(linhas || [])]
+    return [...(linhas || [])].sort((a, b) => {
+      const resultado = compararValores(a[ordenacao.coluna], b[ordenacao.coluna])
+      return ordenacao.direcao === 'desc' ? -resultado : resultado
+    })
+  }
+  return ordenarPorSituacao(linhas, motivos, ordenacao)
 }
 
 function resumirSituacoes(linhas, motivos) {
@@ -409,6 +424,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [linhasPorAba, setLinhasPorAba] = useState({})
   const [abaAtiva, setAbaAtiva] = useState(null)
   const [editando, setEditando] = useState(null)
+  const [snapshotEdicao, setSnapshotEdicao] = useState('')
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -572,6 +588,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
     } catch (e) { setErro(e.message || String(e)) }
   }
 
+  const iniciarEdicao = (id) => {
+    setEditando(id)
+    setSnapshotEdicao(assinaturaLinhas(linhasPorAba[id] || []))
+  }
+
   const atualizarCelula = (linhaId, coluna, valor) => {
     setLinhasPorAba(prev => ({
       ...prev,
@@ -628,6 +649,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
       'A alteracao so sera gravada no banco depois que voce clicar em Salvar.'
     )
     if (!ok) return
+    setSnapshotEdicao(assinaturaLinhas(linhasAtuais))
     setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [novaLinha(), novaLinha(), novaLinha()] }))
     setEditando(abaAtiva)
     setMsg('Tabela limpa. Clique em Salvar para gravar a limpeza desta aba.')
@@ -635,10 +657,35 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
   const salvarAba = async () => {
     if (!podeEditar || !abaAtiva) return
-    setSalvando(true)
     setErro('')
+    const normalizadas = linhasAtuais.map(normalizarLinha).filter(l => !linhaVazia(l))
+
+    const situacoesValidas = new Set(motivos.map(m => normalizarSituacao(m.descricao)))
+    const processosValidos = new Set(processosEquipe.map(p => normalizarProcesso(p.descricao)))
+    const situacoesInvalidas = new Set()
+    const processosInvalidos = new Set()
+    normalizadas.forEach(l => {
+      const situacao = normalizarSituacao(l.descr_situacao)
+      if (situacao && !situacoesValidas.has(situacao)) situacoesInvalidas.add(situacao)
+      const processo = normalizarProcesso(l.processo_equipe)
+      if (processo && !processosValidos.has(processo)) processosInvalidos.add(processo)
+    })
+    if (situacoesInvalidas.size > 0 || processosInvalidos.size > 0) {
+      const partes = []
+      if (situacoesInvalidas.size > 0) partes.push(`DESCR_SITUACAO nao cadastrada(s) em Padroes: ${[...situacoesInvalidas].join(', ')}`)
+      if (processosInvalidos.size > 0) partes.push(`PROCESSO_EQUIPE nao cadastrado(s) em Padroes: ${[...processosInvalidos].join(', ')}`)
+      setErro(`Nao foi possivel salvar. Somente motivos/processos cadastrados em Padroes podem ser salvos. ${partes.join(' | ')}`)
+      return
+    }
+
+    if (JSON.stringify(normalizadas) === snapshotEdicao) {
+      setEditando(null)
+      setMsg('Nenhuma alteracao detectada nesta aba. Nada foi salvo, a data de atualizacao foi mantida.')
+      return
+    }
+
+    setSalvando(true)
     try {
-      const normalizadas = linhasAtuais.map(normalizarLinha).filter(l => !linhaVazia(l))
       await supabase.from('estrutura_planilha_linhas').delete().eq('planilha_id', abaAtiva)
       if (normalizadas.length > 0) {
         const payload = normalizadas.map((l, i) => ({
@@ -805,7 +852,15 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
   const linhasRender = abaAtiva === 'TOTAL'
     ? ordenarPorSituacao(linhasTotal, motivos, ordenacao)
-    : ordenarPorSituacao(linhasAtuais, motivos, ordenacao)
+    : ordenarLinhas(linhasAtuais, motivos, ordenacao, estaEditando)
+
+  const opcoesMotivosAtuais = motivos.map(m => normalizarSituacao(m.descricao)).filter(Boolean)
+  const opcoesProcessosAtuais = processosEquipe.map(p => normalizarProcesso(p.descricao)).filter(Boolean)
+  const existeLinhaInvalida = linhasRender.some(l => {
+    const situacao = normalizarSituacao(l.descr_situacao)
+    const processo = normalizarProcesso(l.processo_equipe)
+    return (situacao && !opcoesMotivosAtuais.includes(situacao)) || (processo && !opcoesProcessosAtuais.includes(processo))
+  })
 
   const alternarOrdenacao = (coluna) => {
     setOrdenacao(prev => ({
@@ -896,7 +951,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => iniciarEdicao(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
@@ -907,6 +962,12 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar padroes' : 'Padroes'}</button>}
           </div>
         </div>
+
+        {existeLinhaInvalida && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
+            🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
+          </div>
+        )}
 
         <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
 
@@ -947,7 +1008,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
+                {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => iniciarEdicao(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
@@ -956,6 +1017,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 <button onClick={() => setTabelaAmpliada(false)} style={botao('#334155')}>Fechar</button>
               </div>
             </div>
+            {existeLinhaInvalida && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
+                🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
+              </div>
+            )}
             <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
             <TabelaEstrutura
               linhas={linhasRender}
@@ -1186,8 +1252,16 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
         <tbody>
           {linhas.map((linha) => {
             const info = infoSituacao(linha.descr_situacao, motivos)
+            const situacaoValor = normalizarSituacao(linha.descr_situacao)
+            const processoValor = normalizarProcesso(linha.processo_equipe)
+            const situacaoInvalida = situacaoValor && !opcoesMotivos.includes(situacaoValor)
+            const processoInvalido = processoValor && !opcoesProcessos.includes(processoValor)
+            const linhaInvalida = situacaoInvalida || processoInvalido
             return (
-              <tr key={linha._tmpId || `${linha.origem_aba}_${linha.matricula}_${linha.prefixo}`} style={{ background: situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa' }}>
+              <tr
+                key={linha._tmpId || `${linha.origem_aba}_${linha.matricula}_${linha.prefixo}`}
+                style={{ background: linhaInvalida ? '#fef2f2' : (situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa') }}
+              >
                 {total && <Td><span style={{ fontWeight: 800, color: '#0f766e' }}>{linha.origem_aba}</span></Td>}
                 {COLUNAS_ESPERADAS.map(c => {
                   const ehSituacao = c === 'descr_situacao'
@@ -1195,10 +1269,15 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
                   const opcoesSelect = ehSituacao ? opcoesMotivos : opcoesProcessos
                   const valorSelect = ehSituacao ? normalizarSituacao(linha[c]) : normalizarProcesso(linha[c])
                   const valorRapido = ehSituacao ? motivoRapido : processoRapido
-                  const bg = ehSituacao ? info.cor_fundo : undefined
-                  const color = ehSituacao ? info.cor_texto : '#0f172a'
+                  const celulaInvalida = (ehSituacao && situacaoInvalida) || (ehProcesso && processoInvalido)
+                  const bg = celulaInvalida ? '#fecaca' : (ehSituacao ? info.cor_fundo : undefined)
+                  const color = celulaInvalida ? '#7f1d1d' : (ehSituacao ? info.cor_texto : '#0f172a')
                   return (
-                    <Td key={c} style={{ background: bg }}>
+                    <Td
+                      key={c}
+                      style={{ background: bg }}
+                      title={celulaInvalida ? `"${linha[c]}" nao esta cadastrado em Padroes. Corrija ou cadastre em Padroes antes de salvar.` : undefined}
+                    >
                       {editando ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {ehSituacao || ehProcesso ? (
@@ -1360,8 +1439,8 @@ function Th({ children, width, onResize, onSort, sortDirection }) {
   )
 }
 
-function Td({ children, style }) {
-  return <td style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f8fafc', fontSize: 12, verticalAlign: 'middle', overflowWrap: 'break-word', ...style }}>{children}</td>
+function Td({ children, style, title }) {
+  return <td title={title} style={{ padding: '7px 10px', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f8fafc', fontSize: 12, verticalAlign: 'middle', overflowWrap: 'break-word', ...style }}>{children}</td>
 }
 
 const overlayStyle = {

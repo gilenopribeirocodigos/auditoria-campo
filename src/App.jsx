@@ -620,12 +620,12 @@ export default function App() {
             }}>👥 Gestão de Usuários</button>
           )}
 
-          {temPermissao(usuario, 'importar_equipes') && (
+          {(temPermissao(usuario, 'importar_equipes') || temPermissao(usuario, 'estrutura_online_visualizar') || temPermissao(usuario, 'estrutura_online_editar')) && (
             <button onClick={() => setTela('importar')} style={{
               background: 'rgba(15,118,110,0.9)', color: '#fff', border: 'none',
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            }}>📥 Importar Equipes (CSV)</button>
+            }}>📥 Estrutura Operacional</button>
           )}
 
         </div>

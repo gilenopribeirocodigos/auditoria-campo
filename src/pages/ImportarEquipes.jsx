@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { temPermissao } from '../lib/auth.js'
 import EstruturaOnline from './EstruturaOnline.jsx'
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -126,7 +127,8 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
 // ─── Componente ───────────────────────────────────────────────────────
 
 export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
-  const [modoCarga,  setModoCarga]  = useState('csv')
+  const podeImportarCsv = temPermissao(usuarioLogado, 'estrutura_csv_importar') || temPermissao(usuarioLogado, 'importar_equipes')
+  const [modoCarga,  setModoCarga]  = useState(podeImportarCsv ? 'csv' : 'online')
   const [arquivo,    setArquivo]    = useState(null)
   const [preview,    setPreview]    = useState([])
   const [colunasCsv, setColunasCsv] = useState([])
@@ -171,7 +173,7 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
   }
 
   const importar = async () => {
-    if (!arquivo) return
+    if (!arquivo || !podeImportarCsv) return
     if (!window.confirm(
       'Confirma a importação?\n\nO sistema vai:\n' +
       '• Identificar novos eletricistas\n' +
@@ -397,11 +399,13 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
       <div style={{ maxWidth: modoCarga === 'online' ? 1180 : 700, margin: '0 auto', padding: '20px 16px 60px' }}>
 
         <div style={{ display: 'flex', gap: 8, background: '#e2e8f0', borderRadius: 12, padding: 4, marginBottom: 16 }}>
-          <button onClick={() => setModoCarga('csv')} style={{
-            flex: 1, border: 'none', borderRadius: 9, padding: '10px 12px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
-            background: modoCarga === 'csv' ? '#0f766e' : 'transparent',
-            color: modoCarga === 'csv' ? '#fff' : '#334155',
-          }}>Arquivo CSV</button>
+          {podeImportarCsv && (
+            <button onClick={() => setModoCarga('csv')} style={{
+              flex: 1, border: 'none', borderRadius: 9, padding: '10px 12px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
+              background: modoCarga === 'csv' ? '#0f766e' : 'transparent',
+              color: modoCarga === 'csv' ? '#fff' : '#334155',
+            }}>Arquivo CSV</button>
+          )}
           <button onClick={() => setModoCarga('online')} style={{
             flex: 1, border: 'none', borderRadius: 9, padding: '10px 12px', fontSize: 13, fontWeight: 800, cursor: 'pointer',
             background: modoCarga === 'online' ? '#0f766e' : 'transparent',
@@ -411,6 +415,10 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
 
         {modoCarga === 'online' ? (
           <EstruturaOnline usuarioLogado={usuarioLogado} />
+        ) : !podeImportarCsv ? (
+          <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 20, textAlign: 'center', color: '#64748b', fontWeight: 700 }}>
+            Seu perfil não tem permissão para importar a estrutura via arquivo CSV.
+          </div>
         ) : (
           <>
 
