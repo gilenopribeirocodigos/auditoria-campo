@@ -121,6 +121,10 @@ function normalizarLinha(linha) {
   return aplicarSituacaoAutomatica(out)
 }
 
+function assinaturaLinhas(linhas) {
+  return JSON.stringify((linhas || []).map(normalizarLinha).filter(l => !linhaVazia(l)))
+}
+
 function dadosParaLinha(dados) {
   return { ...novaLinha(), ...normalizarLinha(dados || {}) }
 }
@@ -420,6 +424,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [linhasPorAba, setLinhasPorAba] = useState({})
   const [abaAtiva, setAbaAtiva] = useState(null)
   const [editando, setEditando] = useState(null)
+  const [snapshotEdicao, setSnapshotEdicao] = useState('')
   const [loading, setLoading] = useState(true)
   const [salvando, setSalvando] = useState(false)
   const [erro, setErro] = useState('')
@@ -583,6 +588,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
     } catch (e) { setErro(e.message || String(e)) }
   }
 
+  const iniciarEdicao = (id) => {
+    setEditando(id)
+    setSnapshotEdicao(assinaturaLinhas(linhasPorAba[id] || []))
+  }
+
   const atualizarCelula = (linhaId, coluna, valor) => {
     setLinhasPorAba(prev => ({
       ...prev,
@@ -639,6 +649,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
       'A alteracao so sera gravada no banco depois que voce clicar em Salvar.'
     )
     if (!ok) return
+    setSnapshotEdicao(assinaturaLinhas(linhasAtuais))
     setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [novaLinha(), novaLinha(), novaLinha()] }))
     setEditando(abaAtiva)
     setMsg('Tabela limpa. Clique em Salvar para gravar a limpeza desta aba.')
@@ -664,6 +675,12 @@ export default function EstruturaOnline({ usuarioLogado }) {
       if (situacoesInvalidas.size > 0) partes.push(`DESCR_SITUACAO nao cadastrada(s) em Padroes: ${[...situacoesInvalidas].join(', ')}`)
       if (processosInvalidos.size > 0) partes.push(`PROCESSO_EQUIPE nao cadastrado(s) em Padroes: ${[...processosInvalidos].join(', ')}`)
       setErro(`Nao foi possivel salvar. Somente motivos/processos cadastrados em Padroes podem ser salvos. ${partes.join(' | ')}`)
+      return
+    }
+
+    if (JSON.stringify(normalizadas) === snapshotEdicao) {
+      setEditando(null)
+      setMsg('Nenhuma alteracao detectada nesta aba. Nada foi salvo, a data de atualizacao foi mantida.')
       return
     }
 
@@ -934,7 +951,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => iniciarEdicao(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
@@ -991,7 +1008,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => setEditando(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
+                {abaAtiva !== 'TOTAL' && podeEditar && !estaEditando && abaAtual && <button onClick={() => iniciarEdicao(abaAtiva)} style={botao('#1e40af')}>Editar</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={salvarAba} disabled={salvando} style={botao('#0f766e')}>Salvar</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={adicionarLinha} style={botao('#475569')}>Adicionar linha</button>}
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
