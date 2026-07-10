@@ -1,4 +1,4 @@
-import { CHECKLISTS, CAT_META, isDisqualified, isItemConforme, getChecklist, getItemsAtivos } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, isDisqualified, isItemConforme, getChecklist, getItemsAtivos, getItemsParaCalculo } from '../data/checklists.js'
 import { NavBar, Textarea } from '../components/Shared.jsx'
 
 export default function S3Checklist({ form, upd, setForm, next, prev }) {
@@ -13,8 +13,11 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
 
   const respondidas = items.filter(i => form.respostas[i.id] !== undefined).length
 
-  const conformes   = items.filter(i => isItemConforme(i, items, form.respostas)).length
-  const notaParcial = respondidas > 0 ? Math.round(conformes / items.length * 100) : 0
+  // Itens "Não se aplica" saem do cálculo — a prévia da nota já reflete isso,
+  // igual ao resultado final (ver calcNota em checklists.js)
+  const itemsCalculo = getItemsParaCalculo(items, form.respostas)
+  const conformes   = itemsCalculo.filter(i => isItemConforme(i, itemsCalculo, form.respostas)).length
+  const notaParcial = itemsCalculo.length > 0 ? Math.round(conformes / itemsCalculo.length * 100) : 0
 
   // Para prosseguir: todas as perguntas ativas respondidas E (se tem débito) o check respondido
   const debitoOk  = !temDebito || form.debitoPago !== null && form.debitoPago !== undefined
@@ -142,9 +145,15 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
         const isInverted = item.inverted
         const isCond     = item.conditionalGroup === 'debito'
 
+        const isNaoSeAplica = item.permiteNaoSeAplica && r === 'NSA'
+
         let isConforme, isNaoConforme, marriedWarning = ''
 
-        if (item.marriedGroup && item.marriedRole === 'pai') {
+        if (isNaoSeAplica) {
+          isConforme    = false
+          isNaoConforme = false
+
+        } else if (item.marriedGroup && item.marriedRole === 'pai') {
           isConforme    = r !== undefined
           isNaoConforme = false
 
@@ -167,7 +176,7 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
 
         return (
           <div key={item.id}
-            className={`check-item ${isConforme ? 'sim' : isNaoConforme ? 'nao' : ''}`}
+            className={`check-item ${isNaoSeAplica ? 'nsa' : isConforme ? 'sim' : isNaoConforme ? 'nao' : ''}`}
             style={isElim ? { borderWidth: 2 } : {}}>
             <div className="check-item-body">
 
@@ -189,32 +198,44 @@ export default function S3Checklist({ form, upd, setForm, next, prev }) {
                     NÃO = conforme
                   </span>
                 )}
-                {isConforme    && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700, marginLeft: 'auto' }}>✓ Conforme</span>}
-                {isNaoConforme && !isElim && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, marginLeft: 'auto' }}>✗ Não conforme</span>}
-                {isNaoConforme && isElim  && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 800, marginLeft: 'auto' }}>🚫 NÃO ATENDE</span>}
+                {isNaoSeAplica && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginLeft: 'auto' }}>➖ Não se aplica</span>}
+                {!isNaoSeAplica && isConforme    && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700, marginLeft: 'auto' }}>✓ Conforme</span>}
+                {!isNaoSeAplica && isNaoConforme && !isElim && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, marginLeft: 'auto' }}>✗ Não conforme</span>}
+                {!isNaoSeAplica && isNaoConforme && isElim  && <span style={{ fontSize: 11, color: '#dc2626', fontWeight: 800, marginLeft: 'auto' }}>🚫 NÃO ATENDE</span>}
               </div>
 
               <p className="check-item-text" style={isElim ? { fontWeight: 600 } : {}}>{item.p}</p>
 
-              {isElim && (
-                <p style={{ fontSize: 11, color: '#ef4444', marginBottom: 8, background: '#fef2f2', padding: '4px 8px', borderRadius: 6 }}>
-                  ⚠️ Se NÃO → resultado automaticamente NÃO ATENDE
+              {isNaoSeAplica ? (
+                <p style={{ fontSize: 11, color: '#475569', marginBottom: 8, background: '#f1f5f9', padding: '4px 8px', borderRadius: 6 }}>
+                  ➖ Não se aplica — este item sai do cálculo da nota{isElim ? ' e deixa de ser eliminatório' : ''}.
                 </p>
-              )}
-              {isInverted && (
-                <p style={{ fontSize: 11, color: '#7c3aed', marginBottom: 8, background: '#f5f3ff', padding: '4px 8px', borderRadius: 6 }}>
-                  ℹ️ NÃO = não havia como resolver = conforme &nbsp;|&nbsp; SIM = havia solução e não foi feita = não conforme
-                </p>
-              )}
-              {marriedWarning && (
-                <p style={{ fontSize: 11, color: '#d97706', marginBottom: 8, background: '#fffbeb', padding: '4px 8px', borderRadius: 6, border: '1px solid #fcd34d' }}>
-                  {marriedWarning}
-                </p>
+              ) : (
+                <>
+                  {isElim && (
+                    <p style={{ fontSize: 11, color: '#ef4444', marginBottom: 8, background: '#fef2f2', padding: '4px 8px', borderRadius: 6 }}>
+                      ⚠️ Se NÃO → resultado automaticamente NÃO ATENDE
+                    </p>
+                  )}
+                  {isInverted && (
+                    <p style={{ fontSize: 11, color: '#7c3aed', marginBottom: 8, background: '#f5f3ff', padding: '4px 8px', borderRadius: 6 }}>
+                      ℹ️ NÃO = não havia como resolver = conforme &nbsp;|&nbsp; SIM = havia solução e não foi feita = não conforme
+                    </p>
+                  )}
+                  {marriedWarning && (
+                    <p style={{ fontSize: 11, color: '#d97706', marginBottom: 8, background: '#fffbeb', padding: '4px 8px', borderRadius: 6, border: '1px solid #fcd34d' }}>
+                      {marriedWarning}
+                    </p>
+                  )}
+                </>
               )}
 
-              <div className="check-item-btns">
+              <div className="check-item-btns" style={item.permiteNaoSeAplica ? { gridTemplateColumns: '1fr 1fr 1fr' } : undefined}>
                 <button className={`btn-sim ${r === true ? 'active' : ''}`} onClick={() => responder(item.id, true)}>✓ SIM</button>
                 <button className={`btn-nao ${r === false ? 'active' : ''}`} onClick={() => responder(item.id, false)}>✗ NÃO</button>
+                {item.permiteNaoSeAplica && (
+                  <button className={`btn-nsa ${r === 'NSA' ? 'active' : ''}`} onClick={() => responder(item.id, 'NSA')}>➖ NSA</button>
+                )}
               </div>
 
             </div>

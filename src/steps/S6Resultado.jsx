@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, FORM_INICIAL } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, getItemsParaCalculo, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
@@ -36,7 +36,8 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
   const nota      = calcNota(form)
   const st        = getStatus(nota)
   const cl        = getChecklist(form.tipoServico, form.tipoAuditoria, form.produtivo)
-  const items     = getItemsAtivos(cl?.items || [], form)
+  // Itens "Não se aplica" saem do denominador — mesma regra usada em calcNota
+  const items     = getItemsParaCalculo(getItemsAtivos(cl?.items || [], form), form.respostas)
   const eliminado = isDisqualified(form)
 
   const sim     = items.filter(i => isItemConforme(i, items, form.respostas)).length
