@@ -28,7 +28,178 @@ function localPauta(p) {
   return [p?.cidade, p?.bairro].map(textoPadrao).filter(Boolean).join('/')
 }
 
-export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautaAtiva, setPautaAtiva, permiteAuditoriaAvulsa = false }) {
+function formatarDataBR(dataISO) {
+  if (!dataISO) return ''
+  const [ano, mes, dia] = dataISO.split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+function diasAteData(dataISO) {
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0)
+  const alvo = new Date(`${dataISO}T00:00:00`)
+  const dias = Math.round((alvo - hoje) / 86400000)
+  if (dias === 1) return 'amanhã'
+  return `daqui a ${dias} dias`
+}
+
+function cidadePauta(p) {
+  return textoPadrao(p?.cidade) || 'SEM LOCALIZAÇÃO INFORMADA'
+}
+
+function agruparPorData(pautas) {
+  const mapa = new Map()
+  pautas.forEach(p => {
+    const chave = p.data_prevista
+    if (!mapa.has(chave)) mapa.set(chave, [])
+    mapa.get(chave).push(p)
+  })
+  return [...mapa.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+}
+
+function agruparPorCidade(pautas) {
+  const mapa = new Map()
+  pautas.forEach(p => {
+    const chave = cidadePauta(p)
+    if (!mapa.has(chave)) mapa.set(chave, [])
+    mapa.get(chave).push(p)
+  })
+  return [...mapa.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]))
+}
+
+function agruparPorDataCidade(pautas) {
+  return agruparPorData(pautas).map(([data, lista]) => [data, agruparPorCidade(lista)])
+}
+
+function PautaFuturaLinha({ p }) {
+  return (
+    <div style={{ background: '#f8fafc', borderRadius: 8, padding: '8px 10px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 800, color: '#0f172a' }}>{p.prefixo}</span>
+        <span style={{ fontSize: 10, fontWeight: 800, color: '#64748b' }}>{formatarDataBR(p.data_prevista)}</span>
+      </div>
+      <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+        🔧 {p.tipo_servico} · {TIPO_AUDITORIA_LABEL[p.tipo_auditoria]}
+        {(p.cidade || p.bairro) && <span> · {localPauta(p)}</span>}
+      </div>
+    </div>
+  )
+}
+
+function GrupoPautasFuturas({ titulo, sub, pautas, aberto }) {
+  return (
+    <details open={aberto} style={{ border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+      <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', cursor: 'pointer', listStyle: 'none' }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{titulo}</div>
+          <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>{sub}</div>
+        </div>
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#0b4f49', background: '#e6f6f4', padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+          {pautas.length} pauta{pautas.length > 1 ? 's' : ''}
+        </span>
+      </summary>
+      <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {pautas.map(p => <PautaFuturaLinha key={p.id} p={p} />)}
+      </div>
+    </details>
+  )
+}
+
+function PautasFuturas({ pautasFuturas }) {
+  const [aberto, setAberto] = useState(false)
+  const [agrupamento, setAgrupamento] = useState('data')
+
+  if (!pautasFuturas || pautasFuturas.length === 0) return null
+
+  const porData = agruparPorData(pautasFuturas)
+  const porCidade = agruparPorCidade(pautasFuturas)
+  const porDataCidade = agruparPorDataCidade(pautasFuturas)
+
+  return (
+    <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 14, marginBottom: 18 }}>
+      <button
+        type="button"
+        onClick={() => setAberto(a => !a)}
+        style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 34, height: 34, borderRadius: 10, background: '#e6f6f4', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>📅</div>
+          <div>
+            <p style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', margin: 0 }}>Ver Pautas Futuras</p>
+            <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>Planejamento — datas ainda não vencidas</p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ background: '#0f172a', color: '#fff', fontSize: 12, fontWeight: 800, padding: '4px 10px', borderRadius: 999 }}>{pautasFuturas.length}</span>
+          <span style={{ fontSize: 11, color: '#64748b', display: 'inline-block', transform: aberto ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+        </div>
+      </button>
+
+      {aberto && (
+        <div style={{ marginTop: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: 4, marginBottom: 12 }}>
+            {[['data', '📅 Por Data'], ['cidade', '🏙️ Por Cidade'], ['datacidade', '📅+🏙️ Data e Cidade']].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setAgrupamento(id)}
+                style={{
+                  textAlign: 'center', fontSize: 11, fontWeight: 800, padding: '8px 4px', borderRadius: 7, border: 'none', cursor: 'pointer',
+                  background: agrupamento === id ? '#0f766e' : 'transparent',
+                  color: agrupamento === id ? '#fff' : '#64748b',
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {agrupamento === 'data' && porData.map(([data, lista], i) => (
+            <GrupoPautasFuturas key={data} titulo={formatarDataBR(data)} sub={diasAteData(data)} pautas={lista} aberto={i === 0} />
+          ))}
+
+          {agrupamento === 'cidade' && porCidade.map(([cidade, lista], i) => (
+            <GrupoPautasFuturas
+              key={cidade}
+              titulo={cidade}
+              sub={`${new Set(lista.map(p => p.data_prevista)).size} data(s) diferente(s)`}
+              pautas={lista}
+              aberto={i === 0}
+            />
+          ))}
+
+          {agrupamento === 'datacidade' && porDataCidade.map(([data, cidades], i) => (
+            <details key={data} open={i === 0} style={{ border: '1px solid #e2e8f0', borderRadius: 10, marginBottom: 8, overflow: 'hidden' }}>
+              <summary style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 12px', cursor: 'pointer', listStyle: 'none' }}>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a' }}>{formatarDataBR(data)}</div>
+                  <div style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>{diasAteData(data)}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#0b4f49', background: '#e6f6f4', padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap' }}>
+                  {cidades.reduce((soma, [, lista]) => soma + lista.length, 0)} pauta(s)
+                </span>
+              </summary>
+              <div style={{ padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {cidades.map(([cidade, lista]) => (
+                  <details key={cidade} style={{ background: '#f8fafc', borderRadius: 8 }}>
+                    <summary style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 10px', cursor: 'pointer', listStyle: 'none', fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
+                      <span>{cidade}</span>
+                      <span style={{ fontWeight: 800, color: '#0b4f49' }}>{lista.length}</span>
+                    </summary>
+                    <div style={{ padding: '0 10px 10px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {lista.map(p => <PautaFuturaLinha key={p.id} p={p} />)}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], pautasFuturas = [], pautaAtiva, setPautaAtiva, permiteAuditoriaAvulsa = false }) {
   const [modoAvulso, setModoAvulso] = useState(false)
   const temPautas = pautasHoje.length > 0
   const ok = form.tipoAuditoria && form.tipoServico && form.produtivo !== null
@@ -119,6 +290,8 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
               : 'Selecione uma equipe para fiscalizar. Você só pode auditar as equipes listadas abaixo.'}
           </p>
         </div>
+
+        <PautasFuturas pautasFuturas={pautasFuturas} />
 
         {/* Lista de pautas */}
         <p className="section-title">Selecione a Equipe para Auditar</p>
@@ -293,6 +466,8 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
   // SEM PAUTAS — modo livre normal
   return (
     <div>
+      <PautasFuturas pautasFuturas={pautasFuturas} />
+
       {temPautas && modoAvulso && (
         <Alert type="warning">
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>

@@ -886,6 +886,31 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     })
   }
 
+  // Preenche cidade/bairro/endereco a partir de latitude/longitude nas linhas do CSV
+  // que vierem so com coordenadas (mesma logica do preenchimento automatico do
+  // formulario manual, via Nominatim/OpenStreetMap). Respeita o limite de 1
+  // consulta por segundo do Nominatim aguardando entre as chamadas.
+  const enriquecerComEndereco = async (pautas) => {
+    const resultado = []
+    for (const p of pautas) {
+      const precisaGeocodificar = !p.cidade && p.latitude !== null && p.longitude !== null
+      if (!precisaGeocodificar) { resultado.push(p); continue }
+      try {
+        const endereco = await buscarEnderecoPorCoordenadas(p.latitude, p.longitude)
+        resultado.push(endereco ? {
+          ...p,
+          cidade: endereco.cidade || p.cidade,
+          bairro: endereco.bairro || p.bairro,
+          endereco_referencia: endereco.endereco_referencia || p.endereco_referencia,
+        } : p)
+      } catch {
+        resultado.push(p)
+      }
+      await new Promise(r => setTimeout(r, 1100))
+    }
+    return resultado
+  }
+
   const lerArquivo = (file) => {
     setCsvStatus(''); setCsvPreview([])
     const ext = file.name.split('.').pop().toLowerCase()
@@ -941,6 +966,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         return
       }
       pautasNovas = await enriquecerComEletricistas(pautasNovas)
+      const faltandoCidade = pautasNovas.filter(p => !p.cidade && p.latitude !== null && p.longitude !== null).length
+      if (faltandoCidade > 0) setCsvStatus(`Buscando cidade pelas coordenadas (${faltandoCidade} linha(s))...`)
+      pautasNovas = await enriquecerComEndereco(pautasNovas)
       for (const p of pautasNovas) await criarPauta({ ...p, ...dadosCriacaoPauta() })
       const comEletricistas = pautasNovas.filter(p => p.nome_eletricista || p.nome_eletricista2).length
       setCsvStatus(`✅ ${pautasNovas.length} pauta(s) importada(s)!${comEletricistas > 0 ? ` ${comEletricistas} com eletricistas.` : ''}`)

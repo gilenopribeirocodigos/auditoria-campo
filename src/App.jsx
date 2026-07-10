@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { FORM_INICIAL } from './data/checklists.js'
 import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade, getVersaoApp } from './lib/auth.js'
-import { pautasHojeFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
+import { pautasHojeFiscal, pautasFuturasFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
@@ -64,6 +64,7 @@ export default function App() {
   const [step,                setStep]                = useState(0)
   const [form,                setForm]                = useState(FORM_INICIAL())
   const [pautasHoje,          setPautasHoje]          = useState([])
+  const [pautasFuturas,       setPautasFuturas]       = useState([])
   const [pautaAtiva,          setPautaAtiva]          = useState(null)
   const [loadingPauta,        setLoadingPauta]        = useState(false)
   const [auditoriasReabertas, setAuditoriasReabertas] = useState([])
@@ -215,6 +216,12 @@ export default function App() {
       const pautas = await pautasHojeFiscal(usuario.login)
       setPautasHoje(pautas)
       setPautaAtiva(null)
+      if (isAdmin(usuario) || temPermissao(usuario, 'pauta_ver_futuras')) {
+        try { setPautasFuturas(await pautasFuturasFiscal(usuario.login)) }
+        catch (e) { setPautasFuturas([]) }
+      } else {
+        setPautasFuturas([])
+      }
     } catch (e) { setPautasHoje([]) }
     finally { setLoadingPauta(false) }
     setAuditoriaEditando(null)
@@ -682,7 +689,7 @@ export default function App() {
       </header>
 
       <main className="app-content">
-        {step === 0 && <S0Selecao       {...stepProps} pautasHoje={pautasHoje} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} permiteAuditoriaAvulsa={isAdmin(usuario) || temPermissao(usuario, 'auditoria_avulsa_com_pauta')} />}
+        {step === 0 && <S0Selecao       {...stepProps} pautasHoje={pautasHoje} pautasFuturas={pautasFuturas} pautaAtiva={pautaAtiva} setPautaAtiva={setPautaAtiva} permiteAuditoriaAvulsa={isAdmin(usuario) || temPermissao(usuario, 'auditoria_avulsa_com_pauta')} />}
         {step === 1 && <S1Identificacao {...stepProps} pautaAtiva={pautaAtiva} />}
         {step === 2 && <S3Checklist     {...stepProps} />}
         {step === 3 && <S4Fotos         {...stepProps} modoEdicao={!!auditoriaEditando} fotosAntigas={fotosAntigas} />}

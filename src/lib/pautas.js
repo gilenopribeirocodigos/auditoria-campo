@@ -57,6 +57,21 @@ export async function pautasHojeFiscal(fiscal_login) {
     .sort(ordenarPautasExecucao)
 }
 
+export async function pautasFuturasFiscal(fiscal_login) {
+  const hoje = new Date().toISOString().split('T')[0]
+  const { data, error } = await supabase
+    .from('pautas')
+    .select('*')
+    .eq('fiscal_login', fiscal_login)
+    .eq('status', 'PENDENTE')
+    .gt('data_prevista', hoje)
+    .order('data_prevista')
+  if (error) throw error
+  return (data || [])
+    .map(p => ({ ...p, numero_as: numeroASDaPauta(p) }))
+    .sort((a, b) => String(a.data_prevista).localeCompare(String(b.data_prevista)) || String(a.prefixo || '').localeCompare(String(b.prefixo || '')))
+}
+
 export async function criarPauta(payload) {
   const { id, ...dados } = payload  // remove id null se vier no payload
   const payloadFinal = { ...dados, numero_as: obterNumeroAS(dados.numero_as) }
