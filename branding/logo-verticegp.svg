@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="2048" height="2048">
+  <defs>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="blur" /> <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect width="100%" height="100%" fill="#234076"/>
+
+  <circle cx="256" cy="200" r="56" fill="#32538D" />
+
+  <g stroke="#91A8CC" stroke-width="3" stroke-dasharray="10, 8" opacity="0.75" stroke-linecap="round">
+    <line x1="256" y1="70" x2="369" y2="135" />
+    <line x1="369" y1="135" x2="369" y2="265" />
+    <line x1="369" y1="265" x2="256" y2="330" />
+    <line x1="256" y1="330" x2="143" y2="265" />
+    <line x1="143" y1="265" x2="143" y2="135" />
+    <line x1="143" y1="135" x2="256" y2="70" />
+
+    <line x1="256" y1="70" x2="256" y2="200" />
+    <line x1="369" y1="135" x2="256" y2="200" />
+    <line x1="369" y1="265" x2="256" y2="200" />
+    <line x1="256" y1="330" x2="256" y2="200" />
+    <line x1="143" y1="265" x2="256" y2="200" />
+    <line x1="143" y1="135" x2="256" y2="200" />
+  </g>
+
+  <circle cx="256" cy="200" r="22" fill="#F8C339" />
+
+  <g fill="#F4F7FA">
+    <circle cx="256" cy="70" r="15" />
+    <circle cx="369" cy="265" r="15" />
+    <circle cx="256" cy="330" r="15" />
+    <circle cx="143" cy="265" r="15" />
+    <circle cx="143" cy="135" r="15" />
+  </g>
+
+  <circle cx="369" cy="135" r="15" fill="#F8C339" />
+
+  <text x="312" y="445" text-anchor="end" fill="#FFFFFF" font-size="76" font-weight="900" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Arial Black'" letter-spacing="-1.5">Vértice</text>
+
+  <text x="312" y="445" text-anchor="start" fill="#F8C339" font-size="76" font-weight="900" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Arial Black'" letter-spacing="-1.5" filter="url(#glow)">GP</text>
+</svg>
