@@ -1,0 +1,84 @@
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+index a92fcf9..7974aa9 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+@@ -78,6 +78,21 @@ public class BackgroundGeolocation extends Plugin {
+         }
+         call.setKeepAlive(true);
+ 
++        // [DPL] Marca o serviço como "iniciado" (startService), não só vinculado
++        // (bindService) — um serviço puramente vinculado morre no instante em
++        // que a última Activity que o vinculou é destruída (giro de tela, app
++        // minimizado por muito tempo, Android reciclando memória em segundo
++        // plano), mesmo com watchers de localização ainda ativos. Isso causava
++        // horas de buraco sem posição em campo. startForeground() é chamado
++        // logo em seguida dentro de service.addWatcher(), dentro do prazo que
++        // o Android exige após startForegroundService().
++        Intent serviceStartIntent = new Intent(getContext(), BackgroundGeolocationService.class);
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
++            getContext().startForegroundService(serviceStartIntent);
++        } else {
++            getContext().startService(serviceStartIntent);
++        }
++
+         if (getPermissionState("location") != PermissionState.GRANTED) {
+             if (call.getBoolean("requestPermissions", true)) {
+                 requestPermissionForAlias("location", call, "locationPermissionsCallback");
+@@ -339,9 +354,13 @@ public class BackgroundGeolocation extends Plugin {
+ 
+     @Override
+     protected void handleOnDestroy() {
+-        if (service != null) {
+-            service.stopService();
+-        }
++        // [DPL] Não para mais o serviço aqui. handleOnDestroy() também
++        // dispara em situações normais do Android (giro de tela, Activity
++        // recriada, app minimizado por muito tempo) que não significam
++        // "usuário saiu do app" — parar o rastreio nesse momento era
++        // exatamente a causa dos buracos de horas sem localização em campo.
++        // O rastreio só deve parar de verdade quando o JS chamar
++        // removeWatcher() explicitamente (logout do usuário em rastreio.js).
+         super.handleOnDestroy();
+     }
+ }
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
+index fafbb86..16bc45c 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
+@@ -47,18 +47,26 @@ public class BackgroundGeolocationService extends Service {
+         return binder;
+     }
+ 
+-    // Some devices allow a foreground service to outlive the application's main
+-    // activity, leading to nasty crashes as reported in issue #59. If we learn
+-    // that the application has been killed, all watchers are stopped and the
+-    // service is terminated immediately.
++    // [DPL] Agora o serviço também é iniciado de forma independente
++    // (startForegroundService, ver BackgroundGeolocation.addWatcher()), não
++    // só vinculado — por isso perder o bind (Activity destruída pelo Android)
++    // não deve mais interromper os watchers de localização ativos. Antes,
++    // esse teardown agressivo era necessário porque o serviço só existia
++    // enquanto vinculado; hoje ele é o motivo dos "buracos" de horas sem
++    // localização em campo. O rastreio só para de verdade via removeWatcher()
++    // (chamado no logout, em rastreio.js).
+     @Override
+     public boolean onUnbind(Intent intent) {
+-        for (Watcher watcher : watchers) {
+-            watcher.client.removeLocationUpdates(watcher.locationCallback);
+-        }
+-        watchers = new HashSet<Watcher>();
+-        stopSelf();
+-        return false;
++        return true; // permite onRebind() depois, sem recriar o serviço
++    }
++
++    // START_STICKY: se o Android matar o processo por pressão de memória, tenta
++    // recriar o serviço em seguida — sem os watchers antigos (eles não
++    // sobrevivem à morte do processo de qualquer forma), mas evita que o
++    // rastreio fique parado até o fiscal reabrir o app manualmente.
++    @Override
++    public int onStartCommand(Intent intent, int flags, int startId) {
++        return START_STICKY;
+     }
+ 
+     Notification getNotification() {
