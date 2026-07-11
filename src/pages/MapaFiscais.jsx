@@ -57,13 +57,16 @@ function limitesDiaLocalUTC(dataISO) {
 
 // Gera os horários de hora cheia (ex: 8h, 9h, 10h...) dentro do intervalo do
 // eixo de um gráfico de permanência, pra funcionar como régua tipo Gantt.
-function horasCheiasNoIntervalo(inicioMs, fimMs) {
+// passoHoras controla o espaçamento (1 = todas as horas, 3 = de 3 em 3h) —
+// usado pra não lotar de números um eixo de 24h em tela de celular.
+function horasCheiasNoIntervalo(inicioMs, fimMs, passoHoras = 1) {
   if (!(fimMs > inicioMs)) return []
   const horas = []
   const primeira = new Date(inicioMs)
   primeira.setMinutes(0, 0, 0)
   if (primeira.getTime() < inicioMs) primeira.setHours(primeira.getHours() + 1)
-  for (let t = primeira.getTime(); t <= fimMs; t += 60 * 60 * 1000) {
+  const passoMs = passoHoras * 60 * 60 * 1000
+  for (let t = primeira.getTime(); t <= fimMs; t += passoMs) {
     horas.push(t)
   }
   return horas
@@ -94,9 +97,23 @@ function baseMaisProxima(lat, lng, bases) {
 // Percorre uma sequência de posições (ordenadas por horário) e soma quanto
 // tempo o fiscal passou dentro de base, fora de base, e sem dado (silêncio
 // maior que GAP_SEM_DADO_MS entre duas capturas seguidas).
-function calcularPermanencia(pontos, bases) {
+// diaInicioMs/diaFimMs (opcionais) fixam as bordas do eixo (ex: 00:00 e
+// 23:59:59 do dia do relatório) — o intervalo antes do primeiro ponto e
+// depois do último também vira "sem dado", pra dar pra comparar fiscais de
+// turnos diferentes (noite, madrugada, manhã) no mesmo eixo de 24h.
+function calcularPermanencia(pontos, bases, diaInicioMs, diaFimMs) {
   const segmentos = []
   let inMs = 0, outMs = 0, nodataMs = 0
+
+  if (pontos.length > 0 && diaInicioMs != null) {
+    const primeiroMs = new Date(pontos[0].created_at).getTime()
+    const dtAntes = primeiroMs - diaInicioMs
+    if (dtAntes > 0) {
+      segmentos.push({ tipo: 'nodata', inicio: new Date(diaInicioMs).toISOString(), fim: pontos[0].created_at })
+      nodataMs += dtAntes
+    }
+  }
+
   for (let i = 0; i < pontos.length - 1; i++) {
     const atual = pontos[i]
     const proximo = pontos[i + 1]
@@ -112,6 +129,16 @@ function calcularPermanencia(pontos, bases) {
       if (tipo === 'in') inMs += dt; else outMs += dt
     }
   }
+
+  if (pontos.length > 0 && diaFimMs != null) {
+    const ultimoMs = new Date(pontos[pontos.length - 1].created_at).getTime()
+    const dtDepois = diaFimMs - ultimoMs
+    if (dtDepois > 0) {
+      segmentos.push({ tipo: 'nodata', inicio: pontos[pontos.length - 1].created_at, fim: new Date(diaFimMs).toISOString() })
+      nodataMs += dtDepois
+    }
+  }
+
   return { segmentos, inMs, outMs, nodataMs }
 }
 
@@ -574,8 +601,10 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         if (!porFiscal.has(p.fiscal_login)) porFiscal.set(p.fiscal_login, { fiscal_login: p.fiscal_login, fiscal_nome: p.fiscal_nome, pontos: [] })
         porFiscal.get(p.fiscal_login).pontos.push(p)
       })
+      const diaInicioMs = new Date(ini).getTime()
+      const diaFimMs = new Date(fim).getTime()
       const linhas = [...porFiscal.values()]
-        .map(f => ({ ...f, calc: calcularPermanencia(f.pontos, bases) }))
+        .map(f => ({ ...f, diaInicioMs, diaFimMs, calc: calcularPermanencia(f.pontos, bases, diaInicioMs, diaFimMs) }))
         .sort((a, b) => (a.fiscal_nome || '').localeCompare(b.fiscal_nome || ''))
       setRelatorioPermanencia(linhas)
     } finally {
@@ -898,8 +927,11 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
             {relatorioPermanencia.map(f => {
               const { calc } = f
-              const inicioEixo = f.pontos.length ? new Date(f.pontos[0].created_at).getTime() : 0
-              const fimEixo = f.pontos.length ? new Date(f.pontos[f.pontos.length - 1].created_at).getTime() : 1
+              // Eixo fixo do dia inteiro (00:00-23:59:59), igual pra todos os
+              // fiscais — dá pra comparar turno da noite/madrugada/manhã lado
+              // a lado, e o que não foi logado também aparece como "sem dado".
+              const inicioEixo = f.diaInicioMs
+              const fimEixo = f.diaFimMs
               const totalEixo = Math.max(fimEixo - inicioEixo, 1)
               const totalMs = calc.inMs + calc.outMs + calc.nodataMs
               const pct = ms => totalMs > 0 ? Math.round((ms / totalMs) * 100) : 0
@@ -915,27 +947,24 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                       const bg = seg.tipo === 'in' ? '#16a34a' : seg.tipo === 'out' ? '#d97706' : 'repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 4px,#f1f5f9 4px,#f1f5f9 8px)'
                       return <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${left}%`, width: `${width}%`, background: bg }} />
                     })}
-                    {/* Régua de horas cheias por cima das barras, estilo Gantt */}
-                    {horasCheiasNoIntervalo(inicioEixo, fimEixo).map(h => (
+                    {/* Régua de horas cheias por cima das barras, estilo Gantt (linha fina a cada hora) */}
+                    {horasCheiasNoIntervalo(inicioEixo, fimEixo, 1).map(h => (
                       <div key={h} style={{
                         position: 'absolute', top: 0, bottom: 0,
                         left: `${((h - inicioEixo) / totalEixo) * 100}%`,
-                        width: 1, background: 'rgba(15,23,42,0.22)',
+                        width: 1, background: 'rgba(15,23,42,0.14)',
                       }} />
                     ))}
                   </div>
                   <div style={{ position: 'relative', height: 12, marginTop: 3 }}>
-                    {horasCheiasNoIntervalo(inicioEixo, fimEixo).map(h => (
+                    {/* Números só a cada 3h pra não lotar em tela de celular */}
+                    {horasCheiasNoIntervalo(inicioEixo, fimEixo, 3).map(h => (
                       <span key={h} style={{
                         position: 'absolute', left: `${((h - inicioEixo) / totalEixo) * 100}%`,
                         transform: 'translateX(-50%)', fontSize: 9, color: '#94a3b8',
                         fontVariantNumeric: 'tabular-nums',
                       }}>{new Date(h).getHours()}</span>
                     ))}
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#94a3b8', marginTop: 1 }}>
-                    <span>{new Date(inicioEixo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                    <span>{new Date(fimEixo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
                   <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, fontWeight: 700, marginTop: 6 }}>
                     <span style={{ color: '#166534' }}>🟢 {formatarDuracao(calc.inMs)} dentro ({pct(calc.inMs)}%)</span>
