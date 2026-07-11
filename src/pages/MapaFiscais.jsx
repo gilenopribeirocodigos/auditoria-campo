@@ -769,9 +769,17 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         </div>
       )}
 
-      {(aba === 'vivo' || aba === 'historico') && (
-        <div ref={mapRef} style={{ flex: 1, minHeight: 420 }} />
-      )}
+      {/* A div do mapa fica sempre montada (só escondida via CSS) — removê-la do
+          DOM ao trocar de aba orfanaria a instância do Leaflet, que só é criada
+          uma vez (ver useEffect de inicialização abaixo). */}
+      <div
+        ref={mapRef}
+        style={
+          (aba === 'vivo' || aba === 'historico')
+            ? { flex: 1, minHeight: 420 }
+            : { display: 'none' }
+        }
+      />
 
       {aba === 'historico' && logHistorico.length > 0 && (
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: 16, boxSizing: 'border-box' }}>
