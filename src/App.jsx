@@ -195,7 +195,7 @@ export default function App() {
 
   useEffect(() => {
     if (usuario) iniciarRastreio(usuario)
-    return () => { if (!usuario) pararRastreio() }
+    return () => { pararRastreio() }
   }, [usuario])
 
   const carregarReabertas = async (user) => {
