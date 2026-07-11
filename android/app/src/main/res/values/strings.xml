@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Auditoria de Campo</string>
+    <string name="title_activity_main">Auditoria de Campo</string>
+    <string name="package_name">com.dpl.auditoriacampo</string>
+    <string name="custom_url_scheme">com.dpl.auditoriacampo</string>
+
+    <!-- Notificação fixa exibida enquanto o rastreio roda em segundo plano
+         (ver @capacitor-community/background-geolocation). -->
+    <string name="capacitor_background_geolocation_notification_channel_name">Rastreio de localização</string>
+    <string name="capacitor_background_geolocation_notification_color">#0f766e</string>
+</resources>

@@ -1,39 +1,53 @@
 import { supabase } from './supabase.js'
+import { Capacitor, registerPlugin } from '@capacitor/core'
+import { App } from '@capacitor/app'
 
 // ════════════════════════════════════════════════════════════════════════════
-// RASTREIO v2 — motor resiliente de localização
+// RASTREIO v3 — motor resiliente de localização
 // ────────────────────────────────────────────────────────────────────────────
-// Diferenças sobre a versão anterior:
+// Dois modos, escolhidos automaticamente por Capacitor.isNativePlatform():
 //
+// • NAVEGADOR / PWA (web): captura via navigator.geolocation a cada 8s, só
+//   enquanto a aba está aberta e em primeiro plano. Mesmo comportamento de
+//   sempre — ver seções 1-5 abaixo.
+//
+// • APP ANDROID NATIVO (Capacitor): usa o plugin
+//   @capacitor-community/background-geolocation, que roda um foreground
+//   service e continua entregando posições mesmo com o app minimizado ou a
+//   tela apagada (com a notificação fixa que o Android exige). A cadência
+//   real de captura do plugin é mais rápida que o necessário (o serviço
+//   nativo amostra a cada ~1s); aplicamos nosso próprio filtro de tempo no
+//   callback pra manter ~8s em primeiro plano e ~20s em segundo plano —
+//   evita gravar/gastar bateria mais do que o combinado.
+//
+// Em ambos os modos:
 // 1. FILA OFFLINE (IndexedDB): se o envio ao Supabase falhar (sem rede, timeout),
 //    a posição NÃO é perdida — vai pra uma fila local e é reenviada depois.
-//
 // 2. REENVIO AUTOMÁTICO: a cada ciclo e sempre que a conexão/aba volta, o que
 //    está preso na fila é drenado para o banco.
-//
-// 3. WAKE LOCK: enquanto o app está aberto e visível, tenta impedir a tela de
-//    apagar — mantém o setInterval vivo por mais tempo.
-//
-// 4. VISIBILITYCHANGE: quando o fiscal reabre a aba ou desbloqueia o celular,
-//    dispara captura imediata (não espera o próximo ciclo).
-//
-// 5. HEARTBEAT DE PRESENÇA: grava também na tabela `fiscais_presenca` (upsert)
+// 3. HEARTBEAT DE PRESENÇA: grava também na tabela `fiscais_presenca` (upsert)
 //    o "último visto" — o mapa sempre sabe onde o fiscal esteve por último.
 //
-// ⚠️ LIMITE HONESTO: isto NÃO rastreia com tela apagada + celular no bolso por
-//    horas. Isso só com app nativo (Capacitor). Aqui resolvemos perda de dados,
-//    captura na volta, e "última posição conhecida".
+// ⚠️ No modo web (PWA comum, sem instalar o app Android), o limite de sempre
+//    continua valendo: NÃO rastreia com tela apagada por horas.
 // ════════════════════════════════════════════════════════════════════════════
 
-const INTERVALO_MS = 8000   // ciclo de captura (8s)
-const GEO_OPTS     = { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
-const DB_NAME      = 'rastreio_fila'
-const STORE        = 'posicoes'
+const INTERVALO_FOREGROUND_MS = 8000    // ciclo de captura com o app em primeiro plano
+const INTERVALO_BACKGROUND_MS = 20000   // ciclo de captura com o app em segundo plano (só no app nativo)
+const GEO_OPTS = { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
+const DB_NAME  = 'rastreio_fila'
+const STORE    = 'posicoes'
 
-let intervalId   = null
-let usuarioAtual = null
-let wakeLock     = null
-let rodando      = false
+const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
+
+let intervalId          = null
+let usuarioAtual        = null
+let wakeLock             = null
+let rodando              = false
+let watcherNativoId      = null
+let removerListenerApp   = null
+let emPrimeiroPlano      = true
+let ultimaCapturaNativaMs = 0
 
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
@@ -154,7 +168,7 @@ async function processarPosicao(usuario, pos) {
   await enfileirar(registro)  // offline → direto pra fila
 }
 
-// ─── Captura uma posição agora ──────────────────────────────────────────────
+// ─── Captura uma posição agora (modo web) ───────────────────────────────────
 function capturarAgora() {
   if (!usuarioAtual || !navigator.geolocation) return
   navigator.geolocation.getCurrentPosition(
@@ -164,7 +178,7 @@ function capturarAgora() {
   )
 }
 
-// ─── Wake Lock: tenta manter a tela ligada (só com aba visível) ─────────────
+// ─── Wake Lock: tenta manter a tela ligada (só com aba visível, modo web) ───
 async function pedirWakeLock() {
   try {
     if ('wakeLock' in navigator && document.visibilityState === 'visible') {
@@ -181,27 +195,96 @@ function liberarWakeLock() {
   wakeLock = null
 }
 
-// ─── Handlers ───────────────────────────────────────────────────────────────
+// ─── Handlers (comuns aos dois modos) ────────────────────────────────────────
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
-    capturarAgora()    // voltou ao app: captura na hora
-    pedirWakeLock()    // re-pede wake lock (é liberado ao sair)
+    if (!Capacitor.isNativePlatform()) {
+      capturarAgora()   // voltou ao app (web): captura na hora
+      pedirWakeLock()   // re-pede wake lock (é liberado ao sair)
+    }
     drenarFila()
   }
 }
 
 function onOnline() {
   drenarFila()
-  capturarAgora()
+  if (!Capacitor.isNativePlatform()) capturarAgora()
+}
+
+// ─── Modo nativo Android: liga o watcher em segundo plano de verdade ────────
+async function iniciarRastreioNativo(usuario) {
+  emPrimeiroPlano = true
+  ultimaCapturaNativaMs = 0
+  try {
+    const { isActive } = await App.getState()
+    emPrimeiroPlano = isActive
+  } catch { /* segue com o padrão (primeiro plano) */ }
+
+  try {
+    const { remove } = await App.addListener('appStateChange', ({ isActive }) => {
+      emPrimeiroPlano = isActive
+    })
+    removerListenerApp = remove
+  } catch (e) {
+    console.warn('[rastreio] appStateChange indisponível:', e?.message)
+  }
+
+  try {
+    watcherNativoId = await BackgroundGeolocation.addWatcher(
+      {
+        backgroundTitle: 'Auditoria de Campo',
+        backgroundMessage: 'Rastreando localização em segundo plano.',
+        requestPermissions: true,
+        stale: false,
+        distanceFilter: 0,
+      },
+      (location, error) => {
+        if (error) { console.warn('[rastreio] nativo erro:', error?.message); return }
+        if (!location || !usuarioAtual) return
+        const agora = Date.now()
+        const cadencia = emPrimeiroPlano ? INTERVALO_FOREGROUND_MS : INTERVALO_BACKGROUND_MS
+        if (agora - ultimaCapturaNativaMs < cadencia) return
+        ultimaCapturaNativaMs = agora
+        processarPosicao(usuarioAtual, {
+          coords: { latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy },
+        })
+      },
+    )
+  } catch (e) {
+    console.warn('[rastreio] falha ao iniciar watcher nativo:', e?.message)
+  }
+}
+
+async function pararRastreioNativo() {
+  if (watcherNativoId) {
+    try { await BackgroundGeolocation.removeWatcher({ id: watcherNativoId }) }
+    catch (e) { console.warn('[rastreio] falha ao remover watcher nativo:', e?.message) }
+    watcherNativoId = null
+  }
+  if (removerListenerApp) {
+    try { removerListenerApp() } catch { /* ignore */ }
+    removerListenerApp = null
+  }
 }
 
 // ─── API pública ────────────────────────────────────────────────────────────
 export function iniciarRastreio(usuario) {
-  if (!usuario || !navigator.geolocation) return
-  if (rodando) pararRastreio()  // evita timers duplicados
+  if (!usuario) return
+  if (rodando) pararRastreio()  // evita timers/watchers duplicados
 
   usuarioAtual = usuario
   rodando = true
+
+  document.addEventListener('visibilitychange', onVisibilityChange)
+  window.addEventListener('online', onOnline)
+
+  if (Capacitor.isNativePlatform()) {
+    iniciarRastreioNativo(usuario)
+    console.log('[rastreio] iniciado (app Android, segundo plano real) para', usuario.login)
+    return
+  }
+
+  if (!navigator.geolocation) return
 
   capturarAgora()      // 1. captura imediata
   pedirWakeLock()      // 2. mantém tela viva enquanto app aberto
@@ -210,15 +293,9 @@ export function iniciarRastreio(usuario) {
   intervalId = setInterval(() => {
     capturarAgora()
     drenarFila()
-  }, INTERVALO_MS)
+  }, INTERVALO_FOREGROUND_MS)
 
-  // 4. captura ao voltar pro app / desbloquear
-  document.addEventListener('visibilitychange', onVisibilityChange)
-
-  // 5. drena fila quando a conexão volta
-  window.addEventListener('online', onOnline)
-
-  console.log('[rastreio] iniciado para', usuario.login)
+  console.log('[rastreio] iniciado (navegador/PWA) para', usuario.login)
 }
 
 export function pararRastreio() {
@@ -226,6 +303,7 @@ export function pararRastreio() {
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('online', onOnline)
   liberarWakeLock()
+  pararRastreioNativo()
   drenarFila()  // última tentativa de esvaziar antes de parar
   usuarioAtual = null
   rodando = false
