@@ -35,6 +35,7 @@ const TODAS_PERMISSOES = [
   { id: 'rotinas_ver_todas',     label: '👥 Rotinas — ver rotinas de todos' },
   { id: 'tratar_nc',        label: '🛠️ Tratamento de Não Conformidades' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
+  { id: 'fiscais_campo_bases', label: 'Fiscais em Campo - gerenciar bases operacionais (raio)' },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },
   { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
   { id: 'relat_equipe',     label: '🚗 Relatório por Equipe'   },
