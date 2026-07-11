@@ -149,6 +149,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const [dataHistorico,   setDataHistorico]   = useState(new Date().toISOString().split('T')[0])
   const [fiscalHistorico, setFiscalHistorico] = useState('')
   const [logHistorico,    setLogHistorico]    = useState([])
+  const [resumoHistorico, setResumoHistorico] = useState(null)
   const [fiscais,         setFiscais]         = useState([])
   const [agora,           setAgora]           = useState(Date.now())  // tick pra recalcular "há X min"
 
@@ -432,6 +433,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     Object.values(rotas.current).forEach(r => r.remove())
     rotas.current = {}
     setLogHistorico([])
+    setResumoHistorico(null)
 
     const hoje = new Date().toISOString().split('T')[0]
     let ini, fim
@@ -478,6 +480,11 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
     leafletMap.current.fitBounds(linha.getBounds(), { padding: [40, 40] })
     setLogHistorico(gerarLogEventos(data, bases))
+    setResumoHistorico({
+      total: data.length,
+      inicio: new Date(data[0].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      fim: new Date(data[data.length - 1].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    })
   }
 
   // ─── Bases: cadastro/edição ───
@@ -766,6 +773,14 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       {loading && aba === 'vivo' && (
         <div style={{ textAlign: 'center', padding: 20, color: '#64748b', fontSize: 13 }}>
           ⏳ Carregando mapa...
+        </div>
+      )}
+
+      {aba === 'historico' && resumoHistorico && (
+        <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 10px', boxSizing: 'border-box' }}>
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
+            ✅ {resumoHistorico.total} posição(ões) registrada(s) nesse período, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
+          </div>
         </div>
       )}
 
