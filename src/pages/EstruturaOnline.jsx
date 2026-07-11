@@ -141,6 +141,11 @@ function normalizarProcesso(valor) {
   return limparTexto(valor).toUpperCase()
 }
 
+function valorContemFiltro(valor, filtro) {
+  if (!norm(filtro)) return true
+  return limparTexto(valor).toUpperCase().includes(limparTexto(filtro).toUpperCase())
+}
+
 function situacaoPermitida(s) {
   return SITUACOES_PERMITIDAS.includes(normalizarSituacao(s))
 }
@@ -442,6 +447,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [ordenacao, setOrdenacao] = useState({ coluna: '', direcao: 'asc' })
   const [confirmacao, setConfirmacao] = useState('')
   const [relatorioImportacao, setRelatorioImportacao] = useState(null)
+  const [filtrosColuna, setFiltrosColuna] = useState({})
 
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
   const podeVisualizar = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_visualizar') || temPermissao(usuarioLogado, 'importar_equipes')
@@ -452,6 +458,14 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const linhasAtuais = linhasPorAba[abaAtiva] || []
   const abaAtual = planilhas.find(p => p.id === abaAtiva)
   const estaEditando = editando === abaAtiva
+
+  useEffect(() => { setFiltrosColuna({}) }, [abaAtiva])
+
+  const atualizarFiltroColuna = (coluna, valor) => {
+    setFiltrosColuna(prev => ({ ...prev, [coluna]: valor }))
+  }
+
+  const temFiltroAtivo = Object.values(filtrosColuna).some(v => norm(v))
 
   const linhasTotal = useMemo(() => {
     return planilhas.flatMap(p => (linhasPorAba[p.id] || [])
@@ -850,13 +864,17 @@ export default function EstruturaOnline({ usuarioLogado }) {
     return <div style={cardStyle}>Carregando Estrutura Online...</div>
   }
 
-  const linhasRender = abaAtiva === 'TOTAL'
+  const linhasOrdenadas = abaAtiva === 'TOTAL'
     ? ordenarPorSituacao(linhasTotal, motivos, ordenacao)
     : ordenarLinhas(linhasAtuais, motivos, ordenacao, estaEditando)
 
+  const linhasRender = estaEditando
+    ? linhasOrdenadas
+    : linhasOrdenadas.filter(l => COLUNAS_ESPERADAS.every(c => valorContemFiltro(l[c], filtrosColuna[c])))
+
   const opcoesMotivosAtuais = motivos.map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   const opcoesProcessosAtuais = processosEquipe.map(p => normalizarProcesso(p.descricao)).filter(Boolean)
-  const existeLinhaInvalida = linhasRender.some(l => {
+  const existeLinhaInvalida = linhasOrdenadas.some(l => {
     const situacao = normalizarSituacao(l.descr_situacao)
     const processo = normalizarProcesso(l.processo_equipe)
     return (situacao && !opcoesMotivosAtuais.includes(situacao)) || (processo && !opcoesProcessosAtuais.includes(processo))
@@ -960,6 +978,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {planilhas.length > 0 && <button onClick={() => setTabelaAmpliada(true)} style={botao('#0f172a')}>Tela cheia</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
             {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar padroes' : 'Padroes'}</button>}
+            {temFiltroAtivo && <button onClick={() => setFiltrosColuna({})} style={botao('#b91c1c')}>Limpar filtros</button>}
           </div>
         </div>
 
@@ -967,6 +986,12 @@ export default function EstruturaOnline({ usuarioLogado }) {
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
             🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
           </div>
+        )}
+
+        {temFiltroAtivo && !estaEditando && (
+          <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
+            Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
+          </p>
         )}
 
         <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
@@ -991,6 +1016,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
             onResizeColuna={redimensionarColuna}
             ordenacao={ordenacao}
             onOrdenar={alternarOrdenacao}
+            filtros={filtrosColuna}
+            onFiltrar={atualizarFiltroColuna}
           />
         )}
       </div>
@@ -1014,6 +1041,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
                 <button onClick={autoAjustarColunas} style={botao('#0369a1')}>Ajustar colunas</button>
                 <button onClick={exportarExcel} style={botao('#16a34a')}>Exportar Excel</button>
+                {temFiltroAtivo && <button onClick={() => setFiltrosColuna({})} style={botao('#b91c1c')}>Limpar filtros</button>}
                 <button onClick={() => setTabelaAmpliada(false)} style={botao('#334155')}>Fechar</button>
               </div>
             </div>
@@ -1021,6 +1049,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
                 🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
               </div>
+            )}
+            {temFiltroAtivo && !estaEditando && (
+              <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
+                Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
+              </p>
             )}
             <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
             <TabelaEstrutura
@@ -1039,6 +1072,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
               onResizeColuna={redimensionarColuna}
               ordenacao={ordenacao}
               onOrdenar={alternarOrdenacao}
+              filtros={filtrosColuna}
+              onFiltrar={atualizarFiltroColuna}
             />
           </div>
         </div>
@@ -1220,7 +1255,7 @@ function ResumoSituacoes({ linhas, motivos }) {
   )
 }
 
-function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, processoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar }) {
+function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, processoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar, filtros = {}, onFiltrar }) {
   const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   const opcoesProcessos = (processosEquipe || []).map(p => normalizarProcesso(p.descricao)).filter(Boolean)
   const largura = coluna => largurasColunas[coluna] || larguraPadraoColuna(coluna)
@@ -1248,6 +1283,21 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
             ))}
             {editando && <Th width={110}>acao</Th>}
           </tr>
+          {!editando && onFiltrar && (
+            <tr>
+              {total && <th style={filtroThStyle} />}
+              {COLUNAS_ESPERADAS.map(c => (
+                <th key={c} style={filtroThStyle}>
+                  <input
+                    value={filtros[c] || ''}
+                    onChange={e => onFiltrar(c, e.target.value)}
+                    placeholder="Filtrar..."
+                    style={filtroInputStyle}
+                  />
+                </th>
+              ))}
+            </tr>
+          )}
         </thead>
         <tbody>
           {linhas.map((linha) => {
@@ -1502,4 +1552,23 @@ const inputStyle = {
   fontSize: 13,
   outline: 'none',
   boxSizing: 'border-box',
+}
+
+const filtroThStyle = {
+  background: '#f8fafc',
+  borderBottom: '1px solid #e2e8f0',
+  borderRight: '1px solid #e2e8f0',
+  padding: '4px 6px',
+}
+
+const filtroInputStyle = {
+  width: '100%',
+  border: '1px solid #cbd5e1',
+  borderRadius: 6,
+  padding: '4px 6px',
+  fontSize: 11,
+  outline: 'none',
+  boxSizing: 'border-box',
+  fontWeight: 600,
+  color: '#0f172a',
 }

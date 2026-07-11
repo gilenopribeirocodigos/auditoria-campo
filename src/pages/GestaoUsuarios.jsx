@@ -44,6 +44,7 @@ const TODAS_PERMISSOES = [
   { id: 'pauta_editar_reprogramar', label: 'Pauta - editar/reprogramar data e dados' },
   { id: 'pauta_cancelar',   label: 'Pauta - cancelar pauta' },
   { id: 'pauta_excluir',    label: 'Pauta - excluir pauta concluida/cancelada' },
+  { id: 'pauta_ver_futuras', label: 'Pauta - visualizar pautas futuras (planejamento)' },
   { id: 'gestao_usuarios',  label: '👥 Gestão de Usuários'     },
   { id: 'importar_equipes', label: '📥 Estrutura Operacional - acesso geral (Home)' },
   { id: 'historico_ver_todas',     label: '📂 Histórico — ver todas as auditorias' },
