@@ -1,6 +1,6 @@
 {
   "appId": "com.dpl.auditoriacampo",
-  "appName": "Auditoria de Campo",
+  "appName": "VérticeGP",
   "webDir": "dist",
   "server": {
     "url": "https://auditoria-campo-dev.onrender.com",
