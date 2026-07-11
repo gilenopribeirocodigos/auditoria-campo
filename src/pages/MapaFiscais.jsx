@@ -43,6 +43,32 @@ function formatarDataBR(dataISO) {
   return `${dia}/${mes}/${ano}`
 }
 
+// Converte uma data LOCAL (America/Fortaleza, UTC-3, sem horário de verão)
+// escolhida no filtro (ex: "2026-07-11") nos limites UTC reais do dia local
+// — os timestamps em `localizacoes` são gravados em UTC (created_at ISO),
+// então comparar com strings sem offset (ex: "2026-07-11T00:00:00") faz o
+// Postgres interpretar como UTC e desloca a janela em 3h (perde as últimas
+// 3h do dia local e inclui 3h do dia anterior).
+function limitesDiaLocalUTC(dataISO) {
+  const ini = new Date(`${dataISO}T00:00:00-03:00`).toISOString()
+  const fim = new Date(`${dataISO}T23:59:59.999-03:00`).toISOString()
+  return { ini, fim }
+}
+
+// Gera os horários de hora cheia (ex: 8h, 9h, 10h...) dentro do intervalo do
+// eixo de um gráfico de permanência, pra funcionar como régua tipo Gantt.
+function horasCheiasNoIntervalo(inicioMs, fimMs) {
+  if (!(fimMs > inicioMs)) return []
+  const horas = []
+  const primeira = new Date(inicioMs)
+  primeira.setMinutes(0, 0, 0)
+  if (primeira.getTime() < inicioMs) primeira.setHours(primeira.getHours() + 1)
+  for (let t = primeira.getTime(); t <= fimMs; t += 60 * 60 * 1000) {
+    horas.push(t)
+  }
+  return horas
+}
+
 // ─── Geofencing: distância em km entre duas coordenadas (Haversine) ─────────
 function distanciaKm(lat1, lng1, lat2, lng2) {
   const R = 6371
@@ -537,8 +563,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const carregarRelatorio = async () => {
     setCarregandoRelatorio(true)
     try {
-      const ini = `${dataRelatorio}T00:00:00`
-      const fim = `${dataRelatorio}T23:59:59`
+      const { ini, fim } = limitesDiaLocalUTC(dataRelatorio)
       const { data } = await supabase
         .from('localizacoes').select('*')
         .gte('created_at', ini).lte('created_at', fim)
@@ -890,8 +915,25 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                       const bg = seg.tipo === 'in' ? '#16a34a' : seg.tipo === 'out' ? '#d97706' : 'repeating-linear-gradient(45deg,#e2e8f0,#e2e8f0 4px,#f1f5f9 4px,#f1f5f9 8px)'
                       return <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${left}%`, width: `${width}%`, background: bg }} />
                     })}
+                    {/* Régua de horas cheias por cima das barras, estilo Gantt */}
+                    {horasCheiasNoIntervalo(inicioEixo, fimEixo).map(h => (
+                      <div key={h} style={{
+                        position: 'absolute', top: 0, bottom: 0,
+                        left: `${((h - inicioEixo) / totalEixo) * 100}%`,
+                        width: 1, background: 'rgba(15,23,42,0.22)',
+                      }} />
+                    ))}
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#94a3b8', marginTop: 3 }}>
+                  <div style={{ position: 'relative', height: 12, marginTop: 3 }}>
+                    {horasCheiasNoIntervalo(inicioEixo, fimEixo).map(h => (
+                      <span key={h} style={{
+                        position: 'absolute', left: `${((h - inicioEixo) / totalEixo) * 100}%`,
+                        transform: 'translateX(-50%)', fontSize: 9, color: '#94a3b8',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}>{new Date(h).getHours()}</span>
+                    ))}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#94a3b8', marginTop: 1 }}>
                     <span>{new Date(inicioEixo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                     <span>{new Date(fimEixo).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
                   </div>
