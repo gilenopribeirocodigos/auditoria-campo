@@ -159,8 +159,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const [salvandoBase,    setSalvandoBase]    = useState(false)
   const [erroBase,        setErroBase]        = useState('')
 
-  const [permanenciaHoje, setPermanenciaHoje] = useState({}) // fiscal_login -> {inMs,outMs,nodataMs}
-
   const [dataRelatorio,        setDataRelatorio]        = useState(new Date().toISOString().split('T')[0])
   const [relatorioPermanencia, setRelatorioPermanencia] = useState([])
   const [carregandoRelatorio,  setCarregandoRelatorio]  = useState(false)
@@ -310,35 +308,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     const tick     = setInterval(() => setAgora(Date.now()), 1000)
     return () => { clearInterval(interval); clearInterval(tick) }
   }, [aba])
-
-  // ─── % de tempo dentro da base hoje, por fiscal visível (a cada 30s) ───
-  useEffect(() => {
-    if (aba !== 'vivo') return
-    const logins = presencasFiltradas.map(p => p.fiscal_login)
-    if (logins.length === 0) { setPermanenciaHoje({}); return }
-
-    const carregar = async () => {
-      const inicioHoje = `${new Date().toISOString().split('T')[0]}T00:00:00`
-      const { data } = await supabase
-        .from('localizacoes').select('*')
-        .in('fiscal_login', logins)
-        .gte('created_at', inicioHoje)
-        .order('created_at', { ascending: true })
-      const porFiscal = new Map()
-      ;(data || []).forEach(p => {
-        if (!porFiscal.has(p.fiscal_login)) porFiscal.set(p.fiscal_login, [])
-        porFiscal.get(p.fiscal_login).push(p)
-      })
-      const resultado = {}
-      porFiscal.forEach((pontos, login) => { resultado[login] = calcularPermanencia(pontos, bases) })
-      setPermanenciaHoje(resultado)
-    }
-
-    carregar()
-    const interval = setInterval(carregar, 30000)
-    return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aba, presencasFiltradas.map(p => p.fiscal_login).join(','), bases])
 
   // ─── Sincroniza marcadores (ativos + ausentes com estilos distintos) ───
   useEffect(() => {
@@ -720,49 +689,32 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         </div>
       )}
 
-      {/* Cards de fiscais (ativos + ausentes) */}
+      {/* Tira compacta de chips (ativos + ausentes) — cabe qualquer quantidade de
+          fiscais numa faixa só, com rolagem lateral. Detalhe completo (dentro/fora,
+          coordenadas, horário, rota) fica no balão do mapa; % do dia dentro da base
+          fica só na aba Relatório, pra não duplicar informação aqui. */}
       {aba === 'vivo' && presencasFiltradas.length > 0 && (
-        <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 20px' }}>
-          <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 20px', overflowX: 'auto' }}>
+          <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', gap: 8 }}>
             {[...ativos, ...ausentes].map(f => {
               const ativo = estaAtivo(f.ultimo_visto)
               const cor   = ativo ? corFiscal(f.fiscal_login) : '#94a3b8'
               const classif = baseMaisProxima(f.lat, f.lng, bases)
-              const perm = permanenciaHoje[f.fiscal_login]
-              const totalMs = perm ? perm.inMs + perm.outMs : 0
-              const pctDentro = totalMs > 0 ? Math.round((perm.inMs / totalMs) * 100) : null
               return (
                 <div key={f.fiscal_login} onClick={() => {
                   if (leafletMap.current && marcadores.current[f.fiscal_login]) {
                     leafletMap.current.setView([f.lat, f.lng], 15)
                     marcadores.current[f.fiscal_login].openPopup()
                   }
-                }} style={{
+                }} title={classif.base ? (classif.dentro ? `Dentro da ${classif.base.nome}` : `Fora de qualquer base (${classif.distanciaKm.toFixed(1)}km da ${classif.base.nome})`) : ''} style={{
+                  display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
                   background: ativo ? '#f0f9ff' : '#f8fafc',
-                  border: `2px solid ${cor}`, borderRadius: 10, padding: '8px 12px', cursor: 'pointer',
-                  opacity: ativo ? 1 : 0.8,
+                  border: `1.5px solid ${cor}`, borderRadius: 999, padding: '6px 12px 6px 8px', cursor: 'pointer',
+                  opacity: ativo ? 1 : 0.7,
                 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: cor }}>
-                      {ativo ? '🟢' : '⚪'} {f.fiscal_nome}
-                    </span>
-                    <span style={{ fontSize: 10, color: '#64748b' }}>
-                      {ativo ? new Date(f.ultimo_visto).toLocaleTimeString('pt-BR') : tempoDesde(f.ultimo_visto)}
-                    </span>
-                  </div>
-                  {classif.base && (
-                    <div style={{ fontSize: 11, fontWeight: 700, marginTop: 3, color: classif.dentro ? '#166534' : '#92400e' }}>
-                      {classif.dentro ? `🟢 Dentro da ${classif.base.nome}` : `🟠 Fora de qualquer base (${classif.distanciaKm.toFixed(1)}km da ${classif.base.nome})`}
-                    </div>
-                  )}
-                  {pctDentro !== null && (
-                    <div style={{ marginTop: 5 }}>
-                      <div style={{ height: 5, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${pctDentro}%`, background: '#16a34a' }} />
-                      </div>
-                      <p style={{ fontSize: 9.5, color: '#64748b', marginTop: 2 }}>{pctDentro}% do dia dentro da base até agora</p>
-                    </div>
-                  )}
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: cor, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: cor }}>{f.fiscal_nome?.split(' ')[0]}</span>
+                  {classif.base && <span style={{ fontSize: 11 }}>{classif.dentro ? '🟢' : '🟠'}</span>}
                 </div>
               )
             })}
