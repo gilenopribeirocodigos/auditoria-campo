@@ -18,12 +18,16 @@ async function buscarFiscais(texto) {
 
 async function buscarPrefixos(texto) {
   if (!texto || texto.length < 2) return []
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('estrutura_equipes')
     .select('prefixo')
     .ilike('prefixo', `%${texto}%`)
     .order('prefixo')
     .limit(10)
+  // Falha de rede (ex: sem internet real em campo, mesmo com navigator.onLine
+  // indicando "online") não pode ser tratada igual a "prefixo não existe" —
+  // por isso propaga o erro em vez de engolir e devolver lista vazia.
+  if (error) throw error
   if (!data) return []
   return [...new Set(data.map(r => r.prefixo))]
 }
@@ -118,11 +122,15 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
   const [valido,      setValido]      = useState(false)
   const [buscando,    setBuscando]    = useState(false)
   const [semResultado, setSemResultado] = useState(false)
+  // semConexao = navigator.onLine disse "online" mas a consulta ao Supabase
+  // falhou de verdade (comum em campo: sinal fraco, wifi sem internet, etc.)
+  // Nesse caso não dá pra confiar que "não achou" significa "prefixo inválido".
+  const [semConexao, setSemConexao] = useState(false)
   const offline = !navigator.onLine
   const ref = useRef(null)
 
   // Sincroniza estado de validade com o pai
-  useEffect(() => { onValidChange(valido || offline) }, [valido, offline])
+  useEffect(() => { onValidChange(valido || offline || semConexao) }, [valido, offline, semConexao])
 
   // Quando o form é carregado com prefixo pré-preenchido (pauta ativa),
   // marca como válido direto se estiver offline ou dispara uma verificação
@@ -132,7 +140,8 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
     // Verifica silenciosamente se o prefixo pré-preenchido é válido
     supabase.from('estrutura_equipes')
       .select('prefixo').eq('prefixo', value).limit(1)
-      .then(({ data }) => {
+      .then(({ data, error }) => {
+        if (error) { setSemConexao(true); setValido(true); return }
         const ok = !!(data && data.length > 0)
         setValido(ok)
       })
@@ -150,6 +159,7 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
     onChange(upper)
     setValido(false)
     setSemResultado(false)
+    setSemConexao(false)
 
     if (offline) {
       // Sem internet: aceita qualquer digitação
@@ -162,11 +172,22 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
     if (upper.length < 2) { setSugestoes([]); setAberto(false); return }
 
     setBuscando(true)
-    const lista = await buscarPrefixos(upper)
-    setBuscando(false)
-    setSugestoes(lista)
-    setAberto(lista.length > 0)
-    setSemResultado(lista.length === 0 && upper.length >= 2)
+    try {
+      const lista = await buscarPrefixos(upper)
+      setBuscando(false)
+      setSugestoes(lista)
+      setAberto(lista.length > 0)
+      setSemResultado(lista.length === 0 && upper.length >= 2)
+    } catch {
+      // navigator.onLine indicava "online" mas a consulta falhou de verdade
+      // (sem sinal/sem internet em campo) — não bloqueia o fiscal, aceita o
+      // prefixo digitado manualmente, igual ao comportamento offline.
+      setBuscando(false)
+      setSemConexao(true)
+      setValido(true)
+      setSugestoes([])
+      setAberto(false)
+    }
   }
 
   const handleSelect = (v) => {
@@ -175,6 +196,7 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
     setSugestoes([])
     setAberto(false)
     setSemResultado(false)
+    setSemConexao(false)
   }
 
   // Cor e ícone do campo de acordo com o estado
@@ -195,7 +217,7 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
           value={value}
           onChange={e => handleChange(e.target.value)}
           onFocus={() => sugestoes.length > 0 && setAberto(true)}
-          placeholder={offline ? 'Offline — digite o prefixo manualmente' : 'Digite para buscar (ex: PI-THE-C001M)'}
+          placeholder={(offline || semConexao) ? 'Sem conexão — digite o prefixo manualmente' : 'Digite para buscar (ex: PI-THE-C001M)'}
           autoComplete="off"
           style={{
             borderColor,
@@ -209,9 +231,10 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
           position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
           fontSize: 16, pointerEvents: 'none',
         }}>
-          {offline     ? '📵'
-           : buscando  ? '⏳'
-           : valido    ? '✅'
+          {offline      ? '📵'
+           : semConexao ? '⚠️'
+           : buscando   ? '⏳'
+           : valido     ? '✅'
            : value && value.length >= 2 ? '❌' : '🔍'}
         </span>
       </div>
@@ -244,18 +267,23 @@ function PrefixoInputValidado({ value, onChange, onValidChange, eletricistasCoun
           📵 Offline — prefixo será salvo sem validação. Certifique-se de usar o padrão correto (ex: PI-THE-C001M).
         </p>
       )}
-      {!offline && valido && (
+      {!offline && semConexao && (
+        <p style={{ fontSize: 11, color: '#92400e', marginTop: 4, fontWeight: 600 }}>
+          ⚠️ Sem conexão com o servidor — prefixo será salvo sem validação. Certifique-se de usar o padrão correto (ex: PI-THE-C001M).
+        </p>
+      )}
+      {!offline && !semConexao && valido && (
         <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4, fontWeight: 600 }}>
           ✅ Prefixo encontrado na base de dados
           {eletricistasCount > 0 ? ` · ${eletricistasCount} eletricista(s) nesta equipe` : ''}
         </p>
       )}
-      {!offline && semResultado && value && value.length >= 2 && (
+      {!offline && !semConexao && semResultado && value && value.length >= 2 && (
         <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontWeight: 600 }}>
           ❌ Prefixo não encontrado. Verifique o padrão (ex: PI-THE-C001M) ou escolha da lista.
         </p>
       )}
-      {!offline && !valido && value && value.length >= 2 && !semResultado && !buscando && sugestoes.length > 0 && (
+      {!offline && !semConexao && !valido && value && value.length >= 2 && !semResultado && !buscando && sugestoes.length > 0 && (
         <p style={{ fontSize: 11, color: '#d97706', marginTop: 4, fontWeight: 600 }}>
           ☝️ Selecione um prefixo da lista para continuar.
         </p>
