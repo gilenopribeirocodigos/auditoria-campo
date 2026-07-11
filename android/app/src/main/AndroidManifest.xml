@@ -45,4 +45,10 @@
          (merge automático do Gradle) — só ACCESS_BACKGROUND_LOCATION
          precisa ser declarada explicitamente pelo app consumidor. -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Permite pedir ao usuário, num único diálogo do próprio Android, pra
+         ignorar a otimização de bateria PADRÃO do sistema (Doze) pro app —
+         ver requestIgnoreBatteryOptimizations() em rastreio.js. Não cobre
+         gerenciadores de bateria proprietários de fabricante (MIUI etc). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

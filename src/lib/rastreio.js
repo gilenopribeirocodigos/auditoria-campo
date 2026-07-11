@@ -253,6 +253,17 @@ async function iniciarRastreioNativo(usuario) {
   } catch (e) {
     console.warn('[rastreio] falha ao iniciar watcher nativo:', e?.message)
   }
+
+  // Pede, num único toque, pra ignorar a otimização de bateria PADRÃO do
+  // Android (Doze) — não bloqueia nada se falhar/for negado. Isso NÃO cobre
+  // gerenciadores de bateria proprietários de fabricante (ex: "Economia de
+  // bateria"/"Início automático" da MIUI/HyperOS) — esses continuam exigindo
+  // ajuste manual do usuário nas configurações do aparelho.
+  try {
+    await BackgroundGeolocation.requestIgnoreBatteryOptimizations()
+  } catch (e) {
+    console.warn('[rastreio] pedido de isenção de bateria falhou:', e?.message)
+  }
 }
 
 async function pararRastreioNativo() {

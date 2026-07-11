@@ -1,8 +1,16 @@
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..97db667 100644
+index a92fcf9..5d84617 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-@@ -45,6 +45,17 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+@@ -18,6 +18,7 @@ import android.location.LocationManager;
+ import android.net.Uri;
+ import android.os.Build;
+ import android.os.IBinder;
++import android.os.PowerManager;
+ import android.provider.Settings;
+ 
+ import com.getcapacitor.JSObject;
+@@ -45,6 +46,17 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
                                  Manifest.permission.ACCESS_FINE_LOCATION
                          },
                          alias = "location"
@@ -20,7 +28,7 @@ index a92fcf9..97db667 100644
                  )
          }
  )
-@@ -78,14 +89,36 @@ public class BackgroundGeolocation extends Plugin {
+@@ -78,14 +90,36 @@ public class BackgroundGeolocation extends Plugin {
          }
          call.setKeepAlive(true);
  
@@ -58,7 +66,37 @@ index a92fcf9..97db667 100644
          }
          if (call.getBoolean("stale", false)) {
              fetchLastLocation(call);
-@@ -339,9 +372,13 @@ public class BackgroundGeolocation extends Plugin {
+@@ -205,6 +239,29 @@ public class BackgroundGeolocation extends Plugin {
+         call.resolve();
+     }
+ 
++    // [DPL] Dispara o diálogo padrão do Android pra pedir isenção da
++    // otimização de bateria PADRÃO do sistema (Doze) — um único toque em
++    // "Permitir". Isso NÃO cobre gerenciadores de bateria proprietários de
++    // fabricantes (ex: "Economia de bateria"/"Início automático" da
++    // MIUI/HyperOS da Xiaomi) — essas telas são específicas do fabricante,
++    // sem API pública, e continuam exigindo ajuste manual do usuário.
++    @PluginMethod()
++    public void requestIgnoreBatteryOptimizations(PluginCall call) {
++        String packageName = getContext().getPackageName();
++        PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
++        try {
++            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
++                Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
++                intent.setData(Uri.parse("package:" + packageName));
++                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++                getContext().startActivity(intent);
++            }
++        } catch (Exception e) {
++            Logger.error("Could not request ignore battery optimizations", e);
++        }
++        call.resolve();
++    }
++
+     // Checks if device-wide location services are disabled
+     private static Boolean isLocationEnabled(Context context) {
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+@@ -339,9 +396,13 @@ public class BackgroundGeolocation extends Plugin {
  
      @Override
      protected void handleOnDestroy() {
