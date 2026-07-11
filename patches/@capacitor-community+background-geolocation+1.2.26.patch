@@ -1,8 +1,26 @@
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..7974aa9 100644
+index a92fcf9..97db667 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-@@ -78,6 +78,21 @@ public class BackgroundGeolocation extends Plugin {
+@@ -45,6 +45,17 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+                                 Manifest.permission.ACCESS_FINE_LOCATION
+                         },
+                         alias = "location"
++                ),
++                // [DPL] Sem essa permissão (Android 13+/API 33), a notificação fixa
++                // do rastreio não aparece — e a MIUI/HyperOS (e outros fabricantes)
++                // trata um serviço em primeiro plano "sem aviso visível" como algo
++                // escondido, cortando o processo mais facilmente. Já declarada no
++                // AndroidManifest.xml do próprio plugin; só faltava pedir em runtime.
++                @Permission(
++                        strings = {
++                                Manifest.permission.POST_NOTIFICATIONS
++                        },
++                        alias = "notifications"
+                 )
+         }
+ )
+@@ -78,14 +89,36 @@ public class BackgroundGeolocation extends Plugin {
          }
          call.setKeepAlive(true);
  
@@ -23,8 +41,24 @@ index a92fcf9..7974aa9 100644
 +
          if (getPermissionState("location") != PermissionState.GRANTED) {
              if (call.getBoolean("requestPermissions", true)) {
-                 requestPermissionForAlias("location", call, "locationPermissionsCallback");
-@@ -339,9 +354,13 @@ public class BackgroundGeolocation extends Plugin {
+-                requestPermissionForAlias("location", call, "locationPermissionsCallback");
++                // [DPL] Pede notificação (Android 13+) junto com localização, num
++                // único diálogo — ver motivo no @CapacitorPlugin acima.
++                requestPermissionForAliases(new String[] { "location", "notifications" }, call, "locationPermissionsCallback");
+             } else {
+                 call.reject("Permission denied.", "NOT_AUTHORIZED");
+             }
+         } else if (!isLocationEnabled(getContext())) {
+             call.reject("Location services disabled.", "NOT_AUTHORIZED");
++        } else if (getPermissionState("notifications") != PermissionState.GRANTED && call.getBoolean("requestPermissions", true)) {
++            // [DPL] Localização já concedida (execuções seguintes) — só falta
++            // pedir notificação. Nunca bloqueia o rastreio: só afeta se o
++            // aviso fixo aparece ou não.
++            requestPermissionForAlias("notifications", call, "locationPermissionsCallback");
+         }
+         if (call.getBoolean("stale", false)) {
+             fetchLastLocation(call);
+@@ -339,9 +372,13 @@ public class BackgroundGeolocation extends Plugin {
  
      @Override
      protected void handleOnDestroy() {
