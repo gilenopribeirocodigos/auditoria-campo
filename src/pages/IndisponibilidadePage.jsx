@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
 // IndisponibilidadePage v8
@@ -874,7 +875,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         {abaAtiva === 'frequencia' && (
           <>
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>⏳ Carregando eletricistas...</div>
+              <CarregandoHexagono texto="Carregando eletricistas..." />
             ) : eletricistas.length === 0 ? (
               <div style={{ background: '#f0fdf4', borderRadius: 14, border: '1px solid #86efac', padding: 30, textAlign: 'center', color: '#15803d' }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>

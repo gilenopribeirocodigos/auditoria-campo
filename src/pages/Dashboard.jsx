@@ -6,6 +6,7 @@ import {
   calcMesAtual,
   mesLabel,
 } from '../components/PainelFiltros.jsx'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // ─── Helpers visuais (específicos do Dashboard) ─────────────────────────────
 function notaCor(nota) {
@@ -340,10 +341,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 80, color: '#64748b' }}>
-            <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
-            <p style={{ fontSize: 16 }}>Carregando...</p>
-          </div>
+          <CarregandoHexagono padding={80} tamanho={64} />
         ) : (
           <>
 

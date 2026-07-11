@@ -5,6 +5,7 @@ import {
   useFiltrosOperacionais,
   PainelFiltros,
 } from '../components/PainelFiltros.jsx'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // Janela em que consideramos o fiscal "ativo agora" (verde) vs "ausente" (cinza)
 const ATIVO_MS    = 2 * 60 * 1000    // até 2 min = ativo
@@ -723,9 +724,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       )}
 
       {loading && aba === 'vivo' && (
-        <div style={{ textAlign: 'center', padding: 20, color: '#64748b', fontSize: 13 }}>
-          ⏳ Carregando mapa...
-        </div>
+        <CarregandoHexagono texto="Carregando mapa..." tamanho={44} padding={20} />
       )}
 
       {aba === 'historico' && resumoHistorico && (
@@ -867,7 +866,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>Permanência por fiscal</p>
             <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>{formatarDataBR(dataRelatorio)}</p>
 
-            {carregandoRelatorio && <p style={{ fontSize: 12, color: '#64748b' }}>⏳ Calculando...</p>}
+            {carregandoRelatorio && <CarregandoHexagono texto="Calculando..." tamanho={44} padding={20} />}
             {!carregandoRelatorio && relatorioPermanencia.length === 0 && (
               <p style={{ fontSize: 12, color: '#64748b' }}>Nenhuma posição registrada nessa data.</p>
             )}
