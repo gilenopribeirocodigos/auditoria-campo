@@ -1,12 +1,12 @@
 {
   "name": "auditoria-campo-dpl",
-  "version": "3.3.52",
+  "version": "3.3.53",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package || ( [ -z \"$GITHUB_ACTIONS\" ] && echo 'patch-package falhou fora do build Android (GitHub Actions) - seguindo sem aplicar, nao afeta o build web' || exit 1 )"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",
