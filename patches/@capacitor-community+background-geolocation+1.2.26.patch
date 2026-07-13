@@ -1,5 +1,5 @@
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..f18c94f 100644
+index a92fcf9..651ed01 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 @@ -18,6 +18,7 @@ import android.location.LocationManager;
@@ -10,7 +10,7 @@ index a92fcf9..f18c94f 100644
  import android.provider.Settings;
  
  import com.getcapacitor.JSObject;
-@@ -45,6 +46,17 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+@@ -45,6 +46,30 @@ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
                                  Manifest.permission.ACCESS_FINE_LOCATION
                          },
                          alias = "location"
@@ -25,10 +25,23 @@ index a92fcf9..f18c94f 100644
 +                                Manifest.permission.POST_NOTIFICATIONS
 +                        },
 +                        alias = "notifications"
++                ),
++                // [DPL] Localização em segundo plano (Android 10+). Precisa ser pedida
++                // SEPARADA da localização normal (o próprio Android exige isso a partir
++                // do Android 11 — não dá pra pedir as duas juntas). Em muitos aparelhos
++                // Android 11+ o sistema só oferece "Enquanto usa o app"/"Negar" nesse
++                // pedido, exigindo o usuário ir manualmente em Configurações pra marcar
++                // "Permitir o tempo todo" — mas pedimos mesmo assim, pois em alguns
++                // fabricantes/versões isso já resolve direto.
++                @Permission(
++                        strings = {
++                                Manifest.permission.ACCESS_BACKGROUND_LOCATION
++                        },
++                        alias = "backgroundLocation"
                  )
          }
  )
-@@ -78,14 +90,36 @@ public class BackgroundGeolocation extends Plugin {
+@@ -78,14 +103,44 @@ public class BackgroundGeolocation extends Plugin {
          }
          call.setKeepAlive(true);
  
@@ -63,10 +76,18 @@ index a92fcf9..f18c94f 100644
 +            // pedir notificação. Nunca bloqueia o rastreio: só afeta se o
 +            // aviso fixo aparece ou não.
 +            requestPermissionForAlias("notifications", call, "locationPermissionsCallback");
++        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
++                && getPermissionState("backgroundLocation") != PermissionState.GRANTED
++                && call.getBoolean("requestPermissions", true)) {
++            // [DPL] Localização e notificação já concedidas — só falta pedir
++            // localização em segundo plano (tem que ser depois das outras duas,
++            // nunca junto). Nunca bloqueia o rastreio: o foreground service já
++            // funciona sem essa permissão específica.
++            requestPermissionForAlias("backgroundLocation", call, "locationPermissionsCallback");
          }
          if (call.getBoolean("stale", false)) {
              fetchLastLocation(call);
-@@ -103,7 +137,11 @@ public class BackgroundGeolocation extends Plugin {
+@@ -103,7 +158,11 @@ public class BackgroundGeolocation extends Plugin {
                      )
                      .setContentText(backgroundMessage)
                      .setOngoing(true)
@@ -79,7 +100,33 @@ index a92fcf9..f18c94f 100644
                      .setWhen(System.currentTimeMillis());
  
              try {
-@@ -205,6 +243,29 @@ public class BackgroundGeolocation extends Plugin {
+@@ -181,6 +240,25 @@ public class BackgroundGeolocation extends Plugin {
+         }
+     }
+ 
++    // [DPL] Recebe do JS a configuração necessária pro serviço nativo gravar
++    // a localização direto no Supabase, sem depender da ponte JS/WebView
++    // continuar viva (é isso que torna o rastreio confiável em segundo
++    // plano). Chamado a cada login/retomada do app — persiste em
++    // SharedPreferences, disponível pro serviço mesmo em capturas
++    // disparadas fora de qualquer atividade do JS (ex: alarme de reforço).
++    @PluginMethod()
++    public void configurarSupabase(PluginCall call) {
++        String url = call.getString("url");
++        String anonKey = call.getString("anonKey");
++        String schema = call.getString("schema", "dev");
++        String fiscalLogin = call.getString("fiscalLogin");
++        String fiscalNome = call.getString("fiscalNome");
++        if (service != null) {
++            service.configurarSupabase(url, anonKey, schema, fiscalLogin, fiscalNome);
++        }
++        call.resolve();
++    }
++
+     @PluginMethod()
+     public void removeWatcher(PluginCall call) {
+         String callbackId = call.getString("id");
+@@ -205,6 +283,29 @@ public class BackgroundGeolocation extends Plugin {
          call.resolve();
      }
  
@@ -109,7 +156,7 @@ index a92fcf9..f18c94f 100644
      // Checks if device-wide location services are disabled
      private static Boolean isLocationEnabled(Context context) {
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-@@ -286,13 +347,16 @@ public class BackgroundGeolocation extends Plugin {
+@@ -286,13 +387,16 @@ public class BackgroundGeolocation extends Plugin {
              NotificationManager manager = (NotificationManager) getContext().getSystemService(
                      Context.NOTIFICATION_SERVICE
              );
@@ -127,7 +174,7 @@ index a92fcf9..f18c94f 100644
              );
              channel.enableLights(false);
              channel.enableVibration(false);
-@@ -339,9 +403,13 @@ public class BackgroundGeolocation extends Plugin {
+@@ -339,9 +443,13 @@ public class BackgroundGeolocation extends Plugin {
  
      @Override
      protected void handleOnDestroy() {
@@ -145,10 +192,10 @@ index a92fcf9..f18c94f 100644
      }
  }
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..7404788 100644
+index fafbb86..c029f4d 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-@@ -1,8 +1,13 @@
+@@ -1,8 +1,14 @@
  package com.equimaps.capacitor_background_geolocation;
  
 +import android.app.AlarmManager;
@@ -159,10 +206,36 @@ index fafbb86..7404788 100644
 +import android.content.Context;
  import android.content.Intent;
 +import android.content.IntentFilter;
++import android.content.SharedPreferences;
  import android.content.pm.ServiceInfo;
  import android.location.Location;
  import android.os.Binder;
-@@ -42,23 +47,118 @@ public class BackgroundGeolocationService extends Service {
+@@ -17,7 +23,24 @@ import com.google.android.gms.location.LocationRequest;
+ import com.google.android.gms.location.LocationResult;
+ import com.google.android.gms.location.LocationServices;
+ 
++import org.json.JSONObject;
++
++import java.io.BufferedReader;
++import java.io.File;
++import java.io.FileReader;
++import java.io.FileWriter;
++import java.io.OutputStream;
++import java.net.HttpURLConnection;
++import java.net.URL;
++import java.nio.charset.StandardCharsets;
++import java.text.SimpleDateFormat;
++import java.util.ArrayList;
++import java.util.Date;
+ import java.util.HashSet;
++import java.util.List;
++import java.util.Locale;
++import java.util.concurrent.ExecutorService;
++import java.util.concurrent.Executors;
+ 
+ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+ 
+@@ -42,23 +65,283 @@ public class BackgroundGeolocationService extends Service {
      }
      private HashSet<Watcher> watchers = new HashSet<Watcher>();
  
@@ -186,9 +259,21 @@ index fafbb86..7404788 100644
 +    private PendingIntent alarmPendingIntent;
 +    private BroadcastReceiver alarmReceiver;
 +
++    // [DPL] Envio nativo direto pro Supabase (sem depender da ponte JS/WebView
++    // estar rodando) + fila offline própria em arquivo local — mesma ideia da
++    // fila em IndexedDB que já existe no lado JS (rastreio.js), só que
++    // reimplementada em Java porque o WebView não é acessível daqui.
++    // Debounce fixo de 8s pro stream contínuo (que entrega posições a cada
++    // ~1s) — o alarme de reforço (5min) cobre o caso do stream ficar represado.
++    private static final long CADENCIA_GRAVACAO_MS = 8000;
++    private static final String PREFS_NOME = "rastreio_config_nativo";
++    private long ultimaGravacaoMs = 0;
++    private ExecutorService filaExecutor;
++
 +    @Override
 +    public void onCreate() {
 +        super.onCreate();
++        filaExecutor = Executors.newSingleThreadExecutor();
 +        alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
 +        Intent alarmIntent = new Intent(ACTION_ALARME_REFORCO).setPackage(getPackageName());
 +        int flags = PendingIntent.FLAG_UPDATE_CURRENT
@@ -216,6 +301,7 @@ index fafbb86..7404788 100644
 +        if (alarmReceiver != null) {
 +            try { unregisterReceiver(alarmReceiver); } catch (Exception ignore) {}
 +        }
++        if (filaExecutor != null) filaExecutor.shutdown();
 +        super.onDestroy();
 +    }
 +
@@ -249,8 +335,160 @@ index fafbb86..7404788 100644
 +                            intent.putExtra("id", watcher.id);
 +                            LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
 +                        }
++                        gravarLocalizacaoNativa(location);
 +                    });
 +        } catch (SecurityException ignore) {}
++    }
++
++    // ─── Envio nativo direto pro Supabase + fila offline (arquivo local) ───
++
++    void configurarSupabase(String url, String anonKey, String schema, String fiscalLogin, String fiscalNome) {
++        getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE).edit()
++                .putString("url", url)
++                .putString("anonKey", anonKey)
++                .putString("schema", schema == null ? "dev" : schema)
++                .putString("fiscalLogin", fiscalLogin)
++                .putString("fiscalNome", fiscalNome)
++                .apply();
++    }
++
++    private boolean configuradoParaGravar() {
++        SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
++        return p.contains("url") && p.contains("anonKey") && p.contains("fiscalLogin");
++    }
++
++    // Aplica o mesmo debounce que antes vivia só no JS (rastreio.js) — o
++    // stream contínuo entrega posições a cada ~1s, e não faz sentido gravar
++    // todas. Chamado tanto pelo watcher contínuo quanto pelo alarme de reforço.
++    private void gravarLocalizacaoNativa(Location location) {
++        if (!configuradoParaGravar()) return; // login ainda não configurou (primeira execução)
++        long agora = System.currentTimeMillis();
++        if (agora - ultimaGravacaoMs < CADENCIA_GRAVACAO_MS) return;
++        ultimaGravacaoMs = agora;
++
++        final double lat = location.getLatitude();
++        final double lng = location.getLongitude();
++        final Float precisao = location.hasAccuracy() ? location.getAccuracy() : null;
++
++        filaExecutor.execute(() -> {
++            SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
++            String fiscalLogin = p.getString("fiscalLogin", "");
++            String fiscalNome = p.getString("fiscalNome", "");
++            String agoraISO = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(new Date());
++
++            try {
++                JSONObject registro = new JSONObject();
++                registro.put("fiscal_login", fiscalLogin);
++                registro.put("fiscal_nome", fiscalNome);
++                registro.put("lat", lat);
++                registro.put("lng", lng);
++                registro.put("precisao", precisao == null ? JSONObject.NULL : precisao);
++                registro.put("created_at", agoraISO);
++
++                if (!enviarParaSupabase("localizacoes", registro, "return=minimal")) {
++                    enfileirarNativo(registro);
++                }
++                drenarFilaNativa();
++
++                // Heartbeat de presença — best-effort, sem fila (igual ao lado JS:
++                // se falhar, a próxima captura corrige o "último visto" sozinha).
++                JSONObject presenca = new JSONObject();
++                presenca.put("fiscal_login", fiscalLogin);
++                presenca.put("fiscal_nome", fiscalNome);
++                presenca.put("lat", lat);
++                presenca.put("lng", lng);
++                presenca.put("precisao", precisao == null ? JSONObject.NULL : precisao);
++                presenca.put("ultimo_visto", agoraISO);
++                enviarParaSupabase("fiscais_presenca?on_conflict=fiscal_login", presenca, "resolution=merge-duplicates,return=minimal");
++            } catch (Exception e) {
++                Logger.error("Falha ao gravar localização nativa", e);
++            }
++        });
++    }
++
++    // Faz o POST pro endpoint REST do Supabase (PostgREST). "caminho" pode
++    // incluir query string (ex: "fiscais_presenca?on_conflict=fiscal_login").
++    // Roda sempre dentro de filaExecutor (thread de fundo) — nunca chamar da
++    // main thread.
++    private boolean enviarParaSupabase(String caminho, JSONObject registro, String preferHeader) {
++        SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
++        String url = p.getString("url", null);
++        String anonKey = p.getString("anonKey", null);
++        String schema = p.getString("schema", "dev");
++        if (url == null || anonKey == null) return false;
++
++        HttpURLConnection conn = null;
++        try {
++            conn = (HttpURLConnection) new URL(url + "/rest/v1/" + caminho).openConnection();
++            conn.setRequestMethod("POST");
++            conn.setRequestProperty("apikey", anonKey);
++            conn.setRequestProperty("Authorization", "Bearer " + anonKey);
++            conn.setRequestProperty("Content-Type", "application/json");
++            conn.setRequestProperty("Content-Profile", schema);
++            conn.setRequestProperty("Prefer", preferHeader);
++            conn.setConnectTimeout(8000);
++            conn.setReadTimeout(8000);
++            conn.setDoOutput(true);
++            try (OutputStream os = conn.getOutputStream()) {
++                os.write(registro.toString().getBytes(StandardCharsets.UTF_8));
++            }
++            int codigo = conn.getResponseCode();
++            return codigo >= 200 && codigo < 300;
++        } catch (Exception e) {
++            return false;
++        } finally {
++            if (conn != null) conn.disconnect();
++        }
++    }
++
++    private File arquivoFilaNativa() {
++        return new File(getFilesDir(), "rastreio_fila_nativa.jsonl");
++    }
++
++    private synchronized void enfileirarNativo(JSONObject registro) {
++        try (FileWriter fw = new FileWriter(arquivoFilaNativa(), true)) {
++            fw.write(registro.toString() + "\n");
++        } catch (Exception e) {
++            Logger.error("Falha ao enfileirar localização offline (nativo)", e);
++        }
++    }
++
++    // Tenta reenviar tudo que ficou preso (sem internet, etc). Reescreve o
++    // arquivo só com o que ainda falhou — igual ao drenarFila() do lado JS.
++    private synchronized void drenarFilaNativa() {
++        File arquivo = arquivoFilaNativa();
++        if (!arquivo.exists()) return;
++
++        List<String> pendentes = new ArrayList<>();
++        try (BufferedReader br = new BufferedReader(new FileReader(arquivo))) {
++            String linha;
++            while ((linha = br.readLine()) != null) {
++                if (linha.trim().isEmpty()) continue;
++                try {
++                    JSONObject registro = new JSONObject(linha);
++                    if (!enviarParaSupabase("localizacoes", registro, "return=minimal")) {
++                        pendentes.add(linha);
++                    }
++                } catch (Exception e) {
++                    // linha corrompida — descarta em vez de travar a fila pra sempre
++                }
++            }
++        } catch (Exception e) {
++            Logger.error("Falha ao ler fila offline nativa", e);
++            return;
++        }
++
++        try {
++            if (pendentes.isEmpty()) {
++                arquivo.delete();
++            } else {
++                try (FileWriter fw = new FileWriter(arquivo, false)) {
++                    for (String linha : pendentes) fw.write(linha + "\n");
++                }
++            }
++        } catch (Exception e) {
++            Logger.error("Falha ao reescrever fila offline nativa", e);
++        }
 +    }
 +
      @Override
@@ -291,7 +529,15 @@ index fafbb86..7404788 100644
      }
  
      Notification getNotification() {
-@@ -111,7 +211,9 @@ public class BackgroundGeolocationService extends Service {
+@@ -96,6 +379,7 @@ public class BackgroundGeolocationService extends Service {
+                     LocalBroadcastManager.getInstance(
+                             getApplicationContext()
+                     ).sendBroadcast(intent);
++                    gravarLocalizacaoNativa(location);
+                 }
+                 @Override
+                 public void onLocationAvailability(LocationAvailability availability) {
+@@ -111,7 +395,9 @@ public class BackgroundGeolocationService extends Service {
              watcher.locationRequest = locationRequest;
              watcher.locationCallback = callback;
              watcher.backgroundNotification = backgroundNotification;
@@ -301,7 +547,7 @@ index fafbb86..7404788 100644
  
              // According to Android Studio, this method can throw a Security Exception if
              // permissions are not yet granted. Rather than check the permissions, which is fiddly,
-@@ -150,6 +252,9 @@ public class BackgroundGeolocationService extends Service {
+@@ -150,6 +436,9 @@ public class BackgroundGeolocationService extends Service {
                      if (getNotification() == null) {
                          stopForeground(true);
                      }
@@ -311,3 +557,13 @@ index fafbb86..7404788 100644
                      return;
                  }
              }
+@@ -171,5 +460,9 @@ public class BackgroundGeolocationService extends Service {
+         void stopService() {
+             BackgroundGeolocationService.this.stopSelf();
+         }
++
++        void configurarSupabase(String url, String anonKey, String schema, String fiscalLogin, String fiscalNome) {
++            BackgroundGeolocationService.this.configurarSupabase(url, anonKey, schema, fiscalLogin, fiscalNome);
++        }
+     }
+ }

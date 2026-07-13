@@ -1,53 +1,44 @@
 import { supabase } from './supabase.js'
 import { Capacitor, registerPlugin } from '@capacitor/core'
-import { App } from '@capacitor/app'
 
 // ════════════════════════════════════════════════════════════════════════════
-// RASTREIO v3 — motor resiliente de localização
+// RASTREIO v4 — motor resiliente de localização
 // ────────────────────────────────────────────────────────────────────────────
 // Dois modos, escolhidos automaticamente por Capacitor.isNativePlatform():
 //
 // • NAVEGADOR / PWA (web): captura via navigator.geolocation a cada 8s, só
-//   enquanto a aba está aberta e em primeiro plano. Mesmo comportamento de
-//   sempre — ver seções 1-5 abaixo.
+//   enquanto a aba está aberta e em primeiro plano — grava direto por aqui
+//   (processarPosicao), com fila offline em IndexedDB. Mesmo comportamento
+//   de sempre, sem mudanças — é o único caminho possível sem app nativo.
 //
 // • APP ANDROID NATIVO (Capacitor): usa o plugin
 //   @capacitor-community/background-geolocation, que roda um foreground
 //   service e continua entregando posições mesmo com o app minimizado ou a
-//   tela apagada (com a notificação fixa que o Android exige). A cadência
-//   real de captura do plugin é mais rápida que o necessário (o serviço
-//   nativo amostra a cada ~1s); aplicamos nosso próprio filtro de tempo no
-//   callback pra manter ~8s em primeiro plano e ~20s em segundo plano —
-//   evita gravar/gastar bateria mais do que o combinado.
-//
-// Em ambos os modos:
-// 1. FILA OFFLINE (IndexedDB): se o envio ao Supabase falhar (sem rede, timeout),
-//    a posição NÃO é perdida — vai pra uma fila local e é reenviada depois.
-// 2. REENVIO AUTOMÁTICO: a cada ciclo e sempre que a conexão/aba volta, o que
-//    está preso na fila é drenado para o banco.
-// 3. HEARTBEAT DE PRESENÇA: grava também na tabela `fiscais_presenca` (upsert)
-//    o "último visto" — o mapa sempre sabe onde o fiscal esteve por último.
+//   tela apagada. A partir da v4, o CÓDIGO NATIVO (Java) é quem grava a
+//   localização direto no Supabase — com seu próprio debounce (8s) e fila
+//   offline (arquivo local, mesma ideia do IndexedDB) — sem depender da
+//   ponte JS/WebView continuar rodando em segundo plano, que era o ponto
+//   de falha confirmado em campo (a notificação ficava viva, mas a
+//   gravação via JS nunca acontecia). O JS aqui só CONFIGURA o nativo
+//   (configurarSupabase) e liga o watcher; o callback já não grava nada,
+//   pra não duplicar o que o Java já fez.
 //
 // ⚠️ No modo web (PWA comum, sem instalar o app Android), o limite de sempre
 //    continua valendo: NÃO rastreia com tela apagada por horas.
 // ════════════════════════════════════════════════════════════════════════════
 
-const INTERVALO_FOREGROUND_MS = 8000    // ciclo de captura com o app em primeiro plano
-const INTERVALO_BACKGROUND_MS = 20000   // ciclo de captura com o app em segundo plano (só no app nativo)
+const INTERVALO_FOREGROUND_MS = 8000    // ciclo de captura do modo web/PWA
 const GEO_OPTS = { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
 const DB_NAME  = 'rastreio_fila'
 const STORE    = 'posicoes'
 
 const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
 
-let intervalId          = null
-let usuarioAtual        = null
-let wakeLock             = null
-let rodando              = false
-let watcherNativoId      = null
-let removerListenerApp   = null
-let emPrimeiroPlano      = true
-let ultimaCapturaNativaMs = 0
+let intervalId     = null
+let usuarioAtual   = null
+let wakeLock        = null
+let rodando         = false
+let watcherNativoId = null
 
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
@@ -213,20 +204,19 @@ function onOnline() {
 
 // ─── Modo nativo Android: liga o watcher em segundo plano de verdade ────────
 async function iniciarRastreioNativo(usuario) {
-  emPrimeiroPlano = true
-  ultimaCapturaNativaMs = 0
+  // Passa a config pro lado nativo ANTES de ligar o watcher — é o código
+  // Java quem grava a localização direto no Supabase a partir daqui (com
+  // fila offline própria), sem depender do JS/WebView estar rodando.
   try {
-    const { isActive } = await App.getState()
-    emPrimeiroPlano = isActive
-  } catch { /* segue com o padrão (primeiro plano) */ }
-
-  try {
-    const { remove } = await App.addListener('appStateChange', ({ isActive }) => {
-      emPrimeiroPlano = isActive
+    await BackgroundGeolocation.configurarSupabase({
+      url:         import.meta.env.VITE_SUPABASE_URL,
+      anonKey:     import.meta.env.VITE_SUPABASE_ANON_KEY,
+      schema:      import.meta.env.VITE_SUPABASE_SCHEMA || 'dev',
+      fiscalLogin: usuario.login,
+      fiscalNome:  usuario.nome,
     })
-    removerListenerApp = remove
   } catch (e) {
-    console.warn('[rastreio] appStateChange indisponível:', e?.message)
+    console.warn('[rastreio] falha ao configurar Supabase nativo:', e?.message)
   }
 
   try {
@@ -239,15 +229,10 @@ async function iniciarRastreioNativo(usuario) {
         distanceFilter: 0,
       },
       (location, error) => {
-        if (error) { console.warn('[rastreio] nativo erro:', error?.message); return }
-        if (!location || !usuarioAtual) return
-        const agora = Date.now()
-        const cadencia = emPrimeiroPlano ? INTERVALO_FOREGROUND_MS : INTERVALO_BACKGROUND_MS
-        if (agora - ultimaCapturaNativaMs < cadencia) return
-        ultimaCapturaNativaMs = agora
-        processarPosicao(usuarioAtual, {
-          coords: { latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy },
-        })
+        // O código nativo (Java) já grava a posição direto no Supabase —
+        // esse callback só existe porque a assinatura do plugin exige um,
+        // não precisa fazer mais nada aqui (evita gravar duas vezes).
+        if (error) console.warn('[rastreio] nativo erro:', error?.message)
       },
     )
   } catch (e) {
@@ -271,10 +256,6 @@ async function pararRastreioNativo() {
     try { await BackgroundGeolocation.removeWatcher({ id: watcherNativoId }) }
     catch (e) { console.warn('[rastreio] falha ao remover watcher nativo:', e?.message) }
     watcherNativoId = null
-  }
-  if (removerListenerApp) {
-    try { removerListenerApp() } catch { /* ignore */ }
-    removerListenerApp = null
   }
 }
 
