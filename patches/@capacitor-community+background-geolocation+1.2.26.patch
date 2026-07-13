@@ -114,10 +114,116 @@ index a92fcf9..5d84617 100644
      }
  }
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..16bc45c 100644
+index fafbb86..7404788 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-@@ -47,18 +47,26 @@ public class BackgroundGeolocationService extends Service {
+@@ -1,8 +1,13 @@
+ package com.equimaps.capacitor_background_geolocation;
+ 
++import android.app.AlarmManager;
+ import android.app.Notification;
++import android.app.PendingIntent;
+ import android.app.Service;
++import android.content.BroadcastReceiver;
++import android.content.Context;
+ import android.content.Intent;
++import android.content.IntentFilter;
+ import android.content.pm.ServiceInfo;
+ import android.location.Location;
+ import android.os.Binder;
+@@ -42,23 +47,118 @@ public class BackgroundGeolocationService extends Service {
+     }
+     private HashSet<Watcher> watchers = new HashSet<Watcher>();
+ 
++    // [DPL] Alarme de reforço: em alguns fabricantes (Xiaomi/MIUI confirmado
++    // em campo), o Android segura as entregas do requestLocationUpdates()
++    // contínuo pra um app em segundo plano mesmo com o serviço em primeiro
++    // plano ativo (a notificação continua visível, mas a localização não
++    // chega). setAndAllowWhileIdle() acorda o app mesmo durante Doze/economia
++    // de bateria SEM exigir a permissão especial "Alarmes e lembretes"
++    // (diferente da versão "Exact", que no Android 13+ exige o usuário
++    // liberar manualmente mais uma tela) — o horário pode atrasar um pouco
++    // em troca disso, o que não é problema pra uma rede de segurança que já
++    // roda a cada poucos minutos.
++    private static final long INTERVALO_ALARME_MS = 5 * 60 * 1000; // 5 minutos
++    private static final int ALARME_REQUEST_CODE = 93821;
++    private static final String ACTION_ALARME_REFORCO = (
++            BackgroundGeolocationService.class.getPackage().getName() + ".alarme_reforco"
++    );
++
++    private AlarmManager alarmManager;
++    private PendingIntent alarmPendingIntent;
++    private BroadcastReceiver alarmReceiver;
++
++    @Override
++    public void onCreate() {
++        super.onCreate();
++        alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
++        Intent alarmIntent = new Intent(ACTION_ALARME_REFORCO).setPackage(getPackageName());
++        int flags = PendingIntent.FLAG_UPDATE_CURRENT
++                | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
++        alarmPendingIntent = PendingIntent.getBroadcast(this, ALARME_REQUEST_CODE, alarmIntent, flags);
++        alarmReceiver = new BroadcastReceiver() {
++            @Override
++            public void onReceive(Context context, Intent intent) {
++                capturarLocalizacaoPontual();
++                agendarProximoAlarme();
++            }
++        };
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++            registerReceiver(alarmReceiver, new IntentFilter(ACTION_ALARME_REFORCO), Context.RECEIVER_NOT_EXPORTED);
++        } else {
++            registerReceiver(alarmReceiver, new IntentFilter(ACTION_ALARME_REFORCO));
++        }
++    }
++
++    @Override
++    public void onDestroy() {
++        if (alarmManager != null && alarmPendingIntent != null) {
++            alarmManager.cancel(alarmPendingIntent);
++        }
++        if (alarmReceiver != null) {
++            try { unregisterReceiver(alarmReceiver); } catch (Exception ignore) {}
++        }
++        super.onDestroy();
++    }
++
++    private void agendarProximoAlarme() {
++        if (alarmManager == null || alarmPendingIntent == null) return;
++        try {
++            alarmManager.setAndAllowWhileIdle(
++                    AlarmManager.RTC_WAKEUP,
++                    System.currentTimeMillis() + INTERVALO_ALARME_MS,
++                    alarmPendingIntent
++            );
++        } catch (Exception e) {
++            Logger.error("Falha ao agendar alarme de reforço", e);
++        }
++    }
++
++    // Pede uma localização pontual (não o stream contínuo) e entrega pra
++    // cada watcher ativo pelo mesmo canal (ACTION_BROADCAST) que o fluxo
++    // normal usa — assim reaproveita o mesmo caminho já testado até o JS,
++    // sem precisar mexer no lado do plugin (BackgroundGeolocation.java).
++    private void capturarLocalizacaoPontual() {
++        if (watchers.isEmpty()) return;
++        FusedLocationProviderClient client = LocationServices.getFusedLocationProviderClient(this);
++        try {
++            client.getCurrentLocation(LocationRequest.PRIORITY_HIGH_ACCURACY, null)
++                    .addOnSuccessListener(location -> {
++                        if (location == null) return;
++                        for (Watcher watcher : watchers) {
++                            Intent intent = new Intent(ACTION_BROADCAST);
++                            intent.putExtra("location", location);
++                            intent.putExtra("id", watcher.id);
++                            LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
++                        }
++                    });
++        } catch (SecurityException ignore) {}
++    }
++
+     @Override
+     public IBinder onBind(Intent intent) {
          return binder;
      }
  
@@ -154,3 +260,23 @@ index fafbb86..16bc45c 100644
      }
  
      Notification getNotification() {
+@@ -111,7 +211,9 @@ public class BackgroundGeolocationService extends Service {
+             watcher.locationRequest = locationRequest;
+             watcher.locationCallback = callback;
+             watcher.backgroundNotification = backgroundNotification;
++            boolean primeiroWatcher = watchers.isEmpty();
+             watchers.add(watcher);
++            if (primeiroWatcher) agendarProximoAlarme();
+ 
+             // According to Android Studio, this method can throw a Security Exception if
+             // permissions are not yet granted. Rather than check the permissions, which is fiddly,
+@@ -150,6 +252,9 @@ public class BackgroundGeolocationService extends Service {
+                     if (getNotification() == null) {
+                         stopForeground(true);
+                     }
++                    if (watchers.isEmpty() && alarmManager != null && alarmPendingIntent != null) {
++                        alarmManager.cancel(alarmPendingIntent);
++                    }
+                     return;
+                 }
+             }

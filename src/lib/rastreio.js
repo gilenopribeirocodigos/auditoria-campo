@@ -232,7 +232,7 @@ async function iniciarRastreioNativo(usuario) {
   try {
     watcherNativoId = await BackgroundGeolocation.addWatcher(
       {
-        backgroundTitle: 'Auditoria de Campo',
+        backgroundTitle: 'VérticeGP',
         backgroundMessage: 'Rastreando localização em segundo plano.',
         requestPermissions: true,
         stale: false,
