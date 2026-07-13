@@ -192,15 +192,16 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const rotas       = useRef({})
   const circulosBase = useRef({})
 
-  const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado })
+  // Período padrão "Hoje" — Histórico e Relatório usam filtros.getDatasQuery()
+  // pra saber qual(is) dia(s) buscar, em vez de um date-picker próprio.
+  const filtros = useFiltrosOperacionais({ inicializarMes: false, usuarioLogado, periodoPadrao: 'hoje' })
 
   const podeGerenciarBases = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'fiscais_campo_bases')
 
   const [presencas,       setPresencas]       = useState([])   // fiscais_presenca (última 1h)
   const [loading,         setLoading]         = useState(true)
   const [aba,             setAba]             = useState('vivo')   // vivo | historico | bases | relatorio
-  const [janelaHistorico, setJanelaHistorico] = useState('3h')     // 1h | 3h | 6h | dia
-  const [dataHistorico,   setDataHistorico]   = useState(new Date().toISOString().split('T')[0])
+  const [janelaHistorico, setJanelaHistorico] = useState('3h')     // 1h | 3h | 6h | dia — só quando Período = Hoje
   const [fiscalHistorico, setFiscalHistorico] = useState('')
   const [logHistorico,    setLogHistorico]    = useState([])
   const [resumoHistorico, setResumoHistorico] = useState(null)
@@ -213,9 +214,11 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const [salvandoBase,    setSalvandoBase]    = useState(false)
   const [erroBase,        setErroBase]        = useState('')
 
-  const [dataRelatorio,        setDataRelatorio]        = useState(new Date().toISOString().split('T')[0])
   const [relatorioPermanencia, setRelatorioPermanencia] = useState([])
   const [carregandoRelatorio,  setCarregandoRelatorio]  = useState(false)
+  // 'dia' = 1 dia só (Gantt por hora, como sempre foi) · 'periodo' = Mês/Período
+  // com vários dias (resumo somado por fiscal, sem o gráfico de horário)
+  const [modoRelatorio,        setModoRelatorio]        = useState('dia')
 
   const CORES = ['#2563eb','#dc2626','#16a34a','#d97706','#7c3aed','#0891b2','#be185d']
   const corFiscal = (login) => {
@@ -446,10 +449,22 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     if (!fiscaisDropdown.some(f => f.login === fiscalHistorico)) setFiscalHistorico('')
   }, [fiscaisDropdown, fiscalHistorico])
 
+  // Paleta usada só quando o Histórico mostra vários dias de uma vez —
+  // um dia = uma cor, pra dar pra distinguir no mapa qual trecho é de qual dia.
+  const PALETA_DIAS = ['#dc2626','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#4338ca']
+
   // ─── Ver histórico (trilha da tabela localizacoes) ───
+  // Período = 1 dia (Hoje ou Período com data única): mantém o comportamento
+  // de sempre (1 rota, cor do fiscal, janela 1h/3h/6h quando for hoje).
+  // Período = vários dias (Mês, ou Período com intervalo): desenha uma rota
+  // por dia, cada uma com uma cor diferente (legenda abaixo do mapa), pra dar
+  // pra comparar dias sem confundir um com o outro.
   const verHistorico = async () => {
     const L = window.L
-    if (!L || !leafletMap.current || !fiscalHistorico || !dataHistorico) return
+    if (!L || !leafletMap.current || !fiscalHistorico) return
+
+    const { ini: dIni, fim: dFim } = filtros.getDatasQuery()
+    if (!dIni) { alert('Selecione um período.'); return }
 
     Object.values(marcadores.current).forEach(m => m.remove())
     marcadores.current = {}
@@ -458,16 +473,16 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     setLogHistorico([])
     setResumoHistorico(null)
 
-    const hoje = new Date().toISOString().split('T')[0]
+    const multiDia = dIni !== dFim
     let ini, fim
-    if (dataHistorico === hoje && janelaHistorico !== 'dia') {
+    if (!multiDia && filtros.tipoPeriodo === 'hoje' && janelaHistorico !== 'dia') {
       const horas = { '1h': 1, '3h': 3, '6h': 6 }[janelaHistorico] || 3
       const agoraDate = new Date()
       ini = new Date(agoraDate.getTime() - horas * 3600 * 1000).toISOString()
       fim = agoraDate.toISOString()
     } else {
-      ini = `${dataHistorico}T00:00:00`
-      fim = `${dataHistorico}T23:59:59`
+      ini = limitesDiaLocalUTC(dIni).ini
+      fim = limitesDiaLocalUTC(dFim).fim
     }
 
     const { data } = await supabase
@@ -478,6 +493,41 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
     if (!data || data.length === 0) {
       alert('Nenhuma posição encontrada para este fiscal nesse período.')
+      return
+    }
+
+    if (multiDia) {
+      const porDia = new Map()
+      data.forEach(p => {
+        const dia = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' }).format(new Date(p.created_at))
+        if (!porDia.has(dia)) porDia.set(dia, [])
+        porDia.get(dia).push(p)
+      })
+      const dias = [...porDia.keys()].sort()
+      const bounds = []
+      dias.forEach((dia, i) => {
+        const pontosDia = porDia.get(dia)
+        const cor = PALETA_DIAS[i % PALETA_DIAS.length]
+        const latlngs = pontosDia.map(p => [p.lat, p.lng])
+        const linha = L.polyline(latlngs, { color: cor, weight: 4, opacity: 0.8 }).addTo(leafletMap.current)
+        rotas.current[`dia-${dia}`] = linha
+        bounds.push(...latlngs)
+        const marker = L.marker(latlngs[0], {
+          icon: L.divIcon({
+            html: `<div style="background:${cor};color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.3)">${formatarDataBR(dia).slice(0, 5)}</div>`,
+            className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+          })
+        }).addTo(leafletMap.current).bindPopup(`${formatarDataBR(dia)} — início ${new Date(pontosDia[0].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`)
+        marcadores.current[`dia-${dia}`] = marker
+      })
+      if (bounds.length) leafletMap.current.fitBounds(bounds, { padding: [40, 40] })
+      setLogHistorico(gerarLogEventos(data, bases))
+      setResumoHistorico({
+        total: data.length,
+        inicio: formatarDataBR(dias[0]),
+        fim: formatarDataBR(dias[dias.length - 1]),
+        legendaDias: dias.map((dia, i) => ({ dia, cor: PALETA_DIAS[i % PALETA_DIAS.length] })),
+      })
       return
     }
 
@@ -587,26 +637,66 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   }, [bases, presencasFiltradas])
 
   // ─── Relatório de permanência ───
+  // Período = 1 dia (Hoje, ou Período com data única): mantém o Gantt por
+  // hora de sempre. Período = vários dias (Mês, ou Período com intervalo):
+  // soma tudo num resumo por fiscal, sem gráfico de horário — não daria pra
+  // desenhar um Gantt legível com dias diferentes na mesma régua de 24h.
   const carregarRelatorio = async () => {
+    const { ini: dIni, fim: dFim } = filtros.getDatasQuery()
+    if (!dIni) { setRelatorioPermanencia([]); return }
+
     setCarregandoRelatorio(true)
     try {
-      const { ini, fim } = limitesDiaLocalUTC(dataRelatorio)
+      const multiDia = dIni !== dFim
+      const { ini } = limitesDiaLocalUTC(dIni)
+      const { fim } = limitesDiaLocalUTC(dFim)
       const { data } = await supabase
         .from('localizacoes').select('*')
         .gte('created_at', ini).lte('created_at', fim)
         .order('created_at', { ascending: true })
+
+      // Agrupa por fiscal e, dentro de cada fiscal, por dia local (Fortaleza)
+      // — necessário pra aplicar corretamente o padding de "sem dado" nas
+      // bordas de CADA dia (00:00/23:59), em vez de tratar o intervalo
+      // inteiro como um único dia contínuo.
       const porFiscal = new Map()
       ;(data || []).forEach(p => {
         if (!fiscalPermitido(p.fiscal_nome)) return
-        if (!porFiscal.has(p.fiscal_login)) porFiscal.set(p.fiscal_login, { fiscal_login: p.fiscal_login, fiscal_nome: p.fiscal_nome, pontos: [] })
-        porFiscal.get(p.fiscal_login).pontos.push(p)
+        const diaLocal = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' }).format(new Date(p.created_at))
+        if (!porFiscal.has(p.fiscal_login)) {
+          porFiscal.set(p.fiscal_login, { fiscal_login: p.fiscal_login, fiscal_nome: p.fiscal_nome, porDia: new Map() })
+        }
+        const entry = porFiscal.get(p.fiscal_login)
+        if (!entry.porDia.has(diaLocal)) entry.porDia.set(diaLocal, [])
+        entry.porDia.get(diaLocal).push(p)
       })
-      const diaInicioMs = new Date(ini).getTime()
-      const diaFimMs = new Date(fim).getTime()
-      const linhas = [...porFiscal.values()]
-        .map(f => ({ ...f, diaInicioMs, diaFimMs, calc: calcularPermanencia(f.pontos, bases, diaInicioMs, diaFimMs) }))
-        .sort((a, b) => (a.fiscal_nome || '').localeCompare(b.fiscal_nome || ''))
-      setRelatorioPermanencia(linhas)
+
+      if (multiDia) {
+        const linhas = [...porFiscal.values()]
+          .map(f => {
+            let inMs = 0, outMs = 0, nodataMs = 0
+            for (const [dia, pontosDia] of f.porDia.entries()) {
+              const limites = limitesDiaLocalUTC(dia)
+              const calc = calcularPermanencia(pontosDia, bases, new Date(limites.ini).getTime(), new Date(limites.fim).getTime())
+              inMs += calc.inMs; outMs += calc.outMs; nodataMs += calc.nodataMs
+            }
+            return { fiscal_login: f.fiscal_login, fiscal_nome: f.fiscal_nome, diasComDado: f.porDia.size, calc: { inMs, outMs, nodataMs } }
+          })
+          .sort((a, b) => (a.fiscal_nome || '').localeCompare(b.fiscal_nome || ''))
+        setModoRelatorio('periodo')
+        setRelatorioPermanencia(linhas)
+      } else {
+        const diaInicioMs = new Date(ini).getTime()
+        const diaFimMs = new Date(fim).getTime()
+        const linhas = [...porFiscal.values()]
+          .map(f => {
+            const pontos = f.porDia.get(dIni) || []
+            return { fiscal_login: f.fiscal_login, fiscal_nome: f.fiscal_nome, pontos, diaInicioMs, diaFimMs, calc: calcularPermanencia(pontos, bases, diaInicioMs, diaFimMs) }
+          })
+          .sort((a, b) => (a.fiscal_nome || '').localeCompare(b.fiscal_nome || ''))
+        setModoRelatorio('dia')
+        setRelatorioPermanencia(linhas)
+      }
     } finally {
       setCarregandoRelatorio(false)
     }
@@ -658,19 +748,21 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
           {aba === 'historico' && (
             <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div>
-                <label style={{ fontSize: 11, opacity: 0.85, display: 'block', marginBottom: 4 }}>Janela</label>
-                <div style={{ display: 'flex', gap: 4 }}>
-                  {[['1h', '1h'], ['3h', '3h'], ['6h', '6h'], ['dia', 'Dia todo']].map(([id, label]) => (
-                    <button key={id} onClick={() => setJanelaHistorico(id)} style={{
-                      padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
-                      fontSize: 11.5, fontWeight: 700,
-                      background: janelaHistorico === id ? '#f59e0b' : 'rgba(255,255,255,0.16)',
-                      color: '#fff',
-                    }}>{label}</button>
-                  ))}
+              {filtros.tipoPeriodo === 'hoje' && (
+                <div>
+                  <label style={{ fontSize: 11, opacity: 0.85, display: 'block', marginBottom: 4 }}>Janela</label>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {[['1h', '1h'], ['3h', '3h'], ['6h', '6h'], ['dia', 'Dia todo']].map(([id, label]) => (
+                      <button key={id} onClick={() => setJanelaHistorico(id)} style={{
+                        padding: '8px 10px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                        fontSize: 11.5, fontWeight: 700,
+                        background: janelaHistorico === id ? '#f59e0b' : 'rgba(255,255,255,0.16)',
+                        color: '#fff',
+                      }}>{label}</button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
               <div>
                 <label style={{ fontSize: 11, opacity: 0.85, display: 'block', marginBottom: 4 }}>
                   Fiscal {filtroHierarquicoAtivo && `(${fiscaisDropdown.length} dos filtros)`}
@@ -681,10 +773,8 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                   {fiscaisDropdown.map(f => <option key={f.login} value={f.login}>{f.nome}</option>)}
                 </select>
               </div>
-              <div>
-                <label style={{ fontSize: 11, opacity: 0.85, display: 'block', marginBottom: 4 }}>Data</label>
-                <input type="date" value={dataHistorico} onChange={e => setDataHistorico(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13 }} />
+              <div style={{ fontSize: 12, color: '#fff', opacity: 0.9, paddingBottom: 10 }}>
+                📆 {filtros.periodoLabel}
               </div>
               <button onClick={verHistorico} style={{
                 padding: '8px 16px', background: '#f59e0b', color: '#fff',
@@ -695,10 +785,8 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
           {aba === 'relatorio' && (
             <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-              <div>
-                <label style={{ fontSize: 11, opacity: 0.85, display: 'block', marginBottom: 4 }}>Data</label>
-                <input type="date" value={dataRelatorio} onChange={e => setDataRelatorio(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13 }} />
+              <div style={{ fontSize: 12, color: '#fff', opacity: 0.9, paddingBottom: 10 }}>
+                📆 {filtros.periodoLabel}
               </div>
               <button onClick={carregarRelatorio} disabled={carregandoRelatorio} style={{
                 padding: '8px 16px', background: '#f59e0b', color: '#fff',
@@ -710,7 +798,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         </div>
       </div>
 
-      {(aba === 'vivo' || aba === 'historico') && (
+      {(aba === 'vivo' || aba === 'historico' || aba === 'relatorio') && (
         <div style={{
           maxWidth: 900, margin: '0 auto', width: '100%',
           padding: '12px 16px 0', boxSizing: 'border-box',
@@ -719,9 +807,13 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
           <PainelFiltros
             filtros={filtros}
             titulo="🔍 Filtros do Mapa"
-            badge={aba === 'historico' ? 'filtra a lista de fiscais' : 'filtra fiscais visíveis'}
-            mostrarMesPeriodo={false}
+            badge={aba === 'historico' ? 'filtra a lista de fiscais' : aba === 'relatorio' ? 'filtra os fiscais do relatório' : 'filtra fiscais visíveis'}
           />
+          {aba === 'vivo' && (
+            <p style={{ fontSize: 11, color: '#64748b', marginTop: -8, marginBottom: 8 }}>
+              ℹ️ Ao Vivo sempre mostra a posição mais recente de cada fiscal — o Período acima não muda isso, só filtra quem aparece (Regional/Supervisor/Prefixo).
+            </p>
+          )}
           {filtros.temSegregacao && (
             <div style={{
               fontSize: 11, fontWeight: 700, color: '#065f46',
@@ -784,8 +876,21 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       {aba === 'historico' && resumoHistorico && (
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 10px', boxSizing: 'border-box' }}>
           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
-            ✅ {resumoHistorico.total} posição(ões) registrada(s) nesse período, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
+            ✅ {resumoHistorico.total} posição(ões) registrada(s) {resumoHistorico.legendaDias ? `em ${resumoHistorico.legendaDias.length} dia(s)` : 'nesse período'}, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
           </div>
+          {resumoHistorico.legendaDias && (
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+              {resumoHistorico.legendaDias.map(({ dia, cor }) => (
+                <span key={dia} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#334155',
+                  background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '3px 9px',
+                }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: cor, display: 'inline-block' }} />
+                  {formatarDataBR(dia)}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -918,14 +1023,31 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: 16, boxSizing: 'border-box' }}>
           <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: 14 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>Permanência por fiscal</p>
-            <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>{formatarDataBR(dataRelatorio)}</p>
+            <p style={{ fontSize: 11, color: '#64748b', marginBottom: 12 }}>{filtros.periodoLabel}</p>
 
             {carregandoRelatorio && <CarregandoHexagono texto="Calculando..." tamanho={44} padding={20} />}
             {!carregandoRelatorio && relatorioPermanencia.length === 0 && (
-              <p style={{ fontSize: 12, color: '#64748b' }}>Nenhuma posição registrada nessa data.</p>
+              <p style={{ fontSize: 12, color: '#64748b' }}>Nenhuma posição registrada nesse período.</p>
             )}
 
-            {relatorioPermanencia.map(f => {
+            {modoRelatorio === 'periodo' ? relatorioPermanencia.map(f => {
+              const { calc } = f
+              const totalMs = calc.inMs + calc.outMs + calc.nodataMs
+              const pct = ms => totalMs > 0 ? Math.round((ms / totalMs) * 100) : 0
+              return (
+                <div key={f.fiscal_login} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
+                  <p style={{ fontSize: 12.5, fontWeight: 800, color: '#0f172a', margin: '0 0 6px' }}>
+                    {f.fiscal_nome}{' '}
+                    <span style={{ fontWeight: 600, color: '#94a3b8', fontSize: 11 }}>· {f.diasComDado} dia(s) com dado</span>
+                  </p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: 11, fontWeight: 700 }}>
+                    <span style={{ color: '#166534' }}>🟢 {formatarDuracao(calc.inMs)} dentro ({pct(calc.inMs)}%)</span>
+                    <span style={{ color: '#92400e' }}>🟠 {formatarDuracao(calc.outMs)} fora ({pct(calc.outMs)}%)</span>
+                    {calc.nodataMs > 0 && <span style={{ color: '#475569' }}>⚪ {formatarDuracao(calc.nodataMs)} sem dado ({pct(calc.nodataMs)}%)</span>}
+                  </div>
+                </div>
+              )
+            }) : relatorioPermanencia.map(f => {
               const { calc } = f
               // Eixo fixo do dia inteiro (00:00-23:59:59), igual pra todos os
               // fiscais — dá pra comparar turno da noite/madrugada/manhã lado
