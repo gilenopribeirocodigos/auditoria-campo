@@ -8,8 +8,8 @@ import {
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // Janela em que consideramos o fiscal "ativo agora" (verde) vs "ausente" (cinza)
-const ATIVO_MS    = 2 * 60 * 1000    // até 2 min = ativo
-const PRESENCA_MS = 60 * 60 * 1000   // mostra presença das últimas 1h
+const ATIVO_MS    = 2 * 60 * 1000        // até 2 min = ativo
+const PRESENCA_MS = 24 * 60 * 60 * 1000  // mantém visíveis fiscais vistos nas últimas 24h
 
 // Se o intervalo entre duas posições consecutivas passar disso, tratamos como
 // "sem sinal" (app fechado/sem internet) em vez de contar como fora da base —
@@ -198,7 +198,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
   const podeGerenciarBases = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'fiscais_campo_bases')
 
-  const [presencas,       setPresencas]       = useState([])   // fiscais_presenca (última 1h)
+  const [presencas,       setPresencas]       = useState([])   // fiscais_presenca (últimas 24h)
   const [loading,         setLoading]         = useState(true)
   const [aba,             setAba]             = useState('vivo')   // vivo | historico | bases | relatorio
   const [janelaHistorico, setJanelaHistorico] = useState('3h')     // 1h | 3h | 6h | dia — só quando Período = Hoje
@@ -343,7 +343,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     })
   }, [bases, aba])
 
-  // ─── Busca presença (tabela fiscais_presenca, última 1h) ───
+  // ─── Busca presença (tabela fiscais_presenca, últimas 24h) ───
   const buscarPresencas = async () => {
     const limite = new Date(Date.now() - PRESENCA_MS).toISOString()
     const { data } = await supabase
@@ -723,7 +723,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             <div>
               <h1 style={{ fontSize: 18, fontWeight: 800 }}>📍 Fiscais em Campo</h1>
               <p style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
-                {aba === 'vivo' && `${ativos.length} ativo(s) · ${ausentes.length} visto(s) na última hora — atualiza a cada 5s`}
+                {aba === 'vivo' && `${ativos.length} ativo(s) · ${ausentes.length} visto(s) nas últimas 24h — atualiza a cada 5s`}
                 {aba === 'historico' && 'Histórico de rota'}
                 {aba === 'bases' && `${bases.length} base(s) cadastrada(s)`}
                 {aba === 'relatorio' && 'Permanência dentro/fora da base'}
@@ -937,7 +937,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
           background: '#fff', borderRadius: 12, padding: '12px 20px',
           boxShadow: '0 4px 16px rgba(0,0,0,0.15)', fontSize: 13, color: '#64748b', textAlign: 'center', zIndex: 1000,
         }}>
-          📭 Nenhum fiscal com presença na última hora
+          📭 Nenhum fiscal com presença nas últimas 24h
         </div>
       )}
 
