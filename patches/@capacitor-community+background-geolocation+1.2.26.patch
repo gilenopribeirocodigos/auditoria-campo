@@ -248,8 +248,8 @@ index fafbb86..c029f4d 100644
 +    // (diferente da versão "Exact", que no Android 13+ exige o usuário
 +    // liberar manualmente mais uma tela) — o horário pode atrasar um pouco
 +    // em troca disso, o que não é problema pra uma rede de segurança que já
-+    // roda a cada poucos minutos.
-+    private static final long INTERVALO_ALARME_MS = 5 * 60 * 1000; // 5 minutos
++    // roda a cada minuto.
++    private static final long INTERVALO_ALARME_MS = 60 * 1000; // 1 minuto
 +    private static final int ALARME_REQUEST_CODE = 93821;
 +    private static final String ACTION_ALARME_REFORCO = (
 +            BackgroundGeolocationService.class.getPackage().getName() + ".alarme_reforco"
@@ -264,10 +264,13 @@ index fafbb86..c029f4d 100644
 +    // fila em IndexedDB que já existe no lado JS (rastreio.js), só que
 +    // reimplementada em Java porque o WebView não é acessível daqui.
 +    // Debounce fixo de 8s pro stream contínuo (que entrega posições a cada
-+    // ~1s) — o alarme de reforço (5min) cobre o caso do stream ficar represado.
++    // ~1s) — o alarme de reforço (1min) cobre o caso do stream ficar represado.
 +    private static final long CADENCIA_GRAVACAO_MS = 8000;
++    private static final long CADENCIA_PRESENCA_MS = 60 * 1000;
 +    private static final String PREFS_NOME = "rastreio_config_nativo";
 +    private long ultimaGravacaoMs = 0;
++    private long ultimaPresencaMs = 0;
++    private Location ultimaLocalizacaoConhecida = null;
 +    private ExecutorService filaExecutor;
 +
 +    @Override
@@ -328,7 +331,10 @@ index fafbb86..c029f4d 100644
 +        try {
 +            client.getCurrentLocation(LocationRequest.PRIORITY_HIGH_ACCURACY, null)
 +                    .addOnSuccessListener(location -> {
-+                        if (location == null) return;
++                        if (location == null) {
++                            atualizarPresencaNativa(ultimaLocalizacaoConhecida, false);
++                            return;
++                        }
 +                        for (Watcher watcher : watchers) {
 +                            Intent intent = new Intent(ACTION_BROADCAST);
 +                            intent.putExtra("location", location);
@@ -362,6 +368,9 @@ index fafbb86..c029f4d 100644
 +    // todas. Chamado tanto pelo watcher contínuo quanto pelo alarme de reforço.
 +    private void gravarLocalizacaoNativa(Location location) {
 +        if (!configuradoParaGravar()) return; // login ainda não configurou (primeira execução)
++        if (location == null) return;
++        ultimaLocalizacaoConhecida = location;
++        atualizarPresencaNativa(location, false);
 +        long agora = System.currentTimeMillis();
 +        if (agora - ultimaGravacaoMs < CADENCIA_GRAVACAO_MS) return;
 +        ultimaGravacaoMs = agora;
@@ -402,6 +411,41 @@ index fafbb86..c029f4d 100644
 +                enviarParaSupabase("fiscais_presenca?on_conflict=fiscal_login", presenca, "resolution=merge-duplicates,return=minimal");
 +            } catch (Exception e) {
 +                Logger.error("Falha ao gravar localização nativa", e);
++            }
++        });
++    }
++
++    // Heartbeat de presenca separado da gravacao de trilha. Quando o Android
++    // mantem o servico ativo, mas nao entrega nova coordenada porque o fiscal
++    // esta parado, renovamos o "ultimo_visto" com a ultima posicao conhecida.
++    // Isso evita o fiscal ficar cinza no mapa enquanto o app segue rastreando.
++    private void atualizarPresencaNativa(Location location, boolean forcar) {
++        if (!configuradoParaGravar() || location == null || filaExecutor == null) return;
++        long agora = System.currentTimeMillis();
++        if (!forcar && agora - ultimaPresencaMs < CADENCIA_PRESENCA_MS) return;
++        ultimaPresencaMs = agora;
++
++        final double lat = location.getLatitude();
++        final double lng = location.getLongitude();
++        final Float precisao = location.hasAccuracy() ? location.getAccuracy() : null;
++
++        filaExecutor.execute(() -> {
++            SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
++            String fiscalLogin = p.getString("fiscalLogin", "");
++            String fiscalNome = p.getString("fiscalNome", "");
++            String agoraISO = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(new Date());
++
++            try {
++                JSONObject presenca = new JSONObject();
++                presenca.put("fiscal_login", fiscalLogin);
++                presenca.put("fiscal_nome", fiscalNome);
++                presenca.put("lat", lat);
++                presenca.put("lng", lng);
++                presenca.put("precisao", precisao == null ? JSONObject.NULL : precisao);
++                presenca.put("ultimo_visto", agoraISO);
++                enviarParaSupabase("fiscais_presenca?on_conflict=fiscal_login", presenca, "resolution=merge-duplicates,return=minimal");
++            } catch (Exception e) {
++                Logger.error("Falha ao atualizar presenca nativa", e);
 +            }
 +        });
 +    }

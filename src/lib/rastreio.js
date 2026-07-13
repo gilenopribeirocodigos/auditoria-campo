@@ -286,17 +286,18 @@ async function iniciarRastreioNativo(usuario) {
       },
       (location, error) => {
         if (error) { console.warn('[rastreio] nativo erro:', error?.message); return }
-        // Caminho normal (APK atualizado): o código nativo (Java) já grava
-        // a posição direto no Supabase — não faz nada aqui, pra não duplicar.
+        // Caminho normal (APK atualizado): o código nativo (Java) grava a
+        // trilha e este callback reforça a presença para manter o mapa vivo.
         // Fallback (APK antigo, sem configurarSupabase): grava por aqui
         // mesmo, reaproveitando a fila offline em IndexedDB já existente.
-        if (!nativoConfigurado && location && usuarioAtual) {
-          processarPosicao(usuarioAtual, {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            accuracy: location.accuracy,
-          })
+        if (!location || !usuarioAtual) return
+        const coords = {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy,
         }
+        if (nativoConfigurado) atualizarPresenca(usuarioAtual, coords)
+        else processarPosicao(usuarioAtual, coords)
       },
     )
   } catch (e) {
