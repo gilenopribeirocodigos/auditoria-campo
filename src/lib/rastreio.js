@@ -23,6 +23,14 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 //   (configurarSupabase) e liga o watcher; o callback já não grava nada,
 //   pra não duplicar o que o Java já fez.
 //
+//   ⚠️ O app Android não se atualiza sozinho (diferente do site, que já sobe
+//   o bundle novo automaticamente) — se o APK instalado for de ANTES dessa
+//   mudança, o método configurarSupabase nem existe no nativo. Por isso
+//   `nativoConfigurado` detecta essa falha e o próprio JS assume a gravação
+//   a cada posição do watcher nativo (fallback), reaproveitando a mesma fila
+//   offline em IndexedDB — sem isso, um fiscal com APK desatualizado ficaria
+//   sem nenhuma gravação (nem nativa, nem via JS).
+//
 // ⚠️ No modo web (PWA comum, sem instalar o app Android), o limite de sempre
 //    continua valendo: NÃO rastreia com tela apagada por horas.
 // ════════════════════════════════════════════════════════════════════════════
@@ -34,11 +42,12 @@ const STORE    = 'posicoes'
 
 const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
 
-let intervalId     = null
-let usuarioAtual   = null
-let wakeLock        = null
-let rodando         = false
-let watcherNativoId = null
+let intervalId        = null
+let usuarioAtual      = null
+let wakeLock           = null
+let rodando            = false
+let watcherNativoId    = null
+let nativoConfigurado  = false  // true só quando o APK instalado já tem o método configurarSupabase
 
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
@@ -132,18 +141,21 @@ async function atualizarPresenca(usuario, coords) {
 }
 
 // ─── Envia uma posição: tenta direto, se falhar enfileira ───────────────────
-async function processarPosicao(usuario, pos) {
+// `coords` é sempre {latitude,longitude,accuracy} — tanto o navegador quanto
+// o plugin nativo entregam nesse formato achatado, então um único caminho
+// atende os dois (web normal e o fallback nativo abaixo).
+async function processarPosicao(usuario, coords) {
   const registro = {
     fiscal_login: usuario.login,
     fiscal_nome:  usuario.nome,
-    lat:          pos.coords.latitude,
-    lng:          pos.coords.longitude,
-    precisao:     pos.coords.accuracy,
+    lat:          coords.latitude,
+    lng:          coords.longitude,
+    precisao:     coords.accuracy,
     created_at:   new Date().toISOString(),  // timestamp local — preserva ordem
   }
 
   // Heartbeat em paralelo
-  atualizarPresenca(usuario, pos.coords)
+  atualizarPresenca(usuario, coords)
 
   if (navigator.onLine) {
     try {
@@ -163,7 +175,7 @@ async function processarPosicao(usuario, pos) {
 function capturarAgora() {
   if (!usuarioAtual || !navigator.geolocation) return
   navigator.geolocation.getCurrentPosition(
-    pos => processarPosicao(usuarioAtual, pos),
+    pos => processarPosicao(usuarioAtual, pos.coords),
     err => console.warn('[rastreio] GPS:', err?.message),
     GEO_OPTS,
   )
@@ -207,6 +219,11 @@ async function iniciarRastreioNativo(usuario) {
   // Passa a config pro lado nativo ANTES de ligar o watcher — é o código
   // Java quem grava a localização direto no Supabase a partir daqui (com
   // fila offline própria), sem depender do JS/WebView estar rodando.
+  // Se essa chamada falhar, é sinal de que o APK instalado é ANTERIOR à
+  // versão que criou esse método nativo (configurarSupabase não existe
+  // nesse build) — nesse caso `nativoConfigurado` fica false e o próprio
+  // JS assume a gravação a cada posição recebida do watcher, como fallback.
+  nativoConfigurado = false
   try {
     await BackgroundGeolocation.configurarSupabase({
       url:         import.meta.env.VITE_SUPABASE_URL,
@@ -215,8 +232,9 @@ async function iniciarRastreioNativo(usuario) {
       fiscalLogin: usuario.login,
       fiscalNome:  usuario.nome,
     })
+    nativoConfigurado = true
   } catch (e) {
-    console.warn('[rastreio] falha ao configurar Supabase nativo:', e?.message)
+    console.warn('[rastreio] configurarSupabase indisponível (APK desatualizado?) — usando fallback via JS:', e?.message)
   }
 
   try {
@@ -229,10 +247,18 @@ async function iniciarRastreioNativo(usuario) {
         distanceFilter: 0,
       },
       (location, error) => {
-        // O código nativo (Java) já grava a posição direto no Supabase —
-        // esse callback só existe porque a assinatura do plugin exige um,
-        // não precisa fazer mais nada aqui (evita gravar duas vezes).
-        if (error) console.warn('[rastreio] nativo erro:', error?.message)
+        if (error) { console.warn('[rastreio] nativo erro:', error?.message); return }
+        // Caminho normal (APK atualizado): o código nativo (Java) já grava
+        // a posição direto no Supabase — não faz nada aqui, pra não duplicar.
+        // Fallback (APK antigo, sem configurarSupabase): grava por aqui
+        // mesmo, reaproveitando a fila offline em IndexedDB já existente.
+        if (!nativoConfigurado && location && usuarioAtual) {
+          processarPosicao(usuarioAtual, {
+            latitude: location.latitude,
+            longitude: location.longitude,
+            accuracy: location.accuracy,
+          })
+        }
       },
     )
   } catch (e) {
@@ -257,6 +283,7 @@ async function pararRastreioNativo() {
     catch (e) { console.warn('[rastreio] falha ao remover watcher nativo:', e?.message) }
     watcherNativoId = null
   }
+  nativoConfigurado = false
 }
 
 // ─── API pública ────────────────────────────────────────────────────────────
