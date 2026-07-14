@@ -235,7 +235,7 @@ index fafbb86..c029f4d 100644
  
  import androidx.localbroadcastmanager.content.LocalBroadcastManager;
  
-@@ -42,23 +65,283 @@ public class BackgroundGeolocationService extends Service {
+@@ -42,23 +65,327 @@ public class BackgroundGeolocationService extends Service {
      }
      private HashSet<Watcher> watchers = new HashSet<Watcher>();
  

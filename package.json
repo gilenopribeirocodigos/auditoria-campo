@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "postinstall": "patch-package || ( [ -z \"$GITHUB_ACTIONS\" ] && echo 'patch-package falhou fora do build Android (GitHub Actions) - seguindo sem aplicar, nao afeta o build web' || exit 1 )"
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",
