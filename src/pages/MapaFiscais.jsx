@@ -228,6 +228,12 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
   // Um fiscal está "ativo agora" se foi visto nos últimos ATIVO_MS
   const estaAtivo = (ultimoVisto) => (Date.now() - new Date(ultimoVisto).getTime()) <= ATIVO_MS
+  const statusFiscal = (ultimoVisto) => {
+    const online = estaAtivo(ultimoVisto)
+    return online
+      ? { online: true, label: 'ONLINE', color: '#16a34a', bg: '#f0fdf4', border: '#22c55e' }
+      : { online: false, label: 'OFFLINE', color: '#dc2626', bg: '#fff1f2', border: '#ef4444' }
+  }
 
   // ─── Supervisores permitidos (segregação + filtros) ───
   const supervisoresAlvo = useMemo(() => {
@@ -376,9 +382,10 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     const loginsVisiveis = new Set(visiveis.map(p => p.fiscal_login))
 
     visiveis.forEach(p => {
-      const ativo = estaAtivo(p.ultimo_visto)
-      const cor   = ativo ? corFiscal(p.fiscal_login) : '#94a3b8'  // cinza se ausente
-      const opacidade = ativo ? 1 : 0.65
+      const status = statusFiscal(p.ultimo_visto)
+      const ativo = status.online
+      const cor = ativo ? corFiscal(p.fiscal_login) : status.color
+      const opacidade = 1
       const nome  = p.fiscal_nome?.split(' ')[0]?.substring(0, 6) || '?'
 
       const classif = baseMaisProxima(p.lat, p.lng, bases)
@@ -399,8 +406,8 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       const popupHtml = `
         <strong>${p.fiscal_nome}</strong><br/>
         ${ativo
-          ? '<span style="color:#16a34a;font-weight:700">🟢 Ativo agora</span>'
-          : `<span style="color:#94a3b8;font-weight:700">⚪ Visto ${tempoDesde(p.ultimo_visto)}</span>`}
+          ? `<span style="color:${status.color};font-weight:700">ONLINE</span>`
+          : `<span style="color:${status.color};font-weight:700">OFFLINE - Visto ${tempoDesde(p.ultimo_visto)}</span>`}
         ${statusBaseHtml ? `<br/>${statusBaseHtml}` : ''}
         <br/>
         📍 ${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}<br/>
@@ -723,7 +730,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             <div>
               <h1 style={{ fontSize: 18, fontWeight: 800 }}>📍 Fiscais em Campo</h1>
               <p style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
-                {aba === 'vivo' && `${ativos.length} ativo(s) · ${ausentes.length} visto(s) nas últimas 24h — atualiza a cada 5s`}
+                {aba === 'vivo' && `${ativos.length} online · ${ausentes.length} offline/visto(s) nas últimas 24h — atualiza a cada 5s`}
                 {aba === 'historico' && 'Histórico de rota'}
                 {aba === 'bases' && `${bases.length} base(s) cadastrada(s)`}
                 {aba === 'relatorio' && 'Permanência dentro/fora da base'}
@@ -811,7 +818,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
           />
           {aba === 'vivo' && (
             <p style={{ fontSize: 11, color: '#64748b', marginTop: -8, marginBottom: 8 }}>
-              ℹ️ Ao Vivo sempre mostra a posição mais recente de cada fiscal — o Período acima não muda isso, só filtra quem aparece (Regional/Supervisor/Prefixo).
+              ℹ️ ONLINE exige envio recente do celular. OFFLINE indica que o app ficou sem enviar localização no intervalo esperado; o Período acima só filtra quem aparece.
             </p>
           )}
           {filtros.temSegregacao && (
@@ -844,8 +851,9 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         <div style={{ background: '#fff', borderBottom: '1px solid #e2e8f0', padding: '10px 20px', overflowX: 'auto' }}>
           <div style={{ maxWidth: 900, margin: '0 auto', display: 'flex', gap: 8 }}>
             {[...ativos, ...ausentes].map(f => {
-              const ativo = estaAtivo(f.ultimo_visto)
-              const cor   = ativo ? corFiscal(f.fiscal_login) : '#94a3b8'
+              const status = statusFiscal(f.ultimo_visto)
+              const ativo = status.online
+              const cor = ativo ? corFiscal(f.fiscal_login) : status.color
               const classif = baseMaisProxima(f.lat, f.lng, bases)
               return (
                 <div key={f.fiscal_login} onClick={() => {
@@ -855,12 +863,13 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                   }
                 }} title={classif.base ? (classif.dentro ? `Dentro da ${classif.base.nome}` : `Fora de qualquer base (${classif.distanciaKm.toFixed(1)}km da ${classif.base.nome})`) : ''} style={{
                   display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap',
-                  background: ativo ? '#f0f9ff' : '#f8fafc',
-                  border: `1.5px solid ${cor}`, borderRadius: 999, padding: '6px 12px 6px 8px', cursor: 'pointer',
-                  opacity: ativo ? 1 : 0.7,
+                  background: ativo ? '#f0f9ff' : status.bg,
+                  border: `1.5px solid ${ativo ? cor : status.border}`, borderRadius: 999, padding: '6px 12px 6px 8px', cursor: 'pointer',
+                  opacity: 1,
                 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: cor, flexShrink: 0 }} />
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: ativo ? '#22c55e' : '#ef4444', flexShrink: 0 }} />
                   <span style={{ fontSize: 12, fontWeight: 800, color: cor }}>{f.fiscal_nome?.split(' ')[0]}</span>
+                  <span style={{ fontSize: 10, fontWeight: 900, color: status.color }}>{status.label}</span>
                   {classif.base && <span style={{ fontSize: 11 }}>{classif.dentro ? '🟢' : '🟠'}</span>}
                 </div>
               )

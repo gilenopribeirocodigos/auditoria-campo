@@ -31,24 +31,16 @@
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
+                android:resource="@xml/file_paths" />
         </provider>
     </application>
 
-    <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Rastreio em segundo plano (Fiscais em Campo). As permissões de
-         localização/serviço em primeiro plano/notificação já vêm do
-         manifesto do plugin @capacitor-community/background-geolocation
-         (merge automático do Gradle) — só ACCESS_BACKGROUND_LOCATION
-         precisa ser declarada explicitamente pelo app consumidor. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-
-    <!-- Permite pedir ao usuário, num único diálogo do próprio Android, pra
-         ignorar a otimização de bateria PADRÃO do sistema (Doze) pro app —
-         ver requestIgnoreBatteryOptimizations() em rastreio.js. Não cobre
-         gerenciadores de bateria proprietários de fabricante (MIUI etc). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>
