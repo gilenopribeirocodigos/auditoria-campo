@@ -80,7 +80,17 @@ export default function App() {
   const [msgSync,             setMsgSync]             = useState('')
   const [pendentesReg,        setPendentesReg]        = useState(0)
 
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
+    // [DPL] Checa por atualização periodicamente (não só na primeira carga)
+    // — sem isso, um app que fica dias aberto/minimizado (como no rastreio
+    // em segundo plano) só via o service worker novo depois de fechar e
+    // reabrir várias vezes, atrasando demais a propagação de correções
+    // durante testes de campo.
+    onRegisteredSW(_url, registration) {
+      if (!registration) return
+      setInterval(() => { registration.update() }, 60 * 1000)
+    },
+  })
 
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
@@ -93,10 +103,15 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (needRefresh && tela === 'home' && !auditoriaEditando) {
+    // [DPL] Antes só atualizava na tela Home — se o usuário ficasse em
+    // qualquer outra tela (ex: Diagnóstico de Rastreio), o app continuava
+    // preso na versão antiga indefinidamente. Agora atualiza assim que uma
+    // versão nova é detectada, em qualquer tela, contanto que não esteja no
+    // meio de uma edição (perderia o formulário em andamento).
+    if (needRefresh && !auditoriaEditando) {
       setTimeout(() => { updateServiceWorker(true) }, 1000)
     }
-  }, [needRefresh, tela])
+  }, [needRefresh])
 
   useEffect(() => {
     if (!usuario) return
