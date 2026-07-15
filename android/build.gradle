@@ -22,6 +22,20 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // [DPL] O build.gradle do @transistorsoft/capacitor-background-geolocation@8.0.1
+    // pede "com.transistorsoft:tslocationmanager:3.+", mas essa linha 3.x
+    // não existe mais no Maven Central (só a partir da 4.0.0) — trava tanto
+    // a resolução de dependências do :app quanto a compilação do próprio
+    // módulo do plugin (precisa estar em "allprojects", não só no :app,
+    // pra alcançar o classpath de compilação do módulo do plugin também).
+    // Força a versão 4.x mais recente até isso ser corrigido numa versão
+    // nova do plugin.
+    configurations.all {
+        resolutionStrategy {
+            force 'com.transistorsoft:tslocationmanager:4.3.2'
+        }
+    }
 }
 
 task clean(type: Delete) {
