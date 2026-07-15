@@ -278,45 +278,53 @@ async function iniciarRastreioNativo(usuario) {
   try {
     // ready() aplica (e persiste nativamente) toda a config — chamado a
     // cada login pra garantir que fiscal_login/fiscal_nome em `extras`
-    // estejam sempre os do usuário atual.
+    // estejam sempre os do usuário atual. Config aninhada por seção
+    // (geolocation/app/http/persistence) — formato da v9 do SDK.
     await BackgroundGeolocation.ready({
-      desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
-      distanceFilter: 0,
-      locationUpdateInterval: 8000,
-      fastestLocationUpdateInterval: 8000,
-      // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
-      // volta sozinho depois que o celular reinicia — sem precisar de um
-      // BroadcastReceiver próprio como na tentativa anterior.
-      stopOnTerminate: false,
-      startOnBoot: true,
-      foregroundService: true,
-      notification: {
-        title: 'VérticeGP',
-        text: 'Rastreando localização em segundo plano.',
-        priority: BackgroundGeolocation.NOTIFICATION_PRIORITY_LOW,
-        channelName: 'Rastreamento em segundo plano',
+      geolocation: {
+        desiredAccuracy: BackgroundGeolocation.DesiredAccuracy.High,
+        distanceFilter: 0,
+        locationUpdateInterval: 8000,
+        fastestLocationUpdateInterval: 8000,
+      },
+      app: {
+        // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
+        // volta sozinho depois que o celular reinicia — sem precisar de um
+        // BroadcastReceiver próprio como na tentativa anterior.
+        stopOnTerminate: false,
+        startOnBoot: true,
+        notification: {
+          title: 'VérticeGP',
+          text: 'Rastreando localização em segundo plano.',
+          priority: BackgroundGeolocation.NotificationPriority.Low,
+          channelName: 'Rastreamento em segundo plano',
+        },
       },
       // Envio nativo direto pro Supabase (função RPC que grava trilha +
       // presença num único POST) — o próprio SDK persiste em SQLite
       // interno e reenvia sozinho quando falha, sem fila nossa.
-      url,
-      method: 'POST',
-      httpRootProperty: '.',
-      autoSync: true,
-      batchSync: false,
-      maxDaysToPersist: 3,
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${anonKey}`,
-        'Content-Profile': schema,
-        Prefer: 'return=minimal',
+      http: {
+        url,
+        method: 'POST',
+        rootProperty: '.',
+        autoSync: true,
+        batchSync: false,
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${anonKey}`,
+          'Content-Profile': schema,
+          Prefer: 'return=minimal',
+        },
       },
-      // `extras` é mesclado automaticamente em cada posição enviada.
-      extras: {
-        fiscal_login: usuario.login,
-        fiscal_nome: usuario.nome,
+      persistence: {
+        maxDaysToPersist: 3,
+        // `extras` é mesclado automaticamente em cada posição enviada.
+        extras: {
+          fiscal_login: usuario.login,
+          fiscal_nome: usuario.nome,
+        },
+        locationTemplate: '{"lat":<%= latitude %>,"lng":<%= longitude %>,"precisao":<%= accuracy %>,"created_at":"<%= timestamp %>"}',
       },
-      locationTemplate: '{"lat":<%= latitude %>,"lng":<%= longitude %>,"precisao":<%= accuracy %>,"created_at":"<%= timestamp %>"}',
     })
     // start() já pede as permissões de localização/notificação necessárias.
     await BackgroundGeolocation.start()
