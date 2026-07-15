@@ -288,7 +288,13 @@ async function iniciarRastreioNativo(usuario) {
     // (geolocation/app/http/persistence) — formato da v9 do SDK.
     await BackgroundGeolocation.ready({
       geolocation: {
-        desiredAccuracy: BackgroundGeolocation.DesiredAccuracy.High,
+        // [DPL] Usa as constantes "chatas" (DESIRED_ACCURACY_HIGH), não o
+        // namespace (DesiredAccuracy.High) — nessa versão do SDK só ALGUNS
+        // enums ganharam o namespace novo; NotificationPriority (abaixo)
+        // não tem, e dava "Cannot read properties of undefined" em
+        // runtime. As constantes chatas existem pra todos, confirmado
+        // direto no bundle compilado do pacote.
+        desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
         distanceFilter: 0,
         locationUpdateInterval: 8000,
         fastestLocationUpdateInterval: 8000,
@@ -302,7 +308,7 @@ async function iniciarRastreioNativo(usuario) {
         notification: {
           title: 'VérticeGP',
           text: 'Rastreando localização em segundo plano.',
-          priority: BackgroundGeolocation.NotificationPriority.Low,
+          priority: BackgroundGeolocation.NOTIFICATION_PRIORITY_LOW,
           channelName: 'Rastreamento em segundo plano',
         },
       },
