@@ -275,7 +275,11 @@ async function iniciarRastreioNativo(usuario) {
         ultimoHttpSucessoMs = Date.now()
         ultimoHttpErro = null
       } else {
-        ultimoHttpErro = `HTTP ${resposta.status}`
+        // responseText traz a mensagem real do PostgREST (ex: nome de
+        // coluna errado, tipo inválido) — sem isso só dava pra ver o
+        // código HTTP, não o motivo.
+        const corpo = (resposta.responseText || '').slice(0, 300)
+        ultimoHttpErro = `HTTP ${resposta.status}${corpo ? ' — ' + corpo : ''}`
       }
     })
   }
