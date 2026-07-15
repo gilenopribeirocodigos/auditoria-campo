@@ -10,13 +10,18 @@
 -- [CORREÇÃO 2] Parâmetros renomeados com prefixo "p_" — os nomes originais
 -- (fiscal_login, lat, lng, etc.) batiam exatamente com os nomes das colunas
 -- das tabelas, causando erro 42702 "column reference ... is ambiguous" em
--- todo INSERT (o Postgres não sabia se era o parâmetro ou a coluna). Se já
--- aplicou a versão anterior deste arquivo, rodar este de novo por cima
--- substitui a função (CREATE OR REPLACE permite renomear parâmetros).
+-- todo INSERT (o Postgres não sabia se era o parâmetro ou a coluna).
+--
+-- [CORREÇÃO 3] CREATE OR REPLACE FUNCTION não permite renomear parâmetros
+-- existentes (erro 42P13 "cannot change name of input parameter") — precisa
+-- dar DROP na função antiga primeiro. Os DROP abaixo são seguros: é só uma
+-- função (sem dados), recriada na sequência.
 
 -- =========================
 -- DESENVOLVIMENTO: schema dev
 -- =========================
+DROP FUNCTION IF EXISTS dev.registrar_localizacao_fiscal(text, text, double precision, double precision, double precision, timestamptz);
+
 CREATE OR REPLACE FUNCTION dev.registrar_localizacao_fiscal(
   p_fiscal_login text,
   p_fiscal_nome text,
@@ -47,6 +52,8 @@ GRANT EXECUTE ON FUNCTION dev.registrar_localizacao_fiscal(text, text, double pr
 -- =========================
 -- PRODUÇÃO: schema public
 -- =========================
+DROP FUNCTION IF EXISTS public.registrar_localizacao_fiscal(text, text, double precision, double precision, double precision, timestamptz);
+
 CREATE OR REPLACE FUNCTION public.registrar_localizacao_fiscal(
   p_fiscal_login text,
   p_fiscal_nome text,
