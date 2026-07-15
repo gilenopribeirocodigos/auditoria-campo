@@ -20,8 +20,9 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 //   ponte JS/WebView continuar rodando em segundo plano, que era o ponto
 //   de falha confirmado em campo (a notificação ficava viva, mas a
 //   gravação via JS nunca acontecia). O JS aqui só CONFIGURA o nativo
-//   (configurarSupabase) e liga o watcher; o callback já não grava nada,
-//   pra não duplicar o que o Java já fez.
+//   (configurarSupabase) e liga o watcher; o callback, com o nativo já
+//   configurado, só reforça a presença (heartbeat), sem duplicar a trilha
+//   que o Java já grava.
 //
 //   ⚠️ O app Android não se atualiza sozinho (diferente do site, que já sobe
 //   o bundle novo automaticamente) — se o APK instalado for de ANTES dessa
@@ -48,6 +49,8 @@ let wakeLock           = null
 let rodando            = false
 let watcherNativoId    = null
 let nativoConfigurado  = false  // true só quando o APK instalado já tem o método configurarSupabase
+let watchId            = null
+let capturaEmAndamento = false
 
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
@@ -174,11 +177,42 @@ async function processarPosicao(usuario, coords) {
 // ─── Captura uma posição agora (modo web) ───────────────────────────────────
 function capturarAgora() {
   if (!usuarioAtual || !navigator.geolocation) return
+  if (capturaEmAndamento) return
+
+  capturaEmAndamento = true
   navigator.geolocation.getCurrentPosition(
-    pos => processarPosicao(usuarioAtual, pos.coords),
-    err => console.warn('[rastreio] GPS:', err?.message),
+    pos => {
+      capturaEmAndamento = false
+      processarPosicao(usuarioAtual, pos.coords)
+    },
+    err => {
+      capturaEmAndamento = false
+      console.warn('[rastreio] GPS:', err?.message)
+    },
     GEO_OPTS,
   )
+}
+
+function iniciarWatch() {
+  if (!usuarioAtual || !navigator.geolocation || watchId !== null) return
+
+  try {
+    watchId = navigator.geolocation.watchPosition(
+      pos => processarPosicao(usuarioAtual, pos.coords),
+      err => console.warn('[rastreio] watch GPS:', err?.message),
+      GEO_OPTS,
+    )
+  } catch (e) {
+    console.warn('[rastreio] watch indisponível:', e?.message)
+    watchId = null
+  }
+}
+
+function pararWatch() {
+  if (watchId !== null && navigator.geolocation) {
+    try { navigator.geolocation.clearWatch(watchId) } catch { /* ignore */ }
+  }
+  watchId = null
 }
 
 // ─── Wake Lock: tenta manter a tela ligada (só com aba visível, modo web) ───
@@ -199,19 +233,24 @@ function liberarWakeLock() {
 }
 
 // ─── Handlers (comuns aos dois modos) ────────────────────────────────────────
+function reativarRastreio() {
+  if (!rodando) return
+  iniciarWatch()
+  capturarAgora()
+  pedirWakeLock()
+  drenarFila()
+}
+
 function onVisibilityChange() {
   if (document.visibilityState === 'visible') {
-    if (!Capacitor.isNativePlatform()) {
-      capturarAgora()   // voltou ao app (web): captura na hora
-      pedirWakeLock()   // re-pede wake lock (é liberado ao sair)
-    }
+    if (!Capacitor.isNativePlatform()) reativarRastreio()
     drenarFila()
   }
 }
 
 function onOnline() {
   drenarFila()
-  if (!Capacitor.isNativePlatform()) capturarAgora()
+  if (!Capacitor.isNativePlatform()) reativarRastreio()
 }
 
 // ─── Modo nativo Android: liga o watcher em segundo plano de verdade ────────
@@ -248,17 +287,18 @@ async function iniciarRastreioNativo(usuario) {
       },
       (location, error) => {
         if (error) { console.warn('[rastreio] nativo erro:', error?.message); return }
-        // Caminho normal (APK atualizado): o código nativo (Java) já grava
-        // a posição direto no Supabase — não faz nada aqui, pra não duplicar.
+        // Caminho normal (APK atualizado): o código nativo (Java) grava a
+        // trilha e este callback reforça a presença para manter o mapa vivo.
         // Fallback (APK antigo, sem configurarSupabase): grava por aqui
         // mesmo, reaproveitando a fila offline em IndexedDB já existente.
-        if (!nativoConfigurado && location && usuarioAtual) {
-          processarPosicao(usuarioAtual, {
-            latitude: location.latitude,
-            longitude: location.longitude,
-            accuracy: location.accuracy,
-          })
+        if (!location || !usuarioAtual) return
+        const coords = {
+          latitude: location.latitude,
+          longitude: location.longitude,
+          accuracy: location.accuracy,
         }
+        if (nativoConfigurado) atualizarPresenca(usuarioAtual, coords)
+        else processarPosicao(usuarioAtual, coords)
       },
     )
   } catch (e) {
@@ -331,26 +371,36 @@ export function iniciarRastreio(usuario) {
   if (!navigator.geolocation) return
 
   capturarAgora()      // 1. captura imediata
-  pedirWakeLock()      // 2. mantém tela viva enquanto app aberto
+  iniciarWatch()       // 2. recebe eventos contínuos quando o navegador permite
+  pedirWakeLock()      // 3. mantém tela viva enquanto app aberto
 
-  // 3. ciclo periódico
+  // 4. ciclo periódico
   intervalId = setInterval(() => {
     capturarAgora()
     drenarFila()
   }, INTERVALO_FOREGROUND_MS)
+
+  window.addEventListener('focus', reativarRastreio)
+  window.addEventListener('pageshow', reativarRastreio)
+  document.addEventListener('resume', reativarRastreio)
 
   console.log('[rastreio] iniciado (navegador/PWA) para', usuario.login)
 }
 
 export function pararRastreio() {
   if (intervalId) { clearInterval(intervalId); intervalId = null }
+  pararWatch()
   document.removeEventListener('visibilitychange', onVisibilityChange)
+  window.removeEventListener('focus', reativarRastreio)
+  window.removeEventListener('pageshow', reativarRastreio)
+  document.removeEventListener('resume', reativarRastreio)
   window.removeEventListener('online', onOnline)
   liberarWakeLock()
   pararRastreioNativo()
   drenarFila()  // última tentativa de esvaziar antes de parar
   usuarioAtual = null
   rodando = false
+  capturaEmAndamento = false
   console.log('[rastreio] parado')
 }
 

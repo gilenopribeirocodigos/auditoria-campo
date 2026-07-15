@@ -238,10 +238,10 @@ index a92fcf9..c8c9408 100644
      }
  }
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..9e7f679 100644
+index fafbb86..647b5fb 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-@@ -1,8 +1,16 @@
+@@ -1,13 +1,23 @@
  package com.equimaps.capacitor_background_geolocation;
  
 +import android.app.AlarmManager;
@@ -258,7 +258,14 @@ index fafbb86..9e7f679 100644
  import android.content.pm.ServiceInfo;
  import android.location.Location;
  import android.os.Binder;
-@@ -17,7 +25,24 @@ import com.google.android.gms.location.LocationRequest;
+ import android.os.Build;
++import android.os.Handler;
+ import android.os.IBinder;
++import android.os.Looper;
+ 
+ import com.getcapacitor.Logger;
+ import com.google.android.gms.location.FusedLocationProviderClient;
+@@ -17,7 +27,24 @@ import com.google.android.gms.location.LocationRequest;
  import com.google.android.gms.location.LocationResult;
  import com.google.android.gms.location.LocationServices;
  
@@ -283,7 +290,7 @@ index fafbb86..9e7f679 100644
  
  import androidx.localbroadcastmanager.content.LocalBroadcastManager;
  
-@@ -42,23 +67,424 @@ public class BackgroundGeolocationService extends Service {
+@@ -42,23 +69,498 @@ public class BackgroundGeolocationService extends Service {
      }
      private HashSet<Watcher> watchers = new HashSet<Watcher>();
  
@@ -296,8 +303,8 @@ index fafbb86..9e7f679 100644
 +    // (diferente da versão "Exact", que no Android 13+ exige o usuário
 +    // liberar manualmente mais uma tela) — o horário pode atrasar um pouco
 +    // em troca disso, o que não é problema pra uma rede de segurança que já
-+    // roda a cada poucos minutos.
-+    private static final long INTERVALO_ALARME_MS = 5 * 60 * 1000; // 5 minutos
++    // roda a cada minuto.
++    private static final long INTERVALO_ALARME_MS = 60 * 1000; // 1 minuto
 +    private static final int ALARME_REQUEST_CODE = 93821;
 +    private static final String ACTION_ALARME_REFORCO = (
 +            BackgroundGeolocationService.class.getPackage().getName() + ".alarme_reforco"
@@ -306,14 +313,26 @@ index fafbb86..9e7f679 100644
 +    private AlarmManager alarmManager;
 +    private PendingIntent alarmPendingIntent;
 +    private BroadcastReceiver alarmReceiver;
++    private Handler heartbeatHandler;
++    private boolean heartbeatRodando = false;
++    private final Runnable heartbeatRunnable = new Runnable() {
++        @Override
++        public void run() {
++            capturarLocalizacaoPontual();
++            if (heartbeatHandler != null && heartbeatRodando) {
++                heartbeatHandler.postDelayed(this, INTERVALO_ALARME_MS);
++            }
++        }
++    };
 +
 +    // [DPL] Envio nativo direto pro Supabase (sem depender da ponte JS/WebView
 +    // estar rodando) + fila offline própria em arquivo local — mesma ideia da
 +    // fila em IndexedDB que já existe no lado JS (rastreio.js), só que
 +    // reimplementada em Java porque o WebView não é acessível daqui.
 +    // Debounce fixo de 8s pro stream contínuo (que entrega posições a cada
-+    // ~1s) — o alarme de reforço (5min) cobre o caso do stream ficar represado.
++    // ~1s) — o alarme de reforço (1min) cobre o caso do stream ficar represado.
 +    private static final long CADENCIA_GRAVACAO_MS = 8000;
++    private static final long CADENCIA_PRESENCA_MS = 60 * 1000;
 +    private static final String PREFS_NOME = "rastreio_config_nativo";
 +    // [DPL] Mesma duração do timeout de ociosidade do app (TIMEOUT_MIN em
 +    // auth.js) — usada só como aproximação, do lado nativo, de "a sessão
@@ -322,12 +341,15 @@ index fafbb86..9e7f679 100644
 +    // cada gravação bem-sucedida (janela deslizante).
 +    private static final long SESSAO_DURACAO_MS = 8L * 60 * 60 * 1000;
 +    private long ultimaGravacaoMs = 0;
++    private long ultimaPresencaMs = 0;
++    private Location ultimaLocalizacaoConhecida = null;
 +    private ExecutorService filaExecutor;
 +
 +    @Override
 +    public void onCreate() {
 +        super.onCreate();
 +        filaExecutor = Executors.newSingleThreadExecutor();
++        heartbeatHandler = new Handler(Looper.getMainLooper());
 +        criarCanalNotificacao();
 +        alarmManager = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
 +        Intent alarmIntent = new Intent(ACTION_ALARME_REFORCO).setPackage(getPackageName());
@@ -346,16 +368,6 @@ index fafbb86..9e7f679 100644
 +        } else {
 +            registerReceiver(alarmReceiver, new IntentFilter(ACTION_ALARME_REFORCO));
 +        }
-+
-+        // [DPL] Modo autônomo: se o serviço está subindo sem nenhum watcher
-+        // do JS ainda registrado (ex: reiniciado pelo RastreioBootReceiver
-+        // após o celular reiniciar, antes do app ser aberto), mas já existe
-+        // configuração de um login recente com sessão ainda válida, começa a
-+        // capturar/gravar por conta própria — sem isso, o rastreio ficaria
-+        // parado até o fiscal abrir o app manualmente.
-+        if (watchers.isEmpty() && configuradoParaGravar() && sessaoValida()) {
-+            iniciarCapturaAutonoma();
-+        }
 +    }
 +
 +    private void criarCanalNotificacao() {
@@ -372,8 +384,36 @@ index fafbb86..9e7f679 100644
 +        nm.createNotificationChannel(canal);
 +    }
 +
++    private Notification construirNotificacaoAutonoma() {
++        String canalId = BackgroundGeolocationService.class.getPackage().getName();
++        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
++                ? new Notification.Builder(this, canalId)
++                : new Notification.Builder(this);
++        builder.setContentTitle("VérticeGP")
++                .setContentText("Rastreando localização em segundo plano.")
++                .setOngoing(true)
++                .setPriority(Notification.PRIORITY_LOW)
++                .setWhen(System.currentTimeMillis());
++        int iconId = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
++        if (iconId != 0) builder.setSmallIcon(iconId);
++        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
++        if (launchIntent != null) {
++            launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
++            int pendingFlags = PendingIntent.FLAG_CANCEL_CURRENT
++                    | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
++            builder.setContentIntent(PendingIntent.getActivity(this, 0, launchIntent, pendingFlags));
++        }
++        return builder.build();
++    }
++
++    private boolean sessaoValida() {
++        SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
++        return p.getLong("sessaoAtivaAte", 0) > System.currentTimeMillis();
++    }
++
 +    @Override
 +    public void onDestroy() {
++        pararHeartbeatEmProcesso();
 +        if (alarmManager != null && alarmPendingIntent != null) {
 +            alarmManager.cancel(alarmPendingIntent);
 +        }
@@ -401,25 +441,65 @@ index fafbb86..9e7f679 100644
 +    // cada watcher ativo pelo mesmo canal (ACTION_BROADCAST) que o fluxo
 +    // normal usa — assim reaproveita o mesmo caminho já testado até o JS,
 +    // sem precisar mexer no lado do plugin (BackgroundGeolocation.java).
++    private void iniciarHeartbeatEmProcesso() {
++        if (heartbeatHandler == null) {
++            heartbeatHandler = new Handler(Looper.getMainLooper());
++        }
++        if (heartbeatRodando) return;
++        heartbeatRodando = true;
++        heartbeatHandler.removeCallbacks(heartbeatRunnable);
++        heartbeatHandler.postDelayed(heartbeatRunnable, INTERVALO_ALARME_MS);
++    }
++
++    private void pararHeartbeatEmProcesso() {
++        heartbeatRodando = false;
++        if (heartbeatHandler != null) {
++            heartbeatHandler.removeCallbacks(heartbeatRunnable);
++        }
++    }
++
++    // [DPL] Além do caso normal (watchers ativos), também prossegue no modo
++    // autônomo: serviço religado sozinho (RastreioBootReceiver, após o
++    // celular reiniciar) sem nenhum watcher do JS ainda registrado, mas com
++    // configuração + sessão nativa ainda válidas.
 +    private void capturarLocalizacaoPontual() {
-+        if (watchers.isEmpty()) return;
++        if (watchers.isEmpty() && !(configuradoParaGravar() && sessaoValida())) return;
 +        FusedLocationProviderClient client = LocationServices.getFusedLocationProviderClient(this);
 +        try {
 +            client.getCurrentLocation(LocationRequest.PRIORITY_HIGH_ACCURACY, null)
 +                    .addOnSuccessListener(location -> {
-+                        if (location == null) return;
++                        if (location == null) {
++                            gravarBatimentoComUltimaLocalizacao(client);
++                            return;
++                        }
 +                        for (Watcher watcher : watchers) {
 +                            Intent intent = new Intent(ACTION_BROADCAST);
 +                            intent.putExtra("location", location);
 +                            intent.putExtra("id", watcher.id);
 +                            LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
 +                        }
-+                        gravarLocalizacaoNativa(location);
-+                    });
++                        gravarLocalizacaoNativa(location, true);
++                    })
++                    .addOnFailureListener(e -> gravarBatimentoComUltimaLocalizacao(client));
 +        } catch (SecurityException ignore) {}
 +    }
 +
 +    // ─── Envio nativo direto pro Supabase + fila offline (arquivo local) ───
++
++    private void gravarBatimentoComUltimaLocalizacao(FusedLocationProviderClient client) {
++        if (ultimaLocalizacaoConhecida != null) {
++            gravarLocalizacaoNativa(ultimaLocalizacaoConhecida, true);
++            return;
++        }
++        try {
++            client.getLastLocation()
++                    .addOnSuccessListener(location -> {
++                        if (location != null) {
++                            gravarLocalizacaoNativa(location, true);
++                        }
++                    });
++        } catch (SecurityException ignore) {}
++    }
 +
 +    void configurarSupabase(String url, String anonKey, String schema, String fiscalLogin, String fiscalNome) {
 +        getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE).edit()
@@ -444,15 +524,9 @@ index fafbb86..9e7f679 100644
 +        return p.contains("url") && p.contains("anonKey") && p.contains("fiscalLogin");
 +    }
 +
-+    private boolean sessaoValida() {
-+        SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
-+        return p.getLong("sessaoAtivaAte", 0) > System.currentTimeMillis();
-+    }
-+
 +    // [DPL] Monta um retrato do estado do rastreio pra tela de diagnóstico no
-+    // app — essencial pra investigar casos como o do fiscal que não aparecia
-+    // "ativo" no mapa mesmo com a permissão do Android concedida (não dava
-+    // pra saber, sem isso, se a captura nativa estava de fato rodando).
++    // app — essencial pra investigar casos como o de um fiscal que não
++    // aparecia "ativo" no mapa mesmo com a permissão do Android concedida.
 +    JSONObject diagnostico() {
 +        JSONObject obj = new JSONObject();
 +        SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
@@ -484,63 +558,20 @@ index fafbb86..9e7f679 100644
 +        filaExecutor.execute(this::drenarFilaNativa);
 +    }
 +
-+    // [DPL] Captura independente de qualquer watcher do JS — usada quando o
-+    // serviço sobe sozinho (RastreioBootReceiver, após reiniciar o celular)
-+    // sem o app ter sido aberto ainda. Reaproveita gravarLocalizacaoNativa(),
-+    // que já tem debounce e fila offline próprios.
-+    private void iniciarCapturaAutonoma() {
-+        try {
-+            startForeground(NOTIFICATION_ID, construirNotificacaoAutonoma());
-+        } catch (Exception e) {
-+            Logger.error("Falha ao promover serviço a primeiro plano (modo autônomo)", e);
-+        }
-+        FusedLocationProviderClient client = LocationServices.getFusedLocationProviderClient(this);
-+        LocationRequest locationRequest = new LocationRequest();
-+        locationRequest.setMaxWaitTime(1000);
-+        locationRequest.setInterval(1000);
-+        locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-+        LocationCallback callback = new LocationCallback() {
-+            @Override
-+            public void onLocationResult(LocationResult locationResult) {
-+                Location location = locationResult.getLastLocation();
-+                if (location != null) gravarLocalizacaoNativa(location);
-+            }
-+        };
-+        try {
-+            client.requestLocationUpdates(locationRequest, callback, null);
-+        } catch (SecurityException ignore) {}
-+        agendarProximoAlarme();
-+    }
-+
-+    private Notification construirNotificacaoAutonoma() {
-+        String canalId = BackgroundGeolocationService.class.getPackage().getName();
-+        Notification.Builder builder = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-+                ? new Notification.Builder(this, canalId)
-+                : new Notification.Builder(this);
-+        builder.setContentTitle("VérticeGP")
-+                .setContentText("Rastreando localização em segundo plano.")
-+                .setOngoing(true)
-+                .setPriority(Notification.PRIORITY_LOW)
-+                .setWhen(System.currentTimeMillis());
-+        int iconId = getResources().getIdentifier("ic_launcher", "mipmap", getPackageName());
-+        if (iconId != 0) builder.setSmallIcon(iconId);
-+        Intent launchIntent = getPackageManager().getLaunchIntentForPackage(getPackageName());
-+        if (launchIntent != null) {
-+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-+            int flags = PendingIntent.FLAG_CANCEL_CURRENT
-+                    | (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? PendingIntent.FLAG_IMMUTABLE : 0);
-+            builder.setContentIntent(PendingIntent.getActivity(this, 0, launchIntent, flags));
-+        }
-+        return builder.build();
-+    }
-+
 +    // Aplica o mesmo debounce que antes vivia só no JS (rastreio.js) — o
 +    // stream contínuo entrega posições a cada ~1s, e não faz sentido gravar
 +    // todas. Chamado tanto pelo watcher contínuo quanto pelo alarme de reforço.
 +    private void gravarLocalizacaoNativa(Location location) {
++        gravarLocalizacaoNativa(location, false);
++    }
++
++    private void gravarLocalizacaoNativa(Location location, boolean forcarTrilha) {
 +        if (!configuradoParaGravar()) return; // login ainda não configurou (primeira execução)
++        if (location == null) return;
++        ultimaLocalizacaoConhecida = location;
++        atualizarPresencaNativa(location, forcarTrilha);
 +        long agora = System.currentTimeMillis();
-+        if (agora - ultimaGravacaoMs < CADENCIA_GRAVACAO_MS) return;
++        if (!forcarTrilha && agora - ultimaGravacaoMs < CADENCIA_GRAVACAO_MS) return;
 +        ultimaGravacaoMs = agora;
 +
 +        final double lat = location.getLatitude();
@@ -591,6 +622,41 @@ index fafbb86..9e7f679 100644
 +            } catch (Exception e) {
 +                Logger.error("Falha ao gravar localização nativa", e);
 +                p.edit().putString("ultimoErro", e.getMessage()).apply();
++            }
++        });
++    }
++
++    // Heartbeat de presenca separado da gravacao de trilha. Quando o Android
++    // mantem o servico ativo, mas nao entrega nova coordenada porque o fiscal
++    // esta parado, renovamos o "ultimo_visto" com a ultima posicao conhecida.
++    // Isso evita o fiscal ficar cinza no mapa enquanto o app segue rastreando.
++    private void atualizarPresencaNativa(Location location, boolean forcar) {
++        if (!configuradoParaGravar() || location == null || filaExecutor == null) return;
++        long agora = System.currentTimeMillis();
++        if (!forcar && agora - ultimaPresencaMs < CADENCIA_PRESENCA_MS) return;
++        ultimaPresencaMs = agora;
++
++        final double lat = location.getLatitude();
++        final double lng = location.getLongitude();
++        final Float precisao = location.hasAccuracy() ? location.getAccuracy() : null;
++
++        filaExecutor.execute(() -> {
++            SharedPreferences p = getSharedPreferences(PREFS_NOME, Context.MODE_PRIVATE);
++            String fiscalLogin = p.getString("fiscalLogin", "");
++            String fiscalNome = p.getString("fiscalNome", "");
++            String agoraISO = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(new Date());
++
++            try {
++                JSONObject presenca = new JSONObject();
++                presenca.put("fiscal_login", fiscalLogin);
++                presenca.put("fiscal_nome", fiscalNome);
++                presenca.put("lat", lat);
++                presenca.put("lng", lng);
++                presenca.put("precisao", precisao == null ? JSONObject.NULL : precisao);
++                presenca.put("ultimo_visto", agoraISO);
++                enviarParaSupabase("fiscais_presenca?on_conflict=fiscal_login", presenca, "resolution=merge-duplicates,return=minimal");
++            } catch (Exception e) {
++                Logger.error("Falha ao atualizar presenca nativa", e);
 +            }
 +        });
 +    }
@@ -701,10 +767,6 @@ index fafbb86..9e7f679 100644
      public boolean onUnbind(Intent intent) {
 -        for (Watcher watcher : watchers) {
 -            watcher.client.removeLocationUpdates(watcher.locationCallback);
--        }
--        watchers = new HashSet<Watcher>();
--        stopSelf();
--        return false;
 +        return true; // permite onRebind() depois, sem recriar o serviço
 +    }
 +
@@ -714,11 +776,29 @@ index fafbb86..9e7f679 100644
 +    // rastreio fique parado até o fiscal reabrir o app manualmente.
 +    @Override
 +    public int onStartCommand(Intent intent, int flags, int startId) {
++        // [DPL] Modo autônomo: o serviço pode subir sem nenhum watcher do JS
++        // (ex: RastreioBootReceiver após reiniciar o celular, antes do app
++        // ter sido aberto) — nesse caso ninguém mais chamaria startForeground(),
++        // e um serviço iniciado via startForegroundService() sem promoção a
++        // primeiro plano em poucos segundos derruba o app. Só entra aqui se
++        // já houver login recente com sessão nativa ainda válida.
++        if (watchers.isEmpty() && configuradoParaGravar() && sessaoValida()) {
++            try {
++                startForeground(NOTIFICATION_ID, construirNotificacaoAutonoma());
++            } catch (Exception e) {
++                Logger.error("Falha ao promover serviço a primeiro plano (modo autônomo)", e);
++            }
+         }
+-        watchers = new HashSet<Watcher>();
+-        stopSelf();
+-        return false;
++        iniciarHeartbeatEmProcesso();
++        agendarProximoAlarme();
 +        return START_STICKY;
      }
  
      Notification getNotification() {
-@@ -96,6 +522,7 @@ public class BackgroundGeolocationService extends Service {
+@@ -96,6 +598,7 @@ public class BackgroundGeolocationService extends Service {
                      LocalBroadcastManager.getInstance(
                              getApplicationContext()
                      ).sendBroadcast(intent);
@@ -726,27 +806,33 @@ index fafbb86..9e7f679 100644
                  }
                  @Override
                  public void onLocationAvailability(LocationAvailability availability) {
-@@ -111,7 +538,9 @@ public class BackgroundGeolocationService extends Service {
+@@ -111,7 +614,12 @@ public class BackgroundGeolocationService extends Service {
              watcher.locationRequest = locationRequest;
              watcher.locationCallback = callback;
              watcher.backgroundNotification = backgroundNotification;
 +            boolean primeiroWatcher = watchers.isEmpty();
              watchers.add(watcher);
-+            if (primeiroWatcher) agendarProximoAlarme();
++            if (primeiroWatcher) {
++                iniciarHeartbeatEmProcesso();
++                agendarProximoAlarme();
++            }
  
              // According to Android Studio, this method can throw a Security Exception if
              // permissions are not yet granted. Rather than check the permissions, which is fiddly,
-@@ -150,6 +579,9 @@ public class BackgroundGeolocationService extends Service {
+@@ -150,6 +658,12 @@ public class BackgroundGeolocationService extends Service {
                      if (getNotification() == null) {
                          stopForeground(true);
                      }
-+                    if (watchers.isEmpty() && alarmManager != null && alarmPendingIntent != null) {
-+                        alarmManager.cancel(alarmPendingIntent);
++                    if (watchers.isEmpty()) {
++                        pararHeartbeatEmProcesso();
++                        if (alarmManager != null && alarmPendingIntent != null) {
++                            alarmManager.cancel(alarmPendingIntent);
++                        }
 +                    }
                      return;
                  }
              }
-@@ -171,5 +603,21 @@ public class BackgroundGeolocationService extends Service {
+@@ -171,5 +685,21 @@ public class BackgroundGeolocationService extends Service {
          void stopService() {
              BackgroundGeolocationService.this.stopSelf();
          }
