@@ -1,5 +1,10 @@
 ext {
-    minSdkVersion = 23
+    // [DPL] 24 (Android 7.0) em vez de 23 — exigência do SDK nativo da
+    // Transistor Software (com.transistorsoft:tslocationmanager:4.3.2, ver
+    // erro "minSdkVersion 23 cannot be smaller than version 24 declared in
+    // library"). Android 6.0 (API 23) é de 2015; nenhum aparelho dos fiscais
+    // em campo (Xiaomi recentes) roda versão tão antiga.
+    minSdkVersion = 24
     compileSdkVersion = 35
     targetSdkVersion = 35
     androidxActivityVersion = '1.9.2'
