@@ -283,7 +283,32 @@ async function pararRastreioNativo() {
     catch (e) { console.warn('[rastreio] falha ao remover watcher nativo:', e?.message) }
     watcherNativoId = null
   }
+  // Limpa a config salva no nativo (SharedPreferences) — sem isso, o
+  // RastreioBootReceiver poderia religar o rastreio deste fiscal, já
+  // deslogado, no próximo boot do aparelho.
+  try { await BackgroundGeolocation.limparConfiguracaoNativa() }
+  catch (e) { console.warn('[rastreio] falha ao limpar config nativa:', e?.message) }
   nativoConfigurado = false
+}
+
+// ─── Diagnóstico (tela de diagnóstico do app) ───────────────────────────────
+export async function obterDiagnosticoRastreio() {
+  if (!Capacitor.isNativePlatform()) return null
+  try {
+    return await BackgroundGeolocation.obterDiagnostico()
+  } catch (e) {
+    console.warn('[rastreio] falha ao obter diagnóstico:', e?.message)
+    return null
+  }
+}
+
+export async function sincronizarRastreioAgora() {
+  if (!Capacitor.isNativePlatform()) return
+  try {
+    await BackgroundGeolocation.sincronizarAgora()
+  } catch (e) {
+    console.warn('[rastreio] falha ao sincronizar agora:', e?.message)
+  }
 }
 
 // ─── API pública ────────────────────────────────────────────────────────────
