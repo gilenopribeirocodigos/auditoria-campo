@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { obterDiagnosticoRastreio, sincronizarRastreioAgora } from '../lib/rastreio.js'
+import { obterDiagnosticoRastreio, sincronizarRastreioAgora, limparFilaRastreio } from '../lib/rastreio.js'
+import { getVersaoApp } from '../lib/auth.js'
 
 // ════════════════════════════════════════════════════════════════════════════
 // DiagnosticoRastreio — painel simples pra o próprio fiscal (ou quem estiver
@@ -42,6 +43,7 @@ export default function DiagnosticoRastreio({ onVoltar }) {
   const [diag, setDiag] = useState(null)
   const [carregando, setCarregando] = useState(true)
   const [sincronizando, setSincronizando] = useState(false)
+  const [limpando, setLimpando] = useState(false)
   const nativo = Capacitor.isNativePlatform()
 
   const carregar = useCallback(async () => {
@@ -63,6 +65,12 @@ export default function DiagnosticoRastreio({ onVoltar }) {
     setTimeout(async () => { await carregar(); setSincronizando(false) }, 1500)
   }
 
+  const limparFila = async () => {
+    setLimpando(true)
+    await limparFilaRastreio()
+    setTimeout(async () => { await carregar(); setLimpando(false) }, 1000)
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
       <div style={{ background: 'linear-gradient(135deg, #059669, #065f46)', padding: '14px 20px', color: '#fff' }}>
@@ -74,6 +82,7 @@ export default function DiagnosticoRastreio({ onVoltar }) {
         <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 2 }}>
           Confere se a localização em segundo plano está realmente sendo capturada e enviada neste aparelho.
         </div>
+        <div style={{ fontSize: 11.5, opacity: 0.75, marginTop: 6 }}>Versão do app: {getVersaoApp()}</div>
       </div>
 
       <div style={{ maxWidth: 480, margin: '0 auto', padding: 18 }}>
@@ -127,10 +136,19 @@ export default function DiagnosticoRastreio({ onVoltar }) {
 
             <button onClick={sincronizar} disabled={sincronizando} style={{
               width: '100%', background: sincronizando ? '#64748b' : '#2563eb', color: '#fff', border: 'none',
-              padding: '14px', borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: 'pointer',
+              padding: '14px', borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 10,
             }}>
               {sincronizando ? '⏳ Sincronizando...' : '🔄 Sincronizar agora'}
             </button>
+
+            {diag.pontosPendentes > 0 && (
+              <button onClick={limparFila} disabled={limpando} style={{
+                width: '100%', background: '#fff', color: '#dc2626', border: '1px solid #fecaca',
+                padding: '12px', borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+              }}>
+                {limpando ? '⏳ Limpando...' : '🗑️ Descartar pontos pendentes (fila presa)'}
+              </button>
+            )}
           </>
         )}
       </div>

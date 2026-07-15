@@ -404,6 +404,19 @@ export async function sincronizarRastreioAgora() {
   }
 }
 
+// [DPL] Descarta pontos presos na fila SQLite nativa — útil quando os
+// registros presos foram capturados com uma config antiga (ex: nomes de
+// campo de antes de uma correção) e ficariam tentando reenviar pra sempre
+// no formato errado, mascarando se a config atual já está funcionando.
+export async function limparFilaRastreio() {
+  if (!Capacitor.isNativePlatform()) return
+  try {
+    await BackgroundGeolocation.destroyLocations()
+  } catch (e) {
+    console.warn('[rastreio] falha ao limpar fila:', e?.message)
+  }
+}
+
 // ─── API pública ────────────────────────────────────────────────────────────
 export function iniciarRastreio(usuario) {
   if (!usuario) return
