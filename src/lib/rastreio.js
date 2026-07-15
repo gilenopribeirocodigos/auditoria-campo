@@ -1,8 +1,9 @@
 import { supabase } from './supabase.js'
-import { Capacitor, registerPlugin } from '@capacitor/core'
+import { Capacitor } from '@capacitor/core'
+import BackgroundGeolocation from '@transistorsoft/capacitor-background-geolocation'
 
 // ════════════════════════════════════════════════════════════════════════════
-// RASTREIO v4 — motor resiliente de localização
+// RASTREIO v5 — motor resiliente de localização
 // ────────────────────────────────────────────────────────────────────────────
 // Dois modos, escolhidos automaticamente por Capacitor.isNativePlatform():
 //
@@ -11,26 +12,25 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 //   (processarPosicao), com fila offline em IndexedDB. Mesmo comportamento
 //   de sempre, sem mudanças — é o único caminho possível sem app nativo.
 //
-// • APP ANDROID NATIVO (Capacitor): usa o plugin
-//   @capacitor-community/background-geolocation, que roda um foreground
-//   service e continua entregando posições mesmo com o app minimizado ou a
-//   tela apagada. A partir da v4, o CÓDIGO NATIVO (Java) é quem grava a
-//   localização direto no Supabase — com seu próprio debounce (8s) e fila
-//   offline (arquivo local, mesma ideia do IndexedDB) — sem depender da
-//   ponte JS/WebView continuar rodando em segundo plano, que era o ponto
-//   de falha confirmado em campo (a notificação ficava viva, mas a
-//   gravação via JS nunca acontecia). O JS aqui só CONFIGURA o nativo
-//   (configurarSupabase) e liga o watcher; o callback, com o nativo já
-//   configurado, só reforça a presença (heartbeat), sem duplicar a trilha
-//   que o Java já grava.
+// • APP ANDROID NATIVO (Capacitor): a partir da v5, usa o SDK PAGO da
+//   Transistor Software (@transistorsoft/capacitor-background-geolocation),
+//   em teste em modo DEBUG (sem licença — funciona sem restrição em builds
+//   debug, só exige a chave paga em builds de release). Trocado depois que
+//   o plugin gratuito anterior (@capacitor-community/background-geolocation)
+//   se mostrou incapaz de sobreviver ao gerenciador de processos da
+//   Xiaomi/HyperOS: mesmo com foreground service, notificação visível e
+//   toda a engenharia de reforço (alarmes, heartbeat, fila offline nativa),
+//   o processo do app era morto em segundo plano e só voltava quando o
+//   fiscal abria o app manualmente. O SDK da Transistor faz TUDO isso
+//   nativamente (persistência SQLite própria + envio HTTP direto, sem
+//   depender do JS/WebView) e tem anos de engenharia específica pra
+//   sobreviver aos gerenciadores de bateria proprietários dos fabricantes —
+//   é exatamente isso que estamos pagando pra validar.
 //
-//   ⚠️ O app Android não se atualiza sozinho (diferente do site, que já sobe
-//   o bundle novo automaticamente) — se o APK instalado for de ANTES dessa
-//   mudança, o método configurarSupabase nem existe no nativo. Por isso
-//   `nativoConfigurado` detecta essa falha e o próprio JS assume a gravação
-//   a cada posição do watcher nativo (fallback), reaproveitando a mesma fila
-//   offline em IndexedDB — sem isso, um fiscal com APK desatualizado ficaria
-//   sem nenhuma gravação (nem nativa, nem via JS).
+//   O envio vai direto pra uma função RPC no Supabase
+//   (`registrar_localizacao_fiscal`, ver sql/2026-07-15_rpc_...sql) que grava
+//   a trilha (localizacoes) e o heartbeat de presença (fiscais_presenca) num
+//   único POST — sem precisar de nenhum código nativo escrito por nós.
 //
 // ⚠️ No modo web (PWA comum, sem instalar o app Android), o limite de sempre
 //    continua valendo: NÃO rastreia com tela apagada por horas.
@@ -41,16 +41,19 @@ const GEO_OPTS = { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
 const DB_NAME  = 'rastreio_fila'
 const STORE    = 'posicoes'
 
-const BackgroundGeolocation = registerPlugin('BackgroundGeolocation')
-
 let intervalId        = null
 let usuarioAtual      = null
 let wakeLock           = null
 let rodando            = false
-let watcherNativoId    = null
-let nativoConfigurado  = false  // true só quando o APK instalado já tem o método configurarSupabase
 let watchId            = null
 let capturaEmAndamento = false
+let nativoIniciado     = false
+
+// Preenchido pelo listener onHttp() do SDK nativo — usado só pra tela de
+// diagnóstico (src/pages/DiagnosticoRastreio.jsx), não afeta o envio em si.
+let ultimoHttpSucessoMs = null
+let ultimoHttpErro      = null
+let listenerHttpRegistrado = false
 
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
@@ -253,89 +256,100 @@ function onOnline() {
   if (!Capacitor.isNativePlatform()) reativarRastreio()
 }
 
-// ─── Modo nativo Android: liga o watcher em segundo plano de verdade ────────
+// ─── Modo nativo Android: SDK da Transistor Software (segundo plano real) ───
 async function iniciarRastreioNativo(usuario) {
-  // Passa a config pro lado nativo ANTES de ligar o watcher — é o código
-  // Java quem grava a localização direto no Supabase a partir daqui (com
-  // fila offline própria), sem depender do JS/WebView estar rodando.
-  // Se essa chamada falhar, é sinal de que o APK instalado é ANTERIOR à
-  // versão que criou esse método nativo (configurarSupabase não existe
-  // nesse build) — nesse caso `nativoConfigurado` fica false e o próprio
-  // JS assume a gravação a cada posição recebida do watcher, como fallback.
-  nativoConfigurado = false
-  try {
-    await BackgroundGeolocation.configurarSupabase({
-      url:         import.meta.env.VITE_SUPABASE_URL,
-      anonKey:     import.meta.env.VITE_SUPABASE_ANON_KEY,
-      schema:      import.meta.env.VITE_SUPABASE_SCHEMA || 'dev',
-      fiscalLogin: usuario.login,
-      fiscalNome:  usuario.nome,
+  const url    = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/registrar_localizacao_fiscal`
+  const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  // Só registra o listener de diagnóstico uma vez (sobrevive a login/logout).
+  if (!listenerHttpRegistrado) {
+    listenerHttpRegistrado = true
+    BackgroundGeolocation.onHttp(resposta => {
+      if (resposta.success) {
+        ultimoHttpSucessoMs = Date.now()
+        ultimoHttpErro = null
+      } else {
+        ultimoHttpErro = `HTTP ${resposta.status}`
+      }
     })
-    nativoConfigurado = true
-  } catch (e) {
-    console.warn('[rastreio] configurarSupabase indisponível (APK desatualizado?) — usando fallback via JS:', e?.message)
   }
 
   try {
-    watcherNativoId = await BackgroundGeolocation.addWatcher(
-      {
-        backgroundTitle: 'VérticeGP',
-        backgroundMessage: 'Rastreando localização em segundo plano.',
-        requestPermissions: true,
-        stale: false,
-        distanceFilter: 0,
+    // ready() aplica (e persiste nativamente) toda a config — chamado a
+    // cada login pra garantir que fiscal_login/fiscal_nome em `extras`
+    // estejam sempre os do usuário atual.
+    await BackgroundGeolocation.ready({
+      desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
+      distanceFilter: 0,
+      locationUpdateInterval: 8000,
+      fastestLocationUpdateInterval: 8000,
+      // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
+      // volta sozinho depois que o celular reinicia — sem precisar de um
+      // BroadcastReceiver próprio como na tentativa anterior.
+      stopOnTerminate: false,
+      startOnBoot: true,
+      foregroundService: true,
+      notification: {
+        title: 'VérticeGP',
+        text: 'Rastreando localização em segundo plano.',
+        priority: BackgroundGeolocation.NOTIFICATION_PRIORITY_LOW,
+        channelName: 'Rastreamento em segundo plano',
       },
-      (location, error) => {
-        if (error) { console.warn('[rastreio] nativo erro:', error?.message); return }
-        // Caminho normal (APK atualizado): o código nativo (Java) grava a
-        // trilha e este callback reforça a presença para manter o mapa vivo.
-        // Fallback (APK antigo, sem configurarSupabase): grava por aqui
-        // mesmo, reaproveitando a fila offline em IndexedDB já existente.
-        if (!location || !usuarioAtual) return
-        const coords = {
-          latitude: location.latitude,
-          longitude: location.longitude,
-          accuracy: location.accuracy,
-        }
-        if (nativoConfigurado) atualizarPresenca(usuarioAtual, coords)
-        else processarPosicao(usuarioAtual, coords)
+      // Envio nativo direto pro Supabase (função RPC que grava trilha +
+      // presença num único POST) — o próprio SDK persiste em SQLite
+      // interno e reenvia sozinho quando falha, sem fila nossa.
+      url,
+      method: 'POST',
+      httpRootProperty: '.',
+      autoSync: true,
+      batchSync: false,
+      maxDaysToPersist: 3,
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        'Content-Profile': schema,
+        Prefer: 'return=minimal',
       },
-    )
+      // `extras` é mesclado automaticamente em cada posição enviada.
+      extras: {
+        fiscal_login: usuario.login,
+        fiscal_nome: usuario.nome,
+      },
+      locationTemplate: '{"lat":<%= latitude %>,"lng":<%= longitude %>,"precisao":<%= accuracy %>,"created_at":"<%= timestamp %>"}',
+    })
+    // start() já pede as permissões de localização/notificação necessárias.
+    await BackgroundGeolocation.start()
+    nativoIniciado = true
   } catch (e) {
-    console.warn('[rastreio] falha ao iniciar watcher nativo:', e?.message)
-  }
-
-  // Pede, num único toque, pra ignorar a otimização de bateria PADRÃO do
-  // Android (Doze) — não bloqueia nada se falhar/for negado. Isso NÃO cobre
-  // gerenciadores de bateria proprietários de fabricante (ex: "Economia de
-  // bateria"/"Início automático" da MIUI/HyperOS) — esses continuam exigindo
-  // ajuste manual do usuário nas configurações do aparelho.
-  try {
-    await BackgroundGeolocation.requestIgnoreBatteryOptimizations()
-  } catch (e) {
-    console.warn('[rastreio] pedido de isenção de bateria falhou:', e?.message)
+    console.warn('[rastreio] falha ao iniciar SDK nativo (Transistor):', e?.message)
   }
 }
 
 async function pararRastreioNativo() {
-  if (watcherNativoId) {
-    try { await BackgroundGeolocation.removeWatcher({ id: watcherNativoId }) }
-    catch (e) { console.warn('[rastreio] falha ao remover watcher nativo:', e?.message) }
-    watcherNativoId = null
-  }
-  // Limpa a config salva no nativo (SharedPreferences) — sem isso, o
-  // RastreioBootReceiver poderia religar o rastreio deste fiscal, já
-  // deslogado, no próximo boot do aparelho.
-  try { await BackgroundGeolocation.limparConfiguracaoNativa() }
-  catch (e) { console.warn('[rastreio] falha ao limpar config nativa:', e?.message) }
-  nativoConfigurado = false
+  if (!nativoIniciado) return
+  try { await BackgroundGeolocation.stop() }
+  catch (e) { console.warn('[rastreio] falha ao parar SDK nativo:', e?.message) }
+  nativoIniciado = false
 }
 
 // ─── Diagnóstico (tela de diagnóstico do app) ───────────────────────────────
 export async function obterDiagnosticoRastreio() {
   if (!Capacitor.isNativePlatform()) return null
   try {
-    return await BackgroundGeolocation.obterDiagnostico()
+    const [state, pendentes] = await Promise.all([
+      BackgroundGeolocation.getState(),
+      BackgroundGeolocation.getCount(),
+    ])
+    return {
+      servicoRodando: !!state.enabled,
+      trackingMode: state.trackingMode,
+      odometroKm: typeof state.odometer === 'number' ? state.odometer / 1000 : null,
+      voltouDeReiniciar: !!state.didDeviceReboot,
+      pontosPendentes: pendentes,
+      ultimoEnvioSucessoEm: ultimoHttpSucessoMs,
+      ultimoErro: ultimoHttpErro,
+    }
   } catch (e) {
     console.warn('[rastreio] falha ao obter diagnóstico:', e?.message)
     return null
@@ -345,7 +359,7 @@ export async function obterDiagnosticoRastreio() {
 export async function sincronizarRastreioAgora() {
   if (!Capacitor.isNativePlatform()) return
   try {
-    await BackgroundGeolocation.sincronizarAgora()
+    await BackgroundGeolocation.sync()
   } catch (e) {
     console.warn('[rastreio] falha ao sincronizar agora:', e?.message)
   }

@@ -34,17 +34,11 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Retoma o rastreio depois que o celular reinicia, sem precisar o
-             fiscal abrir o app manualmente — só religa se houver login
-             recente com sessão ainda válida (ver RastreioBootReceiver). -->
-        <receiver
-            android:name="com.equimaps.capacitor_background_geolocation.RastreioBootReceiver"
-            android:exported="true"
-            android:enabled="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
+        <!-- [DPL] Chave de licença da Transistor Software — vazio/ausente
+             funciona em build DEBUG (sem custo, usado pra validar em campo).
+             Só é obrigatório preencher aqui na hora de gerar um APK de
+             RELEASE de verdade, depois de comprar a licença. -->
+        <!-- <meta-data android:name="com.transistorsoft.locationmanager.license" android:value="SUA_CHAVE_AQUI" /> -->
     </application>
 
     <uses-permission android:name="android.permission.INTERNET" />
@@ -55,9 +49,4 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- Permite que o RastreioBootReceiver seja acordado quando o celular
-         termina de reiniciar, pra retomar o rastreio sem depender do fiscal
-         abrir o app manualmente (ver seção 4.1 da especificação do Codex). -->
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 </manifest>

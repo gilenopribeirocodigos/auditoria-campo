@@ -4,33 +4,27 @@ import { obterDiagnosticoRastreio, sincronizarRastreioAgora } from '../lib/rastr
 
 // ════════════════════════════════════════════════════════════════════════════
 // DiagnosticoRastreio — painel simples pra o próprio fiscal (ou quem estiver
-// com o celular na mão) checar, ali na hora, por que o rastreio pode não
-// estar aparecendo no mapa "Fiscais em Campo". Só faz sentido no app Android
-// nativo — no navegador/PWA não existe serviço nativo pra diagnosticar.
+// com o celular na mão) checar, ali na hora, se o rastreio em segundo plano
+// está realmente ativo. Só faz sentido no app Android nativo — no navegador
+// não existe SDK nativo pra diagnosticar.
 // ════════════════════════════════════════════════════════════════════════════
 
-const ESTADO_LABEL = {
-  granted:  { texto: 'Concedida',       cor: '#059669' },
-  denied:   { texto: 'Negada',          cor: '#dc2626' },
-  prompt:   { texto: 'Não perguntada',  cor: '#d97706' },
-  'prompt-with-rationale': { texto: 'Não perguntada', cor: '#d97706' },
-}
-
-function linhaEstado(label, valor) {
-  const info = ESTADO_LABEL[valor] || { texto: valor ?? '—', cor: '#64748b' }
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
-      <span style={{ fontSize: 13.5, color: '#334155' }}>{label}</span>
-      <span style={{ fontSize: 13, fontWeight: 700, color: info.cor }}>{info.texto}</span>
-    </div>
-  )
-}
+const TRACKING_MODE_LABEL = { 1: 'Localização', 2: 'Geofence apenas' }
 
 function linhaBooleana(label, valor, corTrue = '#059669', corFalse = '#dc2626') {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
       <span style={{ fontSize: 13.5, color: '#334155' }}>{label}</span>
       <span style={{ fontSize: 13, fontWeight: 700, color: valor ? corTrue : corFalse }}>{valor ? 'Sim' : 'Não'}</span>
+    </div>
+  )
+}
+
+function linhaTexto(label, valor, borda = true) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: borda ? '1px solid #e2e8f0' : 'none' }}>
+      <span style={{ fontSize: 13.5, color: '#334155' }}>{label}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{valor}</span>
     </div>
   )
 }
@@ -85,7 +79,7 @@ export default function DiagnosticoRastreio({ onVoltar }) {
       <div style={{ maxWidth: 480, margin: '0 auto', padding: 18 }}>
         {!nativo && (
           <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 16, fontSize: 13.5, color: '#9a3412' }}>
-            Esse diagnóstico só existe no app Android instalado — no navegador não há um serviço nativo de rastreio pra inspecionar.
+            Esse diagnóstico só existe no app Android instalado — no navegador não há um SDK nativo de rastreio pra inspecionar.
           </div>
         )}
 
@@ -103,39 +97,23 @@ export default function DiagnosticoRastreio({ onVoltar }) {
           <>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '4px 16px', marginBottom: 14 }}>
               {linhaBooleana('Serviço nativo rodando', diag.servicoRodando)}
-              {linhaBooleana('Configurado (login recente)', diag.configurado)}
-              {linhaBooleana('Sessão nativa válida', diag.sessaoValida)}
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0' }}>
-                <span style={{ fontSize: 13.5, color: '#334155' }}>Modo de captura</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>
-                  {diag.watchersAtivos > 0 ? 'Normal (app aberto)' : diag.modoAutonomo ? 'Autônomo (sem app aberto)' : 'Parado'}
-                </span>
-              </div>
+              {linhaTexto('Modo de rastreio', TRACKING_MODE_LABEL[diag.trackingMode] || '—')}
+              {linhaBooleana('Voltou sozinho após reiniciar o celular', diag.voltouDeReiniciar, '#2563eb', '#64748b')}
+              {linhaTexto('Distância percorrida (odômetro)', diag.odometroKm != null ? `${diag.odometroKm.toFixed(2)} km` : '—', false)}
             </div>
 
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '4px 16px', marginBottom: 14 }}>
-              {linhaEstado('Permissão de localização', diag.permissaoLocalizacao)}
-              {linhaEstado('Localização em segundo plano', diag.permissaoBackgroundLocalizacao)}
-              {linhaEstado('Permissão de notificação', diag.permissaoNotificacao)}
-              {linhaBooleana('Economia de bateria (Android) ignorada', diag.otimizacaoBateriaIgnorada)}
-            </div>
-
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '4px 16px', marginBottom: 14 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
-                <span style={{ fontSize: 13.5, color: '#334155' }}>Último ponto capturado</span>
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{formatarQuandoFoi(diag.ultimaCapturaEm)}</span>
-              </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: 13.5, color: '#334155' }}>Último ponto enviado ao banco</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{formatarQuandoFoi(diag.ultimoEnvioSucessoEm)}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: diag.ultimoErro ? '1px solid #e2e8f0' : 'none' }}>
-                <span style={{ fontSize: 13.5, color: '#334155' }}>Pontos pendentes na fila</span>
+                <span style={{ fontSize: 13.5, color: '#334155' }}>Pontos pendentes na fila (SQLite nativo)</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: diag.pontosPendentes > 0 ? '#d97706' : '#059669' }}>{diag.pontosPendentes ?? 0}</span>
               </div>
               {diag.ultimoErro && (
                 <div style={{ padding: '10px 0', fontSize: 12.5, color: '#dc2626' }}>
-                  <b>Último erro:</b> {diag.ultimoErro}
+                  <b>Último erro de envio:</b> {diag.ultimoErro}
                 </div>
               )}
             </div>
