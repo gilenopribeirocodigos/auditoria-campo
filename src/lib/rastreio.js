@@ -55,6 +55,11 @@ let ultimoHttpSucessoMs = null
 let ultimoHttpErro      = null
 let listenerHttpRegistrado = false
 
+// Captura qualquer falha em ready()/start() pra aparecer na tela de
+// diagnóstico — sem isso, uma falha na inicialização nativa só aparecia
+// num console.warn que ninguém consegue ver num celular real em campo.
+let erroInicializacaoNativa = null
+
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
   return new Promise((resolve, reject) => {
@@ -275,6 +280,7 @@ async function iniciarRastreioNativo(usuario) {
     })
   }
 
+  erroInicializacaoNativa = null
   try {
     // ready() aplica (e persiste nativamente) toda a config — chamado a
     // cada login pra garantir que fiscal_login/fiscal_nome em `extras`
@@ -326,11 +332,19 @@ async function iniciarRastreioNativo(usuario) {
         locationTemplate: '{"lat":<%= latitude %>,"lng":<%= longitude %>,"precisao":<%= accuracy %>,"created_at":"<%= timestamp %>"}',
       },
     })
+  } catch (e) {
+    erroInicializacaoNativa = `ready(): ${e?.message || e?.error || JSON.stringify(e)}`
+    console.warn('[rastreio] falha em ready() do SDK nativo:', e?.message)
+    return
+  }
+
+  try {
     // start() já pede as permissões de localização/notificação necessárias.
     await BackgroundGeolocation.start()
     nativoIniciado = true
   } catch (e) {
-    console.warn('[rastreio] falha ao iniciar SDK nativo (Transistor):', e?.message)
+    erroInicializacaoNativa = `start(): ${e?.message || e?.error || JSON.stringify(e)}`
+    console.warn('[rastreio] falha em start() do SDK nativo:', e?.message)
   }
 }
 
@@ -345,9 +359,10 @@ async function pararRastreioNativo() {
 export async function obterDiagnosticoRastreio() {
   if (!Capacitor.isNativePlatform()) return null
   try {
-    const [state, pendentes] = await Promise.all([
+    const [state, pendentes, statusPermissao] = await Promise.all([
       BackgroundGeolocation.getState(),
       BackgroundGeolocation.getCount(),
+      BackgroundGeolocation.requestPermission().catch(e => `erro: ${e?.message || e}`),
     ])
     return {
       servicoRodando: !!state.enabled,
@@ -357,10 +372,12 @@ export async function obterDiagnosticoRastreio() {
       pontosPendentes: pendentes,
       ultimoEnvioSucessoEm: ultimoHttpSucessoMs,
       ultimoErro: ultimoHttpErro,
+      erroInicializacao: erroInicializacaoNativa,
+      statusPermissao,
     }
   } catch (e) {
     console.warn('[rastreio] falha ao obter diagnóstico:', e?.message)
-    return null
+    return { erroInicializacao: erroInicializacaoNativa, erroDiagnostico: e?.message }
   }
 }
 

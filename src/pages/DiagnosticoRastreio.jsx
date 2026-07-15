@@ -95,9 +95,16 @@ export default function DiagnosticoRastreio({ onVoltar }) {
 
         {nativo && diag && (
           <>
+            {diag.erroInicializacao && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: 16, marginBottom: 14, fontSize: 12.5, color: '#991b1b' }}>
+                <b>Falha ao iniciar o SDK nativo:</b> {diag.erroInicializacao}
+              </div>
+            )}
+
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '4px 16px', marginBottom: 14 }}>
               {linhaBooleana('Serviço nativo rodando', diag.servicoRodando)}
               {linhaTexto('Modo de rastreio', TRACKING_MODE_LABEL[diag.trackingMode] || '—')}
+              {linhaTexto('Status da permissão de localização', String(diag.statusPermissao ?? '—'))}
               {linhaBooleana('Voltou sozinho após reiniciar o celular', diag.voltouDeReiniciar, '#2563eb', '#64748b')}
               {linhaTexto('Distância percorrida (odômetro)', diag.odometroKm != null ? `${diag.odometroKm.toFixed(2)} km` : '—', false)}
             </div>
