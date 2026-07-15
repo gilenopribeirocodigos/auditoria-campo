@@ -6,26 +6,33 @@
 -- do SDK nativo (sem depender do JS/WebView) configurando `url` = este
 -- endpoint RPC via PostgREST (/rest/v1/rpc/registrar_localizacao_fiscal).
 -- Mantém as duas tabelas e toda a lógica existente do mapa/Gantt inalteradas.
+--
+-- [CORREÇÃO 2] Parâmetros renomeados com prefixo "p_" — os nomes originais
+-- (fiscal_login, lat, lng, etc.) batiam exatamente com os nomes das colunas
+-- das tabelas, causando erro 42702 "column reference ... is ambiguous" em
+-- todo INSERT (o Postgres não sabia se era o parâmetro ou a coluna). Se já
+-- aplicou a versão anterior deste arquivo, rodar este de novo por cima
+-- substitui a função (CREATE OR REPLACE permite renomear parâmetros).
 
 -- =========================
 -- DESENVOLVIMENTO: schema dev
 -- =========================
 CREATE OR REPLACE FUNCTION dev.registrar_localizacao_fiscal(
-  fiscal_login text,
-  fiscal_nome text,
-  lat double precision,
-  lng double precision,
-  precisao double precision,
-  created_at timestamptz
+  p_fiscal_login text,
+  p_fiscal_nome text,
+  p_lat double precision,
+  p_lng double precision,
+  p_precisao double precision,
+  p_created_at timestamptz
 ) RETURNS void
 LANGUAGE plpgsql
 AS $$
 BEGIN
   INSERT INTO dev.localizacoes (fiscal_login, fiscal_nome, lat, lng, precisao, created_at)
-  VALUES (fiscal_login, fiscal_nome, lat, lng, precisao, created_at);
+  VALUES (p_fiscal_login, p_fiscal_nome, p_lat, p_lng, p_precisao, p_created_at);
 
   INSERT INTO dev.fiscais_presenca (fiscal_login, fiscal_nome, lat, lng, precisao, ultimo_visto)
-  VALUES (fiscal_login, fiscal_nome, lat, lng, precisao, created_at)
+  VALUES (p_fiscal_login, p_fiscal_nome, p_lat, p_lng, p_precisao, p_created_at)
   ON CONFLICT (fiscal_login) DO UPDATE SET
     fiscal_nome  = EXCLUDED.fiscal_nome,
     lat          = EXCLUDED.lat,
@@ -41,21 +48,21 @@ GRANT EXECUTE ON FUNCTION dev.registrar_localizacao_fiscal(text, text, double pr
 -- PRODUÇÃO: schema public
 -- =========================
 CREATE OR REPLACE FUNCTION public.registrar_localizacao_fiscal(
-  fiscal_login text,
-  fiscal_nome text,
-  lat double precision,
-  lng double precision,
-  precisao double precision,
-  created_at timestamptz
+  p_fiscal_login text,
+  p_fiscal_nome text,
+  p_lat double precision,
+  p_lng double precision,
+  p_precisao double precision,
+  p_created_at timestamptz
 ) RETURNS void
 LANGUAGE plpgsql
 AS $$
 BEGIN
   INSERT INTO public.localizacoes (fiscal_login, fiscal_nome, lat, lng, precisao, created_at)
-  VALUES (fiscal_login, fiscal_nome, lat, lng, precisao, created_at);
+  VALUES (p_fiscal_login, p_fiscal_nome, p_lat, p_lng, p_precisao, p_created_at);
 
   INSERT INTO public.fiscais_presenca (fiscal_login, fiscal_nome, lat, lng, precisao, ultimo_visto)
-  VALUES (fiscal_login, fiscal_nome, lat, lng, precisao, created_at)
+  VALUES (p_fiscal_login, p_fiscal_nome, p_lat, p_lng, p_precisao, p_created_at)
   ON CONFLICT (fiscal_login) DO UPDATE SET
     fiscal_nome  = EXCLUDED.fiscal_nome,
     lat          = EXCLUDED.lat,

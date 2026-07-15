@@ -335,11 +335,15 @@ async function iniciarRastreioNativo(usuario) {
       persistence: {
         maxDaysToPersist: 3,
         // `extras` é mesclado automaticamente em cada posição enviada.
+        // Nomes com prefixo "p_" pra bater com os parâmetros da função RPC
+        // registrar_localizacao_fiscal (ver sql/2026-07-15_rpc_...sql) —
+        // sem o prefixo, o nome do parâmetro batia com o nome da coluna da
+        // tabela e o Postgres rejeitava com "column reference is ambiguous".
         extras: {
-          fiscal_login: usuario.login,
-          fiscal_nome: usuario.nome,
+          p_fiscal_login: usuario.login,
+          p_fiscal_nome: usuario.nome,
         },
-        locationTemplate: '{"lat":<%= latitude %>,"lng":<%= longitude %>,"precisao":<%= accuracy %>,"created_at":"<%= timestamp %>"}',
+        locationTemplate: '{"p_lat":<%= latitude %>,"p_lng":<%= longitude %>,"p_precisao":<%= accuracy %>,"p_created_at":"<%= timestamp %>"}',
       },
     })
   } catch (e) {
