@@ -284,10 +284,37 @@ async function iniciarRastreioNativo(usuario) {
   }
 }
 
+// "Waiting for previous start action to complete" é um erro conhecido e
+// documentado do próprio SDK nativo da Transistor (acontece em várias das
+// suas plataformas — RN, Flutter, Cordova — normalmente no boot/reabertura
+// do app) — é transitório: a ação anterior termina sozinha logo em seguida.
+// Em vez de desistir na primeira tentativa, espera um pouco e tenta de novo.
+async function comRetryDeConcorrencia(fn, tentativas = 3, esperaMs = 2000) {
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn()
+    } catch (e) {
+      const msg = String(e?.message || e?.error || '')
+      const transitorio = /waiting for previous/i.test(msg)
+      if (!transitorio || i === tentativas - 1) throw e
+      await new Promise(r => setTimeout(r, esperaMs))
+    }
+  }
+}
+
 async function executarInicioNativo(usuario) {
   const url    = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/registrar_localizacao_fiscal`
   const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+
+  // Garante um estado limpo antes de aplicar reset:true — se o serviço já
+  // estava rodando (sobrevive ao app fechar por causa de stopOnTerminate:
+  // false), só regravar a config nativa às vezes não é suficiente pra
+  // recarregar de fato o motor de rastreio já em execução (ex: detecção de
+  // atividade/parada já configurada antes). Parar primeiro e deixar o
+  // ready()+start() a seguir religar do zero evita ficar preso numa
+  // configuração antiga "fantasma".
+  try { await BackgroundGeolocation.stop() } catch { /* já parado, ok */ }
 
   // Só registra o listener de diagnóstico uma vez (sobrevive a login/logout).
   if (!listenerHttpRegistrado) {
@@ -321,7 +348,7 @@ async function executarInicioNativo(usuario) {
     // fix anterior (desligar detecção de parada) não fez efeito nenhum no
     // aparelho do Nailton: o `ready()` dele já tinha rodado antes, com a
     // config antiga, e sem reset:true continuou preso nela.
-    state = await BackgroundGeolocation.ready({
+    state = await comRetryDeConcorrencia(() => BackgroundGeolocation.ready({
       reset: true,
       geolocation: {
         // [DPL] Usa as constantes "chatas" (DESIRED_ACCURACY_HIGH), não o
@@ -393,20 +420,17 @@ async function executarInicioNativo(usuario) {
         },
         locationTemplate: '{"p_lat":<%= latitude %>,"p_lng":<%= longitude %>,"p_precisao":<%= accuracy %>,"p_created_at":"<%= timestamp %>"}',
       },
-    })
+    }))
   } catch (e) {
     erroInicializacaoNativa = `ready(): ${e?.message || e?.error || JSON.stringify(e)}`
     console.warn('[rastreio] falha em ready() do SDK nativo:', e?.message)
     return
   }
 
-  // Como stopOnTerminate:false, o serviço nativo sobrevive ao app ser
-  // fechado/reaberto — ready() já devolve o estado atual (state.enabled).
-  // Chamar start() de novo quando já está enabled é redundante e foi o que
-  // causava "Waiting for previous start action to complete": o próprio
-  // ready() com reset:true já reinicia o serviço internamente pra aplicar
-  // a config nova, e um start() explícito logo em seguida colidia com essa
-  // reinicialização ainda em andamento.
+  // Já demos stop() explícito antes do ready() acima, então o serviço
+  // deveria estar desligado aqui (state.enabled: false) — mas se por algum
+  // motivo o SDK já religou sozinho nesse meio tempo, não chama start() de
+  // novo (evita o "waiting for previous start" de novo).
   if (state?.enabled) {
     nativoIniciado = true
     return
@@ -414,7 +438,7 @@ async function executarInicioNativo(usuario) {
 
   try {
     // start() já pede as permissões de localização/notificação necessárias.
-    await BackgroundGeolocation.start()
+    await comRetryDeConcorrencia(() => BackgroundGeolocation.start())
     nativoIniciado = true
   } catch (e) {
     erroInicializacaoNativa = `start(): ${e?.message || e?.error || JSON.stringify(e)}`
