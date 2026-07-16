@@ -130,6 +130,19 @@ export default function DiagnosticoRastreio({ onVoltar }) {
 
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '4px 16px', marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: 13.5, color: '#334155' }}>Última captura local (GPS)</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{formatarQuandoFoi(diag.ultimaCapturaLocalEm)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: 13.5, color: '#334155' }}>Heartbeats recebidos (parado)</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{diag.heartbeats ?? 0}</span>
+              </div>
+              {diag.erroCaptura && (
+                <div style={{ padding: '10px 0', fontSize: 12.5, color: '#dc2626', borderBottom: '1px solid #e2e8f0' }}>
+                  <b>Erro na captura local:</b> {diag.erroCaptura}
+                </div>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
                 <span style={{ fontSize: 13.5, color: '#334155' }}>Último ponto enviado ao banco</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{formatarQuandoFoi(diag.ultimoEnvioSucessoEm)}</span>
               </div>

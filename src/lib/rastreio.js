@@ -66,6 +66,16 @@ let listenerHttpRegistrado = false
 // num console.warn que ninguém consegue ver num celular real em campo.
 let erroInicializacaoNativa = null
 
+// [DPL] Sinal independente do odômetro (que só muda com distância percorrida
+// — parado, mesmo capturando localização certinho, o odômetro não sobe) e
+// independente do HTTP (que só confirma o envio). onLocation dispara pra
+// QUALQUER localização capturada pelo motor nativo, rastreio contínuo ou
+// heartbeat — é o jeito mais direto de saber se o SDK está capturando algo,
+// mesmo que o envio ao banco esteja falhando por outro motivo.
+let ultimaCapturaLocalMs = null
+let ultimoErroCaptura    = null
+let contadorHeartbeats   = 0
+
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
   return new Promise((resolve, reject) => {
@@ -338,9 +348,18 @@ async function executarInicioNativo(usuario) {
     // (locationUpdateInterval) só captura de fato quando classificado como
     // "em movimento".
     BackgroundGeolocation.onHeartbeat(() => {
+      contadorHeartbeats++
       BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: true })
-        .catch(e => console.warn('[rastreio] falha ao capturar posição no heartbeat:', e?.message))
+        .catch(e => { ultimoErroCaptura = `heartbeat: ${e?.message || e?.error || JSON.stringify(e)}` })
     })
+
+    // Dispara pra QUALQUER localização capturada (contínua ou de heartbeat)
+    // — sinal independente do odômetro (só muda com distância) e do envio
+    // HTTP, pra saber se o motor nativo está capturando alguma coisa.
+    BackgroundGeolocation.onLocation(
+      () => { ultimaCapturaLocalMs = Date.now() },
+      err => { ultimoErroCaptura = `onLocation: ${err?.message || JSON.stringify(err)}` },
+    )
   }
 
   erroInicializacaoNativa = null
@@ -479,6 +498,9 @@ export async function obterDiagnosticoRastreio() {
       ultimoErro: ultimoHttpErro,
       erroInicializacao: erroInicializacaoNativa,
       statusPermissao,
+      ultimaCapturaLocalEm: ultimaCapturaLocalMs,
+      erroCaptura: ultimoErroCaptura,
+      heartbeats: contadorHeartbeats,
     }
   } catch (e) {
     console.warn('[rastreio] falha ao obter diagnóstico:', e?.message)
