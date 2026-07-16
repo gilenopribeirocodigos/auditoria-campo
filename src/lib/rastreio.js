@@ -312,7 +312,16 @@ async function executarInicioNativo(usuario) {
     // cada login pra garantir que fiscal_login/fiscal_nome em `extras`
     // estejam sempre os do usuário atual. Config aninhada por seção
     // (geolocation/app/http/persistence) — formato da v9 do SDK.
+    //
+    // reset: true é ESSENCIAL — sem isso, o SDK só aplica a config passada
+    // aqui na primeiríssima vez que ready() roda no aparelho; depois disso
+    // ele ignora tudo que mandamos e reusa pra sempre o que já tinha
+    // persistido nativamente da primeira vez. Foi por causa disso que o
+    // fix anterior (desligar detecção de parada) não fez efeito nenhum no
+    // aparelho do Nailton: o `ready()` dele já tinha rodado antes, com a
+    // config antiga, e sem reset:true continuou preso nela.
     await BackgroundGeolocation.ready({
+      reset: true,
       geolocation: {
         // [DPL] Usa as constantes "chatas" (DESIRED_ACCURACY_HIGH), não o
         // namespace (DesiredAccuracy.High) — nessa versão do SDK só ALGUNS
