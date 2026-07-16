@@ -76,6 +76,35 @@ let ultimaCapturaLocalMs = null
 let ultimoErroCaptura    = null
 let contadorHeartbeats   = 0
 
+// [DPL] Só os contadores/sinais da tela de diagnóstico — NÃO participam da
+// captura/envio em si. Sem isso, um recarregamento de página (ex: nosso
+// próprio auto-update do service worker) zera esses valores na tela mesmo
+// com o rastreio nativo continuando normalmente por trás.
+const DIAG_STORAGE_KEY = 'rastreio_diag_persistido'
+
+function carregarDiagPersistido() {
+  try {
+    const bruto = localStorage.getItem(DIAG_STORAGE_KEY)
+    if (!bruto) return
+    const d = JSON.parse(bruto)
+    if (typeof d.ultimoHttpSucessoMs === 'number') ultimoHttpSucessoMs = d.ultimoHttpSucessoMs
+    if (typeof d.ultimoHttpErro === 'string') ultimoHttpErro = d.ultimoHttpErro
+    if (typeof d.ultimaCapturaLocalMs === 'number') ultimaCapturaLocalMs = d.ultimaCapturaLocalMs
+    if (typeof d.ultimoErroCaptura === 'string') ultimoErroCaptura = d.ultimoErroCaptura
+    if (typeof d.contadorHeartbeats === 'number') contadorHeartbeats = d.contadorHeartbeats
+  } catch { /* localStorage indisponível ou dado corrompido — ignora */ }
+}
+
+function salvarDiagPersistido() {
+  try {
+    localStorage.setItem(DIAG_STORAGE_KEY, JSON.stringify({
+      ultimoHttpSucessoMs, ultimoHttpErro, ultimaCapturaLocalMs, ultimoErroCaptura, contadorHeartbeats,
+    }))
+  } catch { /* localStorage indisponível (ex: modo privado) — ignora */ }
+}
+
+carregarDiagPersistido()
+
 // ─── IndexedDB: fila local de posições não enviadas ─────────────────────────
 function abrirDB() {
   return new Promise((resolve, reject) => {
@@ -340,6 +369,7 @@ async function executarInicioNativo(usuario) {
         const corpo = (resposta.responseText || '').slice(0, 300)
         ultimoHttpErro = `HTTP ${resposta.status}${corpo ? ' — ' + corpo : ''}`
       }
+      salvarDiagPersistido()
     })
 
     // O evento heartbeat dispara periodicamente (heartbeatInterval) mesmo
@@ -349,16 +379,20 @@ async function executarInicioNativo(usuario) {
     // "em movimento".
     BackgroundGeolocation.onHeartbeat(() => {
       contadorHeartbeats++
+      salvarDiagPersistido()
       BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: true })
-        .catch(e => { ultimoErroCaptura = `heartbeat: ${e?.message || e?.error || JSON.stringify(e)}` })
+        .catch(e => {
+          ultimoErroCaptura = `heartbeat: ${e?.message || e?.error || JSON.stringify(e)}`
+          salvarDiagPersistido()
+        })
     })
 
     // Dispara pra QUALQUER localização capturada (contínua ou de heartbeat)
     // — sinal independente do odômetro (só muda com distância) e do envio
     // HTTP, pra saber se o motor nativo está capturando alguma coisa.
     BackgroundGeolocation.onLocation(
-      () => { ultimaCapturaLocalMs = Date.now() },
-      err => { ultimoErroCaptura = `onLocation: ${err?.message || JSON.stringify(err)}` },
+      () => { ultimaCapturaLocalMs = Date.now(); salvarDiagPersistido() },
+      err => { ultimoErroCaptura = `onLocation: ${err?.message || JSON.stringify(err)}`; salvarDiagPersistido() },
     )
   }
 
