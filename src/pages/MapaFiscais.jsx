@@ -834,10 +834,17 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     }
   }
 
+  // [DPL] Antes só carregava 1x ao abrir a aba, e precisava clicar em
+  // "Gerar relatório" pra atualizar depois de trocar filtro/período — pedido
+  // do Gileno: recarrega sozinho sempre que o Painel de Filtros
+  // (Regional/Supervisor Operacional/Supervisor de Campo/Prefixo, suporta
+  // selecionar 1 ou vários) ou o período mudam, igual já fazemos na aba
+  // Histórico. Sem filtro selecionado mostra todos os fiscais; com filtro,
+  // só os que baterem (fiscalPermitido, já existente).
   useEffect(() => {
-    if (aba === 'relatorio' && relatorioPermanencia.length === 0) carregarRelatorio()
+    if (aba === 'relatorio') carregarRelatorio()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aba])
+  }, [aba, fiscaisDropdown, filtros.periodoLabel])
 
   const filtroHierarquicoAtivo = supervisoresAlvo !== null
 
@@ -916,14 +923,12 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
           {aba === 'relatorio' && (
             <div style={{ display: 'flex', gap: 10, marginTop: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              {/* [DPL] Botão "Gerar relatório" removido — recarrega sozinho
+                  ao trocar filtro/período (ver useEffect de carregarRelatorio). */}
               <div style={{ fontSize: 12, color: '#fff', opacity: 0.9, paddingBottom: 10 }}>
                 📆 {filtros.periodoLabel}
+                {filtroHierarquicoAtivo && ` · ${fiscaisDropdown.length} fiscal(is) nos filtros`}
               </div>
-              <button onClick={carregarRelatorio} disabled={carregandoRelatorio} style={{
-                padding: '8px 16px', background: '#f59e0b', color: '#fff',
-                border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-                opacity: carregandoRelatorio ? 0.6 : 1,
-              }}>📊 Gerar relatório</button>
             </div>
           )}
         </div>
