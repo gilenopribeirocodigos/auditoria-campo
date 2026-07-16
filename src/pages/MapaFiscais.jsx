@@ -80,6 +80,37 @@ function horasCheiasNoIntervalo(inicioMs, fimMs, passoHoras = 1) {
   return horas
 }
 
+// [DPL] Janela de almoço (12:20-14:00, horário local) descontada do cálculo
+// de percentual de permanência dentro/fora da base — pedido do Gileno:
+// um fiscal rastreado das 8h às 18h (10h de intervalo corrido) não deve
+// ter as ~1h40 de almoço contadas como parte da jornada de 8h, senão o
+// percentual passa de 100% mesmo ele tendo cumprido só a jornada normal.
+// Exemplo dado por ele: 18h-8h = 10h; 10h - 1h40 (almoço) = 8h20 de
+// "sobra"; 8h20 / 8h (jornada) = 104%.
+// Só desconta de segmentos 'in'/'out' (não mexe em 'nodata'), e só do
+// CÁLCULO de percentual/duração exibida — o desenho do Gantt em si
+// continua mostrando o trajeto real (incluindo o horário de almoço),
+// só a conta de "quanto ficou dentro/fora" é que ignora essa janela.
+const ALMOCO_INICIO_MS = (12 * 60 + 20) * 60 * 1000 // 12:20 após a meia-noite local
+const ALMOCO_FIM_MS     = 14 * 60 * 60 * 1000        // 14:00 após a meia-noite local
+
+function descontarAlmoco(segmentos, diaInicioMs) {
+  const almocoIni = diaInicioMs + ALMOCO_INICIO_MS
+  const almocoFim = diaInicioMs + ALMOCO_FIM_MS
+  let overlapIn = 0, overlapOut = 0
+  for (const seg of segmentos) {
+    if (seg.tipo !== 'in' && seg.tipo !== 'out') continue
+    const ini = new Date(seg.inicio).getTime()
+    const fim = new Date(seg.fim).getTime()
+    const overlap = Math.max(Math.min(fim, almocoFim) - Math.max(ini, almocoIni), 0)
+    if (overlap > 0) {
+      if (seg.tipo === 'in') overlapIn += overlap
+      else overlapOut += overlap
+    }
+  }
+  return { overlapIn, overlapOut }
+}
+
 // [DPL] Marcas de meia-hora (xx:30) do eixo do Gantt — só o traço, sem
 // número, bem mais claro que o traço de hora cheia, só pra dar uma
 // referência visual do meio entre uma hora e outra.
@@ -721,8 +752,11 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             let inMs = 0, outMs = 0, nodataMs = 0
             for (const [dia, pontosDia] of f.porDia.entries()) {
               const limites = limitesDiaLocalUTC(dia)
-              const calc = calcularPermanencia(pontosDia, bases, new Date(limites.ini).getTime(), new Date(limites.fim).getTime())
-              inMs += calc.inMs; outMs += calc.outMs; nodataMs += calc.nodataMs
+              const diaInicioMs = new Date(limites.ini).getTime()
+              const calc = calcularPermanencia(pontosDia, bases, diaInicioMs, new Date(limites.fim).getTime())
+              // Desconta a janela de almoço (12:20-14:00) do dia antes de somar.
+              const { overlapIn, overlapOut } = descontarAlmoco(calc.segmentos, diaInicioMs)
+              inMs += calc.inMs - overlapIn; outMs += calc.outMs - overlapOut; nodataMs += calc.nodataMs
             }
             return { fiscal_login: f.fiscal_login, fiscal_nome: f.fiscal_nome, diasComDado: f.porDia.size, calc: { inMs, outMs, nodataMs } }
           })
@@ -735,7 +769,14 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         const linhas = [...porFiscal.values()]
           .map(f => {
             const pontos = f.porDia.get(dIni) || []
-            return { fiscal_login: f.fiscal_login, fiscal_nome: f.fiscal_nome, pontos, diaInicioMs, diaFimMs, calc: calcularPermanencia(pontos, bases, diaInicioMs, diaFimMs) }
+            const calc = calcularPermanencia(pontos, bases, diaInicioMs, diaFimMs)
+            // Desconta a janela de almoço (12:20-14:00) do dia — só do
+            // in/outMs usado no % e no texto "Xh dentro/fora", o
+            // calc.segmentos (desenho do Gantt) fica intacto.
+            const { overlapIn, overlapOut } = descontarAlmoco(calc.segmentos, diaInicioMs)
+            calc.inMs  = Math.max(calc.inMs  - overlapIn,  0)
+            calc.outMs = Math.max(calc.outMs - overlapOut, 0)
+            return { fiscal_login: f.fiscal_login, fiscal_nome: f.fiscal_nome, pontos, diaInicioMs, diaFimMs, calc }
           })
           .sort((a, b) => (a.fiscal_nome || '').localeCompare(b.fiscal_nome || ''))
         setModoRelatorio('dia')
@@ -1132,15 +1173,16 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                         width: 1, background: 'rgba(15,23,42,0.14)',
                       }} />
                     ))}
-                    {/* [DPL] Traço bem claro na meia-hora (xx:30), só como
-                        referência visual do meio entre uma hora e outra —
-                        pedido do Gileno, sem número, bem mais fraco que o
-                        traço de hora cheia acima. */}
+                    {/* [DPL] Traço vermelho suave na meia-hora (xx:30), só
+                        como referência visual do meio entre uma hora e
+                        outra — pedido do Gileno, sem número, cor vermelha
+                        (mais fraca que o traço de hora cheia acima, que é
+                        cinza-escuro). */}
                     {meiasHorasNoIntervalo(inicioEixo, fimEixo).map(h => (
                       <div key={h} style={{
                         position: 'absolute', top: 0, bottom: 0,
                         left: `${((h - inicioEixo) / totalEixo) * 100}%`,
-                        width: 1, background: 'rgba(15,23,42,0.05)',
+                        width: 1, background: 'rgba(220,38,38,0.25)',
                       }} />
                     ))}
                   </div>
