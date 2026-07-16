@@ -331,6 +331,16 @@ async function executarInicioNativo(usuario) {
         ultimoHttpErro = `HTTP ${resposta.status}${corpo ? ' — ' + corpo : ''}`
       }
     })
+
+    // O evento heartbeat dispara periodicamente (heartbeatInterval) mesmo
+    // com o fiscal parado — pedir e persistir uma posição aqui é o jeito
+    // oficial do SDK de cobrir os períodos parado, já que o rastreio normal
+    // (locationUpdateInterval) só captura de fato quando classificado como
+    // "em movimento".
+    BackgroundGeolocation.onHeartbeat(() => {
+      BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: true })
+        .catch(e => console.warn('[rastreio] falha ao capturar posição no heartbeat:', e?.message))
+    })
   }
 
   erroInicializacaoNativa = null
@@ -361,22 +371,6 @@ async function executarInicioNativo(usuario) {
         distanceFilter: 0,
         locationUpdateInterval: 8000,
         fastestLocationUpdateInterval: 8000,
-        // Por padrão o SDK só liga o GPS quando classifica o aparelho como
-        // "em movimento" (via detecção de atividade do Android) — parado
-        // (ex: celular no bolso/mesa) ele nunca manda ponto nenhum, mesmo
-        // com "Serviço nativo rodando: Sim". Como o objetivo aqui é saber
-        // onde o fiscal está o tempo todo (parado ou andando), desligamos
-        // essa detecção de parada e forçamos rastreio contínuo.
-        stopTimeout: 0,
-        stopOnStationary: false,
-        disableStopDetection: true,
-      },
-      activity: {
-        // Idem: ignora a API de reconhecimento de atividade do Android
-        // (acelerômetro) pra decidir se o aparelho está "em movimento" —
-        // sem isso, o SDK pode nunca sair do estado "parado" se o celular
-        // não vibrar o suficiente, e não captura localização nenhuma.
-        disableMotionActivityUpdates: true,
       },
       app: {
         // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
@@ -384,6 +378,19 @@ async function executarInicioNativo(usuario) {
         // BroadcastReceiver próprio como na tentativa anterior.
         stopOnTerminate: false,
         startOnBoot: true,
+        // [DPL] Tentativas anteriores de desligar a detecção de parada via
+        // disableStopDetection/stopOnStationary/disableMotionActivityUpdates
+        // não só deixaram de resolver o problema (fiscal parado sem enviar
+        // ponto) como acabaram de vez com QUALQUER captura de posição — nem
+        // o odômetro andava mais. Voltamos ao comportamento padrão do SDK
+        // (que já sabemos que funciona: getCurrentPosition funciona, GPS
+        // funciona) e usamos o mecanismo OFICIAL do próprio SDK pra cobrir
+        // os períodos parado: heartbeat. Com o aparelho parado, o SDK dispara
+        // o evento "heartbeat" a cada heartbeatInterval segundos; no handler
+        // (ver onHeartbeat abaixo) pedimos uma posição e mandamos persistir,
+        // o que cai na mesma fila/HTTP do rastreio normal.
+        heartbeatInterval: 60,
+        preventSuspend: true,
         notification: {
           title: 'VérticeGP',
           text: 'Rastreando localização em segundo plano.',
