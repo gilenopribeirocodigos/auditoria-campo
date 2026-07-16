@@ -257,7 +257,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const [loading,         setLoading]         = useState(true)
   const [aba,             setAba]             = useState('vivo')   // vivo | historico | bases | relatorio
   const [janelaHistorico, setJanelaHistorico] = useState('3h')     // 1h | 3h | 6h | dia — só quando Período = Hoje
-  const [fiscalHistorico, setFiscalHistorico] = useState('')
   const [logHistorico,    setLogHistorico]    = useState([])
   const [resumoHistorico, setResumoHistorico] = useState(null)
   const [fiscais,         setFiscais]         = useState([])
@@ -513,27 +512,29 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     }
   }, [aba])
 
-  useEffect(() => {
-    if (!fiscalHistorico) return
-    if (!fiscaisDropdown.some(f => f.login === fiscalHistorico)) setFiscalHistorico('')
-  }, [fiscaisDropdown, fiscalHistorico])
-
-  // Paleta usada só quando o Histórico mostra vários dias de uma vez —
+  // Paleta usada só quando o Histórico mostra vários dias de UM fiscal só —
   // um dia = uma cor, pra dar pra distinguir no mapa qual trecho é de qual dia.
   const PALETA_DIAS = ['#dc2626','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2','#db2777','#65a30d','#ea580c','#4338ca']
 
-  // ─── Ver histórico (trilha da tabela localizacoes) ───
-  // Período = 1 dia (Hoje ou Período com data única): mantém o comportamento
-  // de sempre (1 rota, cor do fiscal, janela 1h/3h/6h quando for hoje).
-  // Período = vários dias (Mês, ou Período com intervalo): desenha uma rota
-  // por dia, cada uma com uma cor diferente (legenda abaixo do mapa), pra dar
-  // pra comparar dias sem confundir um com o outro.
-  const verHistorico = async () => {
+  // ─── Histórico de rota (trilha da tabela localizacoes) ───
+  // [DPL] Antes exigia escolher um "Fiscal" num seletor à parte e clicar em
+  // "Ver Rota" — só que esse seletor era, na prática, um filtro concorrente
+  // com o "Supervisor de Campo" do Painel de Filtros (mesma pessoa, ver
+  // fiscalPermitido/matchNomes acima). Pedido do Gileno: remover essa
+  // duplicidade — agora a rota é redesenhada automaticamente sempre que o
+  // Painel de Filtros (Regional/Supervisor Operacional/Supervisor de Campo/
+  // Prefixo → fiscaisDropdown), o período ou a janela mudam.
+  //
+  // Casos:
+  //  • 1 fiscal + período de 1 dia único: 1 rota, cor do fiscal (como sempre).
+  //  • 1 fiscal + período de vários dias (Mês/Período): mantém o
+  //    comportamento antigo — 1 rota por DIA, cor por dia (legenda embaixo).
+  //  • vários fiscais (filtro amplo/"Todos"): 1 rota por FISCAL, cor por
+  //    fiscal (legenda embaixo) — sem separar por dia, senão o mapa fica
+  //    ilegível com muita gente e muitos dias ao mesmo tempo.
+  const carregarHistorico = async () => {
     const L = window.L
-    if (!L || !leafletMap.current || !fiscalHistorico) return
-
-    const { ini: dIni, fim: dFim } = filtros.getDatasQuery()
-    if (!dIni) { alert('Selecione um período.'); return }
+    if (!L || !leafletMap.current || aba !== 'historico') return
 
     Object.values(marcadores.current).forEach(m => m.remove())
     marcadores.current = {}
@@ -541,6 +542,9 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     rotas.current = {}
     setLogHistorico([])
     setResumoHistorico(null)
+
+    const { ini: dIni, fim: dFim } = filtros.getDatasQuery()
+    if (!dIni || fiscaisDropdown.length === 0) return
 
     const multiDia = dIni !== dFim
     let ini, fim
@@ -554,18 +558,22 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       fim = limitesDiaLocalUTC(dFim).fim
     }
 
+    const logins = fiscaisDropdown.map(f => f.login)
     const { data } = await supabase
       .from('localizacoes').select('*')
-      .eq('fiscal_login', fiscalHistorico)
+      .in('fiscal_login', logins)
       .gte('created_at', ini).lte('created_at', fim)
       .order('created_at', { ascending: true })
 
     if (!data || data.length === 0) {
-      alert('Nenhuma posição encontrada para este fiscal nesse período.')
+      setResumoHistorico({ total: 0 })
       return
     }
 
-    if (multiDia) {
+    const bounds = []
+
+    if (logins.length === 1 && multiDia) {
+      // ── 1 fiscal, vários dias: 1 rota por dia (comportamento de sempre) ──
       const porDia = new Map()
       data.forEach(p => {
         const dia = new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Fortaleza' }).format(new Date(p.created_at))
@@ -573,7 +581,6 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         porDia.get(dia).push(p)
       })
       const dias = [...porDia.keys()].sort()
-      const bounds = []
       dias.forEach((dia, i) => {
         const pontosDia = porDia.get(dia)
         const cor = PALETA_DIAS[i % PALETA_DIAS.length]
@@ -600,34 +607,66 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       return
     }
 
-    const cor = corFiscal(fiscalHistorico)
-    const pontos = data.map(p => [p.lat, p.lng])
-
-    const linha = L.polyline(pontos, { color: cor, weight: 4, opacity: 0.8 }).addTo(leafletMap.current)
-    rotas.current[fiscalHistorico] = linha
-
-    L.marker(pontos[0], {
-      icon: L.divIcon({
-        html: `<div style="background:#16a34a;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)">▶</div>`,
-        className: '', iconSize: [32, 32], iconAnchor: [16, 16],
-      })
-    }).addTo(leafletMap.current).bindPopup(`Início: ${new Date(data[0].created_at).toLocaleTimeString('pt-BR')}`)
-
-    L.marker(pontos[pontos.length - 1], {
-      icon: L.divIcon({
-        html: `<div style="background:#dc2626;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)">■</div>`,
-        className: '', iconSize: [32, 32], iconAnchor: [16, 16],
-      })
-    }).addTo(leafletMap.current).bindPopup(`Fim: ${new Date(data[data.length - 1].created_at).toLocaleTimeString('pt-BR')}`)
-
-    leafletMap.current.fitBounds(linha.getBounds(), { padding: [40, 40] })
-    setLogHistorico(gerarLogEventos(data, bases))
-    setResumoHistorico({
-      total: data.length,
-      inicio: new Date(data[0].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
-      fim: new Date(data[data.length - 1].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+    // ── 1 fiscal (dia único) OU vários fiscais: 1 rota por fiscal ──
+    const porFiscal = new Map()
+    data.forEach(p => {
+      if (!porFiscal.has(p.fiscal_login)) porFiscal.set(p.fiscal_login, [])
+      porFiscal.get(p.fiscal_login).push(p)
     })
+
+    porFiscal.forEach((pontosFiscal, login) => {
+      const cor = corFiscal(login)
+      const latlngs = pontosFiscal.map(p => [p.lat, p.lng])
+      const linha = L.polyline(latlngs, { color: cor, weight: 4, opacity: 0.8 }).addTo(leafletMap.current)
+      rotas.current[login] = linha
+      bounds.push(...latlngs)
+
+      const nome = pontosFiscal[0].fiscal_nome || login
+      marcadores.current[`${login}-ini`] = L.marker(latlngs[0], {
+        icon: L.divIcon({
+          html: `<div style="background:#16a34a;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)">▶</div>`,
+          className: '', iconSize: [32, 32], iconAnchor: [16, 16],
+        })
+      }).addTo(leafletMap.current).bindPopup(`${nome} — início: ${new Date(pontosFiscal[0].created_at).toLocaleTimeString('pt-BR')}`)
+
+      marcadores.current[`${login}-fim`] = L.marker(latlngs[latlngs.length - 1], {
+        icon: L.divIcon({
+          html: `<div style="background:#dc2626;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;font-size:16px;border:3px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,0.3)">■</div>`,
+          className: '', iconSize: [32, 32], iconAnchor: [16, 16],
+        })
+      }).addTo(leafletMap.current).bindPopup(`${nome} — fim: ${new Date(pontosFiscal[pontosFiscal.length - 1].created_at).toLocaleTimeString('pt-BR')}`)
+    })
+
+    if (bounds.length) leafletMap.current.fitBounds(bounds, { padding: [40, 40] })
+
+    if (porFiscal.size === 1) {
+      const [[, pontosFiscal]] = porFiscal.entries()
+      setLogHistorico(gerarLogEventos(pontosFiscal, bases))
+      setResumoHistorico({
+        total: data.length,
+        inicio: new Date(pontosFiscal[0].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        fim: new Date(pontosFiscal[pontosFiscal.length - 1].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+      })
+    } else {
+      // Vários fiscais: sem "linha do tempo" (é por pessoa, misturaria todo
+      // mundo) — só um resumo com legenda de cores por fiscal.
+      setResumoHistorico({
+        total: data.length,
+        inicio: new Date(data[0].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        fim: new Date(data[data.length - 1].created_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }),
+        legendaFiscais: [...porFiscal.keys()].map(login => ({
+          login,
+          nome: fiscais.find(f => f.login === login)?.nome || login,
+          cor: corFiscal(login),
+        })),
+      })
+    }
   }
+
+  useEffect(() => {
+    carregarHistorico()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aba, fiscaisDropdown, filtros.periodoLabel, janelaHistorico])
 
   // ─── Bases: cadastro/edição ───
   const iniciarNovaBase = () => {
@@ -856,23 +895,22 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                   </div>
                 </div>
               )}
-              <div>
-                <label style={{ fontSize: 11, opacity: 0.85, display: 'block', marginBottom: 4 }}>
-                  Fiscal {filtroHierarquicoAtivo && `(${fiscaisDropdown.length} dos filtros)`}
-                </label>
-                <select value={fiscalHistorico} onChange={e => setFiscalHistorico(e.target.value)}
-                  style={{ padding: '8px 12px', borderRadius: 8, border: 'none', fontSize: 13, minWidth: 200 }}>
-                  <option value="">Selecione...</option>
-                  {fiscaisDropdown.map(f => <option key={f.login} value={f.login}>{f.nome}</option>)}
-                </select>
-              </div>
+              {/* [DPL] Removidos o seletor "Fiscal" e o botão "Ver Rota" —
+                  pedido do Gileno: eram um filtro duplicado/concorrente com
+                  o "Supervisor de Campo" do Painel de Filtros abaixo (que
+                  na prática já seleciona o mesmo fiscal, ver PainelFiltros).
+                  Agora a rota desenha sozinha no mapa (ver useEffect
+                  carregarHistorico) assim que os filtros do painel (Regional
+                  /Supervisor Operacional/Supervisor de Campo/Prefixo) ou o
+                  período/janela mudam — sem precisar de seleção nem clique
+                  extra. Se mais de um fiscal bater com o filtro, desenha
+                  uma rota por fiscal (cor por fiscal, legenda abaixo do
+                  mapa); só um fiscal + período de vários dias mantém o
+                  comportamento antigo de uma rota por dia. */}
               <div style={{ fontSize: 12, color: '#fff', opacity: 0.9, paddingBottom: 10 }}>
                 📆 {filtros.periodoLabel}
+                {filtroHierarquicoAtivo && ` · ${fiscaisDropdown.length} fiscal(is) nos filtros`}
               </div>
-              <button onClick={verHistorico} style={{
-                padding: '8px 16px', background: '#f59e0b', color: '#fff',
-                border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
-              }}>🗺️ Ver Rota</button>
             </div>
           )}
 
@@ -968,20 +1006,40 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         <CarregandoHexagono texto="Carregando mapa..." tamanho={44} padding={20} />
       )}
 
-      {aba === 'historico' && resumoHistorico && (
+      {aba === 'historico' && resumoHistorico && resumoHistorico.total === 0 && (
+        <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 10px', boxSizing: 'border-box' }}>
+          <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
+            📭 Nenhuma posição encontrada para os filtros e período selecionados.
+          </div>
+        </div>
+      )}
+
+      {aba === 'historico' && resumoHistorico && resumoHistorico.total > 0 && (
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 10px', boxSizing: 'border-box' }}>
           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
-            ✅ {resumoHistorico.total} posição(ões) registrada(s) {resumoHistorico.legendaDias ? `em ${resumoHistorico.legendaDias.length} dia(s)` : 'nesse período'}, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
+            ✅ {resumoHistorico.total} posição(ões) registrada(s) {resumoHistorico.legendaDias ? `em ${resumoHistorico.legendaDias.length} dia(s)` : resumoHistorico.legendaFiscais ? `de ${resumoHistorico.legendaFiscais.length} fiscal(is)` : 'nesse período'}, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
           </div>
-          {resumoHistorico.legendaDias && (
+          {/* [DPL] Legenda de cores — por DIA quando é 1 fiscal só em vários
+              dias (comportamento antigo), ou por FISCAL quando o filtro do
+              Painel de Filtros trouxe mais de uma pessoa. */}
+          {(resumoHistorico.legendaDias || resumoHistorico.legendaFiscais) && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
-              {resumoHistorico.legendaDias.map(({ dia, cor }) => (
+              {resumoHistorico.legendaDias?.map(({ dia, cor }) => (
                 <span key={dia} style={{
                   display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#334155',
                   background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '3px 9px',
                 }}>
                   <span style={{ width: 10, height: 10, borderRadius: '50%', background: cor, display: 'inline-block' }} />
                   {formatarDataBR(dia)}
+                </span>
+              ))}
+              {resumoHistorico.legendaFiscais?.map(({ login, nome, cor }) => (
+                <span key={login} style={{
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700, color: '#334155',
+                  background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '3px 9px',
+                }}>
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: cor, display: 'inline-block' }} />
+                  {nome}
                 </span>
               ))}
             </div>
