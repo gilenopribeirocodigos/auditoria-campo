@@ -59,13 +59,15 @@ function decodeArrayBuffer(buffer) {
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
-  'superv_campo', 'superv_operacao', 'coordenador',
   // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
   // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
   // enquanto; a lógica de filtro/permissão (fiscalPermitido em
   // PainelFiltros.jsx/MapaFiscais.jsx) ainda casa por nome (matchNomes),
-  // isso é etapa futura, depois que a matrícula estiver populada.
+  // isso é etapa futura, depois que a matrícula estiver populada. Fica
+  // logo antes de superv_campo pra manter o mesmo padrão da Estrutura
+  // Online (EstruturaOnline.jsx).
   'matricula_superv_campo',
+  'superv_campo', 'superv_operacao', 'coordenador',
 ]
 
 const norm      = s => (s || '').trim()
