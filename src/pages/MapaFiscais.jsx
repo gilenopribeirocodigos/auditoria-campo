@@ -657,10 +657,24 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       const multiDia = dIni !== dFim
       const { ini } = limitesDiaLocalUTC(dIni)
       const { fim } = limitesDiaLocalUTC(dFim)
-      const { data } = await supabase
-        .from('localizacoes').select('*')
-        .gte('created_at', ini).lte('created_at', fim)
-        .order('created_at', { ascending: true })
+      // [DPL] O Supabase/PostgREST limita a 1000 linhas por consulta por
+      // padrão — com o rastreio contínuo (a cada 8s em movimento) mais o
+      // heartbeat, um dia inteiro de vários fiscais passa disso fácil, e o
+      // relatório ficava sempre travado no mesmo horário (as mesmas 1000
+      // linhas mais antigas), não importava quantas vezes gerava de novo.
+      // Busca em páginas até não vir mais nada, sem alterar a query em si.
+      const TAMANHO_PAGINA = 1000
+      const data = []
+      for (let pagina = 0; ; pagina++) {
+        const { data: parte, error } = await supabase
+          .from('localizacoes').select('*')
+          .gte('created_at', ini).lte('created_at', fim)
+          .order('created_at', { ascending: true })
+          .range(pagina * TAMANHO_PAGINA, pagina * TAMANHO_PAGINA + TAMANHO_PAGINA - 1)
+        if (error) throw error
+        data.push(...(parte || []))
+        if (!parte || parte.length < TAMANHO_PAGINA) break
+      }
 
       // Agrupa por fiscal e, dentro de cada fiscal, por dia local (Fortaleza)
       // — necessário pra aplicar corretamente o padding de "sem dado" nas
