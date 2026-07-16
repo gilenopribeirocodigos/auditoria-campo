@@ -324,6 +324,22 @@ async function executarInicioNativo(usuario) {
         distanceFilter: 0,
         locationUpdateInterval: 8000,
         fastestLocationUpdateInterval: 8000,
+        // Por padrão o SDK só liga o GPS quando classifica o aparelho como
+        // "em movimento" (via detecção de atividade do Android) — parado
+        // (ex: celular no bolso/mesa) ele nunca manda ponto nenhum, mesmo
+        // com "Serviço nativo rodando: Sim". Como o objetivo aqui é saber
+        // onde o fiscal está o tempo todo (parado ou andando), desligamos
+        // essa detecção de parada e forçamos rastreio contínuo.
+        stopTimeout: 0,
+        stopOnStationary: false,
+        disableStopDetection: true,
+      },
+      activity: {
+        // Idem: ignora a API de reconhecimento de atividade do Android
+        // (acelerômetro) pra decidir se o aparelho está "em movimento" —
+        // sem isso, o SDK pode nunca sair do estado "parado" se o celular
+        // não vibrar o suficiente, e não captura localização nenhuma.
+        disableMotionActivityUpdates: true,
       },
       app: {
         // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
