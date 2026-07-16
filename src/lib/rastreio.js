@@ -307,6 +307,7 @@ async function executarInicioNativo(usuario) {
   }
 
   erroInicializacaoNativa = null
+  let state
   try {
     // ready() aplica (e persiste nativamente) toda a config — chamado a
     // cada login pra garantir que fiscal_login/fiscal_nome em `extras`
@@ -320,7 +321,7 @@ async function executarInicioNativo(usuario) {
     // fix anterior (desligar detecção de parada) não fez efeito nenhum no
     // aparelho do Nailton: o `ready()` dele já tinha rodado antes, com a
     // config antiga, e sem reset:true continuou preso nela.
-    await BackgroundGeolocation.ready({
+    state = await BackgroundGeolocation.ready({
       reset: true,
       geolocation: {
         // [DPL] Usa as constantes "chatas" (DESIRED_ACCURACY_HIGH), não o
@@ -396,6 +397,18 @@ async function executarInicioNativo(usuario) {
   } catch (e) {
     erroInicializacaoNativa = `ready(): ${e?.message || e?.error || JSON.stringify(e)}`
     console.warn('[rastreio] falha em ready() do SDK nativo:', e?.message)
+    return
+  }
+
+  // Como stopOnTerminate:false, o serviço nativo sobrevive ao app ser
+  // fechado/reaberto — ready() já devolve o estado atual (state.enabled).
+  // Chamar start() de novo quando já está enabled é redundante e foi o que
+  // causava "Waiting for previous start action to complete": o próprio
+  // ready() com reset:true já reinicia o serviço internamente pra aplicar
+  // a config nova, e um start() explícito logo em seguida colidia com essa
+  // reinicialização ainda em andamento.
+  if (state?.enabled) {
+    nativoIniciado = true
     return
   }
 
