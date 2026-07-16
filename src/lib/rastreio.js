@@ -49,6 +49,12 @@ let watchId            = null
 let capturaEmAndamento = false
 let nativoIniciado     = false
 
+// Evita chamadas concorrentes de ready()/start() no SDK nativo — o SDK
+// rejeita com "Waiting for previous start action to complete" se uma
+// segunda chamada chegar antes da primeira terminar (ex: App.jsx re-
+// renderizando e dando useEffect de novo antes do primeiro início acabar).
+let iniciandoNativoPromise = null
+
 // Preenchido pelo listener onHttp() do SDK nativo — usado só pra tela de
 // diagnóstico (src/pages/DiagnosticoRastreio.jsx), não afeta o envio em si.
 let ultimoHttpSucessoMs = null
@@ -262,7 +268,23 @@ function onOnline() {
 }
 
 // ─── Modo nativo Android: SDK da Transistor Software (segundo plano real) ───
+// iniciarRastreioNativo() pode ser chamada mais de uma vez em sequência rápida
+// (ex: App.jsx re-renderizando e disparando o useEffect de novo antes do
+// ready()/start() anterior terminar) — o SDK rejeita chamadas concorrentes
+// com "Waiting for previous start action to complete". Por isso a função
+// pública guarda a promise em andamento e devolve ela pra quem chamar de
+// novo, em vez de invocar ready()/start() uma segunda vez.
 async function iniciarRastreioNativo(usuario) {
+  if (iniciandoNativoPromise) return iniciandoNativoPromise
+  iniciandoNativoPromise = executarInicioNativo(usuario)
+  try {
+    await iniciandoNativoPromise
+  } finally {
+    iniciandoNativoPromise = null
+  }
+}
+
+async function executarInicioNativo(usuario) {
   const url    = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/registrar_localizacao_fiscal`
   const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
