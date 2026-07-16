@@ -60,6 +60,12 @@ const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   'superv_campo', 'superv_operacao', 'coordenador',
+  // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
+  // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
+  // enquanto; a lógica de filtro/permissão (fiscalPermitido em
+  // PainelFiltros.jsx/MapaFiscais.jsx) ainda casa por nome (matchNomes),
+  // isso é etapa futura, depois que a matrícula estiver populada.
+  'matricula_superv_campo',
 ]
 
 const norm      = s => (s || '').trim()
@@ -97,6 +103,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     superv_campo:    limparTexto(r.superv_campo),
     superv_operacao: limparTexto(r.superv_operacao),
     coordenador:     limparTexto(r.coordenador),
+    matricula_superv_campo: norm(r.matricula_superv_campo), // matrícula: não normalizar
     carregado_em:    timestamp,
   }
 }
@@ -118,6 +125,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     superv_campo:    linhaAtual.superv_campo,
     superv_operacao: linhaAtual.superv_operacao,
     coordenador:     linhaAtual.coordenador,
+    matricula_superv_campo: linhaAtual.matricula_superv_campo,
     vigencia_inicio: linhaAtual.carregado_em ? linhaAtual.carregado_em.split('T')[0] : null,
     vigencia_fim:    dataHoje,
     motivo_saida:    motivo,
@@ -167,6 +175,7 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
         base:            limparTexto(r.base),
         descr_situacao:  limparTexto(r.descr_situacao),
         processo_equipe: limparTexto(r.processo_equipe),
+        matricula_superv_campo: norm(r.matricula_superv_campo),
       })))
     }
     reader.readAsArrayBuffer(file)
@@ -207,6 +216,7 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
           Object.entries(r).map(([k, v]) => [k, limparTexto(v)])
         )
         limpo.matricula = norm(r.matricula) // restaura matrícula sem normalizar
+        limpo.matricula_superv_campo = norm(r.matricula_superv_campo) // idem
         return limpo
       })
       setProgresso(10)
@@ -528,6 +538,7 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
               <div key={i} style={{ fontSize: 11, color: '#475569', padding: '6px 0', borderBottom: i < preview.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                 <strong>{r.prefixo}</strong> · {r.matricula} · {r.colaborador} · {r.base} · {r.descr_situacao}
                 {r.processo_equipe && <span style={{ color: '#0f766e', fontWeight: 700 }}> · ⚙️ {r.processo_equipe}</span>}
+                {r.matricula_superv_campo && <span style={{ color: '#7c3aed', fontWeight: 700 }}> · 👤 superv.campo mat. {r.matricula_superv_campo}</span>}
               </div>
             ))}
           </div>
