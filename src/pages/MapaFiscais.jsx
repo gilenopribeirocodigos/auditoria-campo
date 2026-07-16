@@ -4,6 +4,7 @@ import { isAdmin, temPermissao } from '../lib/auth.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
+  matchNomes,
 } from '../components/PainelFiltros.jsx'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
@@ -321,9 +322,16 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const fiscalPermitido = (nome) => {
     if (!supervisoresAlvo) return true
     if (!nome) return false
-    const nomeLower = nome.trim().toLowerCase()
+    // [DPL] Antes comparava por substring puro (nomeLower.includes(sup)) —
+    // não normalizava acento e não respeitava limite de palavra, então o
+    // nome do fiscal (fiscal_nome) quase nunca batia com o nome gravado em
+    // estrutura_equipes.superv_campo (mesma pessoa, "Supervisor de Campo"
+    // NA PRÁTICA É o fiscal, só que registrado noutra tabela) — por isso o
+    // filtro "Supervisor de Campo" parecia não funcionar. matchNomes() é a
+    // mesma função já usada no cálculo de permissões (auth), testada e
+    // tolerante a acento/abreviação/limite de palavra.
     for (const sup of supervisoresAlvo) {
-      if (nomeLower.includes(sup) || sup.includes(nomeLower)) return true
+      if (matchNomes(nome, sup)) return true
     }
     return false
   }
