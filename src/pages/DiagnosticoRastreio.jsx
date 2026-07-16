@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { obterDiagnosticoRastreio, sincronizarRastreioAgora, limparFilaRastreio } from '../lib/rastreio.js'
+import { obterDiagnosticoRastreio, sincronizarRastreioAgora, limparFilaRastreio, testarGpsAgora } from '../lib/rastreio.js'
 import { getVersaoApp } from '../lib/auth.js'
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -44,6 +44,8 @@ export default function DiagnosticoRastreio({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)
   const [sincronizando, setSincronizando] = useState(false)
   const [limpando, setLimpando] = useState(false)
+  const [testandoGps, setTestandoGps] = useState(false)
+  const [resultadoGps, setResultadoGps] = useState(null)
   const nativo = Capacitor.isNativePlatform()
 
   const carregar = useCallback(async () => {
@@ -69,6 +71,14 @@ export default function DiagnosticoRastreio({ onVoltar }) {
     setLimpando(true)
     await limparFilaRastreio()
     setTimeout(async () => { await carregar(); setLimpando(false) }, 1000)
+  }
+
+  const testarGps = async () => {
+    setTestandoGps(true)
+    setResultadoGps(null)
+    const r = await testarGpsAgora()
+    setResultadoGps(r)
+    setTestandoGps(false)
   }
 
   return (
@@ -140,6 +150,31 @@ export default function DiagnosticoRastreio({ onVoltar }) {
             }}>
               {sincronizando ? '⏳ Sincronizando...' : '🔄 Sincronizar agora'}
             </button>
+
+            <button onClick={testarGps} disabled={testandoGps} style={{
+              width: '100%', background: testandoGps ? '#64748b' : '#7c3aed', color: '#fff', border: 'none',
+              padding: '14px', borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: 'pointer', marginBottom: 10,
+            }}>
+              {testandoGps ? '📡 Pedindo posição ao GPS...' : '🛰️ Testar GPS agora'}
+            </button>
+
+            {resultadoGps && (
+              <div style={{
+                background: resultadoGps.erro ? '#fef2f2' : '#f0fdf4',
+                border: `1px solid ${resultadoGps.erro ? '#fecaca' : '#bbf7d0'}`,
+                borderRadius: 12, padding: 14, marginBottom: 14, fontSize: 12.5,
+                color: resultadoGps.erro ? '#991b1b' : '#166534',
+              }}>
+                {resultadoGps.erro ? (
+                  <><b>Falha ao obter posição:</b> {resultadoGps.erro}</>
+                ) : (
+                  <>
+                    <b>Posição obtida:</b> {resultadoGps.lat?.toFixed(6)}, {resultadoGps.lng?.toFixed(6)}
+                    {' '}(±{resultadoGps.precisao != null ? Math.round(resultadoGps.precisao) : '?'}m)
+                  </>
+                )}
+              </div>
+            )}
 
             {diag.pontosPendentes > 0 && (
               <button onClick={limparFila} disabled={limpando} style={{

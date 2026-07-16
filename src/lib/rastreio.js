@@ -488,6 +488,31 @@ export async function sincronizarRastreioAgora() {
   }
 }
 
+// [DPL] Pede uma posição AGORA, direto ao SDK — bypassa todo o motor de
+// agendamento/detecção de movimento (que é onde os bugs anteriores
+// estavam) e testa isoladamente se o GPS em si funciona nesse aparelho
+// nesse instante. Se isso falhar/travar, o problema é OS/hardware/
+// permissão, não a nossa config de rastreio contínuo.
+export async function testarGpsAgora() {
+  if (!Capacitor.isNativePlatform()) return { erro: 'Só funciona no app nativo' }
+  try {
+    const loc = await BackgroundGeolocation.getCurrentPosition({
+      samples: 1,
+      timeout: 30,
+      persist: false,
+      maximumAge: 0,
+    })
+    return {
+      lat: loc?.coords?.latitude,
+      lng: loc?.coords?.longitude,
+      precisao: loc?.coords?.accuracy,
+      timestamp: loc?.timestamp,
+    }
+  } catch (e) {
+    return { erro: e?.message || e?.error || JSON.stringify(e) }
+  }
+}
+
 // [DPL] Descarta pontos presos na fila SQLite nativa — útil quando os
 // registros presos foram capturados com uma config antiga (ex: nomes de
 // campo de antes de uma correção) e ficariam tentando reenviar pra sempre
