@@ -17,6 +17,14 @@ const PRESENCA_MS = 24 * 60 * 60 * 1000  // mantém visíveis fiscais vistos nas
 // plano no app Android), então só dispara em silêncio real.
 const GAP_SEM_DADO_MS = 5 * 60 * 1000
 
+// [DPL] Jornada de trabalho esperada do fiscal, usada só como base do
+// cálculo de % no Relatório de Permanência (dentro/fora da base) — pedido
+// do Gileno pra responder "das horas que ele devia trabalhar, quanto
+// ficou dentro/fora da base", em vez de calcular sobre as 24h corridas do
+// dia. Não afeta o desenho do Gantt em si (esse continua mostrando o dia
+// inteiro, de 00h a 23h59, pra comparar turnos diferentes lado a lado).
+const HORAS_JORNADA_MS = 8 * 60 * 60 * 1000
+
 // Formata "há X" a partir de um timestamp
 function tempoDesde(ts) {
   const diff = Date.now() - new Date(ts).getTime()
@@ -70,6 +78,21 @@ function horasCheiasNoIntervalo(inicioMs, fimMs, passoHoras = 1) {
     horas.push(t)
   }
   return horas
+}
+
+// [DPL] Marcas de meia-hora (xx:30) do eixo do Gantt — só o traço, sem
+// número, bem mais claro que o traço de hora cheia, só pra dar uma
+// referência visual do meio entre uma hora e outra.
+function meiasHorasNoIntervalo(inicioMs, fimMs) {
+  if (!(fimMs > inicioMs)) return []
+  const meias = []
+  const primeira = new Date(inicioMs)
+  primeira.setMinutes(30, 0, 0)
+  if (primeira.getTime() < inicioMs) primeira.setHours(primeira.getHours() + 1)
+  for (let t = primeira.getTime(); t <= fimMs; t += 60 * 60 * 1000) {
+    meias.push(t)
+  }
+  return meias
 }
 
 // ─── Geofencing: distância em km entre duas coordenadas (Haversine) ─────────
@@ -1055,7 +1078,11 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
             {modoRelatorio === 'periodo' ? relatorioPermanencia.map(f => {
               const { calc } = f
-              const totalMs = calc.inMs + calc.outMs + calc.nodataMs
+              // [DPL] % calculado sobre a jornada esperada (8h por dia com
+              // dado), não sobre as 24h corridas — pedido do Gileno pra
+              // responder "das horas que ele devia trabalhar, quanto ficou
+              // dentro/fora da base", em vez de "das 24h do relógio".
+              const totalMs = HORAS_JORNADA_MS * Math.max(f.diasComDado, 1)
               const pct = ms => totalMs > 0 ? Math.round((ms / totalMs) * 100) : 0
               return (
                 <div key={f.fiscal_login} style={{ padding: '10px 0', borderBottom: '1px solid #f1f5f9' }}>
@@ -1078,7 +1105,12 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
               const inicioEixo = f.diaInicioMs
               const fimEixo = f.diaFimMs
               const totalEixo = Math.max(fimEixo - inicioEixo, 1)
-              const totalMs = calc.inMs + calc.outMs + calc.nodataMs
+              // [DPL] % calculado sobre a jornada esperada de 8h de trabalho
+              // no dia, não sobre as 24h corridas do eixo do Gantt — o eixo
+              // continua mostrando o dia inteiro (pra comparar turnos), mas
+              // o percentual responde "das 8h que ele devia trabalhar,
+              // quanto ficou dentro/fora da base".
+              const totalMs = HORAS_JORNADA_MS
               const pct = ms => totalMs > 0 ? Math.round((ms / totalMs) * 100) : 0
               return (
                 <div key={f.fiscal_login} style={{ marginBottom: 18 }}>
@@ -1100,10 +1132,23 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
                         width: 1, background: 'rgba(15,23,42,0.14)',
                       }} />
                     ))}
+                    {/* [DPL] Traço bem claro na meia-hora (xx:30), só como
+                        referência visual do meio entre uma hora e outra —
+                        pedido do Gileno, sem número, bem mais fraco que o
+                        traço de hora cheia acima. */}
+                    {meiasHorasNoIntervalo(inicioEixo, fimEixo).map(h => (
+                      <div key={h} style={{
+                        position: 'absolute', top: 0, bottom: 0,
+                        left: `${((h - inicioEixo) / totalEixo) * 100}%`,
+                        width: 1, background: 'rgba(15,23,42,0.05)',
+                      }} />
+                    ))}
                   </div>
                   <div style={{ position: 'relative', height: 12, marginTop: 3 }}>
-                    {/* Números só a cada 3h pra não lotar em tela de celular */}
-                    {horasCheiasNoIntervalo(inicioEixo, fimEixo, 3).map(h => (
+                    {/* [DPL] Número em TODA hora cheia (13, 14, 15...) — antes
+                        só aparecia a cada 3h; pedido do Gileno pra facilitar
+                        a leitura do horário exato no Gantt. */}
+                    {horasCheiasNoIntervalo(inicioEixo, fimEixo, 1).map(h => (
                       <span key={h} style={{
                         position: 'absolute', left: `${((h - inicioEixo) / totalEixo) * 100}%`,
                         transform: 'translateX(-50%)', fontSize: 9, color: '#94a3b8',
