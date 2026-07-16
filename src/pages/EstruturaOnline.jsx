@@ -431,7 +431,14 @@ function larguraPadraoColuna(coluna) {
 function larguraAutomaticaColuna(coluna, linhas) {
   const textos = [coluna, ...(linhas || []).slice(0, 120).map(l => l?.[coluna] || '')]
   const maior = textos.reduce((max, valor) => Math.max(max, String(valor || '').length), 0)
-  const estimada = Math.round(maior * 7.5 + 42)
+  // [DPL] +42 era insuficiente pro nome da coluna no cabeçalho — o <th>
+  // (função Th abaixo) reserva 48px de padding à direita pro botão de
+  // ordenação "A-Z"/"Z-A" (10px + 48px = 58px de padding total), então
+  // qualquer nome de coluna perto do limite calculado cortava com "..."
+  // antes da hora (bem visível em nomes longos como
+  // MATRICULA_SUPERV_CAMPO, mas afetava todas as colunas). Ajustado pra
+  // 70 (58 do padding do cabeçalho + folga extra) pra caber sem cortar.
+  const estimada = Math.round(maior * 7.5 + 70)
   return Math.max(95, Math.min(420, estimada))
 }
 
