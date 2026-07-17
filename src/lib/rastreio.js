@@ -405,7 +405,18 @@ async function executarInicioNativo(usuario) {
 
       if (event?.location) {
         try {
-          await BackgroundGeolocation.insertLocation(event.location)
+          // [DPL] event.location traz o horário ORIGINAL de quando essa
+          // posição foi capturada de verdade — se o fiscal está parado há
+          // vários heartbeats, esse horário pode ser bem antigo. Inserir
+          // sem corrigir isso grava vários registros repetidos no MESMO
+          // instante antigo, sem avançar a linha do tempo — não fecha o
+          // buraco de verdade (só amontoa pontos), e deixa o Gantt mais
+          // picotado ainda. Sobrescrevemos o timestamp pro momento ATUAL
+          // do heartbeat, mantendo as coordenadas (posição reaproveitada,
+          // horário sempre novo) — isso é o que realmente fecha o buraco
+          // no cálculo de permanência (que trabalha em cima de created_at).
+          const posicaoAgora = { ...event.location, timestamp: new Date().toISOString() }
+          await BackgroundGeolocation.insertLocation(posicaoAgora)
         } catch (e) {
           ultimoErroCaptura = `heartbeat (ponto garantido falhou): ${e?.message || JSON.stringify(e)}`
           salvarDiagPersistido()
