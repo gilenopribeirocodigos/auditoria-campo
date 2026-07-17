@@ -137,6 +137,10 @@ export default function DiagnosticoRastreio({ onVoltar }) {
                 <span style={{ fontSize: 13.5, color: '#334155' }}>Heartbeats recebidos (parado)</span>
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>{diag.heartbeats ?? 0}</span>
               </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid #e2e8f0' }}>
+                <span style={{ fontSize: 13.5, color: '#334155' }}>Heartbeats no "plano B" (GPS não respondeu a tempo)</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: diag.heartbeatsPlanoB > 0 ? '#d97706' : '#059669' }}>{diag.heartbeatsPlanoB ?? 0}</span>
+              </div>
               {diag.erroCaptura && (
                 <div style={{ padding: '10px 0', fontSize: 12.5, color: '#dc2626', borderBottom: '1px solid #e2e8f0' }}>
                   <b>Erro na captura local:</b> {diag.erroCaptura}

@@ -76,6 +76,13 @@ let ultimaCapturaLocalMs = null
 let ultimoErroCaptura    = null
 let contadorHeartbeats   = 0
 
+// [DPL] Conta quantas vezes o "plano B" do heartbeat precisou entrar em
+// ação — quando pedir uma posição nova ao GPS falha/demora (ex: HyperOS
+// suspendendo o app nesse meio-tempo) e a gente aproveita a última posição
+// já conhecida em vez de perder o ciclo inteiro. Serve só de diagnóstico,
+// pra saber com que frequência isso acontece de verdade em campo.
+let contadorFallbackHeartbeat = 0
+
 // [DPL] Só os contadores/sinais da tela de diagnóstico — NÃO participam da
 // captura/envio em si. Sem isso, um recarregamento de página (ex: nosso
 // próprio auto-update do service worker) zera esses valores na tela mesmo
@@ -92,13 +99,14 @@ function carregarDiagPersistido() {
     if (typeof d.ultimaCapturaLocalMs === 'number') ultimaCapturaLocalMs = d.ultimaCapturaLocalMs
     if (typeof d.ultimoErroCaptura === 'string') ultimoErroCaptura = d.ultimoErroCaptura
     if (typeof d.contadorHeartbeats === 'number') contadorHeartbeats = d.contadorHeartbeats
+    if (typeof d.contadorFallbackHeartbeat === 'number') contadorFallbackHeartbeat = d.contadorFallbackHeartbeat
   } catch { /* localStorage indisponível ou dado corrompido — ignora */ }
 }
 
 function salvarDiagPersistido() {
   try {
     localStorage.setItem(DIAG_STORAGE_KEY, JSON.stringify({
-      ultimoHttpSucessoMs, ultimoHttpErro, ultimaCapturaLocalMs, ultimoErroCaptura, contadorHeartbeats,
+      ultimoHttpSucessoMs, ultimoHttpErro, ultimaCapturaLocalMs, ultimoErroCaptura, contadorHeartbeats, contadorFallbackHeartbeat,
     }))
   } catch { /* localStorage indisponível (ex: modo privado) — ignora */ }
 }
@@ -377,12 +385,34 @@ async function executarInicioNativo(usuario) {
     // oficial do SDK de cobrir os períodos parado, já que o rastreio normal
     // (locationUpdateInterval) só captura de fato quando classificado como
     // "em movimento".
-    BackgroundGeolocation.onHeartbeat(() => {
+    //
+    // [DPL] Plano B contra os "buracos" no Gantt: se o pedido de posição
+    // nova ao GPS (getCurrentPosition) falhar ou demorar mais que
+    // HEARTBEAT_TIMEOUT_SEG (ex: o HyperOS suspendendo o app nesse
+    // meio-tempo), em vez de perder o ciclo inteiro aproveitamos a última
+    // posição que o próprio evento de heartbeat já trouxe (event.location)
+    // e mandamos gravar direto via insertLocation — não espera nada do
+    // GPS, é quase instantâneo, então tem bem menos chance de ser
+    // interrompido pelo sistema. Só entra como reforço: na maioria das
+    // vezes o getCurrentPosition funciona normal e usamos a posição fresca.
+    const HEARTBEAT_TIMEOUT_SEG = 8
+    BackgroundGeolocation.onHeartbeat((event) => {
       contadorHeartbeats++
       salvarDiagPersistido()
-      BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: true })
-        .catch(e => {
-          ultimoErroCaptura = `heartbeat: ${e?.message || e?.error || JSON.stringify(e)}`
+      BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: true, timeout: HEARTBEAT_TIMEOUT_SEG })
+        .catch(async e => {
+          if (!event?.location) {
+            ultimoErroCaptura = `heartbeat: ${e?.message || e?.error || JSON.stringify(e)}`
+            salvarDiagPersistido()
+            return
+          }
+          try {
+            await BackgroundGeolocation.insertLocation(event.location)
+            contadorFallbackHeartbeat++
+            ultimoErroCaptura = `heartbeat: GPS não respondeu a tempo, usada posição de reforço — ${e?.message || e?.error || JSON.stringify(e)}`
+          } catch (e2) {
+            ultimoErroCaptura = `heartbeat (plano B falhou): ${e2?.message || JSON.stringify(e2)}`
+          }
           salvarDiagPersistido()
         })
     })
@@ -535,6 +565,7 @@ export async function obterDiagnosticoRastreio() {
       ultimaCapturaLocalEm: ultimaCapturaLocalMs,
       erroCaptura: ultimoErroCaptura,
       heartbeats: contadorHeartbeats,
+      heartbeatsPlanoB: contadorFallbackHeartbeat,
     }
   } catch (e) {
     console.warn('[rastreio] falha ao obter diagnóstico:', e?.message)
