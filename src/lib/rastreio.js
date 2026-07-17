@@ -381,38 +381,43 @@ async function executarInicioNativo(usuario) {
     })
 
     // O evento heartbeat dispara periodicamente (heartbeatInterval) mesmo
-    // com o fiscal parado — pedir e persistir uma posição aqui é o jeito
-    // oficial do SDK de cobrir os períodos parado, já que o rastreio normal
+    // com o fiscal parado — capturar uma posição aqui é o jeito oficial do
+    // SDK de cobrir os períodos parado, já que o rastreio normal
     // (locationUpdateInterval) só captura de fato quando classificado como
     // "em movimento".
     //
-    // [DPL] Plano B contra os "buracos" no Gantt: se o pedido de posição
-    // nova ao GPS (getCurrentPosition) falhar ou demorar mais que
-    // HEARTBEAT_TIMEOUT_SEG (ex: o HyperOS suspendendo o app nesse
-    // meio-tempo), em vez de perder o ciclo inteiro aproveitamos a última
-    // posição que o próprio evento de heartbeat já trouxe (event.location)
-    // e mandamos gravar direto via insertLocation — não espera nada do
-    // GPS, é quase instantâneo, então tem bem menos chance de ser
-    // interrompido pelo sistema. Só entra como reforço: na maioria das
-    // vezes o getCurrentPosition funciona normal e usamos a posição fresca.
+    // [DPL] Ordem invertida pra combater os "buracos" no Gantt (2ª versão
+    // — a 1ª, que só tentava o insertLocation como plano B depois do GPS
+    // falhar, ainda deixava buracos porque dependia do app continuar vivo
+    // até perceber a falha e reagir). Agora:
+    //  1) PRIMEIRO garantimos AGORA um ponto salvo, direto via
+    //     insertLocation com a posição que o próprio heartbeat já trouxe
+    //     (event.location) — não espera nada do GPS, é quase instantâneo,
+    //     então tem bem menos chance do HyperOS interromper no meio.
+    //  2) SÓ DEPOIS tentamos pegar uma posição mais fresca de verdade do
+    //     GPS (getCurrentPosition) — se conseguir, ótimo, fica mais
+    //     precisa; se falhar/demorar, sem problema, o ponto do passo 1 já
+    //     está salvo e o ciclo não fica sem dado nenhum.
     const HEARTBEAT_TIMEOUT_SEG = 8
-    BackgroundGeolocation.onHeartbeat((event) => {
+    BackgroundGeolocation.onHeartbeat(async (event) => {
       contadorHeartbeats++
       salvarDiagPersistido()
+
+      if (event?.location) {
+        try {
+          await BackgroundGeolocation.insertLocation(event.location)
+        } catch (e) {
+          ultimoErroCaptura = `heartbeat (ponto garantido falhou): ${e?.message || JSON.stringify(e)}`
+          salvarDiagPersistido()
+        }
+      }
+
       BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: true, timeout: HEARTBEAT_TIMEOUT_SEG })
-        .catch(async e => {
-          if (!event?.location) {
-            ultimoErroCaptura = `heartbeat: ${e?.message || e?.error || JSON.stringify(e)}`
-            salvarDiagPersistido()
-            return
-          }
-          try {
-            await BackgroundGeolocation.insertLocation(event.location)
-            contadorFallbackHeartbeat++
-            ultimoErroCaptura = `heartbeat: GPS não respondeu a tempo, usada posição de reforço — ${e?.message || e?.error || JSON.stringify(e)}`
-          } catch (e2) {
-            ultimoErroCaptura = `heartbeat (plano B falhou): ${e2?.message || JSON.stringify(e2)}`
-          }
+        .catch(e => {
+          // Não é mais um problema grave — já garantimos um ponto acima.
+          // Só registra que a tentativa de posição mais fresca não deu certo.
+          contadorFallbackHeartbeat++
+          ultimoErroCaptura = `heartbeat: posição fresca não veio a tempo (usado só o ponto garantido) — ${e?.message || e?.error || JSON.stringify(e)}`
           salvarDiagPersistido()
         })
     })
