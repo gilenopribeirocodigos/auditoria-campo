@@ -1,0 +1,13 @@
+{
+  "appId": "com.dpl.auditoriacampo",
+  "appName": "VérticeGP",
+  "webDir": "dist",
+  "server": {
+    "url": "https://auditoria-campo.onrender.com",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "useLegacyBridge": true
+  }
+}
