@@ -277,6 +277,29 @@ no que está em `sql/`.
 - Deploy em produção: PR `desenvolvimento` → `main`, revisado manualmente
 - Commits em português, formato: `tipo: descrição` (feat/fix/chore/docs)
 
+### 8.1 Backup: última produção ANTES do módulo Android/Fiscais em Campo
+Antes de promover o PR #37 (67 commits: módulo Fiscais em Campo completo + todo
+o rastreio nativo Android via Capacitor/Transistor Software) de `desenvolvimento`
+para `main`, foi criado um ponto de restauração da produção:
+
+- **Branch `backup-pre-android-v3.3.35`**, apontando pro commit `d9b7d35`
+  (v3.3.35, `main` em 2026-07-11) — produção **sem** nenhum código de
+  Fiscais em Campo/Android.
+- Não é uma tag porque o proxy git deste ambiente bloqueia push de tags
+  (HTTP 403); o branch foi criado direto via API do GitHub
+  (`create_branch`) e cumpre o mesmo papel de ponto de referência imutável
+  (não deve ser usado como branch de trabalho nem apagado).
+
+**Se o Gileno disser algo como "quero voltar pra versão antes do Android"**,
+isso significa: reverter `main` pro estado do commit `d9b7d35` /
+branch `backup-pre-android-v3.3.35`. Forma segura de fazer isso (sem
+reescrever histórico nem force-push, que são proibidos neste projeto):
+`git revert -m 1 <sha do commit de merge do PR #37 em main>` — cria um
+commit novo que desfaz exatamente o que o PR #37 trouxe, mantendo o
+histórico intacto. Sempre confirmar com o Gileno antes de executar, e
+lembrar que isso não reverte nenhuma alteração de banco (schema `public`)
+feita separadamente via Codex/SQL manual — só o código.
+
 ## 9. Padrões de Código
 ### Componentes React
 - Componentes funcionais com hooks (`useState`, `useEffect`, `useRef`) — sem classes
