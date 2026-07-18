@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core'
 import { supabase } from './supabase.js'
 
 const SESSION_KEY   = 'dpl_audit_user'
@@ -9,8 +10,16 @@ const TIMEOUT_MIN   = 480 // minutos de ociosidade para deslogar (8h).
 // Fallback para '' caso não esteja definida (ex.: ambiente de teste)
 const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
 
-// Exporta para outros módulos (App.jsx, telas, etc.) usarem a versão atual
+// Exporta para outros módulos (App.jsx, telas, etc.) usarem a versão atual.
+// No app Android nativo, acrescenta um marcador discreto (PT/DT) baseado em
+// qual site o Capacitor carregou de verdade (server.url) — só existe dentro
+// do app instalado, nunca aparece pra quem acessa pelo navegador comum.
 export function getVersaoApp() {
+  if (typeof window !== 'undefined' && Capacitor.isNativePlatform()) {
+    const host = window.location.hostname || ''
+    if (host.includes('auditoria-campo-dev')) return `${APP_VERSION} · DT`
+    if (host.includes('auditoria-campo'))     return `${APP_VERSION} · PT`
+  }
   return APP_VERSION
 }
 
