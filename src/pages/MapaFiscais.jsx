@@ -9,7 +9,7 @@ import {
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // Janela em que consideramos o fiscal "ativo agora" (verde) vs "ausente" (cinza)
-const ATIVO_MS    = 5 * 60 * 1000        // ate 5 min = ativo; Android em segundo plano pode atrasar alguns ciclos
+const ATIVO_MS    = 7 * 60 * 1000        // ate 7 min = ativo; Android em segundo plano pode atrasar alguns ciclos
 const PRESENCA_MS = 24 * 60 * 60 * 1000  // mantém visíveis fiscais vistos nas últimas 24h
 
 // Se o intervalo entre duas posições consecutivas passar disso, tratamos como
