@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { buscarTokenPorUUID, salvarAssinaturaColetada, verificarJaAssinou, listarAssinaturasColetadas } from '../lib/assinaturas.js'
 import { supabase } from '../lib/supabase.js'
 import { TIPOS_REGISTRO } from '../data/registros_config.js'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 const TIPO_MEDIDA_LABEL = {
   FEEDBACK:            'Feedback',
@@ -297,7 +298,11 @@ export default function PaginaAssinar({ tokenUUID }) {
     </div>
   )
 
-  if (fase === 'carregando') return telaSimples('⏳', 'Carregando...', 'Aguarde um momento.')
+  if (fase === 'carregando') return (
+    <div style={styles.tela}>
+      <CarregandoHexagono texto="Aguarde um momento..." tamanho={64} padding={60} />
+    </div>
+  )
   if (fase === 'erro')       return telaSimples('❌', 'Link inválido', 'Este link não existe ou foi removido.', '#dc2626')
   if (fase === 'expirado')   return telaSimples('⏰', 'Link expirado', 'O prazo para assinar encerrou. Solicite um novo link ao fiscal.', '#d97706')
   if (fase === 'encerrado')  return telaSimples('🔒', 'Link encerrado', 'O fiscal encerrou este link.', '#64748b')

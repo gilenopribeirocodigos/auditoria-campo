@@ -36,6 +36,12 @@ export default defineConfig({
         // Aplica o novo SW imediatamente quando o App.jsx solicitar (updateServiceWorker)
         skipWaiting: true,
         clientsClaim: true,
+        // [DPL] Bundle principal cresceu além do limite padrão (2MB) do
+        // Workbox depois de incluir o SDK da Transistor Software — sem
+        // isso, o chunk principal fica de fora do precache, quebrando o
+        // "funciona offline" do PWA no navegador (o app Android nativo não
+        // depende disso, mas o PWA instalável no navegador depende).
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2}'],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/api/],

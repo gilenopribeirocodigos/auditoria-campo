@@ -9,6 +9,14 @@ const SITUACOES_PERMITIDAS = ['ATIVO', 'RESERVA']
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
+  // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
+  // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
+  // enquanto; a lógica de filtro/permissão (fiscalPermitido em
+  // PainelFiltros.jsx/MapaFiscais.jsx) ainda casa por nome (matchNomes),
+  // isso é etapa futura, depois que a matrícula estiver populada. Mesma
+  // posição (antes de superv_campo) usada em ImportarEquipes.jsx (CSV),
+  // pra manter os dois padrões iguais.
+  'matricula_superv_campo',
   'superv_campo', 'superv_operacao', 'coordenador',
 ]
 const COLUNAS_CONTEUDO = COLUNAS_ESPERADAS.filter(c => c !== 'descr_situacao')
@@ -87,7 +95,7 @@ function novaLinha() {
     _tmpId: gerarIdTemporario(),
     regional: '', polo: '', base: '', prefixo: '', matricula: '', colaborador: '',
     descr_secao: '', descr_situacao: 'ATIVO', placas: '', tipo_equipe: '', processo_equipe: '',
-    superv_campo: '', superv_operacao: '', coordenador: '',
+    matricula_superv_campo: '', superv_campo: '', superv_operacao: '', coordenador: '',
   }
 }
 
@@ -230,6 +238,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     placas: linha.placas,
     tipo_equipe: linha.tipo_equipe,
     processo_equipe: linha.processo_equipe,
+    matricula_superv_campo: linha.matricula_superv_campo,
     superv_campo: linha.superv_campo,
     superv_operacao: linha.superv_operacao,
     coordenador: linha.coordenador,
@@ -251,6 +260,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     placas: linhaAtual.placas,
     tipo_equipe: linhaAtual.tipo_equipe,
     processo_equipe: linhaAtual.processo_equipe,
+    matricula_superv_campo: linhaAtual.matricula_superv_campo,
     superv_campo: linhaAtual.superv_campo,
     superv_operacao: linhaAtual.superv_operacao,
     coordenador: linhaAtual.coordenador,
@@ -408,6 +418,7 @@ const LARGURAS_PADRAO = {
   placas: 120,
   tipo_equipe: 190,
   processo_equipe: 190,
+  matricula_superv_campo: 130,
   superv_campo: 160,
   superv_operacao: 170,
   coordenador: 160,
@@ -420,7 +431,14 @@ function larguraPadraoColuna(coluna) {
 function larguraAutomaticaColuna(coluna, linhas) {
   const textos = [coluna, ...(linhas || []).slice(0, 120).map(l => l?.[coluna] || '')]
   const maior = textos.reduce((max, valor) => Math.max(max, String(valor || '').length), 0)
-  const estimada = Math.round(maior * 7.5 + 42)
+  // [DPL] +42 era insuficiente pro nome da coluna no cabeçalho — o <th>
+  // (função Th abaixo) reserva 48px de padding à direita pro botão de
+  // ordenação "A-Z"/"Z-A" (10px + 48px = 58px de padding total), então
+  // qualquer nome de coluna perto do limite calculado cortava com "..."
+  // antes da hora (bem visível em nomes longos como
+  // MATRICULA_SUPERV_CAMPO, mas afetava todas as colunas). Ajustado pra
+  // 70 (58 do padding do cabeçalho + folga extra) pra caber sem cortar.
+  const estimada = Math.round(maior * 7.5 + 70)
   return Math.max(95, Math.min(420, estimada))
 }
 

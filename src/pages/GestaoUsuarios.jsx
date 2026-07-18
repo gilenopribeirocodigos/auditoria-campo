@@ -6,6 +6,7 @@ import {
 } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 import { processoToKey, regionalToKey } from '../components/PainelFiltros.jsx'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 
@@ -35,6 +36,7 @@ const TODAS_PERMISSOES = [
   { id: 'rotinas_ver_todas',     label: '👥 Rotinas — ver rotinas de todos' },
   { id: 'tratar_nc',        label: '🛠️ Tratamento de Não Conformidades' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
+  { id: 'fiscais_campo_bases', label: 'Fiscais em Campo - gerenciar bases operacionais (raio)' },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },
   { id: 'feedbacks',        label: '💬 Feedbacks em PDF'       },
   { id: 'relat_equipe',     label: '🚗 Relatório por Equipe'   },
@@ -380,7 +382,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
             }}>+ Novo Usuário</button>
 
             {loading ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
+              <CarregandoHexagono />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {usuarios.map(u => {
@@ -475,7 +477,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
             </div>
 
             {loadingPerms ? (
-              <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
+              <CarregandoHexagono />
             ) : (
               <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #7c3aed', padding: '16px', marginBottom: 16 }}>
                 <p style={{ fontSize: 13, fontWeight: 800, color: '#4c1d95', marginBottom: 16 }}>

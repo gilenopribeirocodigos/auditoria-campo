@@ -184,7 +184,15 @@ function normalizarNome(s) {
 
 // Compara nomes considerando que a estrutura pode ter nome abreviado
 // (ex: usuario "CHRISLEY MARK PEREIRA" deve bater com estrutura "CHRISLEY").
-function matchNomes(nomeUsuario, nomeEstrutura) {
+// Exportada pro MapaFiscais.jsx reusar no filtro de "Fiscais em Campo" —
+// [DPL] antes o MapaFiscais tinha uma comparação própria, mais simples
+// (substring puro, sem normalizar acento e sem respeitar limite de
+// palavra), que na prática quase nunca batia o nome do fiscal com o nome
+// gravado em estrutura_equipes.superv_campo (mesma pessoa, grafias
+// diferentes) — por isso o filtro "Supervisor de Campo" parecia não
+// funcionar. Reusar essa função (já validada no cálculo de permissões)
+// resolve isso sem duplicar lógica de novo.
+export function matchNomes(nomeUsuario, nomeEstrutura) {
   if (!nomeUsuario || !nomeEstrutura) return false
   const u = normalizarNome(nomeUsuario)
   const e = normalizarNome(nomeEstrutura)

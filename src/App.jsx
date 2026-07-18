@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { FORM_INICIAL } from './data/checklists.js'
 import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade, getVersaoApp } from './lib/auth.js'
@@ -28,6 +29,7 @@ import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
 import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
 import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
 import TratamentoNaoConformidades from './pages/TratamentoNaoConformidades.jsx'
+import DiagnosticoRastreio      from './pages/DiagnosticoRastreio.jsx'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -78,7 +80,17 @@ export default function App() {
   const [msgSync,             setMsgSync]             = useState('')
   const [pendentesReg,        setPendentesReg]        = useState(0)
 
-  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW()
+  const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
+    // [DPL] Checa por atualização periodicamente (não só na primeira carga)
+    // — sem isso, um app que fica dias aberto/minimizado (como no rastreio
+    // em segundo plano) só via o service worker novo depois de fechar e
+    // reabrir várias vezes, atrasando demais a propagação de correções
+    // durante testes de campo.
+    onRegisteredSW(_url, registration) {
+      if (!registration) return
+      setInterval(() => { registration.update() }, 60 * 1000)
+    },
+  })
 
   const upd  = (key, val) => setForm(f => ({ ...f, [key]: val }))
   const next = () => setStep(s => s + 1)
@@ -91,10 +103,15 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (needRefresh && tela === 'home' && !auditoriaEditando) {
+    // [DPL] Antes só atualizava na tela Home — se o usuário ficasse em
+    // qualquer outra tela (ex: Diagnóstico de Rastreio), o app continuava
+    // preso na versão antiga indefinidamente. Agora atualiza assim que uma
+    // versão nova é detectada, em qualquer tela, contanto que não esteja no
+    // meio de uma edição (perderia o formulário em andamento).
+    if (needRefresh && !auditoriaEditando) {
       setTimeout(() => { updateServiceWorker(true) }, 1000)
     }
-  }, [needRefresh, tela])
+  }, [needRefresh])
 
   useEffect(() => {
     if (!usuario) return
@@ -195,7 +212,7 @@ export default function App() {
 
   useEffect(() => {
     if (usuario) iniciarRastreio(usuario)
-    return () => { if (!usuario) pararRastreio() }
+    return () => { pararRastreio() }
   }, [usuario])
 
   const carregarReabertas = async (user) => {
@@ -368,6 +385,7 @@ export default function App() {
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'rotinas-admin')        return <RotinasAdministrativas   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'diagnostico-rastreio') return <DiagnosticoRastreio       onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -585,6 +603,17 @@ export default function App() {
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>📍 Fiscais em Campo</button>
+          )}
+
+          {/* Sem gate de permissão: qualquer fiscal precisa poder checar o
+              próprio rastreio no próprio aparelho. Só aparece no app Android
+              nativo — no navegador não existe serviço nativo pra diagnosticar. */}
+          {Capacitor.isNativePlatform() && (
+            <button onClick={() => setTela('diagnostico-rastreio')} style={{
+              background: 'rgba(30,58,95,0.55)', color: '#fff', border: '1px solid rgba(255,255,255,0.25)',
+              padding: '12px', borderRadius: 14, fontSize: 13, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>📡 Diagnóstico de Rastreio</button>
           )}
 
           {temPermissao(usuario, 'metas') && (

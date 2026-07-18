@@ -1,0 +1,123 @@
+# ⚠️ TEMPORÁRIO — remover este workflow (e o capacitor.config.producao.json)
+# quando a licença do SDK da Transistor Software for comprada e definir-se
+# o app Android definitivo de produção.
+#
+# Cópia de build-android.yml — NÃO mexer no arquivo original, ele continua
+# servindo só o ambiente de desenvolvimento (schema dev) sem alteração
+# nenhuma. Este aqui gera o MESMO APK debug/sem licença, mas configurado
+# pra rodar contra o ambiente de PRODUÇÃO (auditoria-campo.onrender.com,
+# schema public) — pedido do Gileno pra testar o rastreio em campo com 1
+# fiscal, com as particularidades reais de produção, antes de decidir
+# comprar a licença de US$ 500.
+#
+# Como aponta pra produção: sobrescreve capacitor.config.json (só dentro
+# deste job, nunca no repositório) com capacitor.config.producao.json —
+# única diferença é o server.url. O app nativo carrega ao vivo o JS já
+# compilado e configurado (schema public) direto do Render de produção,
+# então nem precisa de segredos/env vars nesse workflow (mesmo motivo pelo
+# qual o workflow original também funciona sem eles).
+#
+# appId igual ao do app de desenvolvimento (com.dpl.auditoriacampo) — ou
+# seja, instalar este APK substitui o de desenvolvimento no mesmo aparelho.
+# Pra ter os dois instalados ao mesmo tempo, use dois aparelhos diferentes.
+# O nome/rótulo do app é trocado pra "VérticeGP • PROD TESTE" só nesse
+# build, pra não confundir com o de desenvolvimento.
+#
+# Disparo manual (workflow_dispatch) só — não roda sozinho a cada push em
+# main, pra não gerar um APK novo a cada deploy de produção sem querer.
+
+name: Build APK Android (Fiscais em Campo) — TESTE EM PRODUÇÃO
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Instalar dependencias e buildar o PWA
+        run: |
+          npm ci
+          npm run build
+
+      - name: Apontar app nativo para o ambiente de PRODUÇÃO
+        run: cp capacitor.config.producao.json capacitor.config.json
+
+      - name: Java (JDK 21)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Instalar pacotes do Android SDK (platform 35 + build-tools)
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Sincronizar Capacitor com o build mais recente
+        run: npx cap sync android
+
+      - name: Identificar visualmente como build de teste em produção
+        run: |
+          sed -i 's#<string name="app_name">.*</string>#<string name="app_name">VérticeGP • PROD TESTE</string>#' android/app/src/main/res/values/strings.xml
+          sed -i 's#<string name="title_activity_main">.*</string>#<string name="title_activity_main">VérticeGP • PROD TESTE</string>#' android/app/src/main/res/values/strings.xml
+
+      - name: Ler versao do app
+        id: appversion
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Compilar APK (debug)
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Renomear APK
+        run: |
+          mkdir -p dist-apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+             "dist-apk/auditoria-campo-PRODTESTE-v${{ steps.appversion.outputs.version }}-build${{ github.run_number }}.apk"
+
+      - name: Publicar como GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-prodteste-v${{ steps.appversion.outputs.version }}-${{ github.run_number }}
+          name: "Fiscais em Campo — APK TESTE EM PRODUÇÃO v${{ steps.appversion.outputs.version }} (build ${{ github.run_number }})"
+          body: |
+            ⚠️ Build TEMPORÁRIO — mesmo APK de teste (assinatura debug do
+            Android, SDK de rastreio sem licença), mas configurado pra rodar
+            contra o ambiente de PRODUÇÃO (`auditoria-campo.onrender.com`,
+            schema `public`).
+
+            Objetivo: validar o rastreio em campo com 1 fiscal, com as
+            particularidades reais de produção, antes de decidir comprar a
+            licença do SDK. Depois desse teste, este pipeline deve ser
+            removido (ou a licença comprada e o app promovido de vez).
+
+            appId igual ao do app de desenvolvimento — instalar substitui o
+            app de desenvolvimento no mesmo aparelho (use um aparelho
+            separado se quiser os dois ao mesmo tempo). Nome do app trocado
+            pra "VérticeGP • PROD TESTE" pra não confundir os dois.
+
+            Instalação: baixe o `.apk` abaixo direto no celular Android,
+            permita "instalar de fontes desconhecidas" quando pedido, e
+            toque no arquivo pra instalar.
+          prerelease: true
+          files: dist-apk/*.apk

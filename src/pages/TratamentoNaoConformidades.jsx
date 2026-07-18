@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase, uploadBase64 } from '../lib/supabase.js'
 import { isAdmin } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
-import { Textarea } from '../components/Shared.jsx'
+import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
 
 const TIPO_LABEL = { DESEMPENHO: '📊 Desempenho Operacional', POS_SERVICO: '✅ Pós Serviço' }
@@ -430,7 +430,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
+          <CarregandoHexagono />
         ) : grupos.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 10 }}>🛠️</div>

@@ -31,20 +31,6 @@ export default function Login({ onLogin }) {
     }}>
       <div style={{ width: '100%', maxWidth: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <style>{`
-            @keyframes vgp-ef{0%{stroke-dashoffset:48;opacity:.45}50%{opacity:1}100%{stroke-dashoffset:0;opacity:.45}}
-            @keyframes vgp-sf{0%{stroke-dashoffset:32;opacity:.25}100%{stroke-dashoffset:0;opacity:.65}}
-            @keyframes vgp-glow{0%,100%{opacity:.18}50%{opacity:.52}}
-            @keyframes vgp-wave{0%,13%,100%{fill:#ffffff;opacity:.82}6.5%{fill:#fbbf24;opacity:1}}
-            .vgp-e{stroke:rgba(255,255,255,.72);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-dasharray:6 9;animation:vgp-ef 2.2s linear infinite}
-            .vgp-sp{stroke:rgba(255,255,255,.38);stroke-width:1.25;fill:none;stroke-linecap:round;stroke-dasharray:4 8;animation:vgp-sf 1.7s linear infinite}
-            .vgp-hl{fill:rgba(251,191,36,.24);animation:vgp-glow 2.8s ease-in-out infinite}
-            .vgp-nd{animation:vgp-wave 3.6s ease-in-out infinite}
-            .vgp-d0{animation-delay:0s}.vgp-d1{animation-delay:.37s}.vgp-d2{animation-delay:.73s}
-            .vgp-d3{animation-delay:1.1s}.vgp-d4{animation-delay:1.47s}.vgp-d5{animation-delay:1.83s}
-            @keyframes vgp-gp-glow{0%,100%{text-shadow:0 0 0px rgba(251,191,36,0)}50%{text-shadow:0 0 14px rgba(251,191,36,.85),0 0 28px rgba(251,191,36,.3)}}
-            .vgp-gp{color:#fbbf24;animation:vgp-gp-glow 2.6s ease-in-out infinite}
-          `}</style>
           <div style={{ marginBottom: 10 }}>
             <svg viewBox="0 0 100 100" width="72" height="72" xmlns="http://www.w3.org/2000/svg">
               <line className="vgp-e vgp-d0" x1="50" y1="7"  x2="87" y2="28"/>

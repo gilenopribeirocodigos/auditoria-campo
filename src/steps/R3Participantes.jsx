@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { supabase } from '../lib/supabase.js'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // ── Canvas de assinatura ──────────────────────────────────────────────────────
 function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
@@ -279,7 +280,7 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
           <>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>Supervisores disponíveis:</p>
             {loadingSup ? (
-              <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>⏳ Carregando...</p>
+              <CarregandoHexagono tamanho={36} padding={20} />
             ) : (
               <div style={{ marginBottom: 16 }}>
                 {supervisores.map(sup => {
@@ -303,7 +304,7 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
             {selecionados.length > 0 && (
               <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: 14, marginBottom: 16 }}>
                 {loadingPreview ? (
-                  <p style={{ fontSize: 13, color: '#64748b', textAlign: 'center' }}>⏳ Carregando equipe...</p>
+                  <CarregandoHexagono texto="Carregando equipe..." tamanho={32} padding={14} />
                 ) : (
                   <>
                     <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✅ {preview.length} participante(s) serão adicionados:</p>
@@ -339,7 +340,7 @@ function ModalImportarSupervisor({ participantesJaAdicionados, onImportar, onFec
               </button>
             </div>
             {loadingUs ? (
-              <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: 20 }}>⏳ Carregando usuários...</p>
+              <CarregandoHexagono texto="Carregando usuários..." tamanho={36} padding={20} />
             ) : (
               <div style={{ marginBottom: 16 }}>
                 {usuarios.map(u => {

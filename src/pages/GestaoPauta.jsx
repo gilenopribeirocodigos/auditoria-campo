@@ -10,6 +10,7 @@ import {
   LABEL_STYLE,
   INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
+import { CarregandoHexagono } from '../components/Shared.jsx'
 
 const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
@@ -1071,7 +1072,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#64748b' }}>Carregando...</div>
+          <CarregandoHexagono />
         ) : pautasExibidas.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 10 }}>📋</div>

@@ -13,6 +13,40 @@ html, body, #root {
   height: -webkit-fill-available;
 }
 
+/* Suaviza a entrada do app assim que a splash nativa (Android) da lugar
+   ao conteudo — sem isso, a troca da imagem estatica da splash pra tela
+   real acontece seca, de uma hora pra outra. */
+#root {
+  animation: vgp-app-fadein 0.45s ease-out;
+}
+@keyframes vgp-app-fadein {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* =============================================
+   HEXAGONO ANIMADO VerticeGP (logo com efeito de rede/pulso)
+   Usado no Login e no indicador de carregamento (CarregandoHexagono,
+   ver Shared.jsx) — mantido aqui pra nao duplicar os keyframes em
+   cada tela que usar o componente.
+   ============================================= */
+@keyframes vgp-ef{0%{stroke-dashoffset:48;opacity:.45}50%{opacity:1}100%{stroke-dashoffset:0;opacity:.45}}
+@keyframes vgp-sf{0%{stroke-dashoffset:32;opacity:.25}100%{stroke-dashoffset:0;opacity:.65}}
+@keyframes vgp-glow{0%,100%{opacity:.18}50%{opacity:.52}}
+@keyframes vgp-wave{0%,13%,100%{fill:#ffffff;opacity:.82}6.5%{fill:#fbbf24;opacity:1}}
+@keyframes vgp-wave-dark{0%,13%,100%{fill:#234076;opacity:.55}6.5%{fill:#fbbf24;opacity:1}}
+.vgp-e{stroke:rgba(255,255,255,.72);stroke-width:1.7;fill:none;stroke-linecap:round;stroke-dasharray:6 9;animation:vgp-ef 2.2s linear infinite}
+.vgp-sp{stroke:rgba(255,255,255,.38);stroke-width:1.25;fill:none;stroke-linecap:round;stroke-dasharray:4 8;animation:vgp-sf 1.7s linear infinite}
+.vgp-hl{fill:rgba(251,191,36,.24);animation:vgp-glow 2.8s ease-in-out infinite}
+.vgp-nd{animation:vgp-wave 3.6s ease-in-out infinite}
+.vgp-e-dark{stroke:#32538D;stroke-width:1.7;fill:none;stroke-linecap:round;stroke-dasharray:6 9;animation:vgp-ef 2.2s linear infinite}
+.vgp-sp-dark{stroke:#91A8CC;stroke-width:1.25;fill:none;stroke-linecap:round;stroke-dasharray:4 8;animation:vgp-sf 1.7s linear infinite}
+.vgp-nd-dark{animation:vgp-wave-dark 3.6s ease-in-out infinite}
+.vgp-d0{animation-delay:0s}.vgp-d1{animation-delay:.37s}.vgp-d2{animation-delay:.73s}
+.vgp-d3{animation-delay:1.1s}.vgp-d4{animation-delay:1.47s}.vgp-d5{animation-delay:1.83s}
+@keyframes vgp-gp-glow{0%,100%{text-shadow:0 0 0px rgba(251,191,36,0)}50%{text-shadow:0 0 14px rgba(251,191,36,.85),0 0 28px rgba(251,191,36,.3)}}
+.vgp-gp{color:#fbbf24;animation:vgp-gp-glow 2.6s ease-in-out infinite}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #f0f4f8;
