@@ -20,7 +20,7 @@
 # appId igual ao do app de desenvolvimento (com.dpl.auditoriacampo) — ou
 # seja, instalar este APK substitui o de desenvolvimento no mesmo aparelho.
 # Pra ter os dois instalados ao mesmo tempo, use dois aparelhos diferentes.
-# O nome/rótulo do app é trocado pra "VérticeGP • PROD TESTE" só nesse
+# O nome/rótulo do app é trocado pra "VérticeGP PROD" só nesse
 # build, pra não confundir com o de desenvolvimento.
 #
 # Disparo manual (workflow_dispatch) só — não roda sozinho a cada push em
@@ -76,8 +76,8 @@ jobs:
 
       - name: Identificar visualmente como build de teste em produção
         run: |
-          sed -i 's#<string name="app_name">.*</string>#<string name="app_name">VérticeGP • PROD TESTE</string>#' android/app/src/main/res/values/strings.xml
-          sed -i 's#<string name="title_activity_main">.*</string>#<string name="title_activity_main">VérticeGP • PROD TESTE</string>#' android/app/src/main/res/values/strings.xml
+          sed -i 's#<string name="app_name">.*</string>#<string name="app_name">VérticeGP PROD</string>#' android/app/src/main/res/values/strings.xml
+          sed -i 's#<string name="title_activity_main">.*</string>#<string name="title_activity_main">VérticeGP PROD</string>#' android/app/src/main/res/values/strings.xml
 
       - name: Ler versao do app
         id: appversion
@@ -114,7 +114,7 @@ jobs:
             appId igual ao do app de desenvolvimento — instalar substitui o
             app de desenvolvimento no mesmo aparelho (use um aparelho
             separado se quiser os dois ao mesmo tempo). Nome do app trocado
-            pra "VérticeGP • PROD TESTE" pra não confundir os dois.
+            pra "VérticeGP PROD" pra não confundir os dois.
 
             Instalação: baixe o `.apk` abaixo direto no celular Android,
             permita "instalar de fontes desconhecidas" quando pedido, e
