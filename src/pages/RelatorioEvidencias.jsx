@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { listarRegistros } from '../lib/registros.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
-import { renderizarHtmlParaCanvas, compartilharPDFMultiplasPaginasNativo } from '../lib/compartilhar.js'
+import { renderizarHtmlParaCanvas, compartilharPDFMultiplasPaginasNativo, descreverErro } from '../lib/compartilhar.js'
 
 function calcMesAtual() {
   const hoje = new Date()
@@ -299,7 +299,7 @@ export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
         setGerado(true)
       } catch (err) {
         console.error('Erro ao gerar PDF:', err)
-        alert('Não foi possível gerar o PDF. Tente novamente.')
+        alert('Não foi possível gerar o PDF: ' + descreverErro(err))
       } finally {
         setGerandoPDF(false)
       }

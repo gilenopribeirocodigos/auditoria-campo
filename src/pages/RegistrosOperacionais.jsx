@@ -5,7 +5,7 @@ import { listarRegistros } from '../lib/registros.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
@@ -695,7 +695,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     if (!Capacitor.isNativePlatform()) { imprimirRegistro(detalhe, assinOnline, versaoSistema); return }
                     setGerandoPDF(true)
                     try { await gerarPDFRegistro(detalhe, assinOnline, versaoSistema) }
-                    catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF. Tente novamente.') }
+                    catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
                     finally { setGerandoPDF(false) }
                   }} disabled={gerandoPDF} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: gerandoPDF ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
                     {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
@@ -805,7 +805,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                         const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
                       }
                     } catch (err) {
-                      console.error(err); alert('Não foi possível gerar a imagem.')
+                      console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
                     } finally {
                       setCapturando(false)
                     }

@@ -6,7 +6,7 @@ import {
   PainelFiltros,
   FIELD_HEIGHT, LABEL_STYLE, INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
-import { compartilharPDFNativo, renderizarElementoParaCanvas } from '../lib/compartilhar.js'
+import { compartilharPDFNativo, renderizarElementoParaCanvas, descreverErro } from '../lib/compartilhar.js'
 
 const STATUS_COR = {
   'ATENDE':         { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
@@ -67,7 +67,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
       await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Relatório de Feedbacks' })
     } catch (err) {
       console.error('Erro ao gerar PDF:', err)
-      alert('Não foi possível gerar o PDF. Tente novamente.')
+      alert('Não foi possível gerar o PDF: ' + descreverErro(err))
     } finally {
       setGerandoPDF(false)
     }

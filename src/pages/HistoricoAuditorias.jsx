@@ -5,7 +5,7 @@ import { reabrirAuditoria } from '../lib/supabase.js'
 import { CHECKLISTS, getItemsNaoConformes } from '../data/checklists.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { numeroASDaAuditoria } from '../lib/numeroAS.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
@@ -808,7 +808,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               if (!Capacitor.isNativePlatform()) { imprimirAuditoria(detalhe, formatData, versaoSistema); return }
               setGerandoPDF(true)
               try { await gerarPDFAuditoria(detalhe, formatData, versaoSistema) }
-              catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF. Tente novamente.') }
+              catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
               finally { setGerandoPDF(false) }
             }} disabled={gerandoPDF} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: gerandoPDF ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer' }}>
               {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
@@ -916,7 +916,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                   const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
                 }
               } catch (err) {
-                console.error(err); alert('Não foi possível gerar a imagem.')
+                console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
               } finally {
                 setCapturando(false)
               }

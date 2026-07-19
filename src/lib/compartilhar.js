@@ -10,6 +10,15 @@ import { Share } from '@capacitor/share'
 import { Filesystem, Directory } from '@capacitor/filesystem'
 import { jsPDF } from 'jspdf'
 
+// Formata qualquer forma de erro (Error, string, objeto de plugin nativo)
+// numa mensagem legível — usado nos alertas de diagnóstico dos botões de
+// compartilhar/PDF, pra não esconder o motivo real de uma falha no app nativo.
+export function descreverErro(err) {
+  if (!err) return 'erro desconhecido'
+  if (typeof err === 'string') return err
+  return err.message || err.errorMessage || JSON.stringify(err)
+}
+
 async function salvarNoCacheEObterUri(nomeArquivo, base64) {
   await Filesystem.writeFile({ path: nomeArquivo, data: base64, directory: Directory.Cache })
   const { uri } = await Filesystem.getUri({ path: nomeArquivo, directory: Directory.Cache })

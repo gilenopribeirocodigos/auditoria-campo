@@ -6,7 +6,7 @@ import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/su
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 import { obterNumeroAS } from '../lib/numeroAS.js'
 import { sincronizarNCs } from '../lib/naoConformidades.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import { PainelAssinatura } from './S5Assinatura.jsx'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
@@ -267,7 +267,7 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
 
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)
-      alert('Não foi possível gerar a imagem. Tente novamente.')
+      alert('Não foi possível gerar a imagem: ' + descreverErro(err))
     } finally {
       setCapturando(false)
     }
@@ -298,7 +298,7 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
       })
     } catch (err) {
       console.error('Erro ao gerar PDF:', err)
-      alert('Não foi possível gerar o PDF. Tente novamente.')
+      alert('Não foi possível gerar o PDF: ' + descreverErro(err))
     } finally {
       setGerandoPDF(false)
     }

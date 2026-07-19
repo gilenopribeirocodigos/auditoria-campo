@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { salvarRegistroBD, prepararPayload } from '../lib/registros.js'
 import { salvarRegistroOffline } from '../lib/registros_offline.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import ModalLinkAssinatura from '../components/ModalLinkAssinatura.jsx'
 
 export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
@@ -227,8 +227,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         const link = document.createElement('a')
         link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
       }
-    } catch {
-      alert('Não foi possível gerar a imagem.')
+    } catch (err) {
+      console.error('Erro ao gerar imagem:', err)
+      alert('Não foi possível gerar a imagem: ' + descreverErro(err))
     } finally {
       setCapturando(false)
     }
@@ -341,7 +342,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       await compartilharPDFNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
     } catch (err) {
       console.error('Erro ao gerar PDF:', err)
-      alert('Não foi possível gerar o PDF. Tente novamente.')
+      alert('Não foi possível gerar o PDF: ' + descreverErro(err))
     } finally {
       setGerandoPDF(false)
     }
