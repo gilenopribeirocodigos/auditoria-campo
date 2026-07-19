@@ -351,7 +351,17 @@ async function comRetryDeConcorrencia(fn, tentativas = 3, esperaMs = 2000) {
 
 async function executarInicioNativo(usuario) {
   const url    = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/rpc/registrar_localizacao_fiscal`
-  const schema = import.meta.env.VITE_SUPABASE_SCHEMA || 'dev'
+  // Detecta o schema pelo hostname real da página, não só pela env var de
+  // build — em produção encontramos um caso real em que o build do Render
+  // aplicou VITE_SUPABASE_SCHEMA=public certinho pro cliente principal
+  // (supabase.js) mas esse trecho específico saiu com "dev" hardcoded no
+  // bundle publicado (suspeita de cache de build), fazendo pontos de GPS
+  // reais de fiscais em produção caírem no banco de teste. Isso resolve em
+  // tempo de execução, sem depender do build ter pego a env var certa.
+  const host   = typeof window !== 'undefined' ? window.location.hostname : ''
+  const schema = host.includes('auditoria-campo-dev') ? 'dev'
+    : host.includes('auditoria-campo')                ? 'public'
+    : (import.meta.env.VITE_SUPABASE_SCHEMA || 'dev')
   const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
   // Garante um estado limpo antes de aplicar reset:true — se o serviço já
