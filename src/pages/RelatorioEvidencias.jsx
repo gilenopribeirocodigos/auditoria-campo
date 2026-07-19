@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { listarRegistros } from '../lib/registros.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
+import { renderizarHtmlParaCanvas, compartilharPDFMultiplasPaginasNativo } from '../lib/compartilhar.js'
 
 function calcMesAtual() {
   const hoje = new Date()
@@ -17,11 +19,11 @@ const TIPO_MEDIDA_LABEL = {
   SUSPENSAO:           'Suspensão',
 }
 
-// ── Gera o HTML de apresentação ───────────────────────────────────────────────
-function gerarHTMLApresentacao(registros, titulo) {
-  const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+const formatDataSlide = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
-  const slides = registros.map((r, idx) => {
+// ── HTML de um slide individual (reaproveitado na apresentação web e no PDF nativo) ──
+function montarSlideHtml(r, idx, total) {
+    const formatData = formatDataSlide
     const tc    = TIPOS_REGISTRO[r.tipo] || {}
     const mc    = MODALIDADES[r.modalidade] || {}
     const fotos = Array.isArray(r.fotos_urls) ? r.fotos_urls : []
@@ -161,10 +163,14 @@ function gerarHTMLApresentacao(registros, titulo) {
           flex-shrink:0;
         ">
           <span style="font-size:10px;color:#94a3b8;">DPL Construções — Equatorial Energia · Contrato 1021/2024</span>
-          <span style="font-size:10px;color:#94a3b8;">Registro ${idx + 1} de ${registros.length}</span>
+          <span style="font-size:10px;color:#94a3b8;">Registro ${idx + 1} de ${total}</span>
         </div>
       </div>`
-  }).join('')
+}
+
+// ── Gera o HTML de apresentação (todos os slides, pra impressão web) ─────────
+function gerarHTMLApresentacao(registros, titulo) {
+  const slides = registros.map((r, idx) => montarSlideHtml(r, idx, registros.length)).join('')
 
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -238,11 +244,29 @@ function gerarHTMLApresentacao(registros, titulo) {
 </html>`
 }
 
+// App Android nativo: window.open()/window.print() não funcionam dentro do
+// WebView — gera um PDF de verdade com um slide (960x540, paisagem) por
+// página e compartilha via folha nativa do Android. Renderiza cada slide
+// separadamente pra virar uma página própria no PDF final.
+async function gerarPDFEvidenciasNativo(registros, titulo) {
+  const canvases = []
+  for (let i = 0; i < registros.length; i++) {
+    const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">${montarSlideHtml(registros[i], i, registros.length)}</div>`
+    const canvas = await renderizarHtmlParaCanvas(html, {
+      largura: 960, escala: 2.5, aguardarImagens: true, esperaExtraMs: 60, exigirNaturalWidth: true, corFundo: '#fff',
+    })
+    canvases.push(canvas)
+  }
+  const nomeArq = `Evidencias_${titulo}.pdf`.replace(/\s+/g, '_')
+  await compartilharPDFMultiplasPaginasNativo(canvases, nomeArq, { titulo })
+}
+
 // ── Componente principal ──────────────────────────────────────────────────────
 export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
   const [registros,  setRegistros]  = useState([])
   const [loading,    setLoading]    = useState(false)
   const [gerado,     setGerado]     = useState(false)
+  const [gerandoPDF, setGerandoPDF] = useState(false)
   const [filtros,    setFiltros]    = useState({
     dataIni: calcMesAtual().ini,
     dataFim: calcMesAtual().fim,
@@ -263,10 +287,24 @@ export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
     finally { setLoading(false) }
   }
 
-  const gerar = () => {
+  const gerar = async () => {
     const mesLabel = new Date(filtros.dataIni + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
     const tipoLabel = filtros.tipo ? (TIPOS_REGISTRO[filtros.tipo]?.label || '') : 'Todos os tipos'
     const titulo = `Evidências — ${tipoLabel} · ${mesLabel.charAt(0).toUpperCase() + mesLabel.slice(1)}`
+
+    if (Capacitor.isNativePlatform()) {
+      setGerandoPDF(true)
+      try {
+        await gerarPDFEvidenciasNativo(registros, titulo)
+        setGerado(true)
+      } catch (err) {
+        console.error('Erro ao gerar PDF:', err)
+        alert('Não foi possível gerar o PDF. Tente novamente.')
+      } finally {
+        setGerandoPDF(false)
+      }
+      return
+    }
 
     const janela = window.open('', '_blank', 'width=1100,height=800')
     if (!janela) { alert('Permita pop-ups para gerar o relatório.'); return }
@@ -372,11 +410,11 @@ export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
                   <p style={{ fontSize: 16, fontWeight: 800 }}>✅ {registros.length} slide(s) prontos</p>
                   <p style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{totalFotos} foto(s) de evidência no total</p>
                 </div>
-                <button onClick={gerar} style={{
+                <button onClick={gerar} disabled={gerandoPDF} style={{
                   background: '#fff', color: '#7c3aed', border: 'none',
-                  padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 800, cursor: 'pointer',
+                  padding: '12px 20px', borderRadius: 10, fontSize: 14, fontWeight: 800, cursor: gerandoPDF ? 'not-allowed' : 'pointer',
                 }}>
-                  🎯 Gerar Apresentação
+                  {gerandoPDF ? '⏳ Gerando PDF...' : '🎯 Gerar Apresentação'}
                 </button>
               </div>
 
@@ -406,7 +444,9 @@ export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
                 borderRadius: 12, padding: '12px 16px', marginBottom: 16,
                 fontSize: 13, color: '#15803d', fontWeight: 600, textAlign: 'center',
               }}>
-                ✅ Apresentação gerada! Salve como PDF na janela aberta e insira no PowerPoint.
+                {Capacitor.isNativePlatform()
+                  ? '✅ PDF gerado! Escolha onde salvar ou compartilhar na folha que abriu.'
+                  : '✅ Apresentação gerada! Salve como PDF na janela aberta e insira no PowerPoint.'}
               </div>
             )}
 
@@ -488,12 +528,12 @@ export default function RelatorioEvidencias({ usuarioLogado, onVoltar }) {
             </div>
 
             {/* Botão gerar no final */}
-            <button onClick={gerar} style={{
+            <button onClick={gerar} disabled={gerandoPDF} style={{
               width: '100%', marginTop: 20, padding: 15, borderRadius: 12, border: 'none',
-              background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-              color: '#fff', fontSize: 16, fontWeight: 800, cursor: 'pointer',
+              background: gerandoPDF ? '#64748b' : 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+              color: '#fff', fontSize: 16, fontWeight: 800, cursor: gerandoPDF ? 'not-allowed' : 'pointer',
             }}>
-              🎯 Gerar Apresentação ({registros.length} slides)
+              {gerandoPDF ? '⏳ Gerando PDF...' : `🎯 Gerar Apresentação (${registros.length} slides)`}
             </button>
           </>
         )}

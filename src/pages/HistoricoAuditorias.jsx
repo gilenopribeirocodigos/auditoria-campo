@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { reabrirAuditoria } from '../lib/supabase.js'
 import { CHECKLISTS, getItemsNaoConformes } from '../data/checklists.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { numeroASDaAuditoria } from '../lib/numeroAS.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas } from '../lib/compartilhar.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
@@ -37,8 +39,8 @@ function calcNcItems(auditoria) {
   })
 }
 
-// ─── função de impressão (mantida igual) ─────────────────────────────────────
-function imprimirAuditoria(a, formatData, versaoApp = '') {
+// ─── conteúdo reaproveitável (impressão web + PDF nativo Android) ────────────
+function montarConteudoImpressaoAuditoria(a, formatData, versaoApp = '') {
   const sc      = STATUS_COR[a.status] || { bg: '#f1f5f9', color: '#374151' }
   const ncItems = calcNcItems(a)
 
@@ -48,24 +50,7 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
       <td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${value}</td>
     </tr>` : ''
 
-  const html = `<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Auditoria ${a.prefixo} — OS ${a.os}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f4f8; padding: 24px; color: #1e293b; }
-    @media print {
-      body { background: #fff; padding: 0; }
-      .no-print { display: none !important; }
-      @page { margin: 15mm; }
-    }
-  </style>
-</head>
-<body>
-
+  return `
   <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
     <div style="font-size:11px;opacity:0.7;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">DPL Construções — Equatorial Energia</div>
     <div style="font-size:20px;font-weight:800;margin-bottom:2px;">📁 Auditoria Operacional de Campo</div>
@@ -142,14 +127,35 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
     <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
-  </div>
+  </div>`
+}
 
+// Web: abre popup com a auditoria e chama print() nele — mantido igual.
+function imprimirAuditoria(a, formatData, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoAuditoria(a, formatData, versaoApp)
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Auditoria ${a.prefixo} — OS ${a.os}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f0f4f8; padding: 24px; color: #1e293b; }
+    @media print {
+      body { background: #fff; padding: 0; }
+      .no-print { display: none !important; }
+      @page { margin: 15mm; }
+    }
+  </style>
+</head>
+<body>
+  ${conteudo}
   <div class="no-print" style="text-align:center;margin-top:24px;">
     <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">
       🖨️ Imprimir / Salvar PDF
     </button>
   </div>
-
 </body>
 </html>`
 
@@ -158,6 +164,19 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
   janela.document.write(html)
   janela.document.close()
   janela.onload = () => { setTimeout(() => janela.print(), 600) }
+}
+
+// App Android nativo: window.open()/window.print() não funcionam dentro do
+// WebView — monta um PDF de verdade a partir do mesmo conteúdo e compartilha
+// via folha nativa do Android.
+async function gerarPDFAuditoria(a, formatData, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoAuditoria(a, formatData, versaoApp)
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+  const canvas = await renderizarHtmlParaCanvas(html, {
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff',
+  })
+  const nomeArq = `Auditoria_${a.prefixo}_OS${a.os}_${a.data_auditoria}.pdf`.replace(/\s+/g, '_')
+  await compartilharPDFNativo(canvas, nomeArq, { titulo: `Auditoria ${a.prefixo}` })
 }
 
 export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
@@ -188,6 +207,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const [capturando,    setCapturando]    = useState(false)
+  const [gerandoPDF,    setGerandoPDF]    = useState(false)
   const intervalRef = useRef(null)
 
   // ─── Permissões do perfil ───
@@ -784,8 +804,14 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               v{versaoSistema}
             </p>
 
-            <button onClick={() => imprimirAuditoria(detalhe, formatData, versaoSistema)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
-              🖨️ Imprimir / Salvar PDF
+            <button onClick={async () => {
+              if (!Capacitor.isNativePlatform()) { imprimirAuditoria(detalhe, formatData, versaoSistema); return }
+              setGerandoPDF(true)
+              try { await gerarPDFAuditoria(detalhe, formatData, versaoSistema) }
+              catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF. Tente novamente.') }
+              finally { setGerandoPDF(false) }
+            }} disabled={gerandoPDF} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: gerandoPDF ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer' }}>
+              {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
             </button>
 
             <button onClick={async () => {
@@ -875,7 +901,9 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 document.body.removeChild(div)
 
                 const nomeArq = `Auditoria_${detalhe.prefixo}_${detalhe.data_auditoria}.jpg`.replace(/\s+/g, '_')
-                if (navigator.share && navigator.canShare) {
+                if (Capacitor.isNativePlatform()) {
+                  await compartilharImagemNativo(canvas, nomeArq.replace(/\.jpg$/, '.png'), { titulo: `Auditoria ${detalhe.prefixo}` })
+                } else if (navigator.share && navigator.canShare) {
                   canvas.toBlob(async blob => {
                     const file = new File([blob], nomeArq, { type: 'image/jpeg' })
                     if (navigator.canShare({ files: [file] })) {

@@ -1,6 +1,6 @@
 {
   "name": "auditoria-campo-dpl",
-  "version": "3.3.94",
+  "version": "3.3.95",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -12,9 +12,12 @@
     "@capacitor/android": "^7.6.7",
     "@capacitor/app": "^7.1.1",
     "@capacitor/core": "^7.6.7",
+    "@capacitor/filesystem": "^7.1.8",
+    "@capacitor/share": "^7.0.4",
     "@supabase/supabase-js": "^2.39.0",
     "@transistorsoft/capacitor-background-geolocation": "^9.0.0",
     "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "xlsx": "^0.18.5"

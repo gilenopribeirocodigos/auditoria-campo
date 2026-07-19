@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas } from '../lib/compartilhar.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
@@ -18,8 +20,8 @@ const TIPO_MEDIDA_LABEL = {
   SUSPENSAO:           'Suspensão',
 }
 
-// ─── função de impressão (mantida igual) ─────────────────────────────────────
-function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
+// ─── conteúdo reaproveitável (impressão web + PDF nativo Android) ────────────
+function montarConteudoImpressaoRegistro(r, assinaturasOnline = [], versaoApp = '') {
   const tipoConfig = TIPOS_REGISTRO[r.tipo]
   const modConfig  = MODALIDADES[r.modalidade]
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
@@ -40,10 +42,7 @@ function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
     a => !r.participantes?.some(p => p.nome?.trim().toLowerCase() === a.nome?.trim().toLowerCase())
   )
 
-  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
-  <title>${tipoConfig?.label}</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
-  @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
+  return `
   <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
     <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
     <div style="font-size:20px;font-weight:800;">${tipoConfig?.emoji} ${tipoConfig?.label}</div>
@@ -109,7 +108,18 @@ function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
     <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
     <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})} · <span style="color:#dc2626;">v${versaoApp}</span></p>
-  </div>
+  </div>`
+}
+
+// Web: abre popup com o registro e chama print() nele — mantido igual.
+function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
+  const tipoConfig = TIPOS_REGISTRO[r.tipo]
+  const conteudo = montarConteudoImpressaoRegistro(r, assinaturasOnline, versaoApp)
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+  <title>${tipoConfig?.label}</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
+  @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
+  ${conteudo}
   <div class="no-print" style="text-align:center;margin-top:24px;">
     <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
   </div>
@@ -120,6 +130,20 @@ function imprimirRegistro(r, assinaturasOnline = [], versaoApp = '') {
   janela.document.write(html)
   janela.document.close()
   janela.onload = () => setTimeout(() => janela.print(), 600)
+}
+
+// App Android nativo: window.open()/window.print() não funcionam dentro do
+// WebView — monta um PDF de verdade a partir do mesmo conteúdo e compartilha
+// via folha nativa do Android.
+async function gerarPDFRegistro(r, assinaturasOnline = [], versaoApp = '') {
+  const tipoConfig = TIPOS_REGISTRO[r.tipo]
+  const conteudo = montarConteudoImpressaoRegistro(r, assinaturasOnline, versaoApp)
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+  const canvas = await renderizarHtmlParaCanvas(html, {
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff',
+  })
+  const nomeArq = `Registro_${r.tipo}_${r.data_registro}.pdf`.replace(/\s+/g, '_')
+  await compartilharPDFNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
 }
 
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
@@ -140,6 +164,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [encerrando,    setEncerrando]    = useState(null)
   const [fiscaisLista,  setFiscaisLista]  = useState([])
   const [capturando,    setCapturando]    = useState(false)
+  const [gerandoPDF,    setGerandoPDF]    = useState(false)
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const intervalRef = useRef(null)
 
@@ -666,8 +691,14 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     v{versaoSistema}
                   </p>
 
-                  <button onClick={() => imprimirRegistro(detalhe, assinOnline, versaoSistema)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-                    🖨️ Imprimir / Salvar PDF
+                  <button onClick={async () => {
+                    if (!Capacitor.isNativePlatform()) { imprimirRegistro(detalhe, assinOnline, versaoSistema); return }
+                    setGerandoPDF(true)
+                    try { await gerarPDFRegistro(detalhe, assinOnline, versaoSistema) }
+                    catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF. Tente novamente.') }
+                    finally { setGerandoPDF(false) }
+                  }} disabled={gerandoPDF} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: gerandoPDF ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
                   </button>
 
                   <button onClick={async () => {
@@ -759,7 +790,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       document.body.removeChild(div)
 
                       const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.jpg`.replace(/\s+/g, '_')
-                      if (navigator.share && navigator.canShare) {
+                      if (Capacitor.isNativePlatform()) {
+                        await compartilharImagemNativo(canvas, nomeArq.replace(/\.jpg$/, '.png'), { titulo: tc2.label })
+                      } else if (navigator.share && navigator.canShare) {
                         canvas.toBlob(async blob => {
                           const file = new File([blob], nomeArq, { type: 'image/jpeg' })
                           if (navigator.canShare({ files: [file] })) {

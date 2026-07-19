@@ -1,10 +1,12 @@
 import { useState, useRef, useMemo } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
   FIELD_HEIGHT, LABEL_STYLE, INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
+import { compartilharPDFNativo, renderizarElementoParaCanvas } from '../lib/compartilhar.js'
 
 const STATUS_COR = {
   'ATENDE':         { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
@@ -22,6 +24,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
   const [auditorias, setAuditorias] = useState([])
   const [loading,    setLoading]    = useState(false)
   const [gerado,     setGerado]     = useState(false)
+  const [gerandoPDF, setGerandoPDF] = useState(false)
   const printRef = useRef(null)
 
   const buscar = async () => {
@@ -52,7 +55,23 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
     }
   }
 
-  const imprimirPDF = () => window.print()
+  // App Android nativo: window.print() não funciona dentro do WebView —
+  // captura a mesma área de impressão já renderizada na tela e compartilha
+  // como PDF via folha nativa do Android. Na web, mantém window.print().
+  const imprimirPDF = async () => {
+    if (!Capacitor.isNativePlatform()) { window.print(); return }
+    setGerandoPDF(true)
+    try {
+      const canvas = await renderizarElementoParaCanvas(printRef.current, { escala: 3, corFundo: '#fff' })
+      const nomeArq = `Feedbacks_${new Date().toISOString().slice(0, 10)}.pdf`
+      await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Relatório de Feedbacks' })
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err)
+      alert('Não foi possível gerar o PDF. Tente novamente.')
+    } finally {
+      setGerandoPDF(false)
+    }
+  }
 
   const formatData    = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
   const formatPeriodo = () => {
@@ -141,12 +160,12 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
             {loading ? '⏳ Buscando...' : '🔍 Gerar Relatório'}
           </button>
           {gerado && auditorias.length > 0 && (
-            <button onClick={imprimirPDF} style={{
+            <button onClick={imprimirPDF} disabled={gerandoPDF} style={{
               height: FIELD_HEIGHT, padding: '0 22px',
-              background: '#7c3aed', color: '#fff',
-              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              background: gerandoPDF ? '#64748b' : '#7c3aed', color: '#fff',
+              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer',
             }}>
-              🖨️ Imprimir / Salvar PDF ({auditorias.length} feedbacks)
+              {gerandoPDF ? '⏳ Gerando PDF...' : `🖨️ Imprimir / Salvar PDF (${auditorias.length} feedbacks)`}
             </button>
           )}
         </div>
