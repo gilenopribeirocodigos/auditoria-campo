@@ -937,7 +937,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
                         {/* ── Campos após marcar PRESENTE ── */}
                         {isPresente && (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #bbf7d0' }}>
                             {/* Trocar eletricista */}
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Eletricista *</label>
@@ -974,7 +974,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
                         {/* ── Campos após marcar AUSENTE ── */}
                         {isAusente && (
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #fecaca' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginTop: 12, paddingTop: 12, borderTop: '1px solid #fecaca' }}>
                             {/* Trocar eletricista */}
                             <div className="form-group" style={{ marginBottom: 0 }}>
                               <label className="form-label" style={{ fontSize: 11 }}>Eletricista *</label>
