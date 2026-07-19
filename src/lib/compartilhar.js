@@ -33,6 +33,26 @@ export async function compartilharImagemNativo(canvas, nomeArquivo, { titulo = '
   await Share.share({ title: titulo, text: texto, url: uri, dialogTitle: 'Compartilhar' })
 }
 
+// O PDF usa o tamanho do canvas como o tamanho da própria página (em "px").
+// Como esses canvases são renderizados em alta resolução (escala 4-8, pra
+// ficarem nítidos como imagem do WhatsApp), um relatório longo com fotos
+// pode virar um canvas de dezenas de milhões de pixels — o que travava o
+// jsPDF tentando montar uma página de vários metros de altura. Reduz pra um
+// teto razoável antes de montar o PDF (não afeta a imagem do WhatsApp, que
+// usa o canvas original direto).
+const MAX_PIXELS_PDF = 8_000_000
+
+function limitarCanvasParaPDF(canvas) {
+  const pixels = canvas.width * canvas.height
+  if (pixels <= MAX_PIXELS_PDF) return canvas
+  const fator = Math.sqrt(MAX_PIXELS_PDF / pixels)
+  const menor = document.createElement('canvas')
+  menor.width  = Math.max(1, Math.round(canvas.width * fator))
+  menor.height = Math.max(1, Math.round(canvas.height * fator))
+  menor.getContext('2d').drawImage(canvas, 0, 0, menor.width, menor.height)
+  return menor
+}
+
 // Monta um PDF de verdade (uma página, do tamanho exato do canvas) a partir
 // de um canvas já renderizado via html2canvas, e compartilha via folha
 // nativa do Android.
@@ -45,12 +65,13 @@ export async function compartilharPDFNativo(canvas, nomeArquivo, opcoes = {}) {
 // canvas correspondente.
 export async function compartilharPDFMultiplasPaginasNativo(canvases, nomeArquivo, { titulo = '', texto = '' } = {}) {
   if (!canvases.length) throw new Error('Nenhuma página pra gerar o PDF.')
+  const paginas = canvases.map(limitarCanvasParaPDF)
   const doc = new jsPDF({
     unit:      'px',
-    format:    [canvases[0].width, canvases[0].height],
+    format:    [paginas[0].width, paginas[0].height],
     hotfixes:  ['px_scaling'],
   })
-  canvases.forEach((canvas, i) => {
+  paginas.forEach((canvas, i) => {
     if (i > 0) doc.addPage([canvas.width, canvas.height], canvas.width >= canvas.height ? 'l' : 'p')
     doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height)
   })
