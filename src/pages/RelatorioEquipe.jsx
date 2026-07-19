@@ -1,10 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
   FIELD_HEIGHT,
 } from '../components/PainelFiltros.jsx'
+import { compartilharPDFNativo, renderizarElementoParaCanvas, descreverErro } from '../lib/compartilhar.js'
 
 const STATUS_COR = {
   'ATENDE':         { bg: '#dcfce7', color: '#15803d', border: '#86efac' },
@@ -31,6 +33,26 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
   const [equipeInfo, setEquipeInfo] = useState([])
   const [loading,    setLoading]    = useState(false)
   const [gerado,     setGerado]     = useState(false)
+  const [gerandoPDF, setGerandoPDF] = useState(false)
+  const printRef = useRef(null)
+
+  // App Android nativo: window.print() não funciona dentro do WebView —
+  // captura a mesma área de impressão já renderizada na tela e compartilha
+  // como PDF via folha nativa do Android. Na web, mantém window.print().
+  const gerarPDF = async () => {
+    if (!Capacitor.isNativePlatform()) { window.print(); return }
+    setGerandoPDF(true)
+    try {
+      const canvas = await renderizarElementoParaCanvas(printRef.current, { escala: 3, corFundo: '#fff' })
+      const nomeArq = `Relatorio_Equipe_${new Date().toISOString().slice(0, 10)}.pdf`
+      await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Relatório por Equipe' })
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err)
+      alert('Não foi possível gerar o PDF: ' + descreverErro(err))
+    } finally {
+      setGerandoPDF(false)
+    }
+  }
 
   // Computed: lista FINAL de prefixos a buscar (combina cascata + SEGREGAÇÃO)
   // O mapPrefixo já vem filtrado pelo hook (só prefixos que o usuário pode ver),
@@ -211,13 +233,13 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
             {loading ? '⏳ Buscando...' : '🔍 Gerar Relatório'}
           </button>
           {gerado && totalAuds > 0 && (
-            <button onClick={() => window.print()} style={{
+            <button onClick={gerarPDF} disabled={gerandoPDF} style={{
               height: FIELD_HEIGHT, padding: '0 22px',
-              background: '#7c3aed', color: '#fff',
-              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+              background: gerandoPDF ? '#64748b' : '#7c3aed', color: '#fff',
+              border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 6,
             }}>
-              🖨️ Imprimir / Salvar PDF
+              {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
             </button>
           )}
           {prefixosFiltrados.length > 0 && (
@@ -249,7 +271,7 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
 
       {/* RELATÓRIO */}
       {gerado && totalAuds > 0 && (
-        <div className="print-area" style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px 60px' }}>
+        <div ref={printRef} className="print-area" style={{ maxWidth: 900, margin: '0 auto', padding: '0 16px 60px' }}>
 
           {/* Cabeçalho */}
           <div style={{

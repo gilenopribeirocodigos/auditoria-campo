@@ -1,13 +1,16 @@
 import { useState } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { salvarRegistroBD, prepararPayload } from '../lib/registros.js'
 import { salvarRegistroOffline } from '../lib/registros_offline.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import ModalLinkAssinatura from '../components/ModalLinkAssinatura.jsx'
 
 export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   const [status,          setStatus]          = useState('idle')
   const [erro,            setErro]            = useState('')
   const [capturando,      setCapturando]      = useState(false)
+  const [gerandoPDF,      setGerandoPDF]      = useState(false)
   const [salvoOffline,    setSalvoOffline]    = useState(false)
   const [registroSalvoId, setRegistroSalvoId] = useState(null)
   const [mostrarModal,    setMostrarModal]    = useState(false)
@@ -89,11 +92,9 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       </div>`
   }
 
-  const gerarImagemWhatsApp = async () => {
-    setCapturando(true)
-    try {
-      const html2canvas = (await import('html2canvas')).default
-
+  // ── Monta o resumo visual do registro como canvas (usado tanto pra
+  // compartilhar como imagem quanto pra gerar o PDF nativo) ─────────────────
+  const criarCanvasResumo = async () => {
       // Bloco de prefixos pré-gerado (mais robusto que chamar inline dentro do template)
       const htmlBlocoPrefixos = blocoPrefixosHtml(13)
 
@@ -195,36 +196,24 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           </div>
         </div>`
 
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
-      div.innerHTML = html
-      document.body.appendChild(div)
-
-      // ── FIX DE TIMING: espera TODAS as imagens (assinaturas base64 + fotos remotas)
-      //    carregarem antes de rasterizar. Sem isso, o html2canvas captura o
-      //    container antes das assinaturas/fotos aparecerem e elas saem em branco.
-      const imgs = div.querySelectorAll('img')
-      await Promise.allSettled(Array.from(imgs).map(img =>
-        new Promise(res => {
-          if (img.complete && img.naturalWidth > 0) res()
-          else { img.onload = res; img.onerror = res }
-        })
-      ))
-      // pequena folga extra para o paint
-      await new Promise(r => setTimeout(r, 80))
-
-      const canvas = await html2canvas(div.firstElementChild, {
-        scale:           6,
-        useCORS:         true,
-        allowTaint:      true,
-        backgroundColor: '#f0f4f8',
-        logging:         false,
-        windowWidth:     520,
+      return renderizarHtmlParaCanvas(html, {
+        largura: 520, escala: 6, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true,
       })
-      document.body.removeChild(div)
+  }
 
+  // ── Compartilhar no WhatsApp (imagem) ──────────────────────────────────────
+  // No app Android nativo, a Web Share API com arquivo é inconsistente dentro
+  // do WebView do Capacitor — usa a folha de compartilhamento nativa em vez
+  // dela. Na web, mantém exatamente o comportamento de sempre.
+  const gerarImagemWhatsApp = async () => {
+    setCapturando(true)
+    try {
+      const canvas = await criarCanvasResumo()
       const nomeArq = `Registro_${form.tipo}_${form.data}.png`.replace(/\s+/g, '_')
-      if (navigator.share && navigator.canShare) {
+
+      if (Capacitor.isNativePlatform()) {
+        await compartilharImagemNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
+      } else if (navigator.share && navigator.canShare) {
         canvas.toBlob(async blob => {
           const file = new File([blob], nomeArq, { type: 'image/png' })
           if (navigator.canShare({ files: [file] })) {
@@ -238,23 +227,20 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         const link = document.createElement('a')
         link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
       }
-    } catch {
-      alert('Não foi possível gerar a imagem.')
+    } catch (err) {
+      console.error('Erro ao gerar imagem:', err)
+      alert('Não foi possível gerar a imagem: ' + descreverErro(err))
     } finally {
       setCapturando(false)
     }
   }
 
-  const imprimirPDF = () => {
-    // Bloco de prefixos pré-gerado (mais robusto que chamar inline dentro do template)
+  // ── HTML do relatório de impressão (tabela de frequência), sem o wrapper de
+  // documento nem o botão — reaproveitado tanto no popup de impressão (web)
+  // quanto na captura pra PDF nativo (Android).
+  const montarConteudoImpressao = () => {
     const htmlBlocoPrefixosPdf = blocoPrefixosHtml(12)
-
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
-    <title>${tipoConfig?.label}</title>
-    <style>*{box-sizing:border-box;margin:0;padding:0;}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;color:#1e293b;}
-    @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style>
-    </head><body>
+    return `
     <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
       <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">Plataforma de Gestão Operacional</div>
       <div style="font-size:20px;font-weight:800;">${tipoConfig?.emoji} ${tipoConfig?.label}</div>
@@ -315,7 +301,19 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
       <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
       <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})}</p>
-    </div>
+    </div>`
+  }
+
+  // Web: abre popup com o relatório e chama print() nele — igual sempre foi.
+  const imprimirPDF = () => {
+    const conteudo = montarConteudoImpressao()
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+    <title>${tipoConfig?.label}</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;color:#1e293b;}
+    @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style>
+    </head><body>
+    ${conteudo}
     <div class="no-print" style="text-align:center;margin-top:24px;">
       <button onclick="window.print()" style="padding:12px 32px;background:#1e3a5f;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
     </div>
@@ -326,6 +324,28 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
     janela.document.write(html)
     janela.document.close()
     janela.onload = () => setTimeout(() => janela.print(), 600)
+  }
+
+  // App Android nativo: window.open()/window.print() não funcionam dentro do
+  // WebView — monta um PDF de verdade a partir do mesmo relatório e
+  // compartilha via folha nativa do Android.
+  const gerarPDF = async () => {
+    if (!Capacitor.isNativePlatform()) { imprimirPDF(); return }
+    setGerandoPDF(true)
+    try {
+      const conteudo = montarConteudoImpressao()
+      const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+      const canvas = await renderizarHtmlParaCanvas(html, {
+        largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff',
+      })
+      const nomeArq = `Registro_${form.tipo}_${form.data}.pdf`.replace(/\s+/g, '_')
+      await compartilharPDFNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err)
+      alert('Não foi possível gerar o PDF: ' + descreverErro(err))
+    } finally {
+      setGerandoPDF(false)
+    }
   }
 
   return (
@@ -542,8 +562,8 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             🔗 Gerar Link + QR Code para Assinatura
           </button>
 
-          <button onClick={imprimirPDF} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-            🖨️ Gerar PDF / Imprimir
+          <button onClick={gerarPDF} disabled={gerandoPDF} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: gerandoPDF ? '#64748b' : '#7c3aed', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+            {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Gerar PDF / Imprimir'}
           </button>
 
           <button onClick={onConcluir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>

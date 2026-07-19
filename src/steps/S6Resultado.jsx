@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, getItemsParaCalculo, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
 import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 import { obterNumeroAS } from '../lib/numeroAS.js'
 import { sincronizarNCs } from '../lib/naoConformidades.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import { PainelAssinatura } from './S5Assinatura.jsx'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
@@ -55,6 +57,7 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
   const [saveStatus,      setSaveStatus]      = useState('idle')
   const [saveError,       setSaveError]       = useState('')
   const [capturando,      setCapturando]      = useState(false)
+  const [gerandoPDF,      setGerandoPDF]      = useState(false)
   const [salvoOffline,    setSalvoOffline]    = useState(false)
   const [fotosUrlsSalvas, setFotosUrlsSalvas] = useState([])
 
@@ -89,12 +92,9 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
     ? '🚫 EQUIPE NÃO EXECUTOU O CORTE'
     : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
 
-  // ── Gera imagem para WhatsApp ─────────────────────────────────────────────
-  const gerarImagemWhatsApp = async () => {
-    setCapturando(true)
-    try {
-      const html2canvas = (await import('html2canvas')).default
-
+  // ── Monta o resumo visual da auditoria como canvas (usado tanto pra
+  // compartilhar como imagem quanto pra gerar o PDF nativo) ─────────────────
+  const criarCanvasResumo = async () => {
       const catColor = cat => ({
         COMPORTAMENTO: { bg: '#dbeafe', color: '#1d4ed8' },
         QUALIDADE:     { bg: '#dcfce7', color: '#15803d' },
@@ -239,50 +239,35 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
 
         </div>`
 
-      const div = document.createElement('div')
-      div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
-      div.innerHTML = html
-      document.body.appendChild(div)
+      return renderizarHtmlParaCanvas(html, { largura: 520, aguardarImagens: fotosParaExibir.length > 0 })
+  }
 
-      if (fotosParaExibir.length > 0) {
-        const imgs = div.querySelectorAll('img[crossorigin]')
-        await Promise.allSettled(Array.from(imgs).map(img =>
-          new Promise(res => {
-            if (img.complete) res()
-            else { img.onload = res; img.onerror = res }
-          })
-        ))
-      }
-
-      const canvas = await html2canvas(div.firstElementChild, {
-        scale:           5,
-        useCORS:         true,
-        allowTaint:      true,
-        backgroundColor: '#f0f4f8',
-        logging:         false,
-        windowWidth:     520,
-      })
-
-      document.body.removeChild(div)
-
+  // ── Compartilhar no WhatsApp (imagem) ──────────────────────────────────────
+  // No app Android nativo, a Web Share API com arquivo é inconsistente dentro
+  // do WebView do Capacitor — usa a folha de compartilhamento nativa em vez
+  // dela. Na web, mantém exatamente o comportamento de sempre.
+  const gerarImagemWhatsApp = async () => {
+    setCapturando(true)
+    try {
+      const canvas = await criarCanvasResumo()
       const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.png`.replace(/\s+/g, '_')
+      const titulo = `Auditoria ${form.prefixo}`
+      const texto  = `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`
 
-      if (navigator.share && navigator.canShare) {
+      if (Capacitor.isNativePlatform()) {
+        await compartilharImagemNativo(canvas, nomeArquivo, { titulo, texto })
+      } else if (navigator.share && navigator.canShare) {
         canvas.toBlob(async blob => {
           const file = new File([blob], nomeArquivo, { type: 'image/png' })
           if (navigator.canShare({ files: [file] })) {
-            await navigator.share({
-              files: [file],
-              title: `Auditoria ${form.prefixo}`,
-              text:  `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
-            })
+            await navigator.share({ files: [file], title: titulo, text: texto })
           } else { baixarImagem(canvas, nomeArquivo) }
         }, 'image/png')
       } else { baixarImagem(canvas, nomeArquivo) }
 
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)
-      alert('Não foi possível gerar a imagem. Tente novamente.')
+      alert('Não foi possível gerar a imagem: ' + descreverErro(err))
     } finally {
       setCapturando(false)
     }
@@ -293,6 +278,30 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
     link.download = nomeArquivo
     link.href = canvas.toDataURL('image/png')
     link.click()
+  }
+
+  // ── Gerar PDF / Imprimir ───────────────────────────────────────────────────
+  // Na web, window.print() já funciona (abre o diálogo do navegador/SO) e
+  // continua sendo usado sem mudança. No app Android nativo, window.print()
+  // não faz nada (o WebView do Capacitor não implementa impressão) — em vez
+  // disso, monta um PDF de verdade (jsPDF) a partir do mesmo resumo visual
+  // usado no WhatsApp e compartilha via folha nativa do Android.
+  const gerarPDF = async () => {
+    if (!Capacitor.isNativePlatform()) { window.print(); return }
+    setGerandoPDF(true)
+    try {
+      const canvas = await criarCanvasResumo()
+      const nomeArquivo = `Auditoria_${form.prefixo}_OS${form.os}_${form.data}.pdf`.replace(/\s+/g, '_')
+      await compartilharPDFNativo(canvas, nomeArquivo, {
+        titulo: `Auditoria ${form.prefixo}`,
+        texto:  `Auditoria de Campo — ${form.prefixo} — OS ${form.os} — ${st.label}`,
+      })
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err)
+      alert('Não foi possível gerar o PDF: ' + descreverErro(err))
+    } finally {
+      setGerandoPDF(false)
+    }
   }
 
   // Converte o booleano statusMotivoAuditoria em texto legível para relatórios.
@@ -755,8 +764,9 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
               {capturando ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
             </button>
 
-            <button className="btn-primary" onClick={() => window.print()} style={{ background: '#7c3aed', marginBottom: 10 }}>
-              🖨️ Gerar PDF / Imprimir
+            <button className="btn-primary" onClick={gerarPDF} disabled={gerandoPDF}
+              style={{ background: gerandoPDF ? '#64748b' : '#7c3aed', marginBottom: 10 }}>
+              {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Gerar PDF / Imprimir'}
             </button>
 
             <button className="btn-primary" onClick={nova} style={{ background: '#15803d' }}>
