@@ -30,6 +30,9 @@ import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
 import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
 import TratamentoNaoConformidades from './pages/TratamentoNaoConformidades.jsx'
 import DiagnosticoRastreio      from './pages/DiagnosticoRastreio.jsx'
+// ── NOVO: Módulo isolado de Prestação de Contas ──────────────────────────────
+import PrestacaoContasLista     from './modules/prestacaoContas/PrestacaoContasLista.jsx'
+import PrestacaoContasNovo      from './modules/prestacaoContas/PrestacaoContasNovo.jsx'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -380,6 +383,8 @@ export default function App() {
   if (tela === 'registros-historico')  return <RegistrosOperacionais    usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
   if (tela === 'relatorio-evidencias') return <RelatorioEvidencias      usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
   if (tela === 'registros-novo')       return <RegistrosApp             usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
+  if (tela === 'prestacao-contas')     return <PrestacaoContasLista     usuarioLogado={usuario} onVoltar={() => setTela('home')} onNova={() => setTela('prestacao-contas-novo')} />
+  if (tela === 'prestacao-contas-novo') return <PrestacaoContasNovo      usuarioLogado={usuario} onVoltar={() => setTela('prestacao-contas')} />
   // ── NOVO: Indisponibilidade ──────────────────────────────────────────────────
   if (tela === 'indisponibilidade')    return <IndisponibilidadePage    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
@@ -554,6 +559,14 @@ export default function App() {
             padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>📝 Registros Operacionais</button>
+
+          {(temPermissao(usuario, 'prestacao_contas_enviar') || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')) && (
+            <button onClick={() => setTela('prestacao-contas')} style={{
+              background: 'linear-gradient(135deg, rgba(14,116,144,0.9), rgba(21,94,117,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>💰 Prestação de Contas</button>
+          )}
 
           {temPermissao(usuario, 'tratar_nc') && (
             <button onClick={() => setTela('tratamento-ncs')} style={{

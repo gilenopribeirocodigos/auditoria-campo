@@ -1,0 +1,144 @@
+import { useState, useRef } from 'react'
+import { CATEGORIAS_SUGERIDAS, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
+
+const ITEM_VAZIO = {
+  classificacao: '', descricao: '', fornecedor: '', forma_pagamento: 'PIX',
+  tipo_comprovante: 'Recibo', data_emissao: '', valor: '', observacao: '',
+}
+
+export default function PCItemForm({ onSalvar, onCancelar, salvando }) {
+  const [item, setItem] = useState(ITEM_VAZIO)
+  const [foto, setFoto] = useState(null)
+  const cameraRef = useRef(null)
+  const galeriaRef = useRef(null)
+
+  const upd = (campo, valor) => setItem(f => ({ ...f, [campo]: valor }))
+
+  const processarFoto = (files) => {
+    const file = files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = ev => setFoto(ev.target.result)
+    reader.readAsDataURL(file)
+  }
+
+  const valido = item.classificacao.trim() && item.descricao.trim() && Number(item.valor) > 0
+
+  return (
+    <div style={{ padding: '0 0 24px' }}>
+      <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>
+        Nova Despesa
+      </h2>
+      <p style={{ fontSize: 13, color: '#64748b', marginBottom: 18 }}>
+        Preencha os mesmos dados que você usa na sua planilha de prestação de contas.
+      </p>
+
+      <div className="form-group">
+        <label className="form-label">Classificação *</label>
+        <input
+          className="form-input" list="pc-categorias" value={item.classificacao}
+          onChange={e => upd('classificacao', e.target.value.toUpperCase())}
+          placeholder="Ex.: ALMOÇO, BORRACHARIA, PASSAGEM..."
+        />
+        <datalist id="pc-categorias">
+          {CATEGORIAS_SUGERIDAS.map(c => <option key={c} value={c} />)}
+        </datalist>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Descrição *</label>
+        <input className="form-input" value={item.descricao} onChange={e => upd('descricao', e.target.value)} placeholder="Ex.: Viagem Boa Hora" />
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Fornecedor</label>
+        <input className="form-input" value={item.fornecedor} onChange={e => upd('fornecedor', e.target.value)} placeholder="Ex.: Restaurante Sabor Ideal" />
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+        <div className="form-group">
+          <label className="form-label">Forma de pagamento</label>
+          <select className="form-input" value={item.forma_pagamento} onChange={e => upd('forma_pagamento', e.target.value)}>
+            {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">Comprovante</label>
+          <select className="form-input" value={item.tipo_comprovante} onChange={e => upd('tipo_comprovante', e.target.value)}>
+            {TIPOS_COMPROVANTE.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
+        <div className="form-group">
+          <label className="form-label">Data da emissão</label>
+          <input type="date" className="form-input" value={item.data_emissao} onChange={e => upd('data_emissao', e.target.value)} />
+        </div>
+        <div className="form-group">
+          <label className="form-label">Valor (R$) *</label>
+          <input type="number" step="0.01" min="0" className="form-input" value={item.valor} onChange={e => upd('valor', e.target.value)} placeholder="0,00" />
+        </div>
+      </div>
+
+      <div className="form-group">
+        <label className="form-label">Observação (opcional)</label>
+        <input className="form-input" value={item.observacao} onChange={e => upd('observacao', e.target.value)} />
+      </div>
+
+      {/* ── Foto do comprovante ── */}
+      <div style={{ marginTop: 18, marginBottom: 10 }}>
+        <p style={{ fontSize: 14, fontWeight: 700, color: '#374151', marginBottom: 10 }}>
+          📷 Foto do Comprovante
+        </p>
+
+        {foto ? (
+          <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
+            <img src={foto} alt="Comprovante" style={{ width: '100%', display: 'block', maxHeight: 260, objectFit: 'cover' }} />
+            <button onClick={() => setFoto(null)} style={{
+              position: 'absolute', top: 8, right: 8, padding: '4px 10px', borderRadius: 8,
+              border: 'none', background: 'rgba(220,38,38,0.85)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            }}>✕ Remover</button>
+          </div>
+        ) : (
+          <>
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e => { processarFoto(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
+            <input ref={galeriaRef} type="file" accept="image/*" onChange={e => { processarFoto(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button onClick={() => cameraRef.current?.click()} style={{
+                padding: '18px 12px', borderRadius: 14, border: '2px dashed #2563eb', background: '#eff6ff',
+                cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{ fontSize: 28 }}>📷</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>Tirar foto</span>
+              </button>
+              <button onClick={() => galeriaRef.current?.click()} style={{
+                padding: '18px 12px', borderRadius: 14, border: '2px dashed #2563eb', background: '#eff6ff',
+                cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              }}>
+                <span style={{ fontSize: 28 }}>🖼️</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>Da galeria</span>
+              </button>
+            </div>
+          </>
+        )}
+        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Opcional aqui — mas obrigatório antes de enviar a prestação (regra de negócio).</p>
+      </div>
+
+      <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <button onClick={() => onSalvar(item, foto)} disabled={!valido || salvando} style={{
+          width: '100%', padding: 14, borderRadius: 12, border: 'none',
+          background: valido && !salvando ? '#1e3a5f' : '#e2e8f0',
+          color: valido && !salvando ? '#fff' : '#94a3b8',
+          fontSize: 15, fontWeight: 700, cursor: valido && !salvando ? 'pointer' : 'not-allowed',
+        }}>
+          {salvando ? '⏳ Salvando...' : '✓ Salvar Item'}
+        </button>
+        <button onClick={onCancelar} disabled={salvando} style={{
+          width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0',
+          background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+        }}>← Cancelar</button>
+      </div>
+    </div>
+  )
+}

@@ -52,6 +52,9 @@ const TODAS_PERMISSOES = [
   { id: 'historico_ver_todas',     label: '📂 Histórico — ver todas as auditorias' },
   { id: 'historico_reabrir',       label: '🔓 Histórico — reabrir auditorias'      },
   { id: 'acesso_todos_processos',  label: '🌐 Acesso a TODOS os processos (ignora segregação por estrutura)' },
+  { id: 'prestacao_contas_enviar',    label: '💰 Prestação de Contas - enviar' },
+  { id: 'prestacao_contas_receber',   label: '💰 Prestação de Contas - receber e aprovar/rejeitar' },
+  { id: 'prestacao_contas_ver_todas', label: '💰 Prestação de Contas - ver todas (financeiro/admin)' },
 ]
 
 const FORM_VAZIO = {
