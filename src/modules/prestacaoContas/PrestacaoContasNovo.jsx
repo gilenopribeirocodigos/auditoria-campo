@@ -4,7 +4,8 @@ import PCItemForm from './telas/PCItemForm.jsx'
 import PCRevisaoEnvio from './telas/PCRevisaoEnvio.jsx'
 import {
   criarRascunho, obterPrestacao, listarDestinatariosDisponiveis,
-  adicionarItem, anexarFoto, removerItem, definirDestinatario, enviarPrestacao, excluirRascunho,
+  adicionarItem, atualizarItem, anexarFoto, removerFoto, removerItem,
+  definirDestinatario, enviarPrestacao, excluirRascunho,
 } from './lib/prestacaoContas.js'
 
 export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacaoIdExistente }) {
@@ -14,6 +15,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
   const [eraRejeitada, setEraRejeitada] = useState(false)
   const [destinatarios, setDestinatarios] = useState([])
   const [view, setView] = useState('itens') // itens | novo-item | revisao
+  const [itemEditando, setItemEditando] = useState(null)
   const [salvandoItem, setSalvandoItem] = useState(false)
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
@@ -41,19 +43,33 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
     setPrestacao(atual)
   }
 
-  const handleSalvarItem = async (item, fotoBase64) => {
+  const handleSalvarItem = async (item, fotoInfo) => {
     setSalvandoItem(true)
     try {
-      const ordem = prestacao.pc_itens?.length || 0
-      const novoItem = await adicionarItem(prestacao.id, item, ordem)
-      if (fotoBase64) await anexarFoto(novoItem.id, prestacao.id, fotoBase64)
+      if (itemEditando) {
+        await atualizarItem(itemEditando.id, item)
+        if (fotoInfo.alterada) {
+          for (const f of itemEditando.pc_fotos || []) await removerFoto(f.id)
+          if (fotoInfo.base64) await anexarFoto(itemEditando.id, prestacao.id, fotoInfo.base64)
+        }
+      } else {
+        const ordem = prestacao.pc_itens?.length || 0
+        const novoItem = await adicionarItem(prestacao.id, item, ordem)
+        if (fotoInfo.base64) await anexarFoto(novoItem.id, prestacao.id, fotoInfo.base64)
+      }
       await recarregar(prestacao.id)
+      setItemEditando(null)
       setView('itens')
     } catch (e) {
       alert('Não foi possível salvar o item: ' + (e.message || e))
     } finally {
       setSalvandoItem(false)
     }
+  }
+
+  const handleEditarItem = (item) => {
+    setItemEditando(item)
+    setView('novo-item')
   }
 
   const handleRemoverItem = async (itemId) => {
@@ -133,7 +149,13 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
 
       <main className="app-content">
         {view === 'novo-item' && (
-          <PCItemForm salvando={salvandoItem} onSalvar={handleSalvarItem} onCancelar={() => setView('itens')} />
+          <PCItemForm
+            salvando={salvandoItem}
+            itemInicial={itemEditando}
+            fotoInicialUrl={itemEditando?.pc_fotos?.[0]?.foto_url || null}
+            onSalvar={handleSalvarItem}
+            onCancelar={() => { setItemEditando(null); setView('itens') }}
+          />
         )}
 
         {view === 'revisao' && (
@@ -152,7 +174,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
           <div>
             <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>Itens da Prestação</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              Adicione cada despesa com o comprovante em foto.
+              Adicione cada despesa com o comprovante em foto. Toque num item pra editar (inclusive trocar a foto).
             </p>
 
             {itens.length === 0 ? (
@@ -162,13 +184,13 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
                 {itens.map(item => (
-                  <div key={item.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{item.classificacao} — {item.descricao}</p>
+                  <div key={item.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                    <button onClick={() => handleEditarItem(item)} style={{ flex: 1, textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>✎ {item.classificacao} — {item.descricao}</p>
                       <p style={{ fontSize: 11, color: '#64748b' }}>
                         R$ {Number(item.valor).toFixed(2).replace('.', ',')} · {item.pc_fotos?.length > 0 ? '📷 com foto' : '⚠️ sem foto'}
                       </p>
-                    </div>
+                    </button>
                     <button onClick={() => handleRemoverItem(item.id)} style={{ border: 'none', background: 'transparent', color: '#dc2626', fontSize: 16, cursor: 'pointer' }}>✕</button>
                   </div>
                 ))}
