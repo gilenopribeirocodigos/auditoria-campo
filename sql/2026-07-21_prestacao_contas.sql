@@ -3,7 +3,10 @@
 -- a planilha "CAIXA" usada hoje pelo Gileno), anexa fotos dos comprovantes e
 -- envia para um destinatário aprovar (paga + marca aprovado) ou rejeitar
 -- (volta para correção). Sem FK para nenhuma tabela de negócio existente —
--- só referencia usuarios(id), do mesmo jeito que auditorias já faz.
+-- remetente_id/destinatario_id/analisado_por guardam o id de usuarios, mas
+-- sem REFERENCES formal: a tabela usuarios não tem unique/PK em id no banco
+-- real (mesmo padrão já usado em usuarios_processos/usuarios_regionais).
+-- Integridade é controlada na aplicação, como o resto do projeto.
 
 -- =========================
 -- DESENVOLVIMENTO: schema dev
@@ -11,14 +14,14 @@
 CREATE TABLE IF NOT EXISTS dev.pc_prestacoes (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   numero_pc text NOT NULL UNIQUE,
-  remetente_id bigint NOT NULL REFERENCES dev.usuarios(id),
-  destinatario_id bigint NOT NULL REFERENCES dev.usuarios(id),
+  remetente_id bigint NOT NULL,
+  destinatario_id bigint NOT NULL,
   status text NOT NULL DEFAULT 'RASCUNHO', -- RASCUNHO | ENVIADO | APROVADO | REJEITADO
   rodada int NOT NULL DEFAULT 1,
   motivo_rejeicao text,
   enviado_em timestamptz,
   analisado_em timestamptz,
-  analisado_por bigint REFERENCES dev.usuarios(id),
+  analisado_por bigint,
   criado_em timestamptz NOT NULL DEFAULT now(),
   atualizado_em timestamptz NOT NULL DEFAULT now()
 );
@@ -60,14 +63,14 @@ CREATE INDEX IF NOT EXISTS idx_dev_pc_fotos_item ON dev.pc_fotos (item_id);
 CREATE TABLE IF NOT EXISTS public.pc_prestacoes (
   id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   numero_pc text NOT NULL UNIQUE,
-  remetente_id bigint NOT NULL REFERENCES public.usuarios(id),
-  destinatario_id bigint NOT NULL REFERENCES public.usuarios(id),
+  remetente_id bigint NOT NULL,
+  destinatario_id bigint NOT NULL,
   status text NOT NULL DEFAULT 'RASCUNHO', -- RASCUNHO | ENVIADO | APROVADO | REJEITADO
   rodada int NOT NULL DEFAULT 1,
   motivo_rejeicao text,
   enviado_em timestamptz,
   analisado_em timestamptz,
-  analisado_por bigint REFERENCES public.usuarios(id),
+  analisado_por bigint,
   criado_em timestamptz NOT NULL DEFAULT now(),
   atualizado_em timestamptz NOT NULL DEFAULT now()
 );
