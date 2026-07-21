@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CarregandoHexagono } from '../../components/Shared.jsx'
 import { temPermissao } from '../../lib/auth.js'
 import PCRecebidaDetalhe from './telas/PCRecebidaDetalhe.jsx'
+import PCHistorico from './telas/PCHistorico.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
   aprovarPrestacao, rejeitarPrestacao,
@@ -25,6 +26,7 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   const [detalhe, setDetalhe] = useState(null)
   const [remetenteNome, setRemetenteNome] = useState('')
   const [processando, setProcessando] = useState(false)
+  const [historicoAberto, setHistoricoAberto] = useState(null)
 
   const carregarListas = async () => {
     setCarregando(true)
@@ -168,14 +170,25 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                         {p.total_itens} {p.total_itens === 1 ? 'item' : 'itens'} · R$ {p.valor_total.toFixed(2).replace('.', ',')}
                         {p.rodada > 1 && ` · ${p.rodada}ª tentativa`}
                       </p>
+                      {p.status === 'REJEITADO' && p.motivo_rejeicao && (
+                        <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 6 }}>Motivo mais recente: "{p.motivo_rejeicao}"</p>
+                      )}
+                      {p.status !== 'RASCUNHO' && (
+                        <button onClick={() => setHistoricoAberto(historicoAberto === p.id ? null : p.id)} style={{
+                          marginTop: 6, border: 'none', background: 'transparent', color: '#1e3a5f',
+                          fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0,
+                        }}>{historicoAberto === p.id ? '▲ Esconder histórico' : '▼ Ver histórico completo'}</button>
+                      )}
+                      {historicoAberto === p.id && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                          <PCHistorico prestacaoId={p.id} />
+                        </div>
+                      )}
                       {p.status === 'REJEITADO' && (
-                        <>
-                          {p.motivo_rejeicao && <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 6 }}>Motivo: "{p.motivo_rejeicao}"</p>}
-                          <button onClick={() => onCorrigir(p.id)} style={{
-                            marginTop: 8, width: '100%', padding: 10, borderRadius: 8, border: 'none',
-                            background: '#d97706', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                          }}>✎ Corrigir e Reenviar</button>
-                        </>
+                        <button onClick={() => onCorrigir(p.id)} style={{
+                          marginTop: 10, width: '100%', padding: 10, borderRadius: 8, border: 'none',
+                          background: '#d97706', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                        }}>✎ Corrigir e Reenviar</button>
                       )}
                     </div>
                   )

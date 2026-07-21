@@ -179,8 +179,34 @@ export async function listarRecebidas(destinatarioId) {
   }))
 }
 
+// ── Histórico (linha do tempo imutável de envio/aprovação/rejeição) ─────────
+// pc_prestacoes.motivo_rejeicao/analisado_em/analisado_por guardam só o
+// estado ATUAL (útil pras listagens); pc_historico guarda TODAS as rodadas,
+// pra não perder o motivo de rejeições anteriores quando o usuário corrige
+// e reenvia mais de uma vez.
+async function registrarHistorico(prestacaoId, tipo, usuarioId, motivo, rodada) {
+  const { error } = await supabase
+    .from('pc_historico')
+    .insert({ prestacao_id: prestacaoId, tipo, usuario_id: usuarioId, motivo: motivo || null, rodada })
+  if (error) throw error
+}
+
+export async function listarHistorico(prestacaoId) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_historico')
+    .select('*')
+    .eq('prestacao_id', prestacaoId)
+    .order('criado_em', { ascending: true })
+  if (error) throw error
+  return data || []
+}
+
 export async function aprovarPrestacao(prestacaoId, aprovadorId) {
   assertSupabase()
+  const { data: atual, error: errAtual } = await supabase
+    .from('pc_prestacoes').select('rodada').eq('id', prestacaoId).single()
+  if (errAtual) throw errAtual
   const { error } = await supabase
     .from('pc_prestacoes')
     .update({
@@ -191,10 +217,14 @@ export async function aprovarPrestacao(prestacaoId, aprovadorId) {
     })
     .eq('id', prestacaoId)
   if (error) throw error
+  await registrarHistorico(prestacaoId, 'APROVACAO', aprovadorId, null, atual?.rodada || 1)
 }
 
 export async function rejeitarPrestacao(prestacaoId, aprovadorId, motivo) {
   assertSupabase()
+  const { data: atual, error: errAtual } = await supabase
+    .from('pc_prestacoes').select('rodada').eq('id', prestacaoId).single()
+  if (errAtual) throw errAtual
   const { error } = await supabase
     .from('pc_prestacoes')
     .update({
@@ -206,22 +236,26 @@ export async function rejeitarPrestacao(prestacaoId, aprovadorId, motivo) {
     })
     .eq('id', prestacaoId)
   if (error) throw error
+  await registrarHistorico(prestacaoId, 'REJEICAO', aprovadorId, motivo, atual?.rodada || 1)
 }
 
 // ── Envio ────────────────────────────────────────────────────────────────────
-export async function enviarPrestacao(prestacaoId, { reenvio = false } = {}) {
+export async function enviarPrestacao(prestacaoId, remetenteId, { reenvio = false } = {}) {
   assertSupabase()
   const payload = {
     status: 'ENVIADO',
     enviado_em: new Date().toISOString(),
     atualizado_em: new Date().toISOString(),
   }
+  let rodadaAtual = 1
   if (reenvio) {
     const { data: atual, error: errAtual } = await supabase
       .from('pc_prestacoes').select('rodada').eq('id', prestacaoId).single()
     if (errAtual) throw errAtual
-    payload.rodada = (atual?.rodada || 1) + 1
+    rodadaAtual = (atual?.rodada || 1) + 1
+    payload.rodada = rodadaAtual
   }
   const { error } = await supabase.from('pc_prestacoes').update(payload).eq('id', prestacaoId)
   if (error) throw error
+  await registrarHistorico(prestacaoId, 'ENVIO', remetenteId, null, rodadaAtual)
 }

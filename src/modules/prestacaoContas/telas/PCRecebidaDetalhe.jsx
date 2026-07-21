@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import PCHistorico from './PCHistorico.jsx'
 
 export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar, onRejeitar, onVoltar, processando }) {
   const [rejeitando, setRejeitando] = useState(false)
@@ -46,16 +47,12 @@ export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar,
         ))}
       </div>
 
-      {prestacao.status === 'APROVADO' && (
-        <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
-          <p style={{ fontSize: 12, color: '#15803d', fontWeight: 700 }}>✅ Aprovado em {new Date(prestacao.analisado_em).toLocaleString('pt-BR')}</p>
-        </div>
-      )}
-      {prestacao.status === 'REJEITADO' && (
-        <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
-          <p style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>↩️ Rejeitado — motivo: "{prestacao.motivo_rejeicao}"</p>
-        </div>
-      )}
+      <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
+        <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+          🕐 Histórico desta prestação
+        </p>
+        <PCHistorico prestacaoId={prestacao.id} />
+      </div>
 
       {podeDecidir && !rejeitando && (
         <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>

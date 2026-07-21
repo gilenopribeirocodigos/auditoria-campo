@@ -93,7 +93,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
     setEnviando(true)
     try {
       await definirDestinatario(prestacao.id, prestacao.destinatario_id)
-      await enviarPrestacao(prestacao.id, { reenvio: eraRejeitada })
+      await enviarPrestacao(prestacao.id, usuarioLogado.id, { reenvio: eraRejeitada })
       setEnviado(true)
     } catch (e) {
       alert('Não foi possível enviar: ' + (e.message || e))
