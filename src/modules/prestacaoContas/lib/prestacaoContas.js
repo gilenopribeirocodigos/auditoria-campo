@@ -155,6 +155,59 @@ export async function removerFoto(fotoId) {
   if (error) throw error
 }
 
+export async function obterNomeUsuario(usuarioId) {
+  assertSupabase()
+  const { data, error } = await supabase.from('usuarios').select('nome').eq('id', usuarioId).single()
+  if (error) throw error
+  return data?.nome
+}
+
+// ── Recebidas (destinatário analisa) ────────────────────────────────────────
+export async function listarRecebidas(destinatarioId) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_prestacoes')
+    .select('*, pc_itens(valor)')
+    .eq('destinatario_id', destinatarioId)
+    .neq('status', 'RASCUNHO')
+    .order('criado_em', { ascending: false })
+  if (error) throw error
+  return (data || []).map(p => ({
+    ...p,
+    total_itens: p.pc_itens?.length || 0,
+    valor_total: (p.pc_itens || []).reduce((soma, i) => soma + Number(i.valor || 0), 0),
+  }))
+}
+
+export async function aprovarPrestacao(prestacaoId, aprovadorId) {
+  assertSupabase()
+  const { error } = await supabase
+    .from('pc_prestacoes')
+    .update({
+      status: 'APROVADO',
+      analisado_em: new Date().toISOString(),
+      analisado_por: aprovadorId,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq('id', prestacaoId)
+  if (error) throw error
+}
+
+export async function rejeitarPrestacao(prestacaoId, aprovadorId, motivo) {
+  assertSupabase()
+  const { error } = await supabase
+    .from('pc_prestacoes')
+    .update({
+      status: 'REJEITADO',
+      motivo_rejeicao: motivo,
+      analisado_em: new Date().toISOString(),
+      analisado_por: aprovadorId,
+      atualizado_em: new Date().toISOString(),
+    })
+    .eq('id', prestacaoId)
+  if (error) throw error
+}
+
 // ── Envio ────────────────────────────────────────────────────────────────────
 export async function enviarPrestacao(prestacaoId, { reenvio = false } = {}) {
   assertSupabase()

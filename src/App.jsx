@@ -66,6 +66,7 @@ function separarDataHoraFortaleza(valor = new Date().toISOString()) {
 export default function App() {
   const [usuario,             setUsuario]             = useState(getUsuarioLogado)
   const [tela,                setTela]                = useState('home')
+  const [pcEditandoId,        setPcEditandoId]        = useState(null)
   const [step,                setStep]                = useState(0)
   const [form,                setForm]                = useState(FORM_INICIAL())
   const [pautasHoje,          setPautasHoje]          = useState([])
@@ -383,8 +384,8 @@ export default function App() {
   if (tela === 'registros-historico')  return <RegistrosOperacionais    usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
   if (tela === 'relatorio-evidencias') return <RelatorioEvidencias      usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
   if (tela === 'registros-novo')       return <RegistrosApp             usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
-  if (tela === 'prestacao-contas')     return <PrestacaoContasLista     usuarioLogado={usuario} onVoltar={() => setTela('home')} onNova={() => setTela('prestacao-contas-novo')} />
-  if (tela === 'prestacao-contas-novo') return <PrestacaoContasNovo      usuarioLogado={usuario} onVoltar={() => setTela('prestacao-contas')} />
+  if (tela === 'prestacao-contas')     return <PrestacaoContasLista     usuarioLogado={usuario} onVoltar={() => setTela('home')} onNova={() => { setPcEditandoId(null); setTela('prestacao-contas-novo') }} onCorrigir={id => { setPcEditandoId(id); setTela('prestacao-contas-novo') }} />
+  if (tela === 'prestacao-contas-novo') return <PrestacaoContasNovo      usuarioLogado={usuario} prestacaoIdExistente={pcEditandoId} onVoltar={() => setTela('prestacao-contas')} />
   // ── NOVO: Indisponibilidade ──────────────────────────────────────────────────
   if (tela === 'indisponibilidade')    return <IndisponibilidadePage    usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />

@@ -7,10 +7,11 @@ import {
   adicionarItem, anexarFoto, removerItem, definirDestinatario, enviarPrestacao, excluirRascunho,
 } from './lib/prestacaoContas.js'
 
-export default function PrestacaoContasNovo({ usuarioLogado, onVoltar }) {
+export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacaoIdExistente }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [prestacao, setPrestacao] = useState(null)
+  const [eraRejeitada, setEraRejeitada] = useState(false)
   const [destinatarios, setDestinatarios] = useState([])
   const [view, setView] = useState('itens') // itens | novo-item | revisao
   const [salvandoItem, setSalvandoItem] = useState(false)
@@ -21,10 +22,11 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar }) {
     (async () => {
       try {
         const [nova, dests] = await Promise.all([
-          criarRascunho(usuarioLogado.id),
+          prestacaoIdExistente ? obterPrestacao(prestacaoIdExistente) : criarRascunho(usuarioLogado.id),
           listarDestinatariosDisponiveis(),
         ])
         setPrestacao(nova)
+        setEraRejeitada(nova.status === 'REJEITADO')
         setDestinatarios(dests)
       } catch (e) {
         setErro(e.message || 'Erro ao iniciar prestação de contas.')
@@ -32,7 +34,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar }) {
         setCarregando(false)
       }
     })()
-  }, [usuarioLogado.id])
+  }, [usuarioLogado.id, prestacaoIdExistente])
 
   const recarregar = async (id) => {
     const atual = await obterPrestacao(id)
@@ -65,7 +67,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar }) {
   }
 
   const handleSair = async () => {
-    if ((prestacao?.pc_itens?.length || 0) === 0) {
+    if (!prestacaoIdExistente && (prestacao?.pc_itens?.length || 0) === 0) {
       try { await excluirRascunho(prestacao.id) } catch { /* rascunho vazio, sem problema deixar */ }
     }
     onVoltar()
@@ -75,7 +77,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar }) {
     setEnviando(true)
     try {
       await definirDestinatario(prestacao.id, prestacao.destinatario_id)
-      await enviarPrestacao(prestacao.id)
+      await enviarPrestacao(prestacao.id, { reenvio: eraRejeitada })
       setEnviado(true)
     } catch (e) {
       alert('Não foi possível enviar: ' + (e.message || e))
