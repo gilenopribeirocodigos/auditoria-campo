@@ -11,12 +11,50 @@ import {
   aprovarPrestacao, rejeitarPrestacao,
 } from './lib/prestacaoContas.js'
 
-const STATUS_BADGE = {
-  RASCUNHO:  { bg: '#e2e8f0', color: '#475569', label: '📝 Rascunho' },
-  ENVIADO:   { bg: '#dbeafe', color: '#1d4ed8', label: '📤 Enviado' },
-  APROVADO:  { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
-  REJEITADO: { bg: '#fee2e2', color: '#b91c1c', label: '↩️ Rejeitado' },
-  FECHADA:   { bg: '#ede9fe', color: '#6d28d9', label: '✔️ Prestação de Conta Realizada' },
+// Cada status tem uma cor própria — aplicada tanto no card inteiro (fundo
+// claro + borda) quanto no selo, pra dar sinal visual imediato de qual é
+// qual. O rótulo do ENVIADO muda conforme a perspectiva (quem enviou vê
+// "Enviada/Reenviada"; quem recebe vê "Recebida/Recebida (reenvio)") e
+// conforme a rodada (rodada > 1 = já passou por uma rejeição antes).
+const STATUS_VISUAL = {
+  RASCUNHO:  { cardBg: '#f8fafc', cardBorder: '#cbd5e1', badgeBg: '#e2e8f0', badgeColor: '#475569' },
+  ENVIADO:   { cardBg: '#eff6ff', cardBorder: '#93c5fd', badgeBg: '#dbeafe', badgeColor: '#1d4ed8' },
+  APROVADO:  { cardBg: '#f0fdf4', cardBorder: '#86efac', badgeBg: '#dcfce7', badgeColor: '#15803d' },
+  REJEITADO: { cardBg: '#fef2f2', cardBorder: '#fca5a5', badgeBg: '#fee2e2', badgeColor: '#b91c1c' },
+  FECHADA:   { cardBg: '#faf5ff', cardBorder: '#d8b4fe', badgeBg: '#ede9fe', badgeColor: '#6d28d9' },
+}
+
+function rotuloStatus(status, rodada, perspectiva) {
+  const reenvio = rodada > 1
+  if (status === 'RASCUNHO')  return '📝 Rascunho'
+  if (status === 'APROVADO')  return '✅ Aprovado'
+  if (status === 'REJEITADO') return '↩️ Rejeitada'
+  if (status === 'FECHADA')   return '✔️ Prestação de Conta Realizada'
+  if (status === 'ENVIADO') {
+    if (perspectiva === 'recebidas') return reenvio ? '🔄 Recebida (reenvio)' : '📥 Recebida'
+    return reenvio ? '🔄 Reenviada' : '📤 Enviada'
+  }
+  return status
+}
+
+function visualStatus(status) {
+  return STATUS_VISUAL[status] || STATUS_VISUAL.RASCUNHO
+}
+
+function LegendaStatus({ itens }) {
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 14px', marginBottom: 14 }}>
+      {itens.map(([status, label]) => {
+        const v = visualStatus(status)
+        return (
+          <div key={status} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ width: 10, height: 10, borderRadius: '50%', background: v.badgeColor, display: 'inline-block' }} />
+            <span style={{ fontSize: 10.5, color: '#64748b' }}>{label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, onCorrigir }) {
@@ -194,9 +232,15 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
           <p style={{ color: '#dc2626', fontWeight: 700 }}>⚠️ {erro}</p>
         ) : aba === 'enviadas' ? (
           <>
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.6 }}>
               Minhas Prestações
             </p>
+            {enviadas.length > 0 && (
+              <LegendaStatus itens={[
+                ['RASCUNHO', 'Rascunho'], ['ENVIADO', 'Enviada/Reenviada'], ['APROVADO', 'Aprovada'],
+                ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
+              ]} />
+            )}
             {enviadas.length === 0 ? (
               <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '28px 16px', textAlign: 'center', marginBottom: 20 }}>
                 <p style={{ fontSize: 13, color: '#94a3b8' }}>Você ainda não enviou nenhuma prestação de contas.</p>
@@ -204,12 +248,12 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
                 {enviadas.map(p => {
-                  const badge = STATUS_BADGE[p.status] || STATUS_BADGE.RASCUNHO
+                  const v = visualStatus(p.status)
                   return (
-                    <div key={p.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px' }}>
+                    <div key={p.id} style={{ background: v.cardBg, border: `1.5px solid ${v.cardBorder}`, borderRadius: 12, padding: '12px 14px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{p.numero_pc}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: badge.bg, color: badge.color }}>{badge.label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: v.badgeBg, color: v.badgeColor }}>{rotuloStatus(p.status, p.rodada, 'enviadas')}</span>
                       </div>
                       <p style={{ fontSize: 12, color: '#64748b' }}>
                         {p.total_itens} {p.total_itens === 1 ? 'item' : 'itens'} · R$ {p.valor_total.toFixed(2).replace('.', ',')}
@@ -248,9 +292,15 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
           </>
         ) : (
           <>
-            <p style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 14, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+            <p style={{ fontSize: 13, fontWeight: 700, color: '#64748b', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.6 }}>
               Prestações Recebidas para Análise
             </p>
+            {recebidas.length > 0 && (
+              <LegendaStatus itens={[
+                ['ENVIADO', 'Recebida/Recebida (reenvio)'], ['APROVADO', 'Aprovada'],
+                ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
+              ]} />
+            )}
             {recebidas.length === 0 ? (
               <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '28px 16px', textAlign: 'center' }}>
                 <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma prestação de contas foi enviada para você.</p>
@@ -258,15 +308,15 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {recebidas.map(p => {
-                  const badge = STATUS_BADGE[p.status] || STATUS_BADGE.ENVIADO
+                  const v = visualStatus(p.status)
                   return (
                     <button key={p.id} onClick={() => abrirDetalhe(p.id, p.remetente_id)} style={{
-                      textAlign: 'left', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12,
+                      textAlign: 'left', background: v.cardBg, border: `1.5px solid ${v.cardBorder}`, borderRadius: 12,
                       padding: '12px 14px', cursor: 'pointer',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{p.numero_pc}</span>
-                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: badge.bg, color: badge.color }}>{badge.label}</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: v.badgeBg, color: v.badgeColor }}>{rotuloStatus(p.status, p.rodada, 'recebidas')}</span>
                       </div>
                       <p style={{ fontSize: 12, color: '#64748b' }}>
                         {p.total_itens} {p.total_itens === 1 ? 'item' : 'itens'} · R$ {p.valor_total.toFixed(2).replace('.', ',')}

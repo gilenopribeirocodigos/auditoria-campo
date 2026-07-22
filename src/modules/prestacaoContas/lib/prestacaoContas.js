@@ -123,7 +123,7 @@ export async function criarRascunho(remetenteId) {
   assertSupabase()
   const { data, error } = await supabase
     .from('pc_prestacoes')
-    .insert({ numero_pc: gerarNumeroPC(), remetente_id: remetenteId, destinatario_id: remetenteId, status: 'RASCUNHO' })
+    .insert({ numero_pc: gerarNumeroPC(), remetente_id: remetenteId, destinatario_id: null, status: 'RASCUNHO' })
     .select()
     .single()
   if (error) throw error

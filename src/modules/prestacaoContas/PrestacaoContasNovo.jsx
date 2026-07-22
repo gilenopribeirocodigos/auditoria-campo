@@ -30,7 +30,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
         ])
         setPrestacao(nova)
         setEraRejeitada(nova.status === 'REJEITADO')
-        setDestinatarios(dests)
+        setDestinatarios(dests.filter(d => d.id !== usuarioLogado.id))
       } catch (e) {
         setErro(e.message || 'Erro ao iniciar prestação de contas.')
       } finally {
@@ -176,6 +176,14 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
 
         {view === 'itens' && (
           <div>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9', border: '1px solid #cbd5e1',
+              borderRadius: 999, padding: '4px 12px', marginBottom: 10,
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#475569' }}>
+                📝 {eraRejeitada ? 'Corrigindo — ainda não reenviada' : 'Rascunho — ainda não enviada'}
+              </span>
+            </div>
             <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>Itens da Prestação</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
               Adicione cada despesa com o comprovante em foto. Toque num item pra editar (inclusive trocar a foto).
