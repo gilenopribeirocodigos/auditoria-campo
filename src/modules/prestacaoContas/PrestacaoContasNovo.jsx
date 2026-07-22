@@ -184,14 +184,14 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
                 📝 {eraRejeitada ? 'Corrigindo — ainda não reenviada' : 'Rascunho — ainda não enviada'}
               </span>
             </div>
-            <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>Itens da Prestação</h2>
+            <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>Despesa desta Prestação</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              Adicione cada despesa com o comprovante em foto. Toque num item pra editar (inclusive trocar a foto).
+              Cada prestação de contas tem uma única despesa, com o comprovante em foto. Toque no item pra editar (inclusive trocar a foto).
             </p>
 
             {itens.length === 0 ? (
               <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '24px 16px', textAlign: 'center', marginBottom: 16 }}>
-                <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhum item adicionado ainda.</p>
+                <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma despesa adicionada ainda.</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
@@ -213,10 +213,16 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <button onClick={() => setView('novo-item')} style={{
-                width: '100%', padding: 14, borderRadius: 12, border: 'none',
-                background: '#1e3a5f', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
-              }}>＋ Adicionar Item</button>
+              {itens.length === 0 ? (
+                <button onClick={() => setView('novo-item')} style={{
+                  width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                  background: '#1e3a5f', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                }}>＋ Adicionar Despesa</button>
+              ) : (
+                <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                  Cada prestação de contas tem só 1 despesa. Remova a de cima se precisar trocar.
+                </p>
+              )}
               <button onClick={() => setView('revisao')} disabled={itens.length === 0} style={{
                 width: '100%', padding: 14, borderRadius: 12, border: 'none',
                 background: itens.length > 0 ? '#d97706' : '#e2e8f0',

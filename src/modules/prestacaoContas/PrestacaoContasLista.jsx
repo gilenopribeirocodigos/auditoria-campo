@@ -8,7 +8,7 @@ import PCAprovadas from './telas/PCAprovadas.jsx'
 import PCFechadas from './telas/PCFechadas.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
-  aprovarPrestacao, rejeitarPrestacao,
+  aprovarPrestacao, rejeitarPrestacao, excluirRascunho,
 } from './lib/prestacaoContas.js'
 
 // Cada status tem uma cor própria — aplicada tanto no card inteiro (fundo
@@ -130,6 +130,16 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
       alert('Não foi possível rejeitar: ' + (e.message || e))
     } finally {
       setProcessando(false)
+    }
+  }
+
+  const handleExcluirRascunho = async (id) => {
+    if (!confirm('Excluir este rascunho? Essa ação não pode ser desfeita.')) return
+    try {
+      await excluirRascunho(id)
+      await carregarListas()
+    } catch (e) {
+      alert('Não foi possível excluir: ' + (e.message || e))
     }
   }
 
@@ -278,6 +288,18 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                           marginTop: 10, width: '100%', padding: 10, borderRadius: 8, border: 'none',
                           background: '#d97706', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                         }}>✎ Corrigir e Reenviar</button>
+                      )}
+                      {p.status === 'RASCUNHO' && (
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <button onClick={() => onCorrigir(p.id)} style={{
+                            flex: 1, padding: 10, borderRadius: 8, border: 'none',
+                            background: '#1e3a5f', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          }}>✎ Continuar</button>
+                          <button onClick={() => handleExcluirRascunho(p.id)} style={{
+                            padding: '10px 14px', borderRadius: 8, border: 'none',
+                            background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          }}>🗑️ Excluir</button>
+                        </div>
                       )}
                     </div>
                   )
