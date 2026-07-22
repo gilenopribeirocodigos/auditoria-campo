@@ -1,11 +1,29 @@
 import { useEffect, useState } from 'react'
 import { CarregandoHexagono } from '../../../components/Shared.jsx'
 import {
-  listarClassificacoes, criarClassificacao, removerClassificacao,
-  listarTiposComprovanteCadastrados, criarTipoComprovante, removerTipoComprovante,
+  listarClassificacoes, criarClassificacao, atualizarClassificacao, removerClassificacao,
+  listarTiposComprovanteCadastrados, criarTipoComprovante, atualizarTipoComprovante, removerTipoComprovante,
 } from '../lib/prestacaoContas.js'
 
-function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemover, placeholder }) {
+function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemover, onEditar, placeholder }) {
+  const [editandoId, setEditandoId] = useState(null)
+  const [editandoValor, setEditandoValor] = useState('')
+  const [salvando, setSalvando] = useState(false)
+
+  const iniciarEdicao = (it) => { setEditandoId(it.id); setEditandoValor(it.nome) }
+  const cancelarEdicao = () => { setEditandoId(null); setEditandoValor('') }
+
+  const confirmarEdicao = async () => {
+    if (!editandoValor.trim()) return
+    setSalvando(true)
+    try {
+      await onEditar(editandoId, editandoValor)
+      cancelarEdicao()
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   return (
     <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
       <p style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', marginBottom: 12 }}>{titulo}</p>
@@ -29,21 +47,52 @@ function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemo
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>Nome</th>
-                <th style={{ width: 44 }}></th>
+                <th style={{ width: 76 }}></th>
               </tr>
             </thead>
             <tbody>
-              {itens.map((it, i) => (
-                <tr key={it.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
-                  <td style={{ padding: '8px 12px', fontSize: 13, color: '#1e293b' }}>{it.nome}</td>
-                  <td style={{ textAlign: 'center' }}>
-                    <button onClick={() => onRemover(it)} style={{
-                      width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#fef2f2',
-                      color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: '24px', padding: 0,
-                    }}>✕</button>
-                  </td>
-                </tr>
-              ))}
+              {itens.map((it, i) => {
+                const editando = editandoId === it.id
+                return (
+                  <tr key={it.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
+                    <td style={{ padding: editando ? '6px 8px' : '8px 12px', fontSize: 13, color: '#1e293b' }}>
+                      {editando ? (
+                        <input
+                          className="form-input" autoFocus value={editandoValor}
+                          onChange={e => setEditandoValor(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') confirmarEdicao(); if (e.key === 'Escape') cancelarEdicao() }}
+                          style={{ padding: '6px 8px', fontSize: 13 }}
+                        />
+                      ) : it.nome}
+                    </td>
+                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
+                      {editando ? (
+                        <>
+                          <button onClick={confirmarEdicao} disabled={salvando || !editandoValor.trim()} style={{
+                            width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#dcfce7',
+                            color: '#15803d', fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: '24px', padding: 0, marginRight: 4,
+                          }}>✓</button>
+                          <button onClick={cancelarEdicao} disabled={salvando} style={{
+                            width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#f1f5f9',
+                            color: '#64748b', fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: '24px', padding: 0,
+                          }}>✕</button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => iniciarEdicao(it)} style={{
+                            width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#eff6ff',
+                            color: '#1d4ed8', fontSize: 11, fontWeight: 700, cursor: 'pointer', lineHeight: '24px', padding: 0, marginRight: 4,
+                          }}>✎</button>
+                          <button onClick={() => onRemover(it)} style={{
+                            width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#fef2f2',
+                            color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: '24px', padding: 0,
+                          }}>✕</button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -84,6 +133,11 @@ export default function PCPadroes({ onVoltar }) {
     } catch (e) { alert('Não foi possível adicionar: ' + (e.message || e)) }
   }
 
+  const editarClassificacaoItem = async (id, novoNome) => {
+    try { await atualizarClassificacao(id, novoNome); await carregar() }
+    catch (e) { alert('Não foi possível salvar: ' + (e.message || e)) }
+  }
+
   const removerClassificacaoItem = async (it) => {
     if (!confirm(`Remover "${it.nome}" da lista de classificações?`)) return
     try { await removerClassificacao(it.id); await carregar() }
@@ -97,6 +151,11 @@ export default function PCPadroes({ onVoltar }) {
       setNovoTipo('')
       await carregar()
     } catch (e) { alert('Não foi possível adicionar: ' + (e.message || e)) }
+  }
+
+  const editarTipoItem = async (id, novoNome) => {
+    try { await atualizarTipoComprovante(id, novoNome); await carregar() }
+    catch (e) { alert('Não foi possível salvar: ' + (e.message || e)) }
   }
 
   const removerTipoItem = async (it) => {
@@ -130,6 +189,7 @@ export default function PCPadroes({ onVoltar }) {
               novoValor={novaClassificacao}
               onMudarNovoValor={setNovaClassificacao}
               onAdicionar={adicionarClassificacao}
+              onEditar={editarClassificacaoItem}
               onRemover={removerClassificacaoItem}
               placeholder="Ex.: PEDÁGIO"
             />
@@ -139,6 +199,7 @@ export default function PCPadroes({ onVoltar }) {
               novoValor={novoTipo}
               onMudarNovoValor={setNovoTipo}
               onAdicionar={adicionarTipo}
+              onEditar={editarTipoItem}
               onRemover={removerTipoItem}
               placeholder="Ex.: Cupom Fiscal"
             />

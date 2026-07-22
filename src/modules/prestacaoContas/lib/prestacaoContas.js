@@ -29,6 +29,12 @@ export async function criarClassificacao(nome) {
   return data
 }
 
+export async function atualizarClassificacao(id, nome) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_classificacoes').update({ nome: nome.trim().toUpperCase() }).eq('id', id)
+  if (error) throw error
+}
+
 export async function removerClassificacao(id) {
   assertSupabase()
   const { error } = await supabase.from('pc_classificacoes').delete().eq('id', id)
@@ -49,6 +55,12 @@ export async function criarTipoComprovante(nome) {
     .from('pc_tipos_comprovante').insert({ nome: nome.trim() }).select().single()
   if (error) throw error
   return data
+}
+
+export async function atualizarTipoComprovante(id, nome) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_tipos_comprovante').update({ nome: nome.trim() }).eq('id', id)
+  if (error) throw error
 }
 
 export async function removerTipoComprovante(id) {
