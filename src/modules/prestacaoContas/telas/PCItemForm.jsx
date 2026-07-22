@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { CATEGORIAS_SUGERIDAS, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
 import { listarClassificacoes, listarTiposComprovanteCadastrados } from '../lib/prestacaoContas.js'
+import PCSearchSelect from './PCSearchSelect.jsx'
 
 const ITEM_VAZIO = {
   classificacao: '', descricao: '', fornecedor: '', forma_pagamento: 'PIX',
@@ -70,14 +71,11 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
 
       <div className="form-group">
         <label className="form-label">Classificação *</label>
-        <input
-          className="form-input" list="pc-categorias" value={item.classificacao}
-          onChange={e => updMaiuscula('classificacao', e.target.value)}
-          placeholder="Ex.: ALMOÇO, BORRACHARIA, PASSAGEM..."
+        <PCSearchSelect
+          opcoes={classificacoes} valor={item.classificacao}
+          onSelecionar={v => upd('classificacao', v)}
+          placeholder="Buscar e escolher a classificação..."
         />
-        <datalist id="pc-categorias">
-          {classificacoes.map(c => <option key={c} value={c} />)}
-        </datalist>
       </div>
 
       <div className="form-group">
@@ -99,9 +97,11 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
         </div>
         <div className="form-group">
           <label className="form-label">Comprovante</label>
-          <select className="form-input" value={item.tipo_comprovante} onChange={e => upd('tipo_comprovante', e.target.value)}>
-            {tiposComprovante.map(t => <option key={t} value={t}>{t}</option>)}
-          </select>
+          <PCSearchSelect
+            opcoes={tiposComprovante} valor={item.tipo_comprovante}
+            onSelecionar={v => upd('tipo_comprovante', v)}
+            placeholder="Buscar..."
+          />
         </div>
       </div>
 

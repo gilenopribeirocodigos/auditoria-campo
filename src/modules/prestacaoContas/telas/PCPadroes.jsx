@@ -21,21 +21,33 @@ function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemo
           fontWeight: 700, cursor: novoValor.trim() ? 'pointer' : 'not-allowed',
         }}>＋</button>
       </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {itens.length === 0 && <p style={{ fontSize: 12, color: '#94a3b8' }}>Nenhum item cadastrado ainda.</p>}
-        {itens.map(it => (
-          <span key={it.id} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, background: '#f1f5f9',
-            borderRadius: 999, padding: '5px 6px 5px 12px', fontSize: 12, fontWeight: 600, color: '#334155',
-          }}>
-            {it.nome}
-            <button onClick={() => onRemover(it)} style={{
-              width: 18, height: 18, borderRadius: '50%', border: 'none', background: '#dc2626',
-              color: '#fff', fontSize: 10, fontWeight: 700, cursor: 'pointer', lineHeight: '18px', padding: 0,
-            }}>✕</button>
-          </span>
-        ))}
-      </div>
+      {itens.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#94a3b8' }}>Nenhum item cadastrado ainda.</p>
+      ) : (
+        <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc' }}>
+                <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>Nome</th>
+                <th style={{ width: 44 }}></th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((it, i) => (
+                <tr key={it.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '8px 12px', fontSize: 13, color: '#1e293b' }}>{it.nome}</td>
+                  <td style={{ textAlign: 'center' }}>
+                    <button onClick={() => onRemover(it)} style={{
+                      width: 24, height: 24, borderRadius: '50%', border: 'none', background: '#fef2f2',
+                      color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: '24px', padding: 0,
+                    }}>✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
