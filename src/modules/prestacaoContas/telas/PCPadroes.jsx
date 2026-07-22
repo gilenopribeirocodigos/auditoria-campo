@@ -3,6 +3,7 @@ import { CarregandoHexagono } from '../../../components/Shared.jsx'
 import {
   listarClassificacoes, criarClassificacao, atualizarClassificacao, removerClassificacao,
   listarTiposComprovanteCadastrados, criarTipoComprovante, atualizarTipoComprovante, removerTipoComprovante,
+  listarFormasPagamento, criarFormaPagamento, atualizarFormaPagamento, removerFormaPagamento,
 } from '../lib/prestacaoContas.js'
 
 function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemover, onEditar, placeholder }) {
@@ -105,16 +106,19 @@ export default function PCPadroes({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)
   const [classificacoes, setClassificacoes] = useState([])
   const [tipos, setTipos] = useState([])
+  const [formas, setFormas] = useState([])
   const [novaClassificacao, setNovaClassificacao] = useState('')
   const [novoTipo, setNovoTipo] = useState('')
+  const [novaForma, setNovaForma] = useState('')
   const [erro, setErro] = useState('')
 
   const carregar = async () => {
     setCarregando(true)
     try {
-      const [c, t] = await Promise.all([listarClassificacoes(), listarTiposComprovanteCadastrados()])
+      const [c, t, f] = await Promise.all([listarClassificacoes(), listarTiposComprovanteCadastrados(), listarFormasPagamento()])
       setClassificacoes(c)
       setTipos(t)
+      setFormas(f)
     } catch (e) {
       setErro(e.message || 'Erro ao carregar padrões.')
     } finally {
@@ -164,6 +168,26 @@ export default function PCPadroes({ onVoltar }) {
     catch (e) { alert('Não foi possível remover: ' + (e.message || e)) }
   }
 
+  const adicionarForma = async () => {
+    if (!novaForma.trim()) return
+    try {
+      await criarFormaPagamento(novaForma)
+      setNovaForma('')
+      await carregar()
+    } catch (e) { alert('Não foi possível adicionar: ' + (e.message || e)) }
+  }
+
+  const editarFormaItem = async (id, novoNome) => {
+    try { await atualizarFormaPagamento(id, novoNome); await carregar() }
+    catch (e) { alert('Não foi possível salvar: ' + (e.message || e)) }
+  }
+
+  const removerFormaItem = async (it) => {
+    if (!confirm(`Remover "${it.nome}" da lista de formas de pagamento?`)) return
+    try { await removerFormaPagamento(it.id); await carregar() }
+    catch (e) { alert('Não foi possível remover: ' + (e.message || e)) }
+  }
+
   return (
     <div className="app-shell">
       <header className="app-header no-print">
@@ -175,7 +199,7 @@ export default function PCPadroes({ onVoltar }) {
       </header>
       <main className="app-content">
         <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-          Gerencie as opções sugeridas nos campos de Classificação e Comprovante. Remover um item daqui não altera despesas já lançadas com esse texto.
+          Gerencie as opções sugeridas nos campos de Classificação, Forma de Pagamento e Comprovante. Remover um item daqui não altera despesas já lançadas com esse texto.
         </p>
         {carregando ? (
           <CarregandoHexagono texto="Carregando..." />
@@ -194,6 +218,16 @@ export default function PCPadroes({ onVoltar }) {
               placeholder="Ex.: PEDÁGIO"
             />
             <Secao
+              titulo="Forma de Pagamento"
+              itens={formas}
+              novoValor={novaForma}
+              onMudarNovoValor={setNovaForma}
+              onAdicionar={adicionarForma}
+              onEditar={editarFormaItem}
+              onRemover={removerFormaItem}
+              placeholder="Ex.: Vale Alimentação"
+            />
+            <Secao
               titulo="Tipo de Comprovante"
               itens={tipos}
               novoValor={novoTipo}
@@ -203,9 +237,6 @@ export default function PCPadroes({ onVoltar }) {
               onRemover={removerTipoItem}
               placeholder="Ex.: Cupom Fiscal"
             />
-            <p style={{ fontSize: 11, color: '#94a3b8' }}>
-              A opção "Outro" no Comprovante é fixa e sempre aparece, além dos itens acima.
-            </p>
           </>
         )}
       </main>

@@ -69,6 +69,34 @@ export async function removerTipoComprovante(id) {
   if (error) throw error
 }
 
+export async function listarFormasPagamento() {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_formas_pagamento').select('id, nome').eq('ativo', true).order('nome')
+  if (error) throw error
+  return data || []
+}
+
+export async function criarFormaPagamento(nome) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_formas_pagamento').insert({ nome: nome.trim() }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function atualizarFormaPagamento(id, nome) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_formas_pagamento').update({ nome: nome.trim() }).eq('id', id)
+  if (error) throw error
+}
+
+export async function removerFormaPagamento(id) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_formas_pagamento').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ── Permissão por usuário (mais forte que a permissão de perfil) ───────────
 // aprovador: só quem tem isso marcado aparece como opção em "Enviar para".
 // acesso_botao: tri-state — null segue a permissão de perfil normal, true
