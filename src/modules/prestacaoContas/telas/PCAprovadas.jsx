@@ -170,18 +170,6 @@ export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {podeFechar && (
-                <>
-                  <button onClick={handleFechar} disabled={fechando} style={{
-                    width: '100%', padding: 14, borderRadius: 12, border: 'none',
-                    background: fechando ? '#94a3b8' : 'linear-gradient(135deg, #b45309, #92400e)',
-                    color: '#fff', fontSize: 14, fontWeight: 700, cursor: fechando ? 'not-allowed' : 'pointer',
-                  }}>{fechando ? '⏳ Fechando...' : '🔒 Fechar Prestação de Conta do Período'}</button>
-                  <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: -4 }}>
-                    Tira o selecionado desta fila e registra como processado. Baixe o Excel/fotos antes, se ainda não baixou.
-                  </p>
-                </>
-              )}
               <button onClick={handleExcel} disabled={gerandoExcel} style={{
                 width: '100%', padding: 14, borderRadius: 12, border: 'none',
                 background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
@@ -194,6 +182,21 @@ export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar }) {
               <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
                 Um único Excel e um único .zip com tudo que estiver marcado acima.
               </p>
+
+              {podeFechar && (
+                <>
+                  <div style={{ borderTop: '1px dashed #cbd5e1', margin: '6px 0' }} />
+                  <button onClick={handleFechar} disabled={fechando} style={{
+                    width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                    background: fechando ? '#94a3b8' : 'linear-gradient(135deg, #b45309, #92400e)',
+                    color: '#fff', fontSize: 14, fontWeight: 700, cursor: fechando ? 'not-allowed' : 'pointer',
+                  }}>{fechando ? '⏳ Fechando...' : '🔒 Fechar Prestação de Conta do Período'}</button>
+                  <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center' }}>
+                    Já baixou o Excel e as fotos acima? Isso encerra o ciclo: o selecionado sai desta fila e vai
+                    pro histórico de "Fechamentos". O próximo ciclo começa do zero, só com as futuras aprovadas.
+                  </p>
+                </>
+              )}
             </div>
           </>
         )}
