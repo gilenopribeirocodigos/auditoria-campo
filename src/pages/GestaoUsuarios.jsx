@@ -56,6 +56,7 @@ const TODAS_PERMISSOES = [
   { id: 'prestacao_contas_receber',   label: '💰 Prestação de Contas - receber e aprovar/rejeitar' },
   { id: 'prestacao_contas_ver_todas', label: '💰 Prestação de Contas - ver todas (financeiro/admin)' },
   { id: 'prestacao_contas_configurar', label: '💰 Prestação de Contas - configurar padrões (classificação/comprovante)' },
+  { id: 'prestacao_contas_fechar', label: '💰 Prestação de Contas - fechar prestação de contas do período (financeiro)' },
 ]
 
 const FORM_VAZIO = {

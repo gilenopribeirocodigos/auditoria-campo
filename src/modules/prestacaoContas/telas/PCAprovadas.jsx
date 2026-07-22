@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { CarregandoHexagono } from '../../../components/Shared.jsx'
-import { listarAprovadas } from '../lib/prestacaoContas.js'
+import { temPermissao } from '../../../lib/auth.js'
+import { listarAprovadas, fecharPrestacoes } from '../lib/prestacaoContas.js'
 import { gerarExcelConsolidado, baixarFotosConsolidadas } from '../lib/exportacao.js'
 
 export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar }) {
+  const podeFechar = temPermissao(usuarioLogado, 'prestacao_contas_fechar')
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [aprovadas, setAprovadas] = useState([])
@@ -12,20 +14,22 @@ export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar }) {
   const [dataAte, setDataAte] = useState('')
   const [gerandoExcel, setGerandoExcel] = useState(false)
   const [baixandoFotos, setBaixandoFotos] = useState(false)
+  const [fechando, setFechando] = useState(false)
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const lista = await listarAprovadas(usuarioLogado.id, verTodas)
-        setAprovadas(lista)
-        setSelecionadas(new Set(lista.map(p => p.id)))
-      } catch (e) {
-        setErro(e.message || 'Erro ao carregar prestações aprovadas.')
-      } finally {
-        setCarregando(false)
-      }
-    })()
-  }, [usuarioLogado.id, verTodas])
+  const carregar = async () => {
+    setCarregando(true)
+    try {
+      const lista = await listarAprovadas(usuarioLogado.id, verTodas)
+      setAprovadas(lista)
+      setSelecionadas(new Set(lista.map(p => p.id)))
+    } catch (e) {
+      setErro(e.message || 'Erro ao carregar prestações aprovadas.')
+    } finally {
+      setCarregando(false)
+    }
+  }
+
+  useEffect(() => { carregar() }, [usuarioLogado.id, verTodas]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtradas = useMemo(() => {
     return aprovadas.filter(p => {
@@ -71,6 +75,27 @@ export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar }) {
       alert('Não foi possível baixar as fotos: ' + (e.message || e))
     } finally {
       setBaixandoFotos(false)
+    }
+  }
+
+  const handleFechar = async () => {
+    if (selecionadasNaLista.length === 0) { alert('Selecione ao menos uma prestação.'); return }
+    const confirmado = confirm(
+      `Fechar a prestação de contas do período com ${selecionadasNaLista.length} prestação(ões), ` +
+      `totalizando R$ ${totalSelecionado.toFixed(2).replace('.', ',')}?\n\n` +
+      `Já baixou o Excel e as fotos desse lote? Depois de fechado, essas prestações saem desta tela ` +
+      `e passam a aparecer como "Prestação de Conta Realizada".`
+    )
+    if (!confirmado) return
+    setFechando(true)
+    try {
+      const fechamento = await fecharPrestacoes(selecionadasNaLista, usuarioLogado.id, { periodoDe: dataDe, periodoAte: dataAte })
+      alert(`Fechado com sucesso: ${fechamento.numero_fechamento}`)
+      await carregar()
+    } catch (e) {
+      alert('Não foi possível fechar: ' + (e.message || e))
+    } finally {
+      setFechando(false)
     }
   }
 
@@ -145,6 +170,18 @@ export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {podeFechar && (
+                <>
+                  <button onClick={handleFechar} disabled={fechando} style={{
+                    width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                    background: fechando ? '#94a3b8' : 'linear-gradient(135deg, #b45309, #92400e)',
+                    color: '#fff', fontSize: 14, fontWeight: 700, cursor: fechando ? 'not-allowed' : 'pointer',
+                  }}>{fechando ? '⏳ Fechando...' : '🔒 Fechar Prestação de Conta do Período'}</button>
+                  <p style={{ fontSize: 11, color: '#94a3b8', textAlign: 'center', marginTop: -4 }}>
+                    Tira o selecionado desta fila e registra como processado. Baixe o Excel/fotos antes, se ainda não baixou.
+                  </p>
+                </>
+              )}
               <button onClick={handleExcel} disabled={gerandoExcel} style={{
                 width: '100%', padding: 14, borderRadius: 12, border: 'none',
                 background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',

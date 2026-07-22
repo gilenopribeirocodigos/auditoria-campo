@@ -2,7 +2,7 @@
 // Reaproveita só o client genérico (supabase) e o upload genérico de fotos
 // (uploadBase64) de src/lib/supabase.js, sem tocar nesse arquivo.
 import { supabase, uploadBase64 } from '../../../lib/supabase.js'
-import { gerarNumeroPC } from './numeroPC.js'
+import { gerarNumeroPC, gerarNumeroFechamento } from './numeroPC.js'
 
 const BUCKET_FOTOS = 'comprovantes-prestacao'
 
@@ -251,6 +251,83 @@ export async function listarAprovadas(usuarioId, verTodas) {
     .order('analisado_em', { ascending: false })
   if (!verTodas) query = query.eq('destinatario_id', usuarioId)
   const { data, error } = await query
+  if (error) throw error
+
+  const remetenteIds = [...new Set((data || []).map(p => p.remetente_id))]
+  const nomesPorId = {}
+  if (remetenteIds.length > 0) {
+    const { data: usuarios, error: errUsuarios } = await supabase
+      .from('usuarios').select('id, nome').in('id', remetenteIds)
+    if (errUsuarios) throw errUsuarios
+    for (const u of usuarios || []) nomesPorId[u.id] = u.nome
+  }
+
+  return (data || []).map(p => ({
+    ...p,
+    pc_itens: (p.pc_itens || []).sort((a, b) => a.ordem - b.ordem),
+    remetente_nome: nomesPorId[p.remetente_id] || '—',
+    total_itens: p.pc_itens?.length || 0,
+    valor_total: (p.pc_itens || []).reduce((soma, i) => soma + Number(i.valor || 0), 0),
+  }))
+}
+
+// ── Fechamento (lote de prestações aprovadas processadas num período) ──────
+// Fechar tira as prestações da fila "Aprovadas — Exportar" (status deixa de
+// ser APROVADO) e as agrupa num registro pc_fechamentos, com número próprio,
+// pra dar rastreabilidade de quando/quem fechou e permitir reexportar depois.
+export async function fecharPrestacoes(prestacoes, usuarioId, { periodoDe, periodoAte } = {}) {
+  assertSupabase()
+  if (prestacoes.length === 0) throw new Error('Nenhuma prestação selecionada.')
+
+  const valorTotal = prestacoes.reduce((soma, p) => soma + Number(p.valor_total || 0), 0)
+  const { data: fechamento, error: errFechamento } = await supabase
+    .from('pc_fechamentos')
+    .insert({
+      numero_fechamento: gerarNumeroFechamento(),
+      fechado_por: usuarioId,
+      periodo_de: periodoDe || null,
+      periodo_ate: periodoAte || null,
+      qtd_prestacoes: prestacoes.length,
+      valor_total: valorTotal,
+    })
+    .select()
+    .single()
+  if (errFechamento) throw errFechamento
+
+  const { error: errUpdate } = await supabase
+    .from('pc_prestacoes')
+    .update({ status: 'FECHADA', fechamento_id: fechamento.id, atualizado_em: new Date().toISOString() })
+    .in('id', prestacoes.map(p => p.id))
+  if (errUpdate) throw errUpdate
+
+  return fechamento
+}
+
+export async function listarFechamentos() {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_fechamentos').select('*').order('fechado_em', { ascending: false })
+  if (error) throw error
+
+  const usuarioIds = [...new Set((data || []).map(f => f.fechado_por))]
+  const nomesPorId = {}
+  if (usuarioIds.length > 0) {
+    const { data: usuarios, error: errUsuarios } = await supabase
+      .from('usuarios').select('id, nome').in('id', usuarioIds)
+    if (errUsuarios) throw errUsuarios
+    for (const u of usuarios || []) nomesPorId[u.id] = u.nome
+  }
+
+  return (data || []).map(f => ({ ...f, fechado_por_nome: nomesPorId[f.fechado_por] || '—' }))
+}
+
+export async function listarPrestacoesDoFechamento(fechamentoId) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_prestacoes')
+    .select('*, pc_itens(*, pc_fotos(*))')
+    .eq('fechamento_id', fechamentoId)
+    .order('numero_pc')
   if (error) throw error
 
   const remetenteIds = [...new Set((data || []).map(p => p.remetente_id))]

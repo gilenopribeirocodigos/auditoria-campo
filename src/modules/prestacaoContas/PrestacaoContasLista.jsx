@@ -5,6 +5,7 @@ import PCRecebidaDetalhe from './telas/PCRecebidaDetalhe.jsx'
 import PCHistorico from './telas/PCHistorico.jsx'
 import PCPadroes from './telas/PCPadroes.jsx'
 import PCAprovadas from './telas/PCAprovadas.jsx'
+import PCFechadas from './telas/PCFechadas.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
   aprovarPrestacao, rejeitarPrestacao,
@@ -15,14 +16,17 @@ const STATUS_BADGE = {
   ENVIADO:   { bg: '#dbeafe', color: '#1d4ed8', label: '📤 Enviado' },
   APROVADO:  { bg: '#dcfce7', color: '#15803d', label: '✅ Aprovado' },
   REJEITADO: { bg: '#fee2e2', color: '#b91c1c', label: '↩️ Rejeitado' },
+  FECHADA:   { bg: '#ede9fe', color: '#6d28d9', label: '✔️ Prestação de Conta Realizada' },
 }
 
 export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, onCorrigir }) {
   const podeReceber = temPermissao(usuarioLogado, 'prestacao_contas_receber') || temPermissao(usuarioLogado, 'prestacao_contas_ver_todas')
   const podeConfigurar = temPermissao(usuarioLogado, 'prestacao_contas_configurar')
   const verTodas = temPermissao(usuarioLogado, 'prestacao_contas_ver_todas')
+  const podeFechar = temPermissao(usuarioLogado, 'prestacao_contas_fechar')
   const [mostrarPadroes, setMostrarPadroes] = useState(false)
   const [mostrarAprovadas, setMostrarAprovadas] = useState(false)
+  const [mostrarFechadas, setMostrarFechadas] = useState(false)
   const [aba, setAba] = useState('enviadas')
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
@@ -101,6 +105,10 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
     return <PCAprovadas usuarioLogado={usuarioLogado} verTodas={verTodas} onVoltar={() => setMostrarAprovadas(false)} />
   }
 
+  if (mostrarFechadas) {
+    return <PCFechadas onVoltar={() => setMostrarFechadas(false)} />
+  }
+
   if (detalheId) {
     return (
       <div className="app-shell">
@@ -140,13 +148,19 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
       </header>
 
       <main className="app-content">
-        {(podeConfigurar || podeReceber) && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12 }}>
+        {(podeConfigurar || podeReceber || podeFechar) && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             {podeReceber && (
               <button onClick={() => setMostrarAprovadas(true)} style={{
                 border: '1px solid #86efac', background: '#f0fdf4', color: '#15803d',
                 padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
               }}>✅ Aprovadas</button>
+            )}
+            {(podeFechar || verTodas) && (
+              <button onClick={() => setMostrarFechadas(true)} style={{
+                border: '1px solid #c4b5fd', background: '#f5f3ff', color: '#6d28d9',
+                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}>🔒 Fechamentos</button>
             )}
             {podeConfigurar && (
               <button onClick={() => setMostrarPadroes(true)} style={{

@@ -2,7 +2,7 @@
 // PC-YYYYMMDD-HHMMSS-XXXX (timezone América/Fortaleza) — mesmo padrão do
 // numeroAS.js (src/lib/numeroAS.js), mas isolado aqui pra não criar
 // dependência entre este módulo e o de Auditorias.
-export function gerarNumeroPC() {
+function gerarNumero(prefixo) {
   const agora = new Date()
   const partes = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'America/Fortaleza',
@@ -19,5 +19,15 @@ export function gerarNumeroPC() {
   const data = `${valor('year')}${valor('month')}${valor('day')}`
   const hora = `${valor('hour')}${valor('minute')}${valor('second')}`
   const sufixo = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, 'X')
-  return `PC-${data}-${hora}-${sufixo}`
+  return `${prefixo}-${data}-${hora}-${sufixo}`
+}
+
+export function gerarNumeroPC() {
+  return gerarNumero('PC')
+}
+
+// Número do lote de fechamento (agrupa N prestações aprovadas fechadas
+// juntas num período) — mesmo padrão do numeroPC, prefixo diferente.
+export function gerarNumeroFechamento() {
+  return gerarNumero('FCH')
 }

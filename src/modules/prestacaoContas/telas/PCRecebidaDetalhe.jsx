@@ -55,6 +55,14 @@ export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar,
         </div>
       )}
 
+      {prestacao.status === 'FECHADA' && (
+        <div style={{ background: '#f5f3ff', border: '1px solid #c4b5fd', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: '#6d28d9' }}>
+            ✔️ Prestação de conta já realizada — faz parte de um fechamento de período. Consulte a tela <strong>🔒 Fechamentos</strong> pra reexportar, se precisar.
+          </p>
+        </div>
+      )}
+
       <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '12px 14px', marginBottom: 14 }}>
         <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
           🕐 Histórico desta prestação
