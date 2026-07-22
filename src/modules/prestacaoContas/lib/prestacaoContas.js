@@ -115,7 +115,7 @@ export async function listarMinhasPrestacoes(remetenteId) {
   assertSupabase()
   const { data, error } = await supabase
     .from('pc_prestacoes')
-    .select('*, pc_itens(valor)')
+    .select('*, pc_itens(valor, classificacao, descricao, fornecedor)')
     .eq('remetente_id', remetenteId)
     .order('criado_em', { ascending: false })
   if (error) throw error
@@ -242,18 +242,47 @@ export async function obterNomeUsuario(usuarioId) {
   return data?.nome
 }
 
+// ── Contagem de pendências (badge no botão da Home) ─────────────────────────
+// Soma: prestações que o usuário enviou e vieram REJEITADAS (precisa corrigir)
+// + (se ele for aprovador) prestações ENVIADAS aguardando a análise dele.
+export async function contarPendencias(usuarioId, souAprovador) {
+  assertSupabase()
+  const [rejeitadas, aguardandoAnalise] = await Promise.all([
+    supabase.from('pc_prestacoes').select('id', { count: 'exact', head: true })
+      .eq('remetente_id', usuarioId).eq('status', 'REJEITADO'),
+    souAprovador
+      ? supabase.from('pc_prestacoes').select('id', { count: 'exact', head: true })
+          .eq('destinatario_id', usuarioId).eq('status', 'ENVIADO')
+      : Promise.resolve({ count: 0, error: null }),
+  ])
+  if (rejeitadas.error) throw rejeitadas.error
+  if (aguardandoAnalise.error) throw aguardandoAnalise.error
+  return (rejeitadas.count || 0) + (aguardandoAnalise.count || 0)
+}
+
 // ── Recebidas (destinatário analisa) ────────────────────────────────────────
 export async function listarRecebidas(destinatarioId) {
   assertSupabase()
   const { data, error } = await supabase
     .from('pc_prestacoes')
-    .select('*, pc_itens(valor)')
+    .select('*, pc_itens(valor, classificacao, descricao, fornecedor)')
     .eq('destinatario_id', destinatarioId)
     .neq('status', 'RASCUNHO')
     .order('criado_em', { ascending: false })
   if (error) throw error
+
+  const remetenteIds = [...new Set((data || []).map(p => p.remetente_id))]
+  const nomesPorId = {}
+  if (remetenteIds.length > 0) {
+    const { data: usuarios, error: errUsuarios } = await supabase
+      .from('usuarios').select('id, nome').in('id', remetenteIds)
+    if (errUsuarios) throw errUsuarios
+    for (const u of usuarios || []) nomesPorId[u.id] = u.nome
+  }
+
   return (data || []).map(p => ({
     ...p,
+    remetente_nome: nomesPorId[p.remetente_id] || '—',
     total_itens: p.pc_itens?.length || 0,
     valor_total: (p.pc_itens || []).reduce((soma, i) => soma + Number(i.valor || 0), 0),
   }))

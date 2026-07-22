@@ -67,6 +67,8 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   const [mostrarAprovadas, setMostrarAprovadas] = useState(false)
   const [mostrarFechadas, setMostrarFechadas] = useState(false)
   const [aba, setAba] = useState('enviadas')
+  const [busca, setBusca] = useState('')
+  const [filtroStatus, setFiltroStatus] = useState('TODOS')
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [enviadas, setEnviadas] = useState([])
@@ -150,6 +152,50 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
 
   const pendentes = recebidas.filter(p => p.status === 'ENVIADO').length
 
+  // Busca por número, solicitante, classificação, descrição ou fornecedor —
+  // e filtro por status. Aplicado só na lista visível (a troca de aba reseta).
+  const correspondeABusca = (p, termo) => {
+    if (!termo) return true
+    const alvo = termo.toLowerCase()
+    if (p.numero_pc?.toLowerCase().includes(alvo)) return true
+    if (p.remetente_nome?.toLowerCase().includes(alvo)) return true
+    return (p.pc_itens || []).some(i => (
+      i.classificacao?.toLowerCase().includes(alvo) ||
+      i.descricao?.toLowerCase().includes(alvo) ||
+      i.fornecedor?.toLowerCase().includes(alvo)
+    ))
+  }
+  const aplicarFiltros = (lista) => lista.filter(p => (
+    (filtroStatus === 'TODOS' || p.status === filtroStatus) && correspondeABusca(p, busca)
+  ))
+  const enviadasFiltradas = aplicarFiltros(enviadas)
+  const recebidasFiltradas = aplicarFiltros(recebidas)
+
+  const mudarAba = (novaAba) => {
+    setAba(novaAba)
+    setBusca('')
+    setFiltroStatus('TODOS')
+  }
+
+  const opcoesStatus = aba === 'enviadas'
+    ? [['TODOS', 'Todos os status'], ['RASCUNHO', 'Rascunho'], ['ENVIADO', 'Enviada/Reenviada'], ['APROVADO', 'Aprovada'], ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada']]
+    : [['TODOS', 'Todos os status'], ['ENVIADO', 'Recebida'], ['APROVADO', 'Aprovada'], ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada']]
+
+  const BarraBuscaFiltro = ({ placeholder }) => (
+    <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <input
+        type="text" value={busca} onChange={e => setBusca(e.target.value)} placeholder={placeholder}
+        style={{ flex: 1, padding: '9px 12px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 13 }}
+      />
+      <select
+        value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)}
+        style={{ padding: '9px 8px', borderRadius: 8, border: '1px solid #cbd5e1', fontSize: 12, color: '#475569', background: '#fff' }}
+      >
+        {opcoesStatus.map(([valor, label]) => <option key={valor} value={valor}>{label}</option>)}
+      </select>
+    </div>
+  )
+
   if (mostrarPadroes) {
     return <PCPadroes onVoltar={() => setMostrarPadroes(false)} />
   }
@@ -226,12 +272,12 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
 
         {podeReceber && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-            <button onClick={() => setAba('enviadas')} style={{
+            <button onClick={() => mudarAba('enviadas')} style={{
               flex: 1, padding: 10, borderRadius: 10, border: 'none', cursor: 'pointer',
               background: aba === 'enviadas' ? '#1e3a5f' : '#e2e8f0',
               color: aba === 'enviadas' ? '#fff' : '#475569', fontSize: 13, fontWeight: 700,
             }}>Enviadas</button>
-            <button onClick={() => setAba('recebidas')} style={{
+            <button onClick={() => mudarAba('recebidas')} style={{
               flex: 1, padding: 10, borderRadius: 10, border: 'none', cursor: 'pointer', position: 'relative',
               background: aba === 'recebidas' ? '#1e3a5f' : '#e2e8f0',
               color: aba === 'recebidas' ? '#fff' : '#475569', fontSize: 13, fontWeight: 700,
@@ -251,18 +297,25 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
               Minhas Prestações
             </p>
             {enviadas.length > 0 && (
-              <LegendaStatus itens={[
-                ['RASCUNHO', 'Rascunho'], ['ENVIADO', 'Enviada/Reenviada'], ['APROVADO', 'Aprovada'],
-                ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
-              ]} />
+              <>
+                <LegendaStatus itens={[
+                  ['RASCUNHO', 'Rascunho'], ['ENVIADO', 'Enviada/Reenviada'], ['APROVADO', 'Aprovada'],
+                  ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
+                ]} />
+                <BarraBuscaFiltro placeholder="Buscar por número, classificação, descrição..." />
+              </>
             )}
             {enviadas.length === 0 ? (
               <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '28px 16px', textAlign: 'center', marginBottom: 20 }}>
                 <p style={{ fontSize: 13, color: '#94a3b8' }}>Você ainda não enviou nenhuma prestação de contas.</p>
               </div>
+            ) : enviadasFiltradas.length === 0 ? (
+              <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '28px 16px', textAlign: 'center', marginBottom: 20 }}>
+                <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma prestação encontrada com esse filtro.</p>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20 }}>
-                {enviadas.map(p => {
+                {enviadasFiltradas.map(p => {
                   const v = visualStatus(p.status)
                   return (
                     <div key={p.id} style={{ background: v.cardBg, border: `1.5px solid ${v.cardBorder}`, borderRadius: 12, padding: '12px 14px' }}>
@@ -323,18 +376,25 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
               Prestações Recebidas para Análise
             </p>
             {recebidas.length > 0 && (
-              <LegendaStatus itens={[
-                ['ENVIADO', 'Recebida/Recebida (reenvio)'], ['APROVADO', 'Aprovada'],
-                ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
-              ]} />
+              <>
+                <LegendaStatus itens={[
+                  ['ENVIADO', 'Recebida/Recebida (reenvio)'], ['APROVADO', 'Aprovada'],
+                  ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
+                ]} />
+                <BarraBuscaFiltro placeholder="Buscar por número, solicitante, classificação..." />
+              </>
             )}
             {recebidas.length === 0 ? (
               <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '28px 16px', textAlign: 'center' }}>
                 <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma prestação de contas foi enviada para você.</p>
               </div>
+            ) : recebidasFiltradas.length === 0 ? (
+              <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '28px 16px', textAlign: 'center' }}>
+                <p style={{ fontSize: 13, color: '#94a3b8' }}>Nenhuma prestação encontrada com esse filtro.</p>
+              </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {recebidas.map(p => {
+                {recebidasFiltradas.map(p => {
                   const v = visualStatus(p.status)
                   return (
                     <button key={p.id} onClick={() => abrirDetalhe(p.id, p.remetente_id)} style={{
@@ -346,7 +406,7 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: v.badgeBg, color: v.badgeColor }}>{rotuloStatus(p.status, p.rodada, 'recebidas')}</span>
                       </div>
                       <p style={{ fontSize: 12, color: '#64748b' }}>
-                        {p.total_itens} {p.total_itens === 1 ? 'item' : 'itens'} · R$ {p.valor_total.toFixed(2).replace('.', ',')}
+                        {p.remetente_nome} · {p.total_itens} {p.total_itens === 1 ? 'item' : 'itens'} · R$ {p.valor_total.toFixed(2).replace('.', ',')}
                       </p>
                     </button>
                   )

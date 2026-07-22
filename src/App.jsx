@@ -33,7 +33,7 @@ import DiagnosticoRastreio      from './pages/DiagnosticoRastreio.jsx'
 // ── NOVO: Módulo isolado de Prestação de Contas ──────────────────────────────
 import PrestacaoContasLista     from './modules/prestacaoContas/PrestacaoContasLista.jsx'
 import PrestacaoContasNovo      from './modules/prestacaoContas/PrestacaoContasNovo.jsx'
-import { obterPermissaoUsuario as obterPermissaoUsuarioPC } from './modules/prestacaoContas/lib/prestacaoContas.js'
+import { obterPermissaoUsuario as obterPermissaoUsuarioPC, contarPendencias as contarPendenciasPC } from './modules/prestacaoContas/lib/prestacaoContas.js'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -69,6 +69,7 @@ export default function App() {
   const [tela,                setTela]                = useState('home')
   const [pcEditandoId,        setPcEditandoId]        = useState(null)
   const [pcAcessoBotao,       setPcAcessoBotao]       = useState(null) // override por usuário: null=segue perfil, true=libera, false=bloqueia
+  const [pcPendencias,        setPcPendencias]        = useState(0) // badge: rejeitadas p/ corrigir + (se aprovador) aguardando análise
   const [step,                setStep]                = useState(0)
   const [form,                setForm]                = useState(FORM_INICIAL())
   const [pautasHoje,          setPautasHoje]          = useState([])
@@ -123,11 +124,16 @@ export default function App() {
   // botão por usuário (mais forte que a permissão de perfil). Se der erro
   // (tabela ainda não existe, offline etc.) mantém null = segue o perfil.
   useEffect(() => {
-    if (!usuario) { setPcAcessoBotao(null); return }
+    if (!usuario) { setPcAcessoBotao(null); setPcPendencias(0); return }
     obterPermissaoUsuarioPC(usuario.id)
-      .then(p => setPcAcessoBotao(p.acesso_botao))
-      .catch(() => setPcAcessoBotao(null))
-  }, [usuario])
+      .then(p => {
+        setPcAcessoBotao(p.acesso_botao)
+        const podeReceberPC = p.aprovador || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')
+        return contarPendenciasPC(usuario.id, podeReceberPC)
+      })
+      .then(setPcPendencias)
+      .catch(() => { setPcAcessoBotao(null); setPcPendencias(0) })
+  }, [usuario, tela])
 
   useEffect(() => {
     if (!usuario) return
@@ -575,10 +581,20 @@ export default function App() {
 
           {(pcAcessoBotao === true || (pcAcessoBotao !== false && (temPermissao(usuario, 'prestacao_contas_enviar') || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')))) && (
             <button onClick={() => setTela('prestacao-contas')} style={{
+              position: 'relative',
               background: 'linear-gradient(135deg, rgba(14,116,144,0.9), rgba(21,94,117,0.9))', color: '#fff', border: 'none',
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-            }}>💰 Prestação de Contas</button>
+            }}>
+              💰 Prestação de Contas
+              {pcPendencias > 0 && (
+                <span style={{
+                  position: 'absolute', top: -7, right: -7, background: '#dc2626', color: '#fff',
+                  borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
+                }}>{pcPendencias}</span>
+              )}
+            </button>
           )}
 
           {temPermissao(usuario, 'tratar_nc') && (
