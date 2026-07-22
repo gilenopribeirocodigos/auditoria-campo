@@ -8,7 +8,7 @@ import PCAprovadas from './telas/PCAprovadas.jsx'
 import PCFechadas from './telas/PCFechadas.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
-  aprovarPrestacao, rejeitarPrestacao, excluirRascunho,
+  aprovarPrestacao, rejeitarPrestacao, excluirRascunho, obterPermissaoUsuario,
 } from './lib/prestacaoContas.js'
 
 // Cada status tem uma cor própria — aplicada tanto no card inteiro (fundo
@@ -58,7 +58,8 @@ function LegendaStatus({ itens }) {
 }
 
 export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, onCorrigir }) {
-  const podeReceber = temPermissao(usuarioLogado, 'prestacao_contas_receber') || temPermissao(usuarioLogado, 'prestacao_contas_ver_todas')
+  const [souAprovador, setSouAprovador] = useState(false)
+  const podeReceber = souAprovador || temPermissao(usuarioLogado, 'prestacao_contas_receber') || temPermissao(usuarioLogado, 'prestacao_contas_ver_todas')
   const podeConfigurar = temPermissao(usuarioLogado, 'prestacao_contas_configurar')
   const verTodas = temPermissao(usuarioLogado, 'prestacao_contas_ver_todas')
   const podeFechar = temPermissao(usuarioLogado, 'prestacao_contas_fechar')
@@ -92,7 +93,11 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
     }
   }
 
-  useEffect(() => { carregarListas() }, [usuarioLogado.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    obterPermissaoUsuario(usuarioLogado.id).then(p => setSouAprovador(!!p.aprovador)).catch(() => setSouAprovador(false))
+  }, [usuarioLogado.id])
+
+  useEffect(() => { carregarListas() }, [usuarioLogado.id, podeReceber]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const abrirDetalhe = async (prestacaoId, remetenteId) => {
     setDetalheId(prestacaoId)

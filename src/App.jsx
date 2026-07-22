@@ -33,6 +33,7 @@ import DiagnosticoRastreio      from './pages/DiagnosticoRastreio.jsx'
 // ── NOVO: Módulo isolado de Prestação de Contas ──────────────────────────────
 import PrestacaoContasLista     from './modules/prestacaoContas/PrestacaoContasLista.jsx'
 import PrestacaoContasNovo      from './modules/prestacaoContas/PrestacaoContasNovo.jsx'
+import { obterPermissaoUsuario as obterPermissaoUsuarioPC } from './modules/prestacaoContas/lib/prestacaoContas.js'
 
 import S0Selecao       from './steps/S0Selecao.jsx'
 import S1Identificacao from './steps/S1Identificacao.jsx'
@@ -67,6 +68,7 @@ export default function App() {
   const [usuario,             setUsuario]             = useState(getUsuarioLogado)
   const [tela,                setTela]                = useState('home')
   const [pcEditandoId,        setPcEditandoId]        = useState(null)
+  const [pcAcessoBotao,       setPcAcessoBotao]       = useState(null) // override por usuário: null=segue perfil, true=libera, false=bloqueia
   const [step,                setStep]                = useState(0)
   const [form,                setForm]                = useState(FORM_INICIAL())
   const [pautasHoje,          setPautasHoje]          = useState([])
@@ -116,6 +118,16 @@ export default function App() {
       setTimeout(() => { updateServiceWorker(true) }, 1000)
     }
   }, [needRefresh])
+
+  // Prestação de Contas — módulo isolado: busca o override de acesso ao
+  // botão por usuário (mais forte que a permissão de perfil). Se der erro
+  // (tabela ainda não existe, offline etc.) mantém null = segue o perfil.
+  useEffect(() => {
+    if (!usuario) { setPcAcessoBotao(null); return }
+    obterPermissaoUsuarioPC(usuario.id)
+      .then(p => setPcAcessoBotao(p.acesso_botao))
+      .catch(() => setPcAcessoBotao(null))
+  }, [usuario])
 
   useEffect(() => {
     if (!usuario) return
@@ -561,7 +573,7 @@ export default function App() {
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           }}>📝 Registros Operacionais</button>
 
-          {(temPermissao(usuario, 'prestacao_contas_enviar') || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')) && (
+          {(pcAcessoBotao === true || (pcAcessoBotao !== false && (temPermissao(usuario, 'prestacao_contas_enviar') || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')))) && (
             <button onClick={() => setTela('prestacao-contas')} style={{
               background: 'linear-gradient(135deg, rgba(14,116,144,0.9), rgba(21,94,117,0.9))', color: '#fff', border: 'none',
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,

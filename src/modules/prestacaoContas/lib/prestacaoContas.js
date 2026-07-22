@@ -69,24 +69,45 @@ export async function removerTipoComprovante(id) {
   if (error) throw error
 }
 
-// ── Destinatários disponíveis (usuários habilitados a receber) ─────────────
+// ── Permissão por usuário (mais forte que a permissão de perfil) ───────────
+// aprovador: só quem tem isso marcado aparece como opção em "Enviar para".
+// acesso_botao: tri-state — null segue a permissão de perfil normal, true
+// sempre libera o botão da Home, false sempre bloqueia.
+export async function obterPermissaoUsuario(usuarioId) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_permissoes_usuario').select('*').eq('usuario_id', usuarioId).maybeSingle()
+  if (error) throw error
+  return data || { usuario_id: usuarioId, aprovador: false, acesso_botao: null }
+}
+
+export async function definirPermissaoUsuario(usuarioId, { aprovador, acessoBotao }) {
+  assertSupabase()
+  const { error } = await supabase
+    .from('pc_permissoes_usuario')
+    .upsert({ usuario_id: usuarioId, aprovador, acesso_botao: acessoBotao, atualizado_em: new Date().toISOString() }, { onConflict: 'usuario_id' })
+  if (error) throw error
+}
+
+// ── Destinatários disponíveis (usuários marcados individualmente como aprovador) ─
 export async function listarDestinatariosDisponiveis() {
   assertSupabase()
   const { data: perms, error: errPerms } = await supabase
-    .from('perfis_permissoes')
-    .select('perfil')
-    .eq('permissao', 'prestacao_contas_receber')
+    .from('pc_permissoes_usuario')
+    .select('usuario_id')
+    .eq('aprovador', true)
   if (errPerms) throw errPerms
-  const perfisHabilitados = new Set((perms || []).map(p => p.perfil))
+  const idsAprovadores = (perms || []).map(p => p.usuario_id)
+  if (idsAprovadores.length === 0) return []
 
   const { data: usuarios, error: errUsers } = await supabase
     .from('usuarios')
     .select('id, nome, perfil')
     .eq('status', 'ATIVO')
+    .in('id', idsAprovadores)
     .order('nome')
   if (errUsers) throw errUsers
-
-  return (usuarios || []).filter(u => u.perfil === 'ADMIN' || perfisHabilitados.has(u.perfil))
+  return usuarios || []
 }
 
 // ── Minhas prestações (enviadas por mim) ────────────────────────────────────

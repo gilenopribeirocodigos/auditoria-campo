@@ -7,6 +7,10 @@ import {
 import { supabase } from '../lib/supabase.js'
 import { processoToKey, regionalToKey } from '../components/PainelFiltros.jsx'
 import { CarregandoHexagono } from '../components/Shared.jsx'
+// Prestação de Contas — módulo isolado: só essas 2 funções são usadas aqui,
+// pra configurar a permissão por usuário (aprovador / acesso ao botão).
+// Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
+import { obterPermissaoUsuario as obterPermissaoUsuarioPC, definirPermissaoUsuario as definirPermissaoUsuarioPC } from '../modules/prestacaoContas/lib/prestacaoContas.js'
 
 const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
 
@@ -104,6 +108,10 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const [processosUsuario, setProcessosUsuario] = useState([])
   const [regionaisUsuario, setRegionaisUsuario] = useState([])
 
+  // Prestação de Contas — permissão por usuário (módulo isolado)
+  const [pcAprovador,   setPcAprovador]   = useState(false)
+  const [pcAcessoBotao, setPcAcessoBotao] = useState(null) // null | true | false
+
   const carregar = async () => {
     setLoading(true)
     try { setUsuarios(await listarUsuarios()) }
@@ -178,6 +186,8 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     setEditando(null); setFormData(FORM_VAZIO); setErro('')
     setProcessosUsuario([])
     setRegionaisUsuario([])
+    setPcAprovador(false)
+    setPcAcessoBotao(null)
     setModal(true)
   }
   const abrirEditar = async u  => {
@@ -190,6 +200,16 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
       console.warn('Erro carregando processos do usuário:', e.message)
       setProcessosUsuario([])
     }
+    // Prestação de Contas — permissão por usuário (módulo isolado)
+    try {
+      const permPC = await obterPermissaoUsuarioPC(u.id)
+      setPcAprovador(!!permPC.aprovador)
+      setPcAcessoBotao(permPC.acesso_botao)
+    } catch (e) {
+      console.warn('Erro carregando permissão de Prestação de Contas:', e.message)
+      setPcAprovador(false)
+      setPcAcessoBotao(null)
+    }
     try {
       const regs = await listarRegionaisUsuario(u.id)
       setRegionaisUsuario(regs)
@@ -199,7 +219,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     }
     setModal(true)
   }
-  const fechar      = () => { setModal(false); setErro(''); setProcessosUsuario([]); setRegionaisUsuario([]) }
+  const fechar      = () => { setModal(false); setErro(''); setProcessosUsuario([]); setRegionaisUsuario([]); setPcAprovador(false); setPcAcessoBotao(null) }
   const upd         = (k, v) => setFormData(f => ({ ...f, [k]: v }))
 
   const toggleProcessoUsuario = chave => {
@@ -234,6 +254,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
       if (usuarioSalvo?.id) {
         await salvarProcessosUsuario(usuarioSalvo.id, processosUsuario)
         await salvarRegionaisUsuario(usuarioSalvo.id, regionaisUsuario)
+        await definirPermissaoUsuarioPC(usuarioSalvo.id, { aprovador: pcAprovador, acessoBotao: pcAcessoBotao })
         console.log('✅ Processos salvos com sucesso pro usuário', usuarioSalvo.id)
       }
 
@@ -637,6 +658,52 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                   boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                 }} />
               </div>
+            </div>
+
+            {/* ─── Prestação de Contas — permissão por usuário (módulo isolado) ─── */}
+            <div style={{ background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 12, padding: '14px', marginBottom: 16 }}>
+              <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 10 }}>
+                💰 Prestação de Contas
+              </p>
+
+              <div
+                onClick={() => setPcAprovador(!pcAprovador)}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  padding: '10px 12px', borderRadius: 10, cursor: 'pointer', marginBottom: 12,
+                  background: pcAprovador ? '#fff' : '#fffdf5',
+                  border: `1.5px solid ${pcAprovador ? '#d97706' : '#fde68a'}`,
+                }}>
+                <div>
+                  <p style={{ fontSize: 12.5, fontWeight: 700, color: pcAprovador ? '#92400e' : '#a16207', margin: 0 }}>
+                    É aprovador
+                  </p>
+                  <p style={{ fontSize: 11, color: '#a16207', margin: '2px 0 0', opacity: 0.85 }}>
+                    {pcAprovador ? 'Aparece em "Enviar para" e pode aprovar/rejeitar' : 'Não aparece em "Enviar para"'}
+                  </p>
+                </div>
+                <div style={{ width: 40, height: 22, borderRadius: 11, background: pcAprovador ? '#d97706' : '#e2e8f0', position: 'relative', flexShrink: 0 }}>
+                  <div style={{ position: 'absolute', top: 2, left: pcAprovador ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                </div>
+              </div>
+
+              <label className="form-label">Acesso ao botão "Prestação de Contas"</label>
+              <select
+                className="form-input"
+                value={pcAcessoBotao === null ? 'padrao' : pcAcessoBotao ? 'permitir' : 'bloquear'}
+                onChange={e => {
+                  const v = e.target.value
+                  setPcAcessoBotao(v === 'padrao' ? null : v === 'permitir')
+                }}
+              >
+                <option value="padrao">Padrão (segue a permissão do perfil)</option>
+                <option value="permitir">Sempre permitir</option>
+                <option value="bloquear">Sempre bloquear</option>
+              </select>
+              <p style={{ fontSize: 11, color: '#a16207', marginTop: 6 }}>
+                Essa escolha vale mais que a permissão do perfil — se marcar "permitir" ou "bloquear",
+                é isso que vale pra este usuário, mesmo que o perfil dele diga outra coisa.
+              </p>
             </div>
 
             {/* ─── Processos da Estrutura que o usuário pode ver ─── */}
