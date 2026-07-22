@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { CATEGORIAS_SUGERIDAS, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
-import { listarClassificacoes, listarTiposComprovanteCadastrados } from '../lib/prestacaoContas.js'
+import { listarClassificacoes, listarTiposComprovanteCadastrados, listarFormasPagamento } from '../lib/prestacaoContas.js'
 import PCSearchSelect from './PCSearchSelect.jsx'
 
 const ITEM_VAZIO = {
@@ -22,6 +22,7 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
   const [fotoAlterada, setFotoAlterada] = useState(false)
   const [classificacoes, setClassificacoes] = useState(CATEGORIAS_SUGERIDAS)
   const [tiposComprovante, setTiposComprovante] = useState(TIPOS_COMPROVANTE)
+  const [formasPagamento, setFormasPagamento] = useState(FORMAS_PAGAMENTO)
   const cameraRef = useRef(null)
   const galeriaRef = useRef(null)
 
@@ -35,7 +36,11 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
       } catch { /* mantém a lista fixa */ }
       try {
         const ts = await listarTiposComprovanteCadastrados()
-        if (ts.length > 0) setTiposComprovante([...ts.map(t => t.nome), 'Outro'])
+        if (ts.length > 0) setTiposComprovante(ts.map(t => t.nome))
+      } catch { /* mantém a lista fixa */ }
+      try {
+        const fs = await listarFormasPagamento()
+        if (fs.length > 0) setFormasPagamento(fs.map(f => f.nome))
       } catch { /* mantém a lista fixa */ }
     })()
   }, [])
@@ -91,9 +96,11 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
         <div className="form-group">
           <label className="form-label">Forma de pagamento</label>
-          <select className="form-input" value={item.forma_pagamento} onChange={e => upd('forma_pagamento', e.target.value)}>
-            {FORMAS_PAGAMENTO.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+          <PCSearchSelect
+            opcoes={formasPagamento} valor={item.forma_pagamento}
+            onSelecionar={v => upd('forma_pagamento', v)}
+            placeholder="Buscar..."
+          />
         </div>
         <div className="form-group">
           <label className="form-label">Comprovante</label>
