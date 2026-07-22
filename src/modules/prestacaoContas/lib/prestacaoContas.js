@@ -238,6 +238,39 @@ export async function listarRecebidas(destinatarioId) {
   }))
 }
 
+// ── Aprovadas (consolidado pra exportação) ──────────────────────────────────
+// verTodas=true (permissão prestacao_contas_ver_todas) traz TODAS as
+// prestações aprovadas do sistema; senão só as que o próprio usuário
+// analisou/aprovou (destinatario_id = usuarioId).
+export async function listarAprovadas(usuarioId, verTodas) {
+  assertSupabase()
+  let query = supabase
+    .from('pc_prestacoes')
+    .select('*, pc_itens(*, pc_fotos(*))')
+    .eq('status', 'APROVADO')
+    .order('analisado_em', { ascending: false })
+  if (!verTodas) query = query.eq('destinatario_id', usuarioId)
+  const { data, error } = await query
+  if (error) throw error
+
+  const remetenteIds = [...new Set((data || []).map(p => p.remetente_id))]
+  const nomesPorId = {}
+  if (remetenteIds.length > 0) {
+    const { data: usuarios, error: errUsuarios } = await supabase
+      .from('usuarios').select('id, nome').in('id', remetenteIds)
+    if (errUsuarios) throw errUsuarios
+    for (const u of usuarios || []) nomesPorId[u.id] = u.nome
+  }
+
+  return (data || []).map(p => ({
+    ...p,
+    pc_itens: (p.pc_itens || []).sort((a, b) => a.ordem - b.ordem),
+    remetente_nome: nomesPorId[p.remetente_id] || '—',
+    total_itens: p.pc_itens?.length || 0,
+    valor_total: (p.pc_itens || []).reduce((soma, i) => soma + Number(i.valor || 0), 0),
+  }))
+}
+
 // ── Histórico (linha do tempo imutável de envio/aprovação/rejeição) ─────────
 // pc_prestacoes.motivo_rejeicao/analisado_em/analisado_por guardam só o
 // estado ATUAL (útil pras listagens); pc_historico guarda TODAS as rodadas,

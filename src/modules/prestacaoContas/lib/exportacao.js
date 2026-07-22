@@ -1,6 +1,7 @@
-// Exportação da Prestação de Contas aprovada: Excel consolidado (mesmo
-// layout da planilha CAIXA que o Gileno já usa) e fotos em lote (.zip),
-// ordenadas por data/hora do comprovante.
+// Exportação CONSOLIDADA das prestações de contas aprovadas: um único
+// Excel com os itens de todas as prestações selecionadas (mesmo layout da
+// planilha CAIXA + colunas de rastreio de origem) e um único .zip com todas
+// as fotos, em sequência por data/hora e renomeadas por item.
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 
@@ -29,38 +30,51 @@ function slugify(texto) {
     .toLowerCase() || 'item'
 }
 
-// ── Excel consolidado — mesmas 7 colunas da planilha CAIXA original ─────────
-export function gerarExcelPrestacao(prestacao) {
-  const itens = [...(prestacao.pc_itens || [])].sort((a, b) => a.ordem - b.ordem)
-
-  const linhas = itens.map(item => ({
-    'DESPESA - CLASSIFICAÇÃO': item.classificacao || '',
-    'DESCRIÇAO': item.descricao || '',
-    'FORNECEDOR': item.fornecedor || '',
-    'FORMA DE PAGAMENTO': item.forma_pagamento || '',
-    'NOTA FISCAL': item.tipo_comprovante || '',
-    'DATA DA EMISSÃO': formatarDataBr(item.data_emissao),
-    'Valor': Number(item.valor || 0),
-  }))
+// ── Excel consolidado — 1 linha por item, de TODAS as prestações passadas ───
+// prestacoes: [{ ...prestacao, remetente_nome }]
+export function gerarExcelConsolidado(prestacoes) {
+  const linhas = []
+  for (const p of prestacoes) {
+    const itens = [...(p.pc_itens || [])].sort((a, b) => a.ordem - b.ordem)
+    for (const item of itens) {
+      linhas.push({
+        'Nº Prestação': p.numero_pc,
+        'Solicitante': p.remetente_nome || '',
+        'DESPESA - CLASSIFICAÇÃO': item.classificacao || '',
+        'DESCRIÇAO': item.descricao || '',
+        'FORNECEDOR': item.fornecedor || '',
+        'FORMA DE PAGAMENTO': item.forma_pagamento || '',
+        'NOTA FISCAL': item.tipo_comprovante || '',
+        'DATA DA EMISSÃO': formatarDataBr(item.data_emissao),
+        'Valor': Number(item.valor || 0),
+      })
+    }
+  }
+  if (linhas.length === 0) throw new Error('Nenhum item nas prestações selecionadas.')
 
   const ws = XLSX.utils.json_to_sheet(linhas)
   ws['!cols'] = [
-    { wch: 22 }, { wch: 32 }, { wch: 26 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 },
+    { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 32 }, { wch: 26 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 },
   ]
   const wb = XLSX.utils.book_new()
-  XLSX.utils.book_append_sheet(wb, ws, prestacao.numero_pc.slice(0, 31))
-  XLSX.writeFile(wb, `Prestacao_${prestacao.numero_pc}.xlsx`)
+  XLSX.utils.book_append_sheet(wb, ws, 'Prestações Aprovadas')
+
+  const hoje = new Date().toISOString().slice(0, 10)
+  XLSX.writeFile(wb, `Prestacoes_Aprovadas_Consolidado_${hoje}.xlsx`)
 }
 
-// ── Fotos em lote (.zip), ordenadas por data de emissão do item ─────────────
-export async function baixarFotosEmLote(prestacao) {
+// ── Fotos em lote consolidadas — 1 .zip com as fotos de TODAS as prestações
+// passadas, em sequência única ordenada por data de emissão do item ─────────
+export async function baixarFotosConsolidadas(prestacoes) {
   const pares = []
-  for (const item of prestacao.pc_itens || []) {
-    for (const foto of item.pc_fotos || []) {
-      pares.push({ item, foto })
+  for (const p of prestacoes) {
+    for (const item of p.pc_itens || []) {
+      for (const foto of item.pc_fotos || []) {
+        pares.push({ prestacao: p, item, foto })
+      }
     }
   }
-  if (pares.length === 0) throw new Error('Esta prestação não tem fotos anexadas.')
+  if (pares.length === 0) throw new Error('Nenhuma das prestações selecionadas tem fotos anexadas.')
 
   pares.sort((a, b) => {
     const da = a.item.data_emissao || ''
@@ -71,17 +85,18 @@ export async function baixarFotosEmLote(prestacao) {
 
   const zip = new JSZip()
   let i = 1
-  for (const { item, foto } of pares) {
+  for (const { prestacao, item, foto } of pares) {
     const resp = await fetch(foto.foto_url)
     if (!resp.ok) continue
     const blob = await resp.blob()
     const ext = blob.type.includes('png') ? 'png' : 'jpg'
     const dataStr = item.data_emissao || 'sem-data'
-    const nome = `${String(i).padStart(2, '0')}_${dataStr}_${slugify(item.classificacao)}.${ext}`
+    const nome = `${String(i).padStart(3, '0')}_${dataStr}_${slugify(prestacao.numero_pc)}_${slugify(item.classificacao)}.${ext}`
     zip.file(nome, blob)
     i++
   }
 
   const conteudo = await zip.generateAsync({ type: 'blob' })
-  salvarBlob(conteudo, `Fotos_${prestacao.numero_pc}.zip`)
+  const hoje = new Date().toISOString().slice(0, 10)
+  salvarBlob(conteudo, `Fotos_Prestacoes_Aprovadas_${hoje}.zip`)
 }

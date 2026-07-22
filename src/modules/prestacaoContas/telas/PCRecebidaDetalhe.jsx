@@ -1,30 +1,9 @@
 import { useState } from 'react'
 import PCHistorico from './PCHistorico.jsx'
-import { gerarExcelPrestacao, baixarFotosEmLote } from '../lib/exportacao.js'
 
 export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar, onRejeitar, onVoltar, processando }) {
   const [rejeitando, setRejeitando] = useState(false)
   const [motivo, setMotivo] = useState('')
-  const [baixandoFotos, setBaixandoFotos] = useState(false)
-
-  const handleBaixarExcel = () => {
-    try {
-      gerarExcelPrestacao(prestacao)
-    } catch (e) {
-      alert('Não foi possível gerar o Excel: ' + (e.message || e))
-    }
-  }
-
-  const handleBaixarFotos = async () => {
-    setBaixandoFotos(true)
-    try {
-      await baixarFotosEmLote(prestacao)
-    } catch (e) {
-      alert('Não foi possível baixar as fotos: ' + (e.message || e))
-    } finally {
-      setBaixandoFotos(false)
-    }
-  }
 
   const itens = prestacao.pc_itens || []
   const total = itens.reduce((soma, i) => soma + Number(i.valor || 0), 0)
@@ -69,23 +48,9 @@ export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar,
       </div>
 
       {prestacao.status === 'APROVADO' && (
-        <div style={{ background: '#fff', border: '1.5px solid #86efac', borderRadius: 12, padding: '14px', marginBottom: 14 }}>
-          <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-            📦 Exportar
-          </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button onClick={handleBaixarExcel} style={{
-              width: '100%', padding: 12, borderRadius: 10, border: 'none',
-              background: '#7c3aed', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer',
-            }}>📊 Baixar Excel Consolidado</button>
-            <button onClick={handleBaixarFotos} disabled={baixandoFotos} style={{
-              width: '100%', padding: 12, borderRadius: 10, border: 'none',
-              background: baixandoFotos ? '#94a3b8' : '#1e3a5f', color: '#fff', fontSize: 13, fontWeight: 700,
-              cursor: baixandoFotos ? 'not-allowed' : 'pointer',
-            }}>{baixandoFotos ? '⏳ Baixando fotos...' : '🗂️ Baixar Fotos em Lote (.zip)'}</button>
-          </div>
-          <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
-            Excel no mesmo layout da sua planilha. Fotos nomeadas e ordenadas por data de emissão.
+        <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', marginBottom: 14 }}>
+          <p style={{ fontSize: 12, color: '#15803d' }}>
+            ✅ Aprovada. Para baixar Excel/fotos, use a tela <strong>✅ Aprovadas</strong> (consolida todas as prestações aprovadas de uma vez).
           </p>
         </div>
       )}
