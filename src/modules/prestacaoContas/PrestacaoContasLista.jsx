@@ -3,6 +3,7 @@ import { CarregandoHexagono } from '../../components/Shared.jsx'
 import { temPermissao } from '../../lib/auth.js'
 import PCRecebidaDetalhe from './telas/PCRecebidaDetalhe.jsx'
 import PCHistorico from './telas/PCHistorico.jsx'
+import PCPadroes from './telas/PCPadroes.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
   aprovarPrestacao, rejeitarPrestacao,
@@ -17,6 +18,8 @@ const STATUS_BADGE = {
 
 export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, onCorrigir }) {
   const podeReceber = temPermissao(usuarioLogado, 'prestacao_contas_receber') || temPermissao(usuarioLogado, 'prestacao_contas_ver_todas')
+  const podeConfigurar = temPermissao(usuarioLogado, 'prestacao_contas_configurar')
+  const [mostrarPadroes, setMostrarPadroes] = useState(false)
   const [aba, setAba] = useState('enviadas')
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
@@ -87,6 +90,10 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
 
   const pendentes = recebidas.filter(p => p.status === 'ENVIADO').length
 
+  if (mostrarPadroes) {
+    return <PCPadroes onVoltar={() => setMostrarPadroes(false)} />
+  }
+
   if (detalheId) {
     return (
       <div className="app-shell">
@@ -126,6 +133,15 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
       </header>
 
       <main className="app-content">
+        {podeConfigurar && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button onClick={() => setMostrarPadroes(true)} style={{
+              border: '1px solid #cbd5e1', background: '#fff', color: '#475569',
+              padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+            }}>⚙️ Padrões</button>
+          </div>
+        )}
+
         {podeReceber && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
             <button onClick={() => setAba('enviadas')} style={{

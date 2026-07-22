@@ -10,6 +10,53 @@ function assertSupabase() {
   if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')
 }
 
+// ── Padrões (Classificação / Tipo de Comprovante) ───────────────────────────
+// Cadastro editável (tela "⚙️ Padrões") em vez de lista fixa no código —
+// permite adicionar/remover sem precisar de deploy novo.
+export async function listarClassificacoes() {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_classificacoes').select('id, nome').eq('ativo', true).order('nome')
+  if (error) throw error
+  return data || []
+}
+
+export async function criarClassificacao(nome) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_classificacoes').insert({ nome: nome.trim().toUpperCase() }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function removerClassificacao(id) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_classificacoes').delete().eq('id', id)
+  if (error) throw error
+}
+
+export async function listarTiposComprovanteCadastrados() {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_tipos_comprovante').select('id, nome').eq('ativo', true).order('nome')
+  if (error) throw error
+  return data || []
+}
+
+export async function criarTipoComprovante(nome) {
+  assertSupabase()
+  const { data, error } = await supabase
+    .from('pc_tipos_comprovante').insert({ nome: nome.trim() }).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function removerTipoComprovante(id) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_tipos_comprovante').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ── Destinatários disponíveis (usuários habilitados a receber) ─────────────
 export async function listarDestinatariosDisponiveis() {
   assertSupabase()

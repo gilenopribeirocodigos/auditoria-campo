@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { CATEGORIAS_SUGERIDAS, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
+import { listarClassificacoes, listarTiposComprovanteCadastrados } from '../lib/prestacaoContas.js'
 
 const ITEM_VAZIO = {
   classificacao: '', descricao: '', fornecedor: '', forma_pagamento: 'PIX',
@@ -18,10 +19,28 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
     : ITEM_VAZIO)
   const [foto, setFoto] = useState(fotoInicialUrl || null)
   const [fotoAlterada, setFotoAlterada] = useState(false)
+  const [classificacoes, setClassificacoes] = useState(CATEGORIAS_SUGERIDAS)
+  const [tiposComprovante, setTiposComprovante] = useState(TIPOS_COMPROVANTE)
   const cameraRef = useRef(null)
   const galeriaRef = useRef(null)
 
+  // Padrões cadastrados (tela "⚙️ Padrões") — se a busca falhar ou vier
+  // vazia, mantém a lista fixa de categorias.js como reserva.
+  useEffect(() => {
+    (async () => {
+      try {
+        const cs = await listarClassificacoes()
+        if (cs.length > 0) setClassificacoes(cs.map(c => c.nome))
+      } catch { /* mantém a lista fixa */ }
+      try {
+        const ts = await listarTiposComprovanteCadastrados()
+        if (ts.length > 0) setTiposComprovante([...ts.map(t => t.nome), 'Outro'])
+      } catch { /* mantém a lista fixa */ }
+    })()
+  }, [])
+
   const upd = (campo, valor) => setItem(f => ({ ...f, [campo]: valor }))
+  const updMaiuscula = (campo, valor) => setItem(f => ({ ...f, [campo]: valor.toUpperCase() }))
 
   const processarFoto = (files) => {
     const file = files?.[0]
@@ -53,22 +72,22 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
         <label className="form-label">Classificação *</label>
         <input
           className="form-input" list="pc-categorias" value={item.classificacao}
-          onChange={e => upd('classificacao', e.target.value.toUpperCase())}
+          onChange={e => updMaiuscula('classificacao', e.target.value)}
           placeholder="Ex.: ALMOÇO, BORRACHARIA, PASSAGEM..."
         />
         <datalist id="pc-categorias">
-          {CATEGORIAS_SUGERIDAS.map(c => <option key={c} value={c} />)}
+          {classificacoes.map(c => <option key={c} value={c} />)}
         </datalist>
       </div>
 
       <div className="form-group">
         <label className="form-label">Descrição *</label>
-        <input className="form-input" value={item.descricao} onChange={e => upd('descricao', e.target.value)} placeholder="Ex.: Viagem Boa Hora" />
+        <input className="form-input" value={item.descricao} onChange={e => updMaiuscula('descricao', e.target.value)} placeholder="Ex.: VIAGEM BOA HORA" />
       </div>
 
       <div className="form-group">
         <label className="form-label">Fornecedor</label>
-        <input className="form-input" value={item.fornecedor} onChange={e => upd('fornecedor', e.target.value)} placeholder="Ex.: Restaurante Sabor Ideal" />
+        <input className="form-input" value={item.fornecedor} onChange={e => updMaiuscula('fornecedor', e.target.value)} placeholder="Ex.: RESTAURANTE SABOR IDEAL" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
@@ -81,7 +100,7 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
         <div className="form-group">
           <label className="form-label">Comprovante</label>
           <select className="form-input" value={item.tipo_comprovante} onChange={e => upd('tipo_comprovante', e.target.value)}>
-            {TIPOS_COMPROVANTE.map(t => <option key={t} value={t}>{t}</option>)}
+            {tiposComprovante.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </div>
       </div>
@@ -99,7 +118,7 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
 
       <div className="form-group">
         <label className="form-label">Observação (opcional)</label>
-        <input className="form-input" value={item.observacao} onChange={e => upd('observacao', e.target.value)} />
+        <input className="form-input" value={item.observacao} onChange={e => updMaiuscula('observacao', e.target.value)} />
       </div>
 
       {/* ── Foto do comprovante ── */}
