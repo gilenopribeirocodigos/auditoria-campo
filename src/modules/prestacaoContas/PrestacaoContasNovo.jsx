@@ -17,6 +17,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
   const [view, setView] = useState('itens') // itens | novo-item | revisao
   const [itemEditando, setItemEditando] = useState(null)
   const [salvandoItem, setSalvandoItem] = useState(false)
+  const [observacaoCorrecao, setObservacaoCorrecao] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [enviado, setEnviado] = useState(false)
 
@@ -93,7 +94,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
     setEnviando(true)
     try {
       await definirDestinatario(prestacao.id, prestacao.destinatario_id)
-      await enviarPrestacao(prestacao.id, usuarioLogado.id, { reenvio: eraRejeitada })
+      await enviarPrestacao(prestacao.id, usuarioLogado.id, { reenvio: eraRejeitada, motivo: eraRejeitada ? observacaoCorrecao.trim() : '' })
       setEnviado(true)
     } catch (e) {
       alert('Não foi possível enviar: ' + (e.message || e))
@@ -167,6 +168,9 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
             onEnviar={handleEnviar}
             onVoltar={() => setView('itens')}
             enviando={enviando}
+            ehReenvio={eraRejeitada}
+            observacaoCorrecao={observacaoCorrecao}
+            onMudarObservacaoCorrecao={setObservacaoCorrecao}
           />
         )}
 

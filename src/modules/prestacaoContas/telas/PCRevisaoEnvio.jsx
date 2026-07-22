@@ -1,4 +1,7 @@
-export default function PCRevisaoEnvio({ itens, destinatarios, destinatarioId, onMudarDestinatario, onEnviar, onVoltar, enviando }) {
+export default function PCRevisaoEnvio({
+  itens, destinatarios, destinatarioId, onMudarDestinatario, onEnviar, onVoltar, enviando,
+  ehReenvio, observacaoCorrecao, onMudarObservacaoCorrecao,
+}) {
   const total = itens.reduce((soma, i) => soma + Number(i.valor || 0), 0)
   const itensSemFoto = itens.filter(i => !(i.pc_fotos?.length > 0))
   const podeEnviar = itens.length > 0 && itensSemFoto.length === 0 && !!destinatarioId
@@ -54,6 +57,19 @@ export default function PCRevisaoEnvio({ itens, destinatarios, destinatarioId, o
           Lista mostra só usuários habilitados a receber prestações de contas.
         </p>
       </div>
+
+      {ehReenvio && (
+        <div className="form-group">
+          <label className="form-label">O que foi corrigido? (opcional)</label>
+          <textarea
+            className="form-textarea" rows={3} value={observacaoCorrecao} onChange={e => onMudarObservacaoCorrecao(e.target.value)}
+            placeholder="Ex.: troquei a foto do recibo e corrigi a data"
+          />
+          <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+            Fica registrado no histórico desta prestação, junto com o motivo da rejeição.
+          </p>
+        </div>
+      )}
 
       {itensSemFoto.length > 0 && (
         <div style={{ background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: 10, padding: '10px 14px', marginTop: 10, marginBottom: 10 }}>

@@ -240,7 +240,7 @@ export async function rejeitarPrestacao(prestacaoId, aprovadorId, motivo) {
 }
 
 // ── Envio ────────────────────────────────────────────────────────────────────
-export async function enviarPrestacao(prestacaoId, remetenteId, { reenvio = false } = {}) {
+export async function enviarPrestacao(prestacaoId, remetenteId, { reenvio = false, motivo = '' } = {}) {
   assertSupabase()
   const payload = {
     status: 'ENVIADO',
@@ -257,5 +257,5 @@ export async function enviarPrestacao(prestacaoId, remetenteId, { reenvio = fals
   }
   const { error } = await supabase.from('pc_prestacoes').update(payload).eq('id', prestacaoId)
   if (error) throw error
-  await registrarHistorico(prestacaoId, 'ENVIO', remetenteId, null, rodadaAtual)
+  await registrarHistorico(prestacaoId, 'ENVIO', remetenteId, motivo || null, rodadaAtual)
 }
