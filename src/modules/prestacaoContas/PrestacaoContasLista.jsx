@@ -155,11 +155,11 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   }
 
   if (mostrarAprovadas) {
-    return <PCAprovadas usuarioLogado={usuarioLogado} verTodas={verTodas} onVoltar={() => setMostrarAprovadas(false)} />
+    return <PCAprovadas usuarioLogado={usuarioLogado} verTodas={verTodas} onVoltar={() => setMostrarAprovadas(false)} onHome={onVoltar} />
   }
 
   if (mostrarFechadas) {
-    return <PCFechadas onVoltar={() => setMostrarFechadas(false)} />
+    return <PCFechadas onVoltar={() => setMostrarFechadas(false)} onHome={onVoltar} />
   }
 
   if (detalheId) {

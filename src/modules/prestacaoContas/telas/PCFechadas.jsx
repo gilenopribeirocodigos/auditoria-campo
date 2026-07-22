@@ -3,7 +3,7 @@ import { CarregandoHexagono } from '../../../components/Shared.jsx'
 import { listarFechamentos, listarPrestacoesDoFechamento } from '../lib/prestacaoContas.js'
 import { gerarExcelConsolidado, baixarFotosConsolidadas } from '../lib/exportacao.js'
 
-export default function PCFechadas({ onVoltar }) {
+export default function PCFechadas({ onVoltar, onHome }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [fechamentos, setFechamentos] = useState([])
@@ -57,7 +57,12 @@ export default function PCFechadas({ onVoltar }) {
       <header className="app-header no-print">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>Prestação de Contas</div>
-          <button onClick={onVoltar} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🏠 Home</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={onVoltar} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>← Voltar</button>
+            {onHome && (
+              <button onClick={onHome} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🏠 Home</button>
+            )}
+          </div>
         </div>
         <div style={{ fontSize: 17, fontWeight: 700 }}>🔒 Fechamentos</div>
       </header>

@@ -8,7 +8,7 @@ import {
   definirDestinatario, enviarPrestacao, excluirRascunho,
 } from './lib/prestacaoContas.js'
 
-export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacaoIdExistente }) {
+export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, onHome, prestacaoIdExistente }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [prestacao, setPrestacao] = useState(null)
@@ -141,7 +141,12 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, prestacao
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>
             Prestação de Contas
           </div>
-          <button onClick={handleSair} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🏠 Home</button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={handleSair} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>← Voltar</button>
+            {onHome && (
+              <button onClick={onHome} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🏠 Home</button>
+            )}
+          </div>
         </div>
         <div style={{ fontSize: 17, fontWeight: 700 }}>
           💰 Nova Prestação — {prestacao.numero_pc}
