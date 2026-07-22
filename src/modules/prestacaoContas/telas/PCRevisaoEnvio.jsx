@@ -5,6 +5,7 @@ export default function PCRevisaoEnvio({
   const total = itens.reduce((soma, i) => soma + Number(i.valor || 0), 0)
   const itensSemFoto = itens.filter(i => !(i.pc_fotos?.length > 0))
   const podeEnviar = itens.length > 0 && itensSemFoto.length === 0 && !!destinatarioId
+    && (!ehReenvio || observacaoCorrecao.trim().length > 0)
 
   return (
     <div style={{ padding: '0 0 24px' }}>
@@ -60,13 +61,13 @@ export default function PCRevisaoEnvio({
 
       {ehReenvio && (
         <div className="form-group">
-          <label className="form-label">O que foi corrigido? (opcional)</label>
+          <label className="form-label">O que foi corrigido? *</label>
           <textarea
             className="form-textarea" rows={3} value={observacaoCorrecao} onChange={e => onMudarObservacaoCorrecao(e.target.value)}
             placeholder="Ex.: troquei a foto do recibo e corrigi a data"
           />
           <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
-            Fica registrado no histórico desta prestação, junto com o motivo da rejeição.
+            Obrigatório pra reenviar — fica registrado no histórico desta prestação, junto com o motivo da rejeição.
           </p>
         </div>
       )}
