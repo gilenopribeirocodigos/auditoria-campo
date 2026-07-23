@@ -194,6 +194,16 @@ export async function excluirRascunho(prestacaoId) {
   if (error) throw error
 }
 
+// Cancelamento de uma prestação REJEITADA (quem enviou desiste de corrigir).
+// É definitivo — itens, fotos e histórico somem junto (ON DELETE CASCADE).
+// Só é permitido enquanto o status for REJEITADO, pra não apagar nada que
+// já esteja em outro estágio (aprovado, fechado etc.).
+export async function cancelarRejeitada(prestacaoId) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_prestacoes').delete().eq('id', prestacaoId).eq('status', 'REJEITADO')
+  if (error) throw error
+}
+
 // ── Itens ────────────────────────────────────────────────────────────────────
 export async function adicionarItem(prestacaoId, item, ordem) {
   assertSupabase()
