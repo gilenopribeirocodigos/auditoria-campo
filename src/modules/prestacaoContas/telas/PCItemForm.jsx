@@ -8,7 +8,7 @@ const ITEM_VAZIO = {
   tipo_comprovante: 'Recibo', data_emissao: '', valor: '', observacao: '',
 }
 
-export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCancelar, salvando }) {
+export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCancelar, salvando }) {
   const editando = !!itemInicial
   const [item, setItem] = useState(() => itemInicial
     ? {
@@ -18,8 +18,9 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
         valor: itemInicial.valor ?? '', observacao: itemInicial.observacao || '',
       }
     : ITEM_VAZIO)
-  const [foto, setFoto] = useState(fotoInicialUrl || null)
-  const [fotoAlterada, setFotoAlterada] = useState(false)
+  // Cada foto é { id, foto_url } (já salva) ou { base64 } (nova, ainda não enviada).
+  const [fotos, setFotos] = useState(() => (fotosIniciais || []).map(f => ({ id: f.id, foto_url: f.foto_url })))
+  const [fotosRemovidasIds, setFotosRemovidasIds] = useState([])
   const [classificacoes, setClassificacoes] = useState(CATEGORIAS_SUGERIDAS)
   const [tiposComprovante, setTiposComprovante] = useState(TIPOS_COMPROVANTE)
   const [formasPagamento, setFormasPagamento] = useState(FORMAS_PAGAMENTO)
@@ -48,21 +49,27 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
   const upd = (campo, valor) => setItem(f => ({ ...f, [campo]: valor }))
   const updMaiuscula = (campo, valor) => setItem(f => ({ ...f, [campo]: valor.toUpperCase() }))
 
-  const processarFoto = (files) => {
-    const file = files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => { setFoto(ev.target.result); setFotoAlterada(true) }
-    reader.readAsDataURL(file)
+  const processarFotos = (files) => {
+    for (const file of files || []) {
+      const reader = new FileReader()
+      reader.onload = ev => setFotos(f => [...f, { base64: ev.target.result }])
+      reader.readAsDataURL(file)
+    }
   }
 
-  const removerFoto = () => { setFoto(null); setFotoAlterada(true) }
+  const removerFoto = (index) => {
+    setFotos(f => {
+      const alvo = f[index]
+      if (alvo?.id) setFotosRemovidasIds(ids => [...ids, alvo.id])
+      return f.filter((_, i) => i !== index)
+    })
+  }
 
   const valido = item.classificacao.trim() && item.descricao.trim() && Number(item.valor) > 0
 
   const salvar = () => {
-    const fotoBase64 = fotoAlterada && foto && foto.startsWith('data:') ? foto : null
-    onSalvar(item, { alterada: fotoAlterada, base64: fotoBase64 })
+    const novasBase64 = fotos.filter(f => f.base64).map(f => f.base64)
+    onSalvar(item, { removidasIds: fotosRemovidasIds, novasBase64 })
   }
 
   return (
@@ -128,41 +135,45 @@ export default function PCItemForm({ itemInicial, fotoInicialUrl, onSalvar, onCa
         <input className="form-input" value={item.observacao} onChange={e => updMaiuscula('observacao', e.target.value)} />
       </div>
 
-      {/* ── Foto do comprovante ── */}
+      {/* ── Fotos do comprovante (pode ter mais de uma) ── */}
       <div style={{ marginTop: 18, marginBottom: 10 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: '#374151', marginBottom: 10 }}>
-          📷 Foto do Comprovante
+          📷 Fotos do Comprovante{fotos.length > 0 && ` (${fotos.length})`}
         </p>
 
-        {foto ? (
-          <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', marginBottom: 10 }}>
-            <img src={foto} alt="Comprovante" style={{ width: '100%', display: 'block', maxHeight: 260, objectFit: 'cover' }} />
-            <button onClick={removerFoto} style={{
-              position: 'absolute', top: 8, right: 8, padding: '4px 10px', borderRadius: 8,
-              border: 'none', background: 'rgba(220,38,38,0.85)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-            }}>✕ Remover</button>
+        {fotos.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: 10, marginBottom: 10 }}>
+            {fotos.map((f, i) => (
+              <div key={f.id ?? `nova-${i}`} style={{ position: 'relative', borderRadius: 12, overflow: 'hidden' }}>
+                <img src={f.base64 || f.foto_url} alt="Comprovante" style={{ width: '100%', height: 100, display: 'block', objectFit: 'cover' }} />
+                <button onClick={() => removerFoto(i)} style={{
+                  position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%',
+                  border: 'none', background: 'rgba(220,38,38,0.9)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', lineHeight: '22px', padding: 0,
+                }}>✕</button>
+              </div>
+            ))}
           </div>
-        ) : null}
+        )}
 
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e => { processarFoto(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
-        <input ref={galeriaRef} type="file" accept="image/*" onChange={e => { processarFoto(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={e => { processarFotos(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
+        <input ref={galeriaRef} type="file" accept="image/*" multiple onChange={e => { processarFotos(e.target.files); e.target.value = '' }} style={{ display: 'none' }} />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button onClick={() => cameraRef.current?.click()} style={{
             padding: '18px 12px', borderRadius: 14, border: '2px dashed #2563eb', background: '#eff6ff',
             cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
           }}>
             <span style={{ fontSize: 28 }}>📷</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{foto ? 'Trocar (câmera)' : 'Tirar foto'}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{fotos.length > 0 ? 'Adicionar (câmera)' : 'Tirar foto'}</span>
           </button>
           <button onClick={() => galeriaRef.current?.click()} style={{
             padding: '18px 12px', borderRadius: 14, border: '2px dashed #2563eb', background: '#eff6ff',
             cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
           }}>
             <span style={{ fontSize: 28 }}>🖼️</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{foto ? 'Trocar (galeria)' : 'Da galeria'}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{fotos.length > 0 ? 'Adicionar (galeria)' : 'Da galeria'}</span>
           </button>
         </div>
-        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Opcional aqui — mas obrigatório antes de enviar a prestação (regra de negócio).</p>
+        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Pode anexar mais de uma foto (ex.: recibo com várias páginas). Opcional aqui — mas obrigatório ao menos 1 antes de enviar a prestação (regra de negócio).</p>
       </div>
 
       <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>

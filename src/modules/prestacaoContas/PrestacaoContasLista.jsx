@@ -8,7 +8,7 @@ import PCAprovadas from './telas/PCAprovadas.jsx'
 import PCFechadas from './telas/PCFechadas.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
-  aprovarPrestacao, rejeitarPrestacao, excluirRascunho, obterPermissaoUsuario,
+  aprovarPrestacao, rejeitarPrestacao, excluirRascunho, cancelarRejeitada, obterPermissaoUsuario,
 } from './lib/prestacaoContas.js'
 
 // Cada status tem uma cor própria — aplicada tanto no card inteiro (fundo
@@ -147,6 +147,16 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
       await carregarListas()
     } catch (e) {
       alert('Não foi possível excluir: ' + (e.message || e))
+    }
+  }
+
+  const handleCancelarRejeitada = async (id) => {
+    if (!confirm('Cancelar esta prestação de contas? Essa ação é definitiva — depois de cancelada, não será possível recuperar. Só lançando uma prestação nova.')) return
+    try {
+      await cancelarRejeitada(id)
+      await carregarListas()
+    } catch (e) {
+      alert('Não foi possível cancelar: ' + (e.message || e))
     }
   }
 
@@ -342,10 +352,16 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                         </div>
                       )}
                       {p.status === 'REJEITADO' && (
-                        <button onClick={() => onCorrigir(p.id)} style={{
-                          marginTop: 10, width: '100%', padding: 10, borderRadius: 8, border: 'none',
-                          background: '#d97706', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                        }}>✎ Corrigir e Reenviar</button>
+                        <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                          <button onClick={() => onCorrigir(p.id)} style={{
+                            flex: 1, padding: 10, borderRadius: 8, border: 'none',
+                            background: '#d97706', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          }}>✎ Corrigir e Reenviar</button>
+                          <button onClick={() => handleCancelarRejeitada(p.id)} style={{
+                            padding: '10px 14px', borderRadius: 8, border: 'none',
+                            background: '#fef2f2', color: '#dc2626', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          }}>✕ Cancelar</button>
+                        </div>
                       )}
                       {p.status === 'RASCUNHO' && (
                         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>

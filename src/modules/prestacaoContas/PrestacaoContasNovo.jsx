@@ -47,17 +47,17 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, onHome, p
   const handleSalvarItem = async (item, fotoInfo) => {
     setSalvandoItem(true)
     try {
+      let itemId
       if (itemEditando) {
         await atualizarItem(itemEditando.id, item)
-        if (fotoInfo.alterada) {
-          for (const f of itemEditando.pc_fotos || []) await removerFoto(f.id)
-          if (fotoInfo.base64) await anexarFoto(itemEditando.id, prestacao.id, fotoInfo.base64)
-        }
+        itemId = itemEditando.id
       } else {
         const ordem = prestacao.pc_itens?.length || 0
         const novoItem = await adicionarItem(prestacao.id, item, ordem)
-        if (fotoInfo.base64) await anexarFoto(novoItem.id, prestacao.id, fotoInfo.base64)
+        itemId = novoItem.id
       }
+      for (const fotoId of fotoInfo.removidasIds || []) await removerFoto(fotoId)
+      for (const base64 of fotoInfo.novasBase64 || []) await anexarFoto(itemId, prestacao.id, base64)
       await recarregar(prestacao.id)
       setItemEditando(null)
       setView('itens')
@@ -158,7 +158,7 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, onHome, p
           <PCItemForm
             salvando={salvandoItem}
             itemInicial={itemEditando}
-            fotoInicialUrl={itemEditando?.pc_fotos?.[0]?.foto_url || null}
+            fotosIniciais={itemEditando?.pc_fotos || []}
             onSalvar={handleSalvarItem}
             onCancelar={() => { setItemEditando(null); setView('itens') }}
           />
@@ -167,6 +167,8 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, onHome, p
         {view === 'revisao' && (
           <PCRevisaoEnvio
             itens={itens}
+            remetenteId={usuarioLogado.id}
+            prestacaoId={prestacao.id}
             destinatarios={destinatarios}
             destinatarioId={prestacao.destinatario_id}
             onMudarDestinatario={id => setPrestacao(p => ({ ...p, destinatario_id: id ? Number(id) : null }))}

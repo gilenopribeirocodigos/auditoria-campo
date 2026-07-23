@@ -194,6 +194,16 @@ export async function excluirRascunho(prestacaoId) {
   if (error) throw error
 }
 
+// Cancelamento de uma prestação REJEITADA (quem enviou desiste de corrigir).
+// É definitivo — itens, fotos e histórico somem junto (ON DELETE CASCADE).
+// Só é permitido enquanto o status for REJEITADO, pra não apagar nada que
+// já esteja em outro estágio (aprovado, fechado etc.).
+export async function cancelarRejeitada(prestacaoId) {
+  assertSupabase()
+  const { error } = await supabase.from('pc_prestacoes').delete().eq('id', prestacaoId).eq('status', 'REJEITADO')
+  if (error) throw error
+}
+
 // ── Itens ────────────────────────────────────────────────────────────────────
 export async function adicionarItem(prestacaoId, item, ordem) {
   assertSupabase()
@@ -424,6 +434,23 @@ export async function listarPrestacoesDoFechamento(fechamentoId) {
     total_itens: p.pc_itens?.length || 0,
     valor_total: (p.pc_itens || []).reduce((soma, i) => soma + Number(i.valor || 0), 0),
   }))
+}
+
+// ── Possível duplicidade (mesmo solicitante + mesmo valor + mesma data) ─────
+// Usada tanto na revisão de envio (alerta pra quem envia) quanto na análise
+// (alerta pra quem recebe) — mesma regra, contextos diferentes.
+export async function buscarDuplicatasPotenciais(remetenteId, valor, dataEmissao, prestacaoIdAtual) {
+  assertSupabase()
+  if (!dataEmissao || !valor) return []
+  const { data, error } = await supabase
+    .from('pc_prestacoes')
+    .select('id, numero_pc, pc_itens(valor, data_emissao)')
+    .eq('remetente_id', remetenteId)
+    .neq('id', prestacaoIdAtual)
+  if (error) throw error
+  return (data || []).filter(p => (p.pc_itens || []).some(i => (
+    Number(i.valor) === Number(valor) && i.data_emissao === dataEmissao
+  )))
 }
 
 // ── Histórico (linha do tempo imutável de envio/aprovação/rejeição) ─────────

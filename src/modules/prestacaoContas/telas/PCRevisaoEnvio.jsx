@@ -1,11 +1,35 @@
+import { useEffect, useState } from 'react'
+import { buscarDuplicatasPotenciais } from '../lib/prestacaoContas.js'
+
 export default function PCRevisaoEnvio({
   itens, destinatarios, destinatarioId, onMudarDestinatario, onEnviar, onVoltar, enviando,
-  ehReenvio, observacaoCorrecao, onMudarObservacaoCorrecao,
+  ehReenvio, observacaoCorrecao, onMudarObservacaoCorrecao, remetenteId, prestacaoId,
 }) {
   const total = itens.reduce((soma, i) => soma + Number(i.valor || 0), 0)
   const itensSemFoto = itens.filter(i => !(i.pc_fotos?.length > 0))
+  const [duplicatas, setDuplicatas] = useState([])
+  const [cienteDuplicata, setCienteDuplicata] = useState(false)
+
+  // Alerta de possível nota duplicada: mesmo solicitante já lançou outra
+  // prestação com o mesmo valor e a mesma data de emissão (regra de negócio
+  // pedida pelo Gileno, pra reduzir risco de lançamento repetido).
+  useEffect(() => {
+    (async () => {
+      const encontradas = []
+      for (const item of itens) {
+        try {
+          const achadas = await buscarDuplicatasPotenciais(remetenteId, item.valor, item.data_emissao, prestacaoId)
+          for (const p of achadas) if (!encontradas.some(e => e.id === p.id)) encontradas.push(p)
+        } catch { /* se a checagem falhar, não bloqueia o envio */ }
+      }
+      setDuplicatas(encontradas)
+    })()
+  }, [itens, remetenteId, prestacaoId])
+
+  const temDuplicata = duplicatas.length > 0
   const podeEnviar = itens.length > 0 && itensSemFoto.length === 0 && !!destinatarioId
     && (!ehReenvio || observacaoCorrecao.trim().length > 0)
+    && (!temDuplicata || cienteDuplicata)
 
   return (
     <div style={{ padding: '0 0 24px' }}>
@@ -77,6 +101,23 @@ export default function PCRevisaoEnvio({
           <p style={{ fontSize: 12, color: '#b91c1c', fontWeight: 700 }}>
             ⚠️ {itensSemFoto.length} {itensSemFoto.length === 1 ? 'item precisa' : 'itens precisam'} de foto do comprovante antes de enviar.
           </p>
+        </div>
+      )}
+
+      {temDuplicata && (
+        <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px', marginTop: 10, marginBottom: 10 }}>
+          <p style={{ fontSize: 12.5, color: '#92400e', fontWeight: 700, marginBottom: 6 }}>
+            ⚠️ Possível prestação de contas duplicada
+          </p>
+          <p style={{ fontSize: 12, color: '#92400e', marginBottom: 8 }}>
+            Identificamos que você já possui {duplicatas.length === 1 ? 'outra prestação de contas' : `outras ${duplicatas.length} prestações de contas`} lançada{duplicatas.length === 1 ? '' : 's'} com o mesmo valor e a mesma data de emissão
+            {duplicatas.length === 1 ? ` (${duplicatas[0].numero_pc})` : `: ${duplicatas.map(d => d.numero_pc).join(', ')}`}.
+            Confirme se esta despesa não está sendo lançada em duplicidade antes de prosseguir.
+          </p>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#78350f', cursor: 'pointer' }}>
+            <input type="checkbox" checked={cienteDuplicata} onChange={e => setCienteDuplicata(e.target.checked)} style={{ marginTop: 2 }} />
+            <span>Declaro estar ciente do alerta acima e assumo integral responsabilidade caso esta prestação de contas seja, de fato, duplicada.</span>
+          </label>
         </div>
       )}
 
