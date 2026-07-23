@@ -426,6 +426,23 @@ export async function listarPrestacoesDoFechamento(fechamentoId) {
   }))
 }
 
+// ── Possível duplicidade (mesmo solicitante + mesmo valor + mesma data) ─────
+// Usada tanto na revisão de envio (alerta pra quem envia) quanto na análise
+// (alerta pra quem recebe) — mesma regra, contextos diferentes.
+export async function buscarDuplicatasPotenciais(remetenteId, valor, dataEmissao, prestacaoIdAtual) {
+  assertSupabase()
+  if (!dataEmissao || !valor) return []
+  const { data, error } = await supabase
+    .from('pc_prestacoes')
+    .select('id, numero_pc, pc_itens(valor, data_emissao)')
+    .eq('remetente_id', remetenteId)
+    .neq('id', prestacaoIdAtual)
+  if (error) throw error
+  return (data || []).filter(p => (p.pc_itens || []).some(i => (
+    Number(i.valor) === Number(valor) && i.data_emissao === dataEmissao
+  )))
+}
+
 // ── Histórico (linha do tempo imutável de envio/aprovação/rejeição) ─────────
 // pc_prestacoes.motivo_rejeicao/analisado_em/analisado_por guardam só o
 // estado ATUAL (útil pras listagens); pc_historico guarda TODAS as rodadas,

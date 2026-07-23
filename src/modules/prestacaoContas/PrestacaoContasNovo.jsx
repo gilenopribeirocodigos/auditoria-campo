@@ -167,6 +167,8 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, onHome, p
         {view === 'revisao' && (
           <PCRevisaoEnvio
             itens={itens}
+            remetenteId={usuarioLogado.id}
+            prestacaoId={prestacao.id}
             destinatarios={destinatarios}
             destinatarioId={prestacao.destinatario_id}
             onMudarDestinatario={id => setPrestacao(p => ({ ...p, destinatario_id: id ? Number(id) : null }))}
