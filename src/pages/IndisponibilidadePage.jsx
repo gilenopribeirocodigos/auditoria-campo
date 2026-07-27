@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
 import { temPermissao } from '../lib/auth.js'
-import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
+import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE, matchNomes } from '../components/PainelFiltros.jsx'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -641,9 +641,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const pendentes = [], jaJustificados = [], naoLocalizados = []
 
       for (const linha of porChave.values()) {
-        const matriculaLimpa = (linha.matricula || '').trim()
+        // A matrícula do SIGA usa uma numeração própria, diferente da
+        // matrícula cadastrada na Estrutura Operacional (mesma pessoa, dois
+        // números diferentes) — não dá pra casar por matrícula. O nome é
+        // que bate entre os dois sistemas, então casa por nome (mesma
+        // função já usada pra cruzar supervisor/fiscal com a estrutura).
         const eletMatch = (linha.id_eletricista && todosEletricistasBase.find(e => e.id_eletricista === linha.id_eletricista))
-          || (matriculaLimpa && todosEletricistasBase.find(e => (e.matricula || '').trim() === matriculaLimpa))
+          || todosEletricistasBase.find(e => matchNomes(linha.nome_eletricista, e.colaborador))
 
         if (!eletMatch) { naoLocalizados.push(linha); continue }
 
@@ -1526,7 +1530,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                       {loteSigaNaoLocalizados.map((n, i) => (
                         <div key={i} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#b91c1c' }}>
                           <b>{n.nome_eletricista}</b> · Mat: {n.matricula || '—'} (SIGA) · Prefixo: {n.prefixo || '—'}<br />
-                          Matrícula não encontrada na Estrutura Operacional atual — verifique manualmente.
+                          Nome não encontrado na Estrutura Operacional atual (nem por correspondência aproximada) — verifique manualmente.
                         </div>
                       ))}
                     </div>
