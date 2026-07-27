@@ -899,6 +899,60 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         ══════════════════════════════════════════════ */}
         {abaAtiva === 'frequencia' && (
           <>
+            {frequenciasRegistradasFiltradas.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {frequenciasRegistradasFiltradas.map(r => {
+                    const descricaoMotivo = r.descricao_motivo_indisponibilidade || '—'
+                    const isPresenteHistorico = descricaoMotivo.toUpperCase() === 'PRESENTE'
+                    const nomeEletricista = r.colaborador || `Eletricista #${r.eletricista_id}`
+                    return (
+                      <div key={r.id || String(r.eletricista_id) + '-' + r.data} style={{
+                        background: isPresenteHistorico ? '#f0fdf4' : '#fef2f2',
+                        border: `1px solid ${isPresenteHistorico ? '#86efac' : '#fecaca'}`,
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                          <div>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: isPresenteHistorico ? '#15803d' : '#b91c1c', margin: 0 }}>{nomeEletricista}</p>
+                            <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
+                              {r.matricula ? `Mat: ${r.matricula} · ` : ''}Prefixo: {r.prefixo || '—'} · {isPresenteHistorico ? 'PRESENTE' : `AUSENTE · ${descricaoMotivo}`}
+                            </p>
+                            {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                            <span style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
+                              color: isPresenteHistorico ? '#15803d' : '#dc2626',
+                            }}>
+                              {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
+                            </span>
+                            {podeReabrirFrequencia && (
+                              <button
+                                onClick={() => reabrirFrequencia(r)}
+                                disabled={reabrindoId === r.id}
+                                style={{
+                                  fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
+                                  border: '1px solid #cbd5e1', background: '#fff', color: '#475569',
+                                  cursor: reabrindoId === r.id ? 'not-allowed' : 'pointer',
+                                }}
+                              >{reabrindoId === r.id ? '⏳...' : '🔓 Reabrir'}</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <CarregandoHexagono texto="Carregando eletricistas..." />
             ) : eletricistas.length === 0 ? (
@@ -1057,59 +1111,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               </>
             )}
 
-            {frequenciasRegistradasFiltradas.length > 0 && (
-              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
-                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {frequenciasRegistradasFiltradas.map(r => {
-                    const descricaoMotivo = r.descricao_motivo_indisponibilidade || '—'
-                    const isPresenteHistorico = descricaoMotivo.toUpperCase() === 'PRESENTE'
-                    const nomeEletricista = r.colaborador || `Eletricista #${r.eletricista_id}`
-                    return (
-                      <div key={r.id || String(r.eletricista_id) + '-' + r.data} style={{
-                        background: isPresenteHistorico ? '#f0fdf4' : '#fef2f2',
-                        border: `1px solid ${isPresenteHistorico ? '#86efac' : '#fecaca'}`,
-                        borderRadius: 10,
-                        padding: '12px 14px',
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                          <div>
-                            <p style={{ fontSize: 13, fontWeight: 800, color: isPresenteHistorico ? '#15803d' : '#b91c1c', margin: 0 }}>{nomeEletricista}</p>
-                            <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
-                              {r.matricula ? `Mat: ${r.matricula} · ` : ''}Prefixo: {r.prefixo || '—'} · {isPresenteHistorico ? 'PRESENTE' : `AUSENTE · ${descricaoMotivo}`}
-                            </p>
-                            {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-                            <span style={{
-                              fontSize: 10,
-                              fontWeight: 800,
-                              padding: '3px 8px',
-                              borderRadius: 6,
-                              background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
-                              color: isPresenteHistorico ? '#15803d' : '#dc2626',
-                            }}>
-                              {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
-                            </span>
-                            {podeReabrirFrequencia && (
-                              <button
-                                onClick={() => reabrirFrequencia(r)}
-                                disabled={reabrindoId === r.id}
-                                style={{
-                                  fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
-                                  border: '1px solid #cbd5e1', background: '#fff', color: '#475569',
-                                  cursor: reabrindoId === r.id ? 'not-allowed' : 'pointer',
-                                }}
-                              >{reabrindoId === r.id ? '⏳...' : '🔓 Reabrir'}</button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </>
         )}
 
