@@ -570,6 +570,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // associada (ausência já justificada na aba 3), remove também, pra não ficar
   // um prefixo "indisponível" órfão referente a uma ausência que foi desfeita.
   const reabrirFrequencia = async (registro) => {
+    if (registro.data !== hoje) {
+      alert('Só é possível reabrir um registro no mesmo dia em que foi feito. Passado o dia, a frequência não pode mais ser alterada.')
+      return
+    }
     const nome = registro.colaborador || `Eletricista #${registro.eletricista_id}`
     if (!confirm(`Reabrir o registro de ${nome}? Ele volta pra lista de pendentes de justificar nesta data.`)) return
     setReabrindoId(registro.id)
@@ -933,7 +937,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                             }}>
                               {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
                             </span>
-                            {podeReabrirFrequencia && (
+                            {podeReabrirFrequencia && r.data === hoje && (
                               <button
                                 onClick={() => reabrirFrequencia(r)}
                                 disabled={reabrindoId === r.id}
