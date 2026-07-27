@@ -19,6 +19,13 @@ function limparEspacos(s) {
   return (s || '').replace(/\s+/g, ' ').trim()
 }
 
+// Só os dígitos do CPF, pra comparar sem depender de máscara (com ou sem
+// pontos/traço) — usado como 1º critério de casamento na Justificativa em
+// Lote via SIGA (mais confiável que nome, que pode ter grafias diferentes).
+function limparCpf(s) {
+  return (s || '').replace(/\D/g, '')
+}
+
 // ── Diagnóstico de nome parecido (Justificativa em Lote SIGA) ────────────────
 // Quando o SIGA traz um nome que não bate com ninguém da Estrutura, mostra o
 // candidato mais parecido (por sobreposição de palavras do nome) só pra
@@ -304,7 +311,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       let remanejadosComDestino = []
       if (idsRemanejadosDia.length > 0) {
         const { data: eletRemanejados, error: erroEletRemanejados } = await supabase.from('estrutura_equipes')
-          .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
+          .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, superv_campo, processo_equipe, base')
           .in('id', idsRemanejadosDia)
         if (erroEletRemanejados) throw erroEletRemanejados
 
@@ -336,7 +343,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       }))
 
       let query = supabase.from('estrutura_equipes')
-        .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
+        .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, superv_campo, processo_equipe, base')
         .in('descr_situacao', ['ATIVO', 'RESERVA']).order('colaborador')
       if (prefixosRestritos) query = query.in('prefixo', prefixosRestritos)
 
@@ -685,10 +692,15 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       for (const linha of porChave.values()) {
         // A matrícula do SIGA usa uma numeração própria, diferente da
         // matrícula cadastrada na Estrutura Operacional (mesma pessoa, dois
-        // números diferentes) — não dá pra casar por matrícula. O nome é
-        // que bate entre os dois sistemas, então casa por nome (mesma
+        // números diferentes) — não dá pra casar por matrícula. Prioridade:
+        // 1) id_eletricista (se já vier casado), 2) CPF (mais confiável,
+        // quando cadastrado na Estrutura via CPF_COLABORADOR), 3) nome (mesma
         // função já usada pra cruzar supervisor/fiscal com a estrutura).
+        // Prefixo NUNCA entra na comparação — só serve pra registrar a
+        // presença, o fiscal troca o eletricista de equipe o tempo todo.
+        const cpfSiga = limparCpf(linha.cpf)
         const eletMatch = (linha.id_eletricista && todosEletricistasBase.find(e => e.id_eletricista === linha.id_eletricista))
+          || (cpfSiga && todosEletricistasBase.find(e => limparCpf(e.cpf_colaborador) === cpfSiga))
           || todosEletricistasBase.find(e => matchNomes(limparEspacos(linha.nome_eletricista), limparEspacos(e.colaborador)))
 
         if (!eletMatch) { naoLocalizados.push({ ...linha, candidato: candidatoMaisParecido(linha.nome_eletricista, todosEletricistasBase) }); continue }
