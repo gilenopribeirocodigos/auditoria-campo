@@ -30,6 +30,14 @@ function limparCpf(s) {
   return digitos ? digitos.padStart(11, '0') : ''
 }
 
+// Só pra exibição (diagnóstico dos "não localizados") — formata como
+// 000.000.000-00 quando tiver os 11 dígitos, senão mostra cru.
+function formatarCpfExibicao(cpf) {
+  const d = limparCpf(cpf)
+  if (!d) return '—'
+  return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}` : d
+}
+
 // ── Diagnóstico de nome parecido (Justificativa em Lote SIGA) ────────────────
 // Quando o SIGA traz um nome que não bate com ninguém da Estrutura, mostra o
 // candidato mais parecido (por sobreposição de palavras do nome) só pra
@@ -1590,6 +1598,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                           <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 2, columnGap: 8 }}>
                             <span style={{ fontWeight: 700 }}>Nome SIGA:</span><span>{n.nome_eletricista}</span>
                             <span style={{ fontWeight: 700 }}>Nome Estrutura:</span><span>{n.candidato ? n.candidato.colaborador : '— (nenhum candidato parecido)'}</span>
+                            <span style={{ fontWeight: 700 }}>CPF SIGA:</span><span>{formatarCpfExibicao(n.cpf)}</span>
+                            <span style={{ fontWeight: 700 }}>CPF Estrutura:</span><span>{n.candidato ? formatarCpfExibicao(n.candidato.cpf_colaborador) : '—'}</span>
                             <span style={{ fontWeight: 700 }}>Mat. SIGA:</span><span>{n.matricula || '—'}</span>
                             <span style={{ fontWeight: 700 }}>Mat. Estrutura:</span><span>{n.candidato ? (n.candidato.matricula || '—') : '—'}</span>
                             <span style={{ fontWeight: 700 }}>Prefixo:</span><span>{n.prefixo || '—'}</span>
