@@ -649,10 +649,17 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         if (eletSelecionado?.prefixo) trocasParaPersistir[String(cardKey)] = eletSelecionado.prefixo
       })
 
-      let { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
+      // onConflict pelo id_eletricista (uuid permanente) em vez do eletricista_id
+      // (numerico, recriado a cada reimportacao da Estrutura Online) — evita que o
+      // mesmo eletricista fique com 2-3 registros de frequencia no mesmo dia quando
+      // a estrutura for reimportada no meio do dia.
+      let { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'id_eletricista,data' })
 
-      // Mantem o salvamento funcionando caso o deploy do app chegue antes da migracao SQL.
-      // Depois que as colunas existirem, o upsert completo acima grava o snapshot normalmente.
+      // Mantem o salvamento funcionando caso o deploy do app chegue antes da migracao SQL
+      // (constraint nova ainda nao existe) ou antes das colunas existirem.
+      if (error && /no unique or exclusion constraint/i.test(error.message || '')) {
+        ;({ error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' }))
+      }
       if (error && /column .* does not exist/i.test(error.message || '')) {
         const linhasCompat = linhas.map(({
           matricula, colaborador, superv_campo, processo_equipe,
@@ -802,7 +809,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         origem_registro:      'SIGA_AUTOMATICO',
       }))
 
-      let { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
+      let { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'id_eletricista,data' })
+      if (error && /no unique or exclusion constraint/i.test(error.message || '')) {
+        ;({ error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' }))
+      }
       if (error && /column .* does not exist/i.test(error.message || '')) {
         const linhasCompat = linhas.map(({ origem_registro, ...linha }) => linha)
         ;({ error } = await supabase.from('equipes_dia').upsert(linhasCompat, { onConflict: 'eletricista_id,data' }))
@@ -957,9 +967,15 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       let { error } = await supabase
         .from('indisponibilidades')
-        .upsert(linhaIndisponibilidade, { onConflict: 'eletricista_id,data' })
+        .upsert(linhaIndisponibilidade, { onConflict: 'id_eletricista,data' })
 
-      // Mantem o salvamento funcionando caso o deploy do app chegue antes da migracao SQL.
+      // Mantem o salvamento funcionando caso o deploy do app chegue antes da migracao SQL
+      // (constraint nova ainda nao existe) ou antes das colunas existirem.
+      if (error && /no unique or exclusion constraint/i.test(error.message || '')) {
+        ;({ error } = await supabase
+          .from('indisponibilidades')
+          .upsert(linhaIndisponibilidade, { onConflict: 'eletricista_id,data' }))
+      }
       if (error && /column .* does not exist/i.test(error.message || '')) {
         const {
           colaborador, superv_campo, processo_equipe,
