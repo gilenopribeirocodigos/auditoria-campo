@@ -8,6 +8,17 @@ import { CarregandoHexagono } from '../components/Shared.jsx'
 // IndisponibilidadePage v8
 // ════════════════════════════════════════════════════════════════════════════
 
+// Colapsa qualquer sequência de espaço em branco (inclusive espaço
+// não-separável  , comum em texto extraído de página web/HTML como o
+// SIGA) num único espaço normal. Sem isso, dois nomes visualmente idênticos
+// podem falhar na comparação exata (matchNomes) por causa de um espaço
+// "invisível" diferente entre as palavras — só \s+ (usado no split de
+// candidatoMaisParecido) já ignora essa diferença, por isso o candidato mais
+// parecido aparecia "idêntico" mesmo quando o casamento automático falhava.
+function limparEspacos(s) {
+  return (s || '').replace(/\s+/g, ' ').trim()
+}
+
 // ── Diagnóstico de nome parecido (Justificativa em Lote SIGA) ────────────────
 // Quando o SIGA traz um nome que não bate com ninguém da Estrutura, mostra o
 // candidato mais parecido (por sobreposição de palavras do nome) só pra
@@ -678,7 +689,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         // que bate entre os dois sistemas, então casa por nome (mesma
         // função já usada pra cruzar supervisor/fiscal com a estrutura).
         const eletMatch = (linha.id_eletricista && todosEletricistasBase.find(e => e.id_eletricista === linha.id_eletricista))
-          || todosEletricistasBase.find(e => matchNomes(linha.nome_eletricista, e.colaborador))
+          || todosEletricistasBase.find(e => matchNomes(limparEspacos(linha.nome_eletricista), limparEspacos(e.colaborador)))
 
         if (!eletMatch) { naoLocalizados.push({ ...linha, candidato: candidatoMaisParecido(linha.nome_eletricista, todosEletricistasBase) }); continue }
 
