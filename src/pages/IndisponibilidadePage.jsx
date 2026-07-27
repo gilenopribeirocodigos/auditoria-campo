@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
 import { temPermissao } from '../lib/auth.js'
 import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE, matchNomes } from '../components/PainelFiltros.jsx'
@@ -789,6 +790,28 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     } finally {
       setLoteSigaProcessando(false)
     }
+  }
+
+  // Baixa em Excel a lista de "não localizados" — pra analisar fora do
+  // sistema e tratar as divergências (nome/CPF diferente entre SIGA e
+  // Estrutura, gente que saiu, erro de digitação etc.).
+  const exportarNaoLocalizadosLoteSiga = () => {
+    if (loteSigaNaoLocalizados.length === 0) return
+    const dados = loteSigaNaoLocalizados.map(n => ({
+      'NOME SIGA':          n.nome_eletricista || '',
+      'NOME ESTRUTURA':     n.candidato?.colaborador || '',
+      'CPF SIGA':           formatarCpfExibicao(n.cpf),
+      'CPF ESTRUTURA':      n.candidato ? formatarCpfExibicao(n.candidato.cpf_colaborador) : '',
+      'MATRICULA SIGA':     n.matricula || '',
+      'MATRICULA ESTRUTURA': n.candidato?.matricula || '',
+      'PREFIXO':            n.prefixo || '',
+    }))
+    const colunas = ['NOME SIGA', 'NOME ESTRUTURA', 'CPF SIGA', 'CPF ESTRUTURA', 'MATRICULA SIGA', 'MATRICULA ESTRUTURA', 'PREFIXO']
+    const ws = XLSX.utils.json_to_sheet(dados, { header: colunas })
+    ws['!cols'] = colunas.map(() => ({ wch: 24 }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Nao Localizados')
+    XLSX.writeFile(wb, `justificativa_lote_siga_nao_localizados_${data}.xlsx`)
   }
 
   // ─── Remanejamento ────────────────────────────────────────────────────────
@@ -1589,8 +1612,12 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
                 {loteSigaNaoLocalizados.length > 0 && (
                   <details style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12 }}>
-                    <summary style={{ padding: '12px 14px', fontSize: 12.5, fontWeight: 700, color: '#1e293b', cursor: 'pointer' }}>
-                      ⚠️ Encontrados no SIGA, mas não localizados na Estrutura ({loteSigaNaoLocalizados.length})
+                    <summary style={{ padding: '12px 14px', fontSize: 12.5, fontWeight: 700, color: '#1e293b', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                      <span>⚠️ Encontrados no SIGA, mas não localizados na Estrutura ({loteSigaNaoLocalizados.length})</span>
+                      <button
+                        onClick={e => { e.preventDefault(); e.stopPropagation(); exportarNaoLocalizadosLoteSiga() }}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: '1px solid #16a34a', background: '#f0fdf4', color: '#15803d', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >📥 Baixar Excel</button>
                     </summary>
                     <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {loteSigaNaoLocalizados.map((n, i) => (
