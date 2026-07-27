@@ -8,6 +8,37 @@ import { CarregandoHexagono } from '../components/Shared.jsx'
 // IndisponibilidadePage v8
 // ════════════════════════════════════════════════════════════════════════════
 
+// ── Diagnóstico de nome parecido (Justificativa em Lote SIGA) ────────────────
+// Quando o SIGA traz um nome que não bate com ninguém da Estrutura, mostra o
+// candidato mais parecido (por sobreposição de palavras do nome) só pra
+// ajudar a enxergar se é uma pequena diferença de grafia (ex.: "DE" x "DO"
+// Nascimento) ou se realmente não existe ninguém correspondente — não entra
+// na lógica de casamento automático, é só pra exibição/diagnóstico.
+function normalizarPalavrasNome(nome) {
+  return (nome || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function candidatoMaisParecido(nomeSiga, roster) {
+  const palavrasSiga = normalizarPalavrasNome(nomeSiga)
+  if (palavrasSiga.length === 0) return null
+
+  let melhor = null, melhorScore = 0
+  for (const e of roster) {
+    const palavrasEstrutura = normalizarPalavrasNome(e.colaborador)
+    if (palavrasEstrutura.length === 0) continue
+    const setEstrutura = new Set(palavrasEstrutura)
+    const comuns = palavrasSiga.filter(p => setEstrutura.has(p)).length
+    const score = comuns / Math.max(palavrasSiga.length, palavrasEstrutura.length)
+    if (score > melhorScore) { melhorScore = score; melhor = e }
+  }
+  return melhorScore >= 0.5 ? { ...melhor, score: melhorScore } : null
+}
+
 // ── Autocomplete genérico (prefixo ou eletricista nos cards) ─────────────────
 function AutocompleteCard({ value, onChange, opcoes = [], placeholder = 'Digite para filtrar...',
   renderOpcao, valorDisplay }) {
@@ -649,7 +680,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         const eletMatch = (linha.id_eletricista && todosEletricistasBase.find(e => e.id_eletricista === linha.id_eletricista))
           || todosEletricistasBase.find(e => matchNomes(linha.nome_eletricista, e.colaborador))
 
-        if (!eletMatch) { naoLocalizados.push(linha); continue }
+        if (!eletMatch) { naoLocalizados.push({ ...linha, candidato: candidatoMaisParecido(linha.nome_eletricista, todosEletricistasBase) }); continue }
 
         if (idsJaRegistrados.has(String(eletMatch.id))) {
           const registro = frequenciasRegistradas.find(r => String(r.eletricista_id) === String(eletMatch.id))
@@ -1526,11 +1557,21 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                     <summary style={{ padding: '12px 14px', fontSize: 12.5, fontWeight: 700, color: '#1e293b', cursor: 'pointer' }}>
                       ⚠️ Encontrados no SIGA, mas não localizados na Estrutura ({loteSigaNaoLocalizados.length})
                     </summary>
-                    <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                       {loteSigaNaoLocalizados.map((n, i) => (
                         <div key={i} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#b91c1c' }}>
-                          <b>{n.nome_eletricista}</b> · Mat: {n.matricula || '—'} (SIGA) · Prefixo: {n.prefixo || '—'}<br />
-                          Nome não encontrado na Estrutura Operacional atual (nem por correspondência aproximada) — verifique manualmente.
+                          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 2, columnGap: 8 }}>
+                            <span style={{ fontWeight: 700 }}>Nome SIGA:</span><span>{n.nome_eletricista}</span>
+                            <span style={{ fontWeight: 700 }}>Nome Estrutura:</span><span>{n.candidato ? n.candidato.colaborador : '— (nenhum candidato parecido)'}</span>
+                            <span style={{ fontWeight: 700 }}>Mat. SIGA:</span><span>{n.matricula || '—'}</span>
+                            <span style={{ fontWeight: 700 }}>Mat. Estrutura:</span><span>{n.candidato ? (n.candidato.matricula || '—') : '—'}</span>
+                            <span style={{ fontWeight: 700 }}>Prefixo:</span><span>{n.prefixo || '—'}</span>
+                          </div>
+                          <p style={{ marginTop: 6, marginBottom: 0, fontSize: 11 }}>
+                            {n.candidato
+                              ? 'Candidato mais parecido encontrado na Estrutura — compare os nomes acima e verifique manualmente.'
+                              : 'Nenhum candidato parecido encontrado na Estrutura Operacional — verifique manualmente.'}
+                          </p>
                         </div>
                       ))}
                     </div>
