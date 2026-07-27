@@ -43,11 +43,11 @@ export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar,
         {itens.map((item, i) => (
           <div key={item.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{i + 1}. {item.classificacao} — {item.descricao}</p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{i + 1}. {item.classificacao} — <strong>DESCRIÇÃO:</strong> {item.descricao}</p>
               <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>R$ {Number(item.valor).toFixed(2).replace('.', ',')}</p>
             </div>
             <p style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
-              {item.fornecedor || '—'} · {item.forma_pagamento || '—'} · {item.tipo_comprovante || '—'} · {item.data_emissao || 'sem data'}
+              <strong>FORNECEDOR:</strong> {item.fornecedor || '—'} · {item.forma_pagamento || '—'} · {item.tipo_comprovante || '—'} · {item.data_emissao || 'sem data'}
             </p>
             {item.observacao && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Obs.: {item.observacao}</p>}
             {(item.pc_fotos || []).length > 0 ? (

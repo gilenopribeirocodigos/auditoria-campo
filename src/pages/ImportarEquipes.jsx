@@ -30,6 +30,16 @@ function limparTexto(valor) {
     .trim()
 }
 
+// CPF só dígitos, preenchido com zero à esquerda até 11 dígitos — mesmo
+// tratamento de EstruturaOnline.jsx (ver comentário lá): a planilha de
+// origem costuma trazer o CPF como número, e o Excel apaga zero à esquerda
+// nesse caso, deixando o CPF com tamanho variável dependendo de quantos
+// zeros o número real tinha.
+function padronizarCpf(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '')
+  return digitos ? digitos.padStart(11, '0') : ''
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseCsv(text) {
@@ -58,6 +68,10 @@ function decodeArrayBuffer(buffer) {
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
+  // [DPL] CPF do colaborador — opcional (fica vazio se o CSV não trouxer
+  // essa coluna). Mesma posição usada em EstruturaOnline.jsx, pra manter os
+  // dois padrões iguais. Ver comentário lá pra contexto de uso futuro.
+  'cpf_colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
   // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
@@ -97,6 +111,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo:         limparTexto(r.prefixo),
     matricula:       norm(r.matricula),          // matrícula: só dígitos, não normalizar
     colaborador:     limparTexto(r.colaborador),
+    cpf_colaborador: padronizarCpf(r.cpf_colaborador),
     descr_secao:     limparTexto(r.descr_secao),
     descr_situacao:  limparTexto(r.descr_situacao),
     placas:          limparTexto(r.placas),
@@ -119,6 +134,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo:         linhaAtual.prefixo,
     matricula:       linhaAtual.matricula,
     colaborador:     linhaAtual.colaborador,
+    cpf_colaborador: linhaAtual.cpf_colaborador,
     descr_secao:     linhaAtual.descr_secao,
     descr_situacao:  linhaAtual.descr_situacao,
     placas:          linhaAtual.placas,

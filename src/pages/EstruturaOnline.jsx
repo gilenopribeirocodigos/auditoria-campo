@@ -8,6 +8,11 @@ const SITUACOES_PERMITIDAS = ['ATIVO', 'RESERVA']
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
+  // [DPL] CPF do colaborador — opcional (fica vazio se a planilha não trouxer
+  // essa coluna). Usado futuramente pra cruzar com a Justificativa em Lote
+  // via SIGA (src/pages/IndisponibilidadePage.jsx), que já recebe CPF na
+  // extração (vw_toa_extracao_completa) mas hoje casa só por nome.
+  'cpf_colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
   // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
@@ -80,7 +85,19 @@ function limparTextoEdicao(valor) {
     .toUpperCase()
 }
 
+// CPF só dígitos, preenchido com zero à esquerda até 11 dígitos — a
+// planilha de origem costuma trazer o CPF como número (não texto), e o
+// Excel apaga zero à esquerda nesse caso ("003.665.833-28" vira
+// "3665833828" ou pior). Sem isso, o mesmo CPF fica com tamanhos
+// diferentes conforme vem formatado (com pontos/traço) ou não, e a
+// Justificativa em Lote via SIGA (que compara por CPF) não casa ninguém.
+function padronizarCpf(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '')
+  return digitos ? digitos.padStart(11, '0') : ''
+}
+
 function normalizarValorCelula(coluna, valor) {
+  if (coluna === 'cpf_colaborador') return padronizarCpf(valor)
   if (coluna === 'matricula') return limparTexto(valor).toUpperCase()
   return limparTexto(valor).toUpperCase()
 }
@@ -94,6 +111,7 @@ function novaLinha() {
   return {
     _tmpId: gerarIdTemporario(),
     regional: '', polo: '', base: '', prefixo: '', matricula: '', colaborador: '',
+    cpf_colaborador: '',
     descr_secao: '', descr_situacao: 'ATIVO', placas: '', tipo_equipe: '', processo_equipe: '',
     matricula_superv_campo: '', superv_campo: '', superv_operacao: '', coordenador: '',
   }
@@ -123,7 +141,7 @@ function aplicarSituacaoAutomatica(linha) {
 function normalizarLinha(linha) {
   const out = {}
   COLUNAS_ESPERADAS.forEach(c => {
-    out[c] = limparTexto(linha?.[c]).toUpperCase()
+    out[c] = c === 'cpf_colaborador' ? padronizarCpf(linha?.[c]) : limparTexto(linha?.[c]).toUpperCase()
   })
   out.descr_situacao = limparTexto(out.descr_situacao).toUpperCase()
   return aplicarSituacaoAutomatica(out)
@@ -233,6 +251,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo: linha.prefixo,
     matricula: linha.matricula,
     colaborador: linha.colaborador,
+    cpf_colaborador: linha.cpf_colaborador,
     descr_secao: linha.descr_secao,
     descr_situacao: linha.descr_situacao,
     placas: linha.placas,
@@ -255,6 +274,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo: linhaAtual.prefixo,
     matricula: linhaAtual.matricula,
     colaborador: linhaAtual.colaborador,
+    cpf_colaborador: linhaAtual.cpf_colaborador,
     descr_secao: linhaAtual.descr_secao,
     descr_situacao: linhaAtual.descr_situacao,
     placas: linhaAtual.placas,
@@ -413,6 +433,7 @@ const LARGURAS_PADRAO = {
   prefixo: 135,
   matricula: 105,
   colaborador: 250,
+  cpf_colaborador: 150,
   descr_secao: 150,
   descr_situacao: 170,
   placas: 120,

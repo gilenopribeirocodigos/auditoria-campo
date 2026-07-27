@@ -1,11 +1,74 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
-import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
+import { temPermissao } from '../lib/auth.js'
+import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE, matchNomes } from '../components/PainelFiltros.jsx'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
 // IndisponibilidadePage v8
 // ════════════════════════════════════════════════════════════════════════════
+
+// Colapsa qualquer sequência de espaço em branco (inclusive espaço
+// não-separável  , comum em texto extraído de página web/HTML como o
+// SIGA) num único espaço normal. Sem isso, dois nomes visualmente idênticos
+// podem falhar na comparação exata (matchNomes) por causa de um espaço
+// "invisível" diferente entre as palavras — só \s+ (usado no split de
+// candidatoMaisParecido) já ignora essa diferença, por isso o candidato mais
+// parecido aparecia "idêntico" mesmo quando o casamento automático falhava.
+function limparEspacos(s) {
+  return (s || '').replace(/\s+/g, ' ').trim()
+}
+
+// Só os dígitos do CPF, preenchido com zero à esquerda até 11 dígitos — pra
+// comparar sem depender de máscara (com ou sem pontos/traço) nem de zero à
+// esquerda perdido (a planilha de origem às vezes traz CPF como número, e o
+// Excel apaga o zero à esquerda nesse caso). Usado como 1º critério de
+// casamento na Justificativa em Lote via SIGA (mais confiável que nome, que
+// pode ter grafias diferentes).
+function limparCpf(s) {
+  const digitos = (s || '').replace(/\D/g, '')
+  return digitos ? digitos.padStart(11, '0') : ''
+}
+
+// Só pra exibição (diagnóstico dos "não localizados") — formata como
+// 000.000.000-00 quando tiver os 11 dígitos, senão mostra cru.
+function formatarCpfExibicao(cpf) {
+  const d = limparCpf(cpf)
+  if (!d) return '—'
+  return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}` : d
+}
+
+// ── Diagnóstico de nome parecido (Justificativa em Lote SIGA) ────────────────
+// Quando o SIGA traz um nome que não bate com ninguém da Estrutura, mostra o
+// candidato mais parecido (por sobreposição de palavras do nome) só pra
+// ajudar a enxergar se é uma pequena diferença de grafia (ex.: "DE" x "DO"
+// Nascimento) ou se realmente não existe ninguém correspondente — não entra
+// na lógica de casamento automático, é só pra exibição/diagnóstico.
+function normalizarPalavrasNome(nome) {
+  return (nome || '')
+    .toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function candidatoMaisParecido(nomeSiga, roster) {
+  const palavrasSiga = normalizarPalavrasNome(nomeSiga)
+  if (palavrasSiga.length === 0) return null
+
+  let melhor = null, melhorScore = 0
+  for (const e of roster) {
+    const palavrasEstrutura = normalizarPalavrasNome(e.colaborador)
+    if (palavrasEstrutura.length === 0) continue
+    const setEstrutura = new Set(palavrasEstrutura)
+    const comuns = palavrasSiga.filter(p => setEstrutura.has(p)).length
+    const score = comuns / Math.max(palavrasSiga.length, palavrasEstrutura.length)
+    if (score > melhorScore) { melhorScore = score; melhor = e }
+  }
+  return melhorScore >= 0.5 ? { ...melhor, score: melhorScore } : null
+}
 
 // ── Autocomplete genérico (prefixo ou eletricista nos cards) ─────────────────
 function AutocompleteCard({ value, onChange, opcoes = [], placeholder = 'Digite para filtrar...',
@@ -146,6 +209,21 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const [contadores, setContadores] = useState({ presentes: 0, ausentes: 0 })
   const [idsRegistroDia, setIdsRegistroDia] = useState({ presentes: [], ausentes: [] })
 
+  // Reabrir registro de Presença/Ausência (desfaz e volta pra lista de pendentes)
+  const podeReabrirFrequencia = temPermissao(usuarioLogado, 'reabrir_frequencia')
+  const [reabrindoId, setReabrindoId] = useState(null)
+
+  // Justificativa em lote via extração do SIGA (aba 4)
+  const podeLoteSiga = temPermissao(usuarioLogado, 'frequencia_lote_siga')
+  const [loteSigaCarregando,  setLoteSigaCarregando]  = useState(false)
+  const [loteSigaErro,        setLoteSigaErro]        = useState('')
+  const [loteSigaPendentes,   setLoteSigaPendentes]   = useState([])
+  const [loteSigaJustificados, setLoteSigaJustificados] = useState([])
+  const [loteSigaNaoLocalizados, setLoteSigaNaoLocalizados] = useState([])
+  const [loteSigaSelecionados, setLoteSigaSelecionados] = useState(new Set())
+  const [loteSigaProcessando, setLoteSigaProcessando] = useState(false)
+  const [loteSigaSucesso,     setLoteSigaSucesso]     = useState('')
+
   const isSupervisor    = usuarioLogado?.perfil !== 'ADMIN'
   const supervisorCampo = usuarioLogado?.nome
   const estruturaCarregada = filtros.estruturaCarregada
@@ -194,11 +272,22 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         .from('motivos_indisponibilidade').select('id, descricao').eq('ativo', true).order('descricao')
       setMotivos(motivosData || [])
 
-      const { data: jaRegistrados } = await supabase
+      let { data: jaRegistrados } = await supabase
         .from('equipes_dia')
-        .select('id, eletricista_id, id_eletricista, id_indisponibilidade, prefixo, data, matricula, colaborador, superv_campo, processo_equipe, descricao_motivo_indisponibilidade, observacoes, criado_em')
+        .select('id, eletricista_id, id_eletricista, id_indisponibilidade, prefixo, data, matricula, colaborador, superv_campo, processo_equipe, descricao_motivo_indisponibilidade, observacoes, criado_em, origem_registro')
         .eq('data', data)
         .order('criado_em', { ascending: false })
+
+      // Compat: se a coluna origem_registro ainda não existir (deploy antes
+      // da migração SQL), tenta de novo sem ela.
+      if (!jaRegistrados) {
+        const semOrigem = await supabase
+          .from('equipes_dia')
+          .select('id, eletricista_id, id_eletricista, id_indisponibilidade, prefixo, data, matricula, colaborador, superv_campo, processo_equipe, descricao_motivo_indisponibilidade, observacoes, criado_em')
+          .eq('data', data)
+          .order('criado_em', { ascending: false })
+        jaRegistrados = semOrigem.data
+      }
 
       const descricaoMotivoPorId = new Map((motivosData || []).map(m => [String(m.id), m.descricao]))
       const motivoPresente = (motivosData || []).find(m => m.descricao.toUpperCase() === 'PRESENTE')
@@ -235,7 +324,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       let remanejadosComDestino = []
       if (idsRemanejadosDia.length > 0) {
         const { data: eletRemanejados, error: erroEletRemanejados } = await supabase.from('estrutura_equipes')
-          .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
+          .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, superv_campo, processo_equipe, base')
           .in('id', idsRemanejadosDia)
         if (erroEletRemanejados) throw erroEletRemanejados
 
@@ -267,7 +356,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       }))
 
       let query = supabase.from('estrutura_equipes')
-        .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe, base')
+        .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, superv_campo, processo_equipe, base')
         .in('descr_situacao', ['ATIVO', 'RESERVA']).order('colaborador')
       if (prefixosRestritos) query = query.in('prefixo', prefixosRestritos)
 
@@ -560,6 +649,171 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     finally { setSalvando(false) }
   }
 
+  // Desfaz um registro de Presença/Ausência já salvo — o colaborador volta pra
+  // lista de pendentes de justificar. Se havia indisponibilidade de prefixo
+  // associada (ausência já justificada na aba 3), remove também, pra não ficar
+  // um prefixo "indisponível" órfão referente a uma ausência que foi desfeita.
+  const reabrirFrequencia = async (registro) => {
+    if (registro.data !== hoje) {
+      alert('Só é possível reabrir um registro no mesmo dia em que foi feito. Passado o dia, a frequência não pode mais ser alterada.')
+      return
+    }
+    const nome = registro.colaborador || `Eletricista #${registro.eletricista_id}`
+    if (!confirm(`Reabrir o registro de ${nome}? Ele volta pra lista de pendentes de justificar nesta data.`)) return
+    setReabrindoId(registro.id)
+    try {
+      const { error } = await supabase.from('equipes_dia').delete().eq('id', registro.id)
+      if (error) throw error
+      await supabase.from('indisponibilidades').delete().eq('eletricista_id', registro.eletricista_id).eq('data', registro.data)
+      await carregar()
+    } catch (e) {
+      alert('Não foi possível reabrir: ' + (e.message || e))
+    } finally {
+      setReabrindoId(null)
+    }
+  }
+
+  // ─── Justificativa em Lote via SIGA ─────────────────────────────────────────
+  // A view vw_toa_extracao_completa traz quem logou no SIGA na data. Quem já
+  // está registrado na frequência (Presente ou Ausente, manual ou SIGA) não
+  // é mexido — só quem ainda não tem registro nenhum vira "pendente" e pode
+  // virar Presente com 1 clique. Ausência continua sendo só manual.
+  const carregarLoteSiga = useCallback(async () => {
+    setLoteSigaCarregando(true)
+    setLoteSigaErro('')
+    setLoteSigaSucesso('')
+    try {
+      const { data: extracao, error } = await supabase
+        .from('vw_toa_extracao_completa')
+        .select('matricula, nome_eletricista, cpf, prefixo, login, logoff, run_key, coletado_em, id_eletricista')
+        .not('nome_eletricista', 'is', null)
+        .eq('data_extracao', data)
+      if (error) throw error
+
+      // O robô roda várias vezes ao dia — se achar o mesmo eletricista mais
+      // de uma vez, fica só a extração mais recente (prefixo/horário mais atual).
+      const porChave = new Map()
+      for (const linha of extracao || []) {
+        const chave = linha.id_eletricista || `mat:${(linha.matricula || '').trim().toLowerCase()}`
+        const atual = porChave.get(chave)
+        if (!atual || new Date(linha.coletado_em) > new Date(atual.coletado_em)) porChave.set(chave, linha)
+      }
+
+      const idsJaRegistrados = new Set(frequenciasRegistradas.map(r => String(r.eletricista_id)))
+      const pendentes = [], jaJustificados = [], naoLocalizados = []
+
+      for (const linha of porChave.values()) {
+        // A matrícula do SIGA usa uma numeração própria, diferente da
+        // matrícula cadastrada na Estrutura Operacional (mesma pessoa, dois
+        // números diferentes) — não dá pra casar por matrícula. Prioridade:
+        // 1) id_eletricista (se já vier casado), 2) CPF (mais confiável,
+        // quando cadastrado na Estrutura via CPF_COLABORADOR), 3) nome (mesma
+        // função já usada pra cruzar supervisor/fiscal com a estrutura).
+        // Prefixo NUNCA entra na comparação — só serve pra registrar a
+        // presença, o fiscal troca o eletricista de equipe o tempo todo.
+        const cpfSiga = limparCpf(linha.cpf)
+        const eletMatch = (linha.id_eletricista && todosEletricistasBase.find(e => e.id_eletricista === linha.id_eletricista))
+          || (cpfSiga && todosEletricistasBase.find(e => limparCpf(e.cpf_colaborador) === cpfSiga))
+          || todosEletricistasBase.find(e => matchNomes(limparEspacos(linha.nome_eletricista), limparEspacos(e.colaborador)))
+
+        if (!eletMatch) { naoLocalizados.push({ ...linha, candidato: candidatoMaisParecido(linha.nome_eletricista, todosEletricistasBase) }); continue }
+
+        if (idsJaRegistrados.has(String(eletMatch.id))) {
+          const registro = frequenciasRegistradas.find(r => String(r.eletricista_id) === String(eletMatch.id))
+          jaJustificados.push({ ...linha, colaborador: eletMatch.colaborador, registro })
+        } else {
+          pendentes.push({ ...linha, colaborador: eletMatch.colaborador, eletMatch })
+        }
+      }
+
+      setLoteSigaPendentes(pendentes)
+      setLoteSigaJustificados(jaJustificados)
+      setLoteSigaNaoLocalizados(naoLocalizados)
+      setLoteSigaSelecionados(new Set(pendentes.map((_, i) => i)))
+    } catch (e) {
+      setLoteSigaErro(e.message || 'Erro ao carregar extração do SIGA.')
+    } finally {
+      setLoteSigaCarregando(false)
+    }
+  }, [data, frequenciasRegistradas, todosEletricistasBase])
+
+  useEffect(() => {
+    if (abaAtiva === 'lote_siga' && podeLoteSiga) carregarLoteSiga()
+  }, [abaAtiva, podeLoteSiga, carregarLoteSiga])
+
+  const toggleLoteSigaSelecao = (i) => {
+    setLoteSigaSelecionados(prev => {
+      const novo = new Set(prev)
+      if (novo.has(i)) novo.delete(i); else novo.add(i)
+      return novo
+    })
+  }
+
+  const justificarLoteSiga = async () => {
+    if (loteSigaSelecionados.size === 0) return
+    setLoteSigaProcessando(true)
+    setLoteSigaErro('')
+    setLoteSigaSucesso('')
+    try {
+      const motivoPresente = motivos.find(m => m.descricao.toUpperCase() === 'PRESENTE')
+      if (!motivoPresente) throw new Error('Motivo "PRESENTE" não encontrado.')
+
+      const selecionadas = loteSigaPendentes.filter((_, i) => loteSigaSelecionados.has(i))
+      const linhas = selecionadas.map(p => ({
+        eletricista_id:       Number(p.eletMatch.id),
+        id_eletricista:       p.eletMatch.id_eletricista,
+        matricula:            p.eletMatch.matricula || null,
+        colaborador:          p.eletMatch.colaborador || null,
+        superv_campo:         p.eletMatch.superv_campo || null,
+        processo_equipe:      p.eletMatch.processo_equipe || null,
+        prefixo:              p.prefixo || p.eletMatch.prefixo || '',
+        data,
+        supervisor_registro:  supervisorCampo || 'Administrador',
+        usuario_registro:     usuarioLogado?.login || 'admin',
+        id_indisponibilidade: Number(motivoPresente.id),
+        descricao_motivo_indisponibilidade: 'PRESENTE',
+        observacoes:          `Justificado automaticamente via SIGA (login ${p.login || '—'}${p.logoff ? ', logoff ' + p.logoff : ''}).`,
+        origem_registro:      'SIGA_AUTOMATICO',
+      }))
+
+      let { error } = await supabase.from('equipes_dia').upsert(linhas, { onConflict: 'eletricista_id,data' })
+      if (error && /column .* does not exist/i.test(error.message || '')) {
+        const linhasCompat = linhas.map(({ origem_registro, ...linha }) => linha)
+        ;({ error } = await supabase.from('equipes_dia').upsert(linhasCompat, { onConflict: 'eletricista_id,data' }))
+      }
+      if (error) throw error
+
+      setLoteSigaSucesso(`✅ ${linhas.length} eletricista(s) justificado(s) como Presente via SIGA!`)
+      await carregar()
+    } catch (e) {
+      setLoteSigaErro('Não foi possível justificar: ' + (e.message || e))
+    } finally {
+      setLoteSigaProcessando(false)
+    }
+  }
+
+  // Baixa em Excel a lista de "não localizados" — pra analisar fora do
+  // sistema e tratar as divergências (nome/CPF diferente entre SIGA e
+  // Estrutura, gente que saiu, erro de digitação etc.).
+  const exportarNaoLocalizadosLoteSiga = () => {
+    if (loteSigaNaoLocalizados.length === 0) return
+    const dados = loteSigaNaoLocalizados.map(n => ({
+      'NOME SIGA':          n.nome_eletricista || '',
+      'NOME ESTRUTURA':     n.candidato?.colaborador || '',
+      'CPF SIGA':           formatarCpfExibicao(n.cpf),
+      'CPF ESTRUTURA':      n.candidato ? formatarCpfExibicao(n.candidato.cpf_colaborador) : '',
+      'MATRICULA SIGA':     n.matricula || '',
+      'MATRICULA ESTRUTURA': n.candidato?.matricula || '',
+      'PREFIXO':            n.prefixo || '',
+    }))
+    const colunas = ['NOME SIGA', 'NOME ESTRUTURA', 'CPF SIGA', 'CPF ESTRUTURA', 'MATRICULA SIGA', 'MATRICULA ESTRUTURA', 'PREFIXO']
+    const ws = XLSX.utils.json_to_sheet(dados, { header: colunas })
+    ws['!cols'] = colunas.map(() => ({ wch: 24 }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Nao Localizados')
+    XLSX.writeFile(wb, `justificativa_lote_siga_nao_localizados_${data}.xlsx`)
+  }
+
   // ─── Remanejamento ────────────────────────────────────────────────────────
   const buscarRemanejamento = async (texto) => {
     setBuscaReman(texto)
@@ -845,6 +1099,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
             { id: 'frequencia',    emoji: '📋', label: 'Frequência de Pessoal' },
             { id: 'remanejamento', emoji: '🔄', label: 'Remanejar Colaborador' },
             { id: 'indisponivel',  emoji: '⚠️', label: 'Indisponibilidade Prefixo' },
+            ...(podeLoteSiga ? [{ id: 'lote_siga', emoji: '🤖', label: 'Justificativa em Lote' }] : []),
           ].map(aba => (
             <button key={aba.id} onClick={() => { setAbaAtiva(aba.id); setErro(''); setSucesso('') }} style={{
               padding: '10px 16px', borderRadius: 10, border: 'none', cursor: 'pointer',
@@ -874,6 +1129,60 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         ══════════════════════════════════════════════ */}
         {abaAtiva === 'frequencia' && (
           <>
+            {frequenciasRegistradasFiltradas.length > 0 && (
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {frequenciasRegistradasFiltradas.map(r => {
+                    const descricaoMotivo = r.descricao_motivo_indisponibilidade || '—'
+                    const isPresenteHistorico = descricaoMotivo.toUpperCase() === 'PRESENTE'
+                    const nomeEletricista = r.colaborador || `Eletricista #${r.eletricista_id}`
+                    return (
+                      <div key={r.id || String(r.eletricista_id) + '-' + r.data} style={{
+                        background: isPresenteHistorico ? '#f0fdf4' : '#fef2f2',
+                        border: `1px solid ${isPresenteHistorico ? '#86efac' : '#fecaca'}`,
+                        borderRadius: 10,
+                        padding: '12px 14px',
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
+                          <div>
+                            <p style={{ fontSize: 13, fontWeight: 800, color: isPresenteHistorico ? '#15803d' : '#b91c1c', margin: 0 }}>{nomeEletricista}</p>
+                            <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
+                              {r.matricula ? `Mat: ${r.matricula} · ` : ''}Prefixo: {r.prefixo || '—'} · {isPresenteHistorico ? 'PRESENTE' : `AUSENTE · ${descricaoMotivo}`}
+                            </p>
+                            {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                            <span style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
+                              color: isPresenteHistorico ? '#15803d' : '#dc2626',
+                            }}>
+                              {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
+                            </span>
+                            {podeReabrirFrequencia && r.data === hoje && (
+                              <button
+                                onClick={() => reabrirFrequencia(r)}
+                                disabled={reabrindoId === r.id}
+                                style={{
+                                  fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
+                                  border: '1px solid #cbd5e1', background: '#fff', color: '#475569',
+                                  cursor: reabrindoId === r.id ? 'not-allowed' : 'pointer',
+                                }}
+                              >{reabrindoId === r.id ? '⏳...' : '🔓 Reabrir'}</button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
             {loading ? (
               <CarregandoHexagono texto="Carregando eletricistas..." />
             ) : eletricistas.length === 0 ? (
@@ -1032,47 +1341,6 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
               </>
             )}
 
-            {frequenciasRegistradasFiltradas.length > 0 && (
-              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
-                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {frequenciasRegistradasFiltradas.map(r => {
-                    const descricaoMotivo = r.descricao_motivo_indisponibilidade || '—'
-                    const isPresenteHistorico = descricaoMotivo.toUpperCase() === 'PRESENTE'
-                    const nomeEletricista = r.colaborador || `Eletricista #${r.eletricista_id}`
-                    return (
-                      <div key={r.id || String(r.eletricista_id) + '-' + r.data} style={{
-                        background: isPresenteHistorico ? '#f0fdf4' : '#fef2f2',
-                        border: `1px solid ${isPresenteHistorico ? '#86efac' : '#fecaca'}`,
-                        borderRadius: 10,
-                        padding: '12px 14px',
-                      }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 }}>
-                          <div>
-                            <p style={{ fontSize: 13, fontWeight: 800, color: isPresenteHistorico ? '#15803d' : '#b91c1c', margin: 0 }}>{nomeEletricista}</p>
-                            <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
-                              {r.matricula ? `Mat: ${r.matricula} · ` : ''}Prefixo: {r.prefixo || '—'} · {isPresenteHistorico ? 'PRESENTE' : `AUSENTE · ${descricaoMotivo}`}
-                            </p>
-                            {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
-                          </div>
-                          <span style={{
-                            fontSize: 10,
-                            fontWeight: 800,
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            alignSelf: 'flex-start',
-                            background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
-                            color: isPresenteHistorico ? '#15803d' : '#dc2626',
-                          }}>
-                            {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
           </>
         )}
 
@@ -1241,6 +1509,139 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                   })}
                 </div>
               </div>
+            )}
+          </div>
+        )}
+
+        {abaAtiva === 'lote_siga' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '12px 16px', fontSize: 12, color: '#1e3a5f', lineHeight: 1.5 }}>
+              ℹ️ Todo eletricista que aparece logado no SIGA nesta data e <b>ainda não tem frequência registrada</b> pode ser marcado como <b>Presente</b> automaticamente. Quem já foi justificado (manual ou via SIGA) não é alterado. Ausência continua sendo só manual.
+            </div>
+
+            {loteSigaErro && <p style={{ color: '#dc2626', fontWeight: 700 }}>⚠️ {loteSigaErro}</p>}
+            {loteSigaSucesso && (
+              <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', color: '#15803d', fontWeight: 700, fontSize: 13 }}>
+                {loteSigaSucesso}
+              </div>
+            )}
+
+            {loteSigaCarregando ? (
+              <CarregandoHexagono texto="Consultando extração do SIGA..." />
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: '#1e3a5f', margin: 0 }}>{loteSigaPendentes.length + loteSigaJustificados.length + loteSigaNaoLocalizados.length}</p>
+                    <p style={{ fontSize: 9.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>No SIGA</p>
+                  </div>
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: '#d97706', margin: 0 }}>{loteSigaPendentes.length}</p>
+                    <p style={{ fontSize: 9.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>Pendentes</p>
+                  </div>
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: '#16a34a', margin: 0 }}>{loteSigaJustificados.length}</p>
+                    <p style={{ fontSize: 9.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>Já justificados</p>
+                  </div>
+                  <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 8px', textAlign: 'center' }}>
+                    <p style={{ fontSize: 20, fontWeight: 800, color: '#dc2626', margin: 0 }}>{loteSigaNaoLocalizados.length}</p>
+                    <p style={{ fontSize: 9.5, color: '#64748b', fontWeight: 700, textTransform: 'uppercase', margin: 0 }}>Não localizado</p>
+                  </div>
+                </div>
+
+                {loteSigaPendentes.length === 0 ? (
+                  <div style={{ background: '#f8fafc', border: '1.5px dashed #cbd5e1', borderRadius: 12, padding: '24px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+                    Nenhum eletricista pendente de justificar via SIGA nesta data.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <button onClick={() => setLoteSigaSelecionados(new Set(loteSigaPendentes.map((_, i) => i)))} style={{ background: 'none', border: 'none', color: '#1e3a5f', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginRight: 14, padding: 0 }}>Selecionar todos</button>
+                        <button onClick={() => setLoteSigaSelecionados(new Set())} style={{ background: 'none', border: 'none', color: '#1e3a5f', fontSize: 12, fontWeight: 700, cursor: 'pointer', padding: 0 }}>Nenhum</button>
+                      </div>
+                      <span style={{ fontSize: 12, color: '#64748b', fontWeight: 700 }}>{loteSigaSelecionados.size} selecionado(s)</span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {loteSigaPendentes.map((p, i) => (
+                        <label key={p.eletMatch.id} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '12px 14px', cursor: 'pointer' }}>
+                          <input type="checkbox" checked={loteSigaSelecionados.has(i)} onChange={() => toggleLoteSigaSelecao(i)} style={{ width: 18, height: 18, marginTop: 2, accentColor: '#d97706' }} />
+                          <div>
+                            <p style={{ fontSize: 13.5, fontWeight: 800, color: '#1e293b', margin: 0 }}>{p.colaborador}</p>
+                            <p style={{ fontSize: 11.5, color: '#64748b', margin: '2px 0 0' }}>Mat: {p.matricula || p.eletMatch.matricula || '—'} · Prefixo: {p.prefixo || '—'}</p>
+                            <p style={{ fontSize: 11, color: '#94a3b8', margin: '3px 0 0' }}>🔑 Login SIGA: {p.login || '—'}{p.logoff ? ` · Logoff: ${p.logoff}` : ''}</p>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+
+                    <button onClick={justificarLoteSiga} disabled={loteSigaSelecionados.size === 0 || loteSigaProcessando} style={{
+                      width: '100%', padding: 14, borderRadius: 12, border: 'none',
+                      background: loteSigaSelecionados.size > 0 && !loteSigaProcessando ? '#d97706' : '#e2e8f0',
+                      color: loteSigaSelecionados.size > 0 && !loteSigaProcessando ? '#fff' : '#94a3b8',
+                      fontSize: 14.5, fontWeight: 800, cursor: loteSigaSelecionados.size > 0 && !loteSigaProcessando ? 'pointer' : 'not-allowed',
+                    }}>
+                      {loteSigaProcessando ? '⏳ Justificando...' : `✅ Justificar ${loteSigaSelecionados.size} como Presente (via SIGA)`}
+                    </button>
+                  </>
+                )}
+
+                {loteSigaJustificados.length > 0 && (
+                  <details style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                    <summary style={{ padding: '12px 14px', fontSize: 12.5, fontWeight: 700, color: '#1e293b', cursor: 'pointer' }}>
+                      📋 Já justificados nesta data ({loteSigaJustificados.length})
+                    </summary>
+                    <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {loteSigaJustificados.map((j, i) => {
+                        const isPresente = (j.registro?.descricao_motivo_indisponibilidade || '').toUpperCase() === 'PRESENTE'
+                        const viaSiga = j.registro?.origem_registro === 'SIGA_AUTOMATICO'
+                        const label = isPresente ? `PRESENTE · ${viaSiga ? 'SIGA' : 'Manual'}` : 'AUSENTE · Manual'
+                        const cor = isPresente ? (viaSiga ? '#6d28d9' : '#15803d') : '#dc2626'
+                        const bg = isPresente ? (viaSiga ? '#ede9fe' : '#dcfce7') : '#fee2e2'
+                        return (
+                          <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}>
+                            <span><b>{j.colaborador}</b> · Mat: {j.matricula || '—'}</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: bg, color: cor }}>{label}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </details>
+                )}
+
+                {loteSigaNaoLocalizados.length > 0 && (
+                  <details style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                    <summary style={{ padding: '12px 14px', fontSize: 12.5, fontWeight: 700, color: '#1e293b', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                      <span>⚠️ Encontrados no SIGA, mas não localizados na Estrutura ({loteSigaNaoLocalizados.length})</span>
+                      <button
+                        onClick={e => { e.preventDefault(); e.stopPropagation(); exportarNaoLocalizadosLoteSiga() }}
+                        style={{ fontSize: 11, fontWeight: 700, padding: '5px 10px', borderRadius: 8, border: '1px solid #16a34a', background: '#f0fdf4', color: '#15803d', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                      >📥 Baixar Excel</button>
+                    </summary>
+                    <div style={{ padding: '0 14px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {loteSigaNaoLocalizados.map((n, i) => (
+                        <div key={i} style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 12px', fontSize: 12, color: '#b91c1c' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr', rowGap: 2, columnGap: 8 }}>
+                            <span style={{ fontWeight: 700 }}>Nome SIGA:</span><span>{n.nome_eletricista}</span>
+                            <span style={{ fontWeight: 700 }}>Nome Estrutura:</span><span>{n.candidato ? n.candidato.colaborador : '— (nenhum candidato parecido)'}</span>
+                            <span style={{ fontWeight: 700 }}>CPF SIGA:</span><span>{formatarCpfExibicao(n.cpf)}</span>
+                            <span style={{ fontWeight: 700 }}>CPF Estrutura:</span><span>{n.candidato ? formatarCpfExibicao(n.candidato.cpf_colaborador) : '—'}</span>
+                            <span style={{ fontWeight: 700 }}>Mat. SIGA:</span><span>{n.matricula || '—'}</span>
+                            <span style={{ fontWeight: 700 }}>Mat. Estrutura:</span><span>{n.candidato ? (n.candidato.matricula || '—') : '—'}</span>
+                            <span style={{ fontWeight: 700 }}>Prefixo:</span><span>{n.prefixo || '—'}</span>
+                          </div>
+                          <p style={{ marginTop: 6, marginBottom: 0, fontSize: 11 }}>
+                            {n.candidato
+                              ? 'Candidato mais parecido encontrado na Estrutura — compare os nomes acima e verifique manualmente.'
+                              : 'Nenhum candidato parecido encontrado na Estrutura Operacional — verifique manualmente.'}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+              </>
             )}
           </div>
         )}

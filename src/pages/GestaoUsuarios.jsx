@@ -61,6 +61,8 @@ const TODAS_PERMISSOES = [
   { id: 'prestacao_contas_ver_todas', label: '💰 Prestação de Contas - ver todas (financeiro/admin)' },
   { id: 'prestacao_contas_configurar', label: '💰 Prestação de Contas - configurar padrões (classificação/comprovante)' },
   { id: 'prestacao_contas_fechar', label: '💰 Prestação de Contas - fechar prestação de contas do período (financeiro)' },
+  { id: 'reabrir_frequencia', label: '🔓 Frequência de Pessoal - reabrir registro (Presente/Ausente)' },
+  { id: 'frequencia_lote_siga', label: '🤖 Frequência de Pessoal - justificativa em lote via SIGA' },
 ]
 
 const FORM_VAZIO = {
