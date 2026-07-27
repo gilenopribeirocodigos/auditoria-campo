@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { temPermissao } from '../lib/auth.js'
 import { useFiltrosOperacionais, PainelFiltros, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
@@ -145,6 +146,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // Contadores do dia (total geral, não só filtrado)
   const [contadores, setContadores] = useState({ presentes: 0, ausentes: 0 })
   const [idsRegistroDia, setIdsRegistroDia] = useState({ presentes: [], ausentes: [] })
+
+  // Reabrir registro de Presença/Ausência (desfaz e volta pra lista de pendentes)
+  const podeReabrirFrequencia = temPermissao(usuarioLogado, 'reabrir_frequencia')
+  const [reabrindoId, setReabrindoId] = useState(null)
 
   const isSupervisor    = usuarioLogado?.perfil !== 'ADMIN'
   const supervisorCampo = usuarioLogado?.nome
@@ -558,6 +563,26 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       await carregar()
     } catch (e) { setErro('Erro ao salvar: ' + e.message) }
     finally { setSalvando(false) }
+  }
+
+  // Desfaz um registro de Presença/Ausência já salvo — o colaborador volta pra
+  // lista de pendentes de justificar. Se havia indisponibilidade de prefixo
+  // associada (ausência já justificada na aba 3), remove também, pra não ficar
+  // um prefixo "indisponível" órfão referente a uma ausência que foi desfeita.
+  const reabrirFrequencia = async (registro) => {
+    const nome = registro.colaborador || `Eletricista #${registro.eletricista_id}`
+    if (!confirm(`Reabrir o registro de ${nome}? Ele volta pra lista de pendentes de justificar nesta data.`)) return
+    setReabrindoId(registro.id)
+    try {
+      const { error } = await supabase.from('equipes_dia').delete().eq('id', registro.id)
+      if (error) throw error
+      await supabase.from('indisponibilidades').delete().eq('eletricista_id', registro.eletricista_id).eq('data', registro.data)
+      await carregar()
+    } catch (e) {
+      alert('Não foi possível reabrir: ' + (e.message || e))
+    } finally {
+      setReabrindoId(null)
+    }
   }
 
   // ─── Remanejamento ────────────────────────────────────────────────────────
@@ -1055,17 +1080,29 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                             </p>
                             {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
                           </div>
-                          <span style={{
-                            fontSize: 10,
-                            fontWeight: 800,
-                            padding: '3px 8px',
-                            borderRadius: 6,
-                            alignSelf: 'flex-start',
-                            background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
-                            color: isPresenteHistorico ? '#15803d' : '#dc2626',
-                          }}>
-                            {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                            <span style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              padding: '3px 8px',
+                              borderRadius: 6,
+                              background: isPresenteHistorico ? '#dcfce7' : '#fee2e2',
+                              color: isPresenteHistorico ? '#15803d' : '#dc2626',
+                            }}>
+                              {isPresenteHistorico ? 'PRESENTE' : 'AUSENTE'}
+                            </span>
+                            {podeReabrirFrequencia && (
+                              <button
+                                onClick={() => reabrirFrequencia(r)}
+                                disabled={reabrindoId === r.id}
+                                style={{
+                                  fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
+                                  border: '1px solid #cbd5e1', background: '#fff', color: '#475569',
+                                  cursor: reabrindoId === r.id ? 'not-allowed' : 'pointer',
+                                }}
+                              >{reabrindoId === r.id ? '⏳...' : '🔓 Reabrir'}</button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )
