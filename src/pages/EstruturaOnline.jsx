@@ -8,6 +8,11 @@ const SITUACOES_PERMITIDAS = ['ATIVO', 'RESERVA']
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
+  // [DPL] CPF do colaborador — opcional (fica vazio se a planilha não trouxer
+  // essa coluna). Usado futuramente pra cruzar com a Justificativa em Lote
+  // via SIGA (src/pages/IndisponibilidadePage.jsx), que já recebe CPF na
+  // extração (vw_toa_extracao_completa) mas hoje casa só por nome.
+  'cpf_colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
   // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
@@ -94,6 +99,7 @@ function novaLinha() {
   return {
     _tmpId: gerarIdTemporario(),
     regional: '', polo: '', base: '', prefixo: '', matricula: '', colaborador: '',
+    cpf_colaborador: '',
     descr_secao: '', descr_situacao: 'ATIVO', placas: '', tipo_equipe: '', processo_equipe: '',
     matricula_superv_campo: '', superv_campo: '', superv_operacao: '', coordenador: '',
   }
@@ -233,6 +239,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo: linha.prefixo,
     matricula: linha.matricula,
     colaborador: linha.colaborador,
+    cpf_colaborador: linha.cpf_colaborador,
     descr_secao: linha.descr_secao,
     descr_situacao: linha.descr_situacao,
     placas: linha.placas,
@@ -255,6 +262,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo: linhaAtual.prefixo,
     matricula: linhaAtual.matricula,
     colaborador: linhaAtual.colaborador,
+    cpf_colaborador: linhaAtual.cpf_colaborador,
     descr_secao: linhaAtual.descr_secao,
     descr_situacao: linhaAtual.descr_situacao,
     placas: linhaAtual.placas,
@@ -413,6 +421,7 @@ const LARGURAS_PADRAO = {
   prefixo: 135,
   matricula: 105,
   colaborador: 250,
+  cpf_colaborador: 150,
   descr_secao: 150,
   descr_situacao: 170,
   placas: 120,

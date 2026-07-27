@@ -58,6 +58,10 @@ function decodeArrayBuffer(buffer) {
 
 const COLUNAS_ESPERADAS = [
   'regional', 'polo', 'base', 'prefixo', 'matricula', 'colaborador',
+  // [DPL] CPF do colaborador — opcional (fica vazio se o CSV não trouxer
+  // essa coluna). Mesma posição usada em EstruturaOnline.jsx, pra manter os
+  // dois padrões iguais. Ver comentário lá pra contexto de uso futuro.
+  'cpf_colaborador',
   'descr_secao', 'descr_situacao', 'placas', 'tipo_equipe', 'processo_equipe',
   // [DPL] Matrícula do Supervisor de Campo dessa linha — mesma matrícula
   // que o usuário tem em dev.usuarios/public.usuarios. Só grava o dado por
@@ -97,6 +101,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo:         limparTexto(r.prefixo),
     matricula:       norm(r.matricula),          // matrícula: só dígitos, não normalizar
     colaborador:     limparTexto(r.colaborador),
+    cpf_colaborador: norm(r.cpf_colaborador),     // cpf: só dígitos, não normalizar
     descr_secao:     limparTexto(r.descr_secao),
     descr_situacao:  limparTexto(r.descr_situacao),
     placas:          limparTexto(r.placas),
@@ -119,6 +124,7 @@ function montarHistorico(linhaAtual, dataHoje, motivo) {
     prefixo:         linhaAtual.prefixo,
     matricula:       linhaAtual.matricula,
     colaborador:     linhaAtual.colaborador,
+    cpf_colaborador: linhaAtual.cpf_colaborador,
     descr_secao:     linhaAtual.descr_secao,
     descr_situacao:  linhaAtual.descr_situacao,
     placas:          linhaAtual.placas,
