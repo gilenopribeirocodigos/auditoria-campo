@@ -291,9 +291,16 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       const descricaoMotivoPorId = new Map((motivosData || []).map(m => [String(m.id), m.descricao]))
       const motivoPresente = (motivosData || []).find(m => m.descricao.toUpperCase() === 'PRESENTE')
+      const registrosAusentes = (jaRegistrados || []).filter(r => r.id_indisponibilidade !== motivoPresente?.id)
       const idsPresentes = new Set((jaRegistrados || []).filter(r => r.id_indisponibilidade === motivoPresente?.id).map(r => r.eletricista_id))
-      const idsAusentes  = new Set((jaRegistrados || []).filter(r => r.id_indisponibilidade !== motivoPresente?.id).map(r => r.eletricista_id))
+      const idsAusentes  = new Set(registrosAusentes.map(r => r.eletricista_id))
       const idsRegistrados = new Set((jaRegistrados || []).map(p => p.eletricista_id))
+      // Uuid permanente por eletricista_id (numerico e mutavel a cada reimportacao
+      // da Estrutura Online) — usado abaixo pra nao perder a exclusao de quem ja
+      // foi carimbado na Indisponibilidade Prefixo quando o id numerico mudou no meio do dia.
+      const idEletPorEletricistaIdAusente = new Map(
+        registrosAusentes.map(r => [r.eletricista_id, r.id_eletricista]).filter(([, v]) => v)
+      )
 
       // Contadores do dia
       setContadores({ presentes: idsPresentes.size, ausentes: idsAusentes.size })
@@ -391,17 +398,28 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         }
       }))
 
-      const { data: indispHoje } = await supabase.from('indisponibilidades')
-        .select('id, eletricista_id, prefixo, tipo_indisponibilidade, motivo_id, observacao, motivos_indisponibilidade(descricao)')
+      let { data: indispHoje } = await supabase.from('indisponibilidades')
+        .select('id, eletricista_id, id_eletricista, colaborador, matricula, superv_campo, processo_equipe, prefixo, tipo_indisponibilidade, motivo_id, observacao, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
         .eq('data', data)
 
+      // Compat: se id_eletricista ainda nao existir na tabela (deploy antes da migracao SQL).
+      if (!indispHoje) {
+        const semIdElet = await supabase.from('indisponibilidades')
+          .select('id, eletricista_id, colaborador, matricula, superv_campo, processo_equipe, prefixo, tipo_indisponibilidade, motivo_id, observacao, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
+          .eq('data', data)
+        indispHoje = semIdElet.data
+      }
+
       const indispBase = indispHoje || []
-      const idsIndisp = [...new Set(indispBase.map(r => r.eletricista_id).filter(Boolean))]
+      // colaborador/matricula/superv_campo/processo_equipe ja vem como snapshot
+      // gravado no momento do carimbo (trigger no banco) — so recorre a um join
+      // com a estrutura atual pros poucos registros antigos que ainda nao tem snapshot.
+      const idsIndispSemSnapshot = [...new Set(indispBase.filter(r => !r.colaborador).map(r => r.eletricista_id).filter(Boolean))]
       let eletricistasIndispPorId = new Map()
-      if (idsIndisp.length > 0) {
+      if (idsIndispSemSnapshot.length > 0) {
         const { data: eletIndisp, error: erroEletIndisp } = await supabase.from('estrutura_equipes')
           .select('id, colaborador, matricula, superv_campo, processo_equipe')
-          .in('id', idsIndisp)
+          .in('id', idsIndispSemSnapshot)
         if (erroEletIndisp) throw erroEletIndisp
         eletricistasIndispPorId = new Map((eletIndisp || []).map(e => [String(e.id), e]))
       }
@@ -409,17 +427,25 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         const elet = eletricistasIndispPorId.get(String(r.eletricista_id))
         return {
           ...r,
-          colaborador: elet?.colaborador || null,
-          matricula: elet?.matricula || null,
-          superv_campo: elet?.superv_campo || null,
-          processo_equipe: elet?.processo_equipe || null,
+          colaborador: r.colaborador || elet?.colaborador || null,
+          matricula: r.matricula || elet?.matricula || null,
+          superv_campo: r.superv_campo || elet?.superv_campo || null,
+          processo_equipe: r.processo_equipe || elet?.processo_equipe || null,
         }
       })
       setIndispRegistradas(registrosIndisp)
 
       // Ausentes disponiveis para aba 3: remove quem ja teve indisponibilidade justificada.
+      // Compara tanto pelo id numerico (eletricista_id) quanto pelo uuid permanente
+      // (id_eletricista), pra nao reaparecer como pendente quando uma reimportacao
+      // da Estrutura Online no meio do dia trocou o id numerico depois do carimbo.
       const idsComIndisp = new Set(registrosIndisp.map(r => r.eletricista_id))
-      const idsAusentesArr = [...idsAusentes].filter(id => !idsComIndisp.has(id))
+      const idEletComIndisp = new Set(registrosIndisp.map(r => r.id_eletricista).filter(Boolean))
+      const idsAusentesArr = [...idsAusentes].filter(id => {
+        if (idsComIndisp.has(id)) return false
+        const idElet = idEletPorEletricistaIdAusente.get(id)
+        return !(idElet && idEletComIndisp.has(idElet))
+      })
       if (idsAusentesArr.length > 0) {
         const { data: eletAusentes } = await supabase.from('estrutura_equipes')
           .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe').in('id', idsAusentesArr).order('colaborador')
@@ -916,6 +942,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       const linhaIndisponibilidade = {
         data,
         eletricista_id: Number(formIndisp.eletricista_id),
+        id_eletricista: elet?.id_eletricista || null,
         matricula: elet?.matricula || null,
         colaborador: elet?.colaborador || null,
         superv_campo: elet?.superv_campo || null,
@@ -936,7 +963,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       if (error && /column .* does not exist/i.test(error.message || '')) {
         const {
           colaborador, superv_campo, processo_equipe,
-          descricao_motivo_indisponibilidade, ...linhaCompat
+          descricao_motivo_indisponibilidade, id_eletricista, ...linhaCompat
         } = linhaIndisponibilidade
         ;({ error } = await supabase
           .from('indisponibilidades')
