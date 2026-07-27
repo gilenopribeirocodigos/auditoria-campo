@@ -19,11 +19,15 @@ function limparEspacos(s) {
   return (s || '').replace(/\s+/g, ' ').trim()
 }
 
-// Só os dígitos do CPF, pra comparar sem depender de máscara (com ou sem
-// pontos/traço) — usado como 1º critério de casamento na Justificativa em
-// Lote via SIGA (mais confiável que nome, que pode ter grafias diferentes).
+// Só os dígitos do CPF, preenchido com zero à esquerda até 11 dígitos — pra
+// comparar sem depender de máscara (com ou sem pontos/traço) nem de zero à
+// esquerda perdido (a planilha de origem às vezes traz CPF como número, e o
+// Excel apaga o zero à esquerda nesse caso). Usado como 1º critério de
+// casamento na Justificativa em Lote via SIGA (mais confiável que nome, que
+// pode ter grafias diferentes).
 function limparCpf(s) {
-  return (s || '').replace(/\D/g, '')
+  const digitos = (s || '').replace(/\D/g, '')
+  return digitos ? digitos.padStart(11, '0') : ''
 }
 
 // ── Diagnóstico de nome parecido (Justificativa em Lote SIGA) ────────────────

@@ -30,6 +30,16 @@ function limparTexto(valor) {
     .trim()
 }
 
+// CPF só dígitos, preenchido com zero à esquerda até 11 dígitos — mesmo
+// tratamento de EstruturaOnline.jsx (ver comentário lá): a planilha de
+// origem costuma trazer o CPF como número, e o Excel apaga zero à esquerda
+// nesse caso, deixando o CPF com tamanho variável dependendo de quantos
+// zeros o número real tinha.
+function padronizarCpf(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '')
+  return digitos ? digitos.padStart(11, '0') : ''
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────
 
 function parseCsv(text) {
@@ -101,7 +111,7 @@ function montarRegistro(r, idEletricista, timestamp) {
     prefixo:         limparTexto(r.prefixo),
     matricula:       norm(r.matricula),          // matrícula: só dígitos, não normalizar
     colaborador:     limparTexto(r.colaborador),
-    cpf_colaborador: norm(r.cpf_colaborador),     // cpf: só dígitos, não normalizar
+    cpf_colaborador: padronizarCpf(r.cpf_colaborador),
     descr_secao:     limparTexto(r.descr_secao),
     descr_situacao:  limparTexto(r.descr_situacao),
     placas:          limparTexto(r.placas),

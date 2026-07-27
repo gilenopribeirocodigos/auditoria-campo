@@ -85,7 +85,19 @@ function limparTextoEdicao(valor) {
     .toUpperCase()
 }
 
+// CPF só dígitos, preenchido com zero à esquerda até 11 dígitos — a
+// planilha de origem costuma trazer o CPF como número (não texto), e o
+// Excel apaga zero à esquerda nesse caso ("003.665.833-28" vira
+// "3665833828" ou pior). Sem isso, o mesmo CPF fica com tamanhos
+// diferentes conforme vem formatado (com pontos/traço) ou não, e a
+// Justificativa em Lote via SIGA (que compara por CPF) não casa ninguém.
+function padronizarCpf(valor) {
+  const digitos = String(valor || '').replace(/\D/g, '')
+  return digitos ? digitos.padStart(11, '0') : ''
+}
+
 function normalizarValorCelula(coluna, valor) {
+  if (coluna === 'cpf_colaborador') return padronizarCpf(valor)
   if (coluna === 'matricula') return limparTexto(valor).toUpperCase()
   return limparTexto(valor).toUpperCase()
 }
@@ -129,7 +141,7 @@ function aplicarSituacaoAutomatica(linha) {
 function normalizarLinha(linha) {
   const out = {}
   COLUNAS_ESPERADAS.forEach(c => {
-    out[c] = limparTexto(linha?.[c]).toUpperCase()
+    out[c] = c === 'cpf_colaborador' ? padronizarCpf(linha?.[c]) : limparTexto(linha?.[c]).toUpperCase()
   })
   out.descr_situacao = limparTexto(out.descr_situacao).toUpperCase()
   return aplicarSituacaoAutomatica(out)
