@@ -2,10 +2,11 @@ import { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
-import { getVersaoApp } from '../lib/auth.js'
+import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
 import {
   useFiltrosOperacionais,
   PainelFiltros,
@@ -150,6 +151,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
   // Passa `usuarioLogado` pra ativar segregação por estrutura.
   const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
+  const podeCadastrarMotivos = temPermissao(usuarioLogado, 'cadastrar_motivos_registros')
+  const [mostrarMotivos, setMostrarMotivos] = useState(false)
 
   // ─── Filtros EXTRAS desta tela ───
   const [tipo,       setTipo]       = useState('')   // single select
@@ -338,6 +341,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     </>
   )
 
+  if (mostrarMotivos) {
+    return <MotivosRegistrosOperacionais onVoltar={() => setMostrarMotivos(false)} />
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
@@ -366,6 +373,14 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               <div style={{ fontSize: 9, opacity: 0.85 }}>Total</div>
             </div>
           </div>
+          {podeCadastrarMotivos && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+              <button onClick={() => setMostrarMotivos(true)} style={{
+                border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.12)', color: '#fff',
+                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}>⚙️ Motivos</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -432,6 +447,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             <span>📅 {formatData(r.data_registro)} às {r.hora_registro}</span>
                             <span style={{ margin: '0 8px' }}>·</span>
                             <span>👥 {Array.isArray(r.participantes) ? r.participantes.length : 0} participante(s)</span>
+                            {r.motivo && (
+                              <>
+                                <span style={{ margin: '0 8px' }}>·</span>
+                                <span>🏷️ {r.motivo}</span>
+                              </>
+                            )}
                           </div>
                           {tokenAtivo && (
                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}

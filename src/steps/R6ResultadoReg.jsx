@@ -131,6 +131,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
             ${infoRow('Data / Hora',  `${form.data} às ${form.hora}`)}
             ${form.endereco      ? infoRow('Local',         form.endereco) : ''}
             ${form.lat           ? infoRow('GPS',           `${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`) : ''}
+            ${form.motivo        ? infoRow('Motivo',        form.motivo) : ''}
             ${form.tema          ? infoRow('Tema',           form.tema) : ''}
             ${form.carga_horaria ? infoRow('Carga Horária', form.carga_horaria) : ''}
           </div>
@@ -254,7 +255,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       <table style="width:100%;border-collapse:collapse;">
         ${[['Fiscal',form.fiscal],['Matrícula',form.matricula_fiscal],['Data/Hora',`${form.data} às ${form.hora}`],
            ['Local',form.endereco],['GPS',form.lat?`${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`:null],
-           ['Tema',form.tema],['Carga Horária',form.carga_horaria]]
+           ['Motivo',form.motivo],['Tema',form.tema],['Carga Horária',form.carga_horaria]]
           .filter(([,v])=>v)
           .map(([l,v])=>`<tr><td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;width:140px;">${l}</td><td style="padding:8px 12px;color:#1e293b;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`)
           .join('')}
@@ -377,6 +378,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
           ['Fiscal',        form.fiscal],
           ['Data/Hora',     `${form.data} às ${form.hora}`],
           ['Local',         form.endereco],
+          ['Motivo',        form.motivo],
           ['Participantes', `${form.participantes.length}`],
           ['Fotos',         form.fotos.length > 0 ? `${form.fotos.length} foto(s)` : null],
           ['Lista impressa', form.lista_impressa ? 'Anexada' : null],
