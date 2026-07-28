@@ -3,11 +3,23 @@ import { supabase, uploadBase64 } from './supabase.js'
 // ─── Salva registro no banco ──────────────────────────────────────────────────
 export async function salvarRegistroBD(payload) {
   if (!supabase) throw new Error('Supabase não configurado.')
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('registros_operacionais')
     .insert(payload)
     .select()
     .single()
+
+  // Mantem o salvamento funcionando caso o deploy do app chegue antes da
+  // migracao SQL que adiciona a coluna "motivo".
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const { motivo, ...payloadCompat } = payload
+    ;({ data, error } = await supabase
+      .from('registros_operacionais')
+      .insert(payloadCompat)
+      .select()
+      .single())
+  }
+
   if (error) throw error
   return data
 }
@@ -100,6 +112,7 @@ export async function prepararPayload(form) {
     lat:                form.lat,
     lng:                form.lng,
     pauta:              form.pauta,
+    motivo:             form.motivo || null,
     tema:               form.tema || null,
     carga_horaria:      form.carga_horaria || null,
     participantes:      participantesComUrl,

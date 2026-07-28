@@ -1,11 +1,31 @@
+import { useEffect, useState } from 'react'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
+import { listarMotivosPorTipo } from '../lib/motivosRegistros.js'
+import { SearchSelect } from '../components/Shared.jsx'
 
 export default function R4Conteudo({ form, upd, next, prev }) {
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const isDisciplinar = form.tipo === 'DISCIPLINAR'
   const isTreinamento = form.tipo === 'TREINAMENTO'
 
+  const [motivos, setMotivos] = useState([])
+  const [carregandoMotivos, setCarregandoMotivos] = useState(true)
+
+  useEffect(() => {
+    let cancelado = false
+    setCarregandoMotivos(true)
+    listarMotivosPorTipo(form.tipo)
+      .then(lista => { if (!cancelado) setMotivos(lista.map(m => m.motivo)) })
+      .catch(() => { if (!cancelado) setMotivos([]) })
+      .finally(() => { if (!cancelado) setCarregandoMotivos(false) })
+    return () => { cancelado = true }
+  }, [form.tipo])
+
+  // Motivo só é obrigatório quando existe pelo menos uma opção cadastrada pra
+  // esse tipo — assim a tela continua funcionando normalmente antes da
+  // migração SQL rodar ou antes do admin cadastrar motivos pra um tipo novo.
   const podeProsseguir = form.pauta.trim().length >= 10 &&
+    !carregandoMotivos && (motivos.length === 0 || !!form.motivo) &&
     (!isDisciplinar || form.tipo_medida)
 
   return (
@@ -31,6 +51,21 @@ export default function R4Conteudo({ form, upd, next, prev }) {
           ? 'Descreva o motivo e a medida aplicada'
           : 'Descreva o que foi abordado neste registro'}
       </p>
+
+      {/* Motivo — obrigatório em todos os tipos, lista cadastrada por tipo */}
+      <div className="form-group">
+        <label className="form-label">Motivo *</label>
+        <SearchSelect
+          opcoes={motivos} valor={form.motivo}
+          onSelecionar={v => upd('motivo', v)}
+          placeholder={carregandoMotivos ? 'Carregando motivos...' : 'Buscar e escolher o motivo...'}
+        />
+        {!carregandoMotivos && motivos.length === 0 && (
+          <p style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>
+            ⚠️ Nenhum motivo cadastrado para este tipo de registro ainda.
+          </p>
+        )}
+      </div>
 
       {/* Tipo de medida — DISCIPLINAR */}
       {isDisciplinar && (

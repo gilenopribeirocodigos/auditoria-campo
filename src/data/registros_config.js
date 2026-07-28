@@ -100,6 +100,7 @@ export const FORM_REGISTRO_INICIAL = () => ({
   lng:            null,
   gpsStatus:      'idle',
   pauta:          '',
+  motivo:         '',
   tema:           '',
   carga_horaria:  '',
   participantes:  [], // [{nome, matricula, assinatura (base64), assinaturaUrl, assinado_em}]

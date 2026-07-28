@@ -3,6 +3,7 @@ import { TIPOS_REGISTRO } from '../data/registros_config.js'
 export default function R0TipoRegistro({ form, upd, next }) {
   const selecionar = (tipo) => {
     upd('tipo', tipo)
+    upd('motivo', '') // reset motivo — a lista de opções depende do tipo
     // DISCIPLINAR é sempre individual
     if (TIPOS_REGISTRO[tipo].apenasIndividual) {
       upd('modalidade', 'INDIVIDUAL')
