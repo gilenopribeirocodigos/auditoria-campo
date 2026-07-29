@@ -130,8 +130,8 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
             {motivos.length === 0 ? (
               <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 20 }}>Nenhum motivo cadastrado ainda.</p>
             ) : (
-              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
                       <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>Registro Operacional</th>
