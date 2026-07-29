@@ -11,15 +11,15 @@ import {
   INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
 import { CarregandoHexagono } from '../components/Shared.jsx'
+import { listarMotivos as listarMotivosAuditoria } from '../lib/motivosAuditoria.js'
+import MotivosAuditoria from './MotivosAuditoria.jsx'
 
 const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
 
-const MOTIVOS_AUDITORIA = [
-  'MATERIAL APLICADO EM CAMPO',
-  'RELIGA VINCULADA',
-]
+// Valor especial tratado em código (habilita QTDE CABOS OS + foto extra em
+// S4Fotos.jsx/checklists.js) — não é editável no cadastro de motivos.
 const MOTIVO_MATERIAL_APLICADO = 'MATERIAL APLICADO EM CAMPO'
 
 const FORM_VAZIO = {
@@ -213,7 +213,7 @@ function parseCsvLinhas(texto) {
   })
 }
 
-function normalizarPauta(obj) {
+function normalizarPauta(obj, motivosValidos = []) {
   const c = Object.fromEntries(
     Object.entries(obj || {}).map(([k, v]) => [k, limparTexto(v)])
   )
@@ -224,7 +224,7 @@ function normalizarPauta(obj) {
   const rc = (c.recorrencia || '').toUpperCase()
   const recorrencia = ['UNICA','DIARIA','SEMANAL'].includes(rc) ? rc : 'UNICA'
   const ma = (c.motivo_auditoria || '').toUpperCase()
-  const motivoAuditoria = MOTIVOS_AUDITORIA.includes(ma) ? ma : ''
+  const motivoAuditoria = motivosValidos.includes(ma) ? ma : ''
   let data = normalizarDataOuNull(c.data_prevista) || ''
   if (!data) data = new Date().toISOString().split('T')[0]
   return {
@@ -421,6 +421,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [geoStatus,    setGeoStatus]    = useState('')
   // ── Novo estado: prefixo validado no modal ──
   const [prefixoValido, setPrefixoValido] = useState(false)
+  const [motivosAuditoria, setMotivosAuditoria] = useState([])
+  const [mostrarMotivos,   setMostrarMotivos]   = useState(false)
 
   const intervalRef = useRef(null)
   const fileRef     = useRef(null)
@@ -431,6 +433,17 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const podeEditarReprogramar = admin || temPermissao(usuarioLogado, 'pauta_editar_reprogramar')
   const podeCancelar = admin || temPermissao(usuarioLogado, 'pauta_cancelar')
   const podeExcluir = admin || temPermissao(usuarioLogado, 'pauta_excluir')
+  const podeCadastrarMotivos = admin || temPermissao(usuarioLogado, 'pauta_cadastrar_motivos')
+
+  const carregarMotivosAuditoria = async () => {
+    try {
+      setMotivosAuditoria((await listarMotivosAuditoria()).map(m => m.motivo))
+    } catch (e) {
+      console.error('Erro ao carregar motivos da auditoria:', e)
+    }
+  }
+
+  useEffect(() => { carregarMotivosAuditoria() }, [])
 
   const dadosCriacaoPauta = () => {
     const createdAt = new Date().toISOString()
@@ -929,7 +942,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           const preview = dados.slice(0, 3).map(r => normalizarPauta(
             Object.fromEntries(Object.entries(r).map(([k, v]) => [
               k.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_'), v
-            ]))
+            ])),
+            motivosAuditoria
           ))
           setCsvPreview(preview)
           setCsvStatus(`✅ Arquivo lido: ${dados.length} linha(s) encontrada(s). Clique em Importar para salvar.`)
@@ -946,7 +960,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
         setCsvTexto(texto)
         const objs = parseCsvLinhas(texto)
         if (objs.length === 0) { setCsvStatus('❌ Nenhuma linha encontrada.'); return }
-        setCsvPreview(objs.slice(0, 3).map(normalizarPauta))
+        setCsvPreview(objs.slice(0, 3).map(o => normalizarPauta(o, motivosAuditoria)))
         setCsvStatus(`✅ Arquivo lido (${encoding}): ${objs.length} linha(s). Clique em Importar para salvar.`)
       }
       reader.readAsArrayBuffer(file)
@@ -961,7 +975,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     setCsvStatus('importando')
     try {
       const objs = parseCsvLinhas(csvTexto)
-      let pautasNovas = objs.map(normalizarPauta).filter(p => p.prefixo && p.fiscal_login)
+      let pautasNovas = objs.map(o => normalizarPauta(o, motivosAuditoria)).filter(p => p.prefixo && p.fiscal_login)
       if (pautasNovas.length === 0) {
         setCsvStatus('❌ Nenhuma linha válida. Verifique se prefixo e fiscal_login estão preenchidos.')
         return
@@ -980,6 +994,10 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   }
 
   const fecharCsvModal = () => { setCsvModal(false); setCsvTexto(''); setCsvStatus(''); setCsvPreview([]) }
+
+  if (mostrarMotivos) {
+    return <MotivosAuditoria onVoltar={() => { setMostrarMotivos(false); carregarMotivosAuditoria() }} />
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -1015,6 +1033,14 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
               ))}
             </div>
           </div>
+          {podeCadastrarMotivos && (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+              <button onClick={() => setMostrarMotivos(true)} style={{
+                border: '1px solid rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.12)', color: '#fff',
+                padding: '6px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+              }}>⚙️ Motivos</button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1309,7 +1335,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 }))}
               >
                 <option value="">— Sem motivo específico —</option>
-                {MOTIVOS_AUDITORIA.map(m => <option key={m} value={m}>{m}</option>)}
+                {motivosAuditoria.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
 
@@ -1396,7 +1422,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
             <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 10, padding: '12px 14px', marginBottom: 16, fontSize: 12, color: '#15803d' }}>
               <strong>Colunas obrigatórias:</strong> prefixo · fiscal_login · data_prevista<br />
               <strong>Colunas opcionais:</strong> tipo_servico · tipo_auditoria · recorrencia · observacao · <strong>motivo_auditoria</strong> · <strong>qtde_cabos_os</strong> · os · uc · <strong>matricula_eletricista1</strong> · <strong>matricula_eletricista2</strong> · latitude · longitude · cidade · bairro · endereco_referencia · data_os · prioridade_execucao<br /><br />
-              <strong>Motivos válidos:</strong> {MOTIVOS_AUDITORIA.join(' | ')}<br /><br />
+              <strong>Motivos válidos:</strong> {motivosAuditoria.join(' | ') || '—'}<br /><br />
               <strong>Formatos aceitos:</strong> .xlsx · .xls · .csv (separador ; , ou Tab)<br />
               <strong>Data:</strong> DD/MM/AAAA ou AAAA-MM-DD<br />
               <strong>No. AS:</strong> gerado automaticamente para cada pauta importada
