@@ -367,6 +367,24 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
   const totalPendentes = ncs.filter(n => n.status_tratamento === 'PENDENTE').length
   const totalTratadas  = ncs.filter(n => n.status_tratamento === 'TRATADA').length
 
+  // Resumo por fiscal — conta por AS (grupo), não por item de NC.
+  // Só faz sentido nas abas PENDENTE/TRATADA: como `grupos` já vem filtrado
+  // pela aba ativa (a query em `carregar` filtra status_tratamento quando
+  // statusTab !== 'TODOS'), cada grupo aqui já representa uma AS daquele status.
+  // Na aba TODOS não exibe, pois pendente e tratada ficariam misturados.
+  const [resumoAberto, setResumoAberto] = useState(true)
+  const resumoPorFiscal = useMemo(() => {
+    if (statusTab === 'TODOS') return []
+    const contagem = new Map()
+    grupos.forEach(g => {
+      const nome = g.fiscal || '—'
+      contagem.set(nome, (contagem.get(nome) || 0) + 1)
+    })
+    return [...contagem.entries()]
+      .map(([fiscal, qtd]) => ({ fiscal, qtd }))
+      .sort((a, b) => b.qtd - a.qtd)
+  }, [grupos, statusTab])
+
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
       <div style={{ background: '#c2410c', padding: '18px 20px', color: '#fff' }}>
@@ -428,6 +446,46 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             }}>{s}</button>
           ))}
         </div>
+
+        {resumoPorFiscal.length > 0 && (() => {
+          const cor = statusTab === 'PENDENTE'
+            ? { borda: '#fdba74', fundo: '#fff7ed', texto: '#9a3412', chipFundo: '#fef3c7', chipTexto: '#92400e', bolaFundo: '#f59e0b' }
+            : { borda: '#86efac', fundo: '#f0fdf4', texto: '#166534', chipFundo: '#dcfce7', chipTexto: '#15803d', bolaFundo: '#22c55e' }
+          return (
+            <div style={{
+              background: cor.fundo, border: `1.5px solid ${cor.borda}`, borderRadius: 12,
+              padding: '10px 14px', marginBottom: 14,
+            }}>
+              <div
+                onClick={() => setResumoAberto(a => !a)}
+                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+              >
+                <p style={{ fontSize: 11, fontWeight: 800, color: cor.texto, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  📋 Por Fiscal ({resumoPorFiscal.length})
+                </p>
+                <span style={{ fontSize: 13, color: cor.texto }}>{resumoAberto ? '▾' : '▸'}</span>
+              </div>
+
+              {resumoAberto && (
+                <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingTop: 10 }}>
+                  {resumoPorFiscal.map(({ fiscal, qtd }) => (
+                    <div key={fiscal} style={{
+                      display: 'flex', alignItems: 'center', gap: 7, flexShrink: 0,
+                      background: cor.chipFundo, borderRadius: 20, padding: '5px 12px 5px 5px',
+                    }}>
+                      <span style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: 20, height: 20, borderRadius: '50%', background: cor.bolaFundo,
+                        color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0,
+                      }}>{qtd}</span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: cor.chipTexto, whiteSpace: 'nowrap' }}>{fiscal}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {loading ? (
           <CarregandoHexagono />
