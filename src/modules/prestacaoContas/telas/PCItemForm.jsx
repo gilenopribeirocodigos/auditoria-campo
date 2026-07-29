@@ -65,7 +65,8 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
     })
   }
 
-  const valido = item.classificacao.trim() && item.descricao.trim() && Number(item.valor) > 0
+  const valido = item.classificacao.trim() && item.descricao.trim() && item.fornecedor.trim()
+    && item.data_emissao.trim() && Number(item.valor) > 0 && fotos.length > 0
 
   const salvar = () => {
     const novasBase64 = fotos.filter(f => f.base64).map(f => f.base64)
@@ -96,7 +97,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
       </div>
 
       <div className="form-group">
-        <label className="form-label">Fornecedor</label>
+        <label className="form-label">Fornecedor *</label>
         <input className="form-input" value={item.fornecedor} onChange={e => updMaiuscula('fornecedor', e.target.value)} placeholder="Ex.: RESTAURANTE SABOR IDEAL" />
       </div>
 
@@ -121,7 +122,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12 }}>
         <div className="form-group">
-          <label className="form-label">Data da emissão</label>
+          <label className="form-label">Data da emissão *</label>
           <input type="date" className="form-input" value={item.data_emissao} onChange={e => upd('data_emissao', e.target.value)} />
         </div>
         <div className="form-group">
@@ -138,7 +139,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
       {/* ── Fotos do comprovante (pode ter mais de uma) ── */}
       <div style={{ marginTop: 18, marginBottom: 10 }}>
         <p style={{ fontSize: 14, fontWeight: 700, color: '#374151', marginBottom: 10 }}>
-          📷 Fotos do Comprovante{fotos.length > 0 && ` (${fotos.length})`}
+          📷 Fotos do Comprovante *{fotos.length > 0 && ` (${fotos.length})`}
         </p>
 
         {fotos.length > 0 && (
@@ -173,7 +174,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
             <span style={{ fontSize: 13, fontWeight: 700, color: '#2563eb' }}>{fotos.length > 0 ? 'Adicionar (galeria)' : 'Da galeria'}</span>
           </button>
         </div>
-        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Pode anexar mais de uma foto (ex.: recibo com várias páginas). Opcional aqui — mas obrigatório ao menos 1 antes de enviar a prestação (regra de negócio).</p>
+        <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>Pode anexar mais de uma foto (ex.: recibo com várias páginas). Obrigatório ao menos 1 foto.</p>
       </div>
 
       <div style={{ marginTop: 20, display: 'flex', flexDirection: 'column', gap: 10 }}>
