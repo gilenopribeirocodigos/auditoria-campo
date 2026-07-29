@@ -1,21 +1,14 @@
 import { useEffect, useState } from 'react'
-import { CarregandoHexagono, SearchSelect } from '../components/Shared.jsx'
-import { TIPOS_REGISTRO } from '../data/registros_config.js'
-import { listarMotivos, criarMotivo, atualizarMotivo, removerMotivo } from '../lib/motivosRegistros.js'
+import { CarregandoHexagono } from '../components/Shared.jsx'
+import { listarMotivos, criarMotivo, atualizarMotivo, removerMotivo } from '../lib/motivosAuditoria.js'
 
-const OPCOES_TIPO = Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => `${tipo.emoji} ${tipo.label}`)
-const LABEL_POR_CHAVE = Object.fromEntries(Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => [chave, `${tipo.emoji} ${tipo.label}`]))
-const CHAVE_POR_LABEL = Object.fromEntries(Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => [`${tipo.emoji} ${tipo.label}`, chave]))
-
-export default function MotivosRegistrosOperacionais({ onVoltar }) {
+export default function MotivosAuditoria({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)
-  const [motivos, setMotivos] = useState([])
-  const [erro, setErro] = useState('')
-  const [novoTipoLabel, setNovoTipoLabel] = useState('')
+  const [motivos,    setMotivos]    = useState([])
+  const [erro,       setErro]       = useState('')
   const [novoMotivo, setNovoMotivo] = useState('')
-  const [salvando, setSalvando] = useState(false)
+  const [salvando,   setSalvando]   = useState(false)
   const [editandoId, setEditandoId] = useState(null)
-  const [editTipoLabel, setEditTipoLabel] = useState('')
   const [editMotivo, setEditMotivo] = useState('')
 
   const carregar = async () => {
@@ -32,11 +25,10 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
   useEffect(() => { carregar() }, [])
 
   const adicionar = async () => {
-    const tipoChave = CHAVE_POR_LABEL[novoTipoLabel]
-    if (!tipoChave || !novoMotivo.trim()) return
+    if (!novoMotivo.trim()) return
     setSalvando(true)
     try {
-      await criarMotivo(tipoChave, novoMotivo)
+      await criarMotivo(novoMotivo)
       setNovoMotivo('')
       await carregar()
     } catch (e) {
@@ -46,19 +38,14 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
     }
   }
 
-  const iniciarEdicao = (m) => {
-    setEditandoId(m.id)
-    setEditTipoLabel(LABEL_POR_CHAVE[m.tipo_registro] || '')
-    setEditMotivo(m.motivo)
-  }
-  const cancelarEdicao = () => { setEditandoId(null); setEditTipoLabel(''); setEditMotivo('') }
+  const iniciarEdicao = (m) => { setEditandoId(m.id); setEditMotivo(m.motivo) }
+  const cancelarEdicao = () => { setEditandoId(null); setEditMotivo('') }
 
   const confirmarEdicao = async () => {
-    const tipoChave = CHAVE_POR_LABEL[editTipoLabel]
-    if (!tipoChave || !editMotivo.trim()) return
+    if (!editMotivo.trim()) return
     setSalvando(true)
     try {
-      await atualizarMotivo(editandoId, tipoChave, editMotivo)
+      await atualizarMotivo(editandoId, editMotivo)
       cancelarEdicao()
       await carregar()
     } catch (e) {
@@ -69,7 +56,7 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
   }
 
   const remover = async (m) => {
-    if (!confirm(`Remover o motivo "${m.motivo}" de ${LABEL_POR_CHAVE[m.tipo_registro] || m.tipo_registro}?`)) return
+    if (!confirm(`Remover o motivo "${m.motivo}"?`)) return
     try {
       await removerMotivo(m.id)
       await carregar()
@@ -82,16 +69,21 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
     <div className="app-shell">
       <header className="app-header no-print">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-          <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>Registros Operacionais</div>
+          <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>Pauta de Fiscalização</div>
           <button onClick={onVoltar} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff', padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer' }}>🏠 Home</button>
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>⚙️ Motivos de Registro</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>🎯 Motivos da Auditoria</div>
       </header>
       <main className="app-content">
         <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-          Cadastre os motivos disponíveis para cada tipo de Registro Operacional. Ao registrar, o usuário escolhe
-          um motivo obrigatório dentro da lista do tipo selecionado. Remover um motivo daqui não altera registros já lançados com esse texto.
+          Cadastre os motivos disponíveis no campo "Motivo da Auditoria" da Pauta de Fiscalização.
+          Remover um motivo daqui não altera pautas já lançadas com esse texto.
         </p>
+
+        <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#9a3412' }}>
+          ⚠️ O motivo <strong>MATERIAL APLICADO EM CAMPO</strong> é tratado de forma especial no código
+          (habilita o campo "QTDE CABOS OS" e exige uma foto extra na Auditoria). Evite renomear ou remover esse item.
+        </div>
 
         {carregando ? (
           <CarregandoHexagono texto="Carregando..." />
@@ -101,29 +93,19 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
           <>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, padding: '14px 16px', marginBottom: 16 }}>
               <p style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', marginBottom: 12 }}>Novo Motivo</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 10 }}>
-                <div>
-                  <label className="form-label">Registro Operacional *</label>
-                  <SearchSelect
-                    opcoes={OPCOES_TIPO} valor={novoTipoLabel}
-                    onSelecionar={setNovoTipoLabel}
-                    placeholder="Buscar e escolher o registro operacional..."
-                  />
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <input
-                    className="form-input" value={novoMotivo}
-                    onChange={e => setNovoMotivo(e.target.value.toUpperCase())}
-                    placeholder="Ex.: USO DE EPI/EPC" style={{ flex: 1 }}
-                    onKeyDown={e => { if (e.key === 'Enter') adicionar() }}
-                  />
-                  <button onClick={adicionar} disabled={salvando || !novoTipoLabel || !novoMotivo.trim()} style={{
-                    padding: '0 16px', borderRadius: 10, border: 'none',
-                    background: (novoTipoLabel && novoMotivo.trim()) ? '#1e3a5f' : '#e2e8f0',
-                    color: (novoTipoLabel && novoMotivo.trim()) ? '#fff' : '#94a3b8',
-                    fontWeight: 700, cursor: (novoTipoLabel && novoMotivo.trim()) ? 'pointer' : 'not-allowed',
-                  }}>＋</button>
-                </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="form-input" value={novoMotivo}
+                  onChange={e => setNovoMotivo(e.target.value.toUpperCase())}
+                  placeholder="Ex.: RELIGA VINCULADA" style={{ flex: 1 }}
+                  onKeyDown={e => { if (e.key === 'Enter') adicionar() }}
+                />
+                <button onClick={adicionar} disabled={salvando || !novoMotivo.trim()} style={{
+                  padding: '0 16px', borderRadius: 10, border: 'none',
+                  background: novoMotivo.trim() ? '#d97706' : '#e2e8f0',
+                  color: novoMotivo.trim() ? '#fff' : '#94a3b8',
+                  fontWeight: 700, cursor: novoMotivo.trim() ? 'pointer' : 'not-allowed',
+                }}>＋</button>
               </div>
             </div>
 
@@ -131,10 +113,9 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
               <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 20 }}>Nenhum motivo cadastrado ainda.</p>
             ) : (
               <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 320 }}>
                   <thead>
                     <tr style={{ background: '#f8fafc' }}>
-                      <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>Registro Operacional</th>
                       <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>Motivo</th>
                       <th style={{ width: 76 }}></th>
                     </tr>
@@ -144,11 +125,6 @@ export default function MotivosRegistrosOperacionais({ onVoltar }) {
                       const editando = editandoId === m.id
                       return (
                         <tr key={m.id} style={{ background: i % 2 === 0 ? '#fff' : '#fafbfc', borderTop: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: editando ? '6px 8px' : '8px 12px', fontSize: 12.5, color: '#1e293b', minWidth: 200 }}>
-                            {editando ? (
-                              <SearchSelect opcoes={OPCOES_TIPO} valor={editTipoLabel} onSelecionar={setEditTipoLabel} placeholder="Escolha..." />
-                            ) : (LABEL_POR_CHAVE[m.tipo_registro] || m.tipo_registro)}
-                          </td>
                           <td style={{ padding: editando ? '6px 8px' : '8px 12px', fontSize: 12.5, color: '#1e293b' }}>
                             {editando ? (
                               <input
