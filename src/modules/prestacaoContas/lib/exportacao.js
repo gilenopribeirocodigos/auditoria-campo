@@ -5,6 +5,33 @@
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
 
+// Redimensiona (lado maior até maxLado) e recomprime como JPEG antes de
+// zipar — fotos de câmera de celular chegam com vários MB cada, o que deixa
+// o .zip consolidado enorme. 1600px + qualidade 0.8 mantém o comprovante
+// legível e reduz bastante o tamanho final.
+function comprimirImagem(blob, maxLado = 1600, qualidade = 0.8) {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(blob)
+    const img = new Image()
+    img.onload = () => {
+      let { width, height } = img
+      if (width > maxLado || height > maxLado) {
+        const escala = maxLado / Math.max(width, height)
+        width = Math.round(width * escala)
+        height = Math.round(height * escala)
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+      URL.revokeObjectURL(url)
+      canvas.toBlob(comprimido => resolve(comprimido || blob), 'image/jpeg', qualidade)
+    }
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(blob) }
+    img.src = url
+  })
+}
+
 function salvarBlob(blob, nomeArquivo) {
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -88,10 +115,10 @@ export async function baixarFotosConsolidadas(prestacoes) {
   for (const { prestacao, item, foto } of pares) {
     const resp = await fetch(foto.foto_url)
     if (!resp.ok) continue
-    const blob = await resp.blob()
-    const ext = blob.type.includes('png') ? 'png' : 'jpg'
+    const blobOriginal = await resp.blob()
+    const blob = await comprimirImagem(blobOriginal)
     const dataStr = item.data_emissao || 'sem-data'
-    const nome = `${String(i).padStart(3, '0')}_${dataStr}_${slugify(prestacao.numero_pc)}_${slugify(item.classificacao)}.${ext}`
+    const nome = `${String(i).padStart(3, '0')}_${dataStr}_${slugify(prestacao.numero_pc)}_${slugify(item.classificacao)}.jpg`
     zip.file(nome, blob)
     i++
   }
