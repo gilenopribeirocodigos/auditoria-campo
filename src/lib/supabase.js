@@ -37,6 +37,28 @@ export async function salvarAuditoriaBD(payload) {
   return data
 }
 
+// Detecta "duplicate key" no numero_as — acontece quando o INSERT já teve
+// sucesso no servidor numa tentativa anterior mas a resposta não chegou ao
+// cliente (rede instável em campo), e o app tenta salvar de novo com o
+// mesmo numero_as. Não é um erro de fato: a auditoria já existe.
+export function isDuplicidadeNumeroAS(err) {
+  return err?.code === '23505' && /numero_as/i.test(err?.message || err?.details || '')
+}
+
+// Recupera a auditoria já salva por numero_as, usado junto com
+// isDuplicidadeNumeroAS() para retomar o fluxo de sucesso em vez de
+// falhar de novo num retry que nunca vai conseguir inserir.
+export async function buscarAuditoriaPorNumeroAS(numeroAS) {
+  if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')
+  const { data, error } = await supabase
+    .from('auditorias')
+    .select()
+    .eq('numero_as', numeroAS)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
 // Atualiza auditoria existente (após reaberta)
 export async function atualizarAuditoriaBD(id, payload) {
   if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')

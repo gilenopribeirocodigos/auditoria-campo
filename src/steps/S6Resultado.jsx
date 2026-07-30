@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { CHECKLISTS, CAT_META, calcNota, getStatus, isDisqualified, isItemConforme, getItemsNaoConformes, getChecklist, getItemsAtivos, getItemsParaCalculo, FORM_INICIAL } from '../data/checklists.js'
 import { InfoRow, StatCard } from '../components/Shared.jsx'
-import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD } from '../lib/supabase.js'
+import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, isDuplicidadeNumeroAS, buscarAuditoriaPorNumeroAS } from '../lib/supabase.js'
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 import { obterNumeroAS } from '../lib/numeroAS.js'
 import { sincronizarNCs } from '../lib/naoConformidades.js'
@@ -472,7 +472,18 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
       if (modoEdicao) {
         saved = await atualizarAuditoriaBD(auditoriaEditandoId, payload)
       } else {
-        saved = await salvarAuditoriaBD(payload)
+        try {
+          saved = await salvarAuditoriaBD(payload)
+        } catch (err) {
+          // A auditoria pode já ter sido salva numa tentativa anterior cuja
+          // resposta se perdeu por instabilidade de rede — recupera o
+          // registro existente em vez de repetir o INSERT (que nunca vai
+          // conseguir, travando o botão "Tentar novamente" num loop).
+          if (isDuplicidadeNumeroAS(err)) {
+            saved = await buscarAuditoriaPorNumeroAS(payload.numero_as)
+          }
+          if (!saved) throw err
+        }
       }
 
       // ─── Sincroniza Não Conformidades na tabela auxiliar ───
