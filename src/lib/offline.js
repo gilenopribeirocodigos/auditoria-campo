@@ -1,4 +1,4 @@
-import { uploadBase64, salvarAuditoriaBD } from './supabase.js'
+import { uploadBase64, salvarAuditoriaBD, isDuplicidadeNumeroAS, buscarAuditoriaPorNumeroAS } from './supabase.js'
 import { sincronizarNCs } from './naoConformidades.js'
 
 const DB_NAME    = 'auditoria-dpl'
@@ -110,7 +110,19 @@ export async function sincronizarPendentes(onProgresso) {
         ...(assinaturaUrl  && { assinatura_url:  assinaturaUrl  }),
         ...(assinatura2Url && { assinatura2_url: assinatura2Url }),
       }
-      const saved = await salvarAuditoriaBD(payload)
+      let saved
+      try {
+        saved = await salvarAuditoriaBD(payload)
+      } catch (err) {
+        // Mesmo caso do salvamento online: o INSERT pode já ter tido sucesso
+        // numa sincronização anterior cuja resposta se perdeu (rede caiu no
+        // meio) — sem isso, o item ficaria preso na fila pra sempre, tentando
+        // inserir de novo o mesmo numero_as a cada sincronização.
+        if (isDuplicidadeNumeroAS(err)) {
+          saved = await buscarAuditoriaPorNumeroAS(payload.numero_as)
+        }
+        if (!saved) throw err
+      }
 
       // ─── Sincroniza Não Conformidades (se houver) na tabela auxiliar ───
       if (item.ncData?.ncItems?.length > 0 && saved?.id) {
