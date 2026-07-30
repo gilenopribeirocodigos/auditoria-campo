@@ -523,6 +523,15 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     [todosEletricistas]
   )
 
+  // Opções de eletricista pra busca por nome na aba Indisponibilidade Prefixo
+  const opcoesElegiveisIndisp = useMemo(() =>
+    eletricistasElegiveisIndisp.map(e => ({
+      value: String(e.id), label: e.colaborador,
+      sub: `Mat: ${e.matricula} — ${e.statusFrequencia === 'presente' ? 'Presente' : 'Ausente'}`,
+    })),
+    [eletricistasElegiveisIndisp]
+  )
+
   const contadoresFiltrados = useMemo(() => {
     const idsBase = new Set(eletricistasBaseFiltrados.map(e => e.id))
     return {
@@ -1491,14 +1500,19 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                 <>
                   <div className="form-group">
                     <label className="form-label">Eletricista *</label>
-                    <select className="form-input" value={formIndisp.eletricista_id} onChange={e => onEletristaIndispChange(e.target.value)}>
-                      <option value="">— Selecione o eletricista —</option>
-                      {eletricistasElegiveisIndisp.map(e => (
-                        <option key={e.id} value={e.id}>
-                          {e.colaborador} (Mat: {e.matricula}) — {e.statusFrequencia === 'presente' ? 'Presente' : 'Ausente'}
-                        </option>
-                      ))}
-                    </select>
+                    <AutocompleteCard
+                      value={formIndisp.eletricista_id}
+                      valorDisplay={eletricistasElegiveisIndisp.find(e => String(e.id) === String(formIndisp.eletricista_id))?.colaborador}
+                      onChange={onEletristaIndispChange}
+                      opcoes={opcoesElegiveisIndisp}
+                      placeholder="Digite o nome do eletricista..."
+                      renderOpcao={o => (
+                        <div>
+                          <p style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', margin: 0 }}>{o.label}</p>
+                          <p style={{ fontSize: 10, color: '#64748b', fontFamily: '"Courier New", monospace', margin: 0 }}>{o.sub}</p>
+                        </div>
+                      )}
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Prefixo da Equipe * <span style={{ fontSize: 10, color: '#64748b', fontWeight: 400, marginLeft: 6 }}>preenchido automaticamente — editável</span></label>
