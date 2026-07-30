@@ -24,6 +24,7 @@ import RegistrosApp             from './RegistrosApp.jsx'
 import RegistrosOperacionais    from './pages/RegistrosOperacionais.jsx'
 import RelatorioEvidencias      from './pages/RelatorioEvidencias.jsx'
 import PaginaAssinar            from './pages/PaginaAssinar.jsx'
+import PaginaAlertaSTC          from './pages/PaginaAlertaSTC.jsx'
 // ── NOVO: Módulo de Indisponibilidade ────────────────────────────────────────
 import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
 import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
@@ -382,6 +383,10 @@ export default function App() {
       </div>
     )
   }
+
+  // ── Rota pública: /alertas/:token ───────────────────────────────────────────
+  const alertaToken = window.location.pathname.match(/^\/alertas\/([0-9a-f-]+)$/i)?.[1]
+  if (alertaToken) return <PaginaAlertaSTC token={alertaToken} />
 
   // ── Rota pública: /assinar/:token ────────────────────────────────────────────
   const pathToken = window.location.pathname.match(/^\/assinar\/([0-9a-f-]+)$/i)?.[1]
