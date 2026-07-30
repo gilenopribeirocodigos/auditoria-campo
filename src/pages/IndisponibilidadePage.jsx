@@ -199,7 +199,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const [remanejamentosDia, setRemanejamentosDia] = useState([])
 
   // Indisponibilidade (aba 3)
-  const [ausentesHoje,      setAusentesHoje]      = useState([])
+  const [eletricistasElegiveisIndisp, setEletricistasElegiveisIndisp] = useState([])
   const [formIndisp,        setFormIndisp]        = useState({ eletricista_id: '', prefixo: '', tipo: 'total', motivo_id: '', obs: '' })
   const [salvandoIndisp,    setSalvandoIndisp]    = useState(false)
   const [indispRegistradas, setIndispRegistradas] = useState([])
@@ -298,8 +298,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       // Uuid permanente por eletricista_id (numerico e mutavel a cada reimportacao
       // da Estrutura Online) — usado abaixo pra nao perder a exclusao de quem ja
       // foi carimbado na Indisponibilidade Prefixo quando o id numerico mudou no meio do dia.
-      const idEletPorEletricistaIdAusente = new Map(
-        registrosAusentes.map(r => [r.eletricista_id, r.id_eletricista]).filter(([, v]) => v)
+      // Cobre ausentes e presentes: um eletricista PRESENTE também pode gerar
+      // indisponibilidade de equipe (ex.: sem EPI/EPC/viatura).
+      const idEletPorEletricistaIdRegistro = new Map(
+        (jaRegistrados || []).map(r => [r.eletricista_id, r.id_eletricista]).filter(([, v]) => v)
       )
 
       // Contadores do dia
@@ -312,7 +314,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         setTodosEletricistasBase([])
         setTodosEletricistas([])
         setPrefixos([])
-        setAusentesHoje([])
+        setEletricistasElegiveisIndisp([])
         setRemanejamentosDia([])
         setFrequenciasRegistradas([])
         return
@@ -435,23 +437,28 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       })
       setIndispRegistradas(registrosIndisp)
 
-      // Ausentes disponiveis para aba 3: remove quem ja teve indisponibilidade justificada.
+      // Elegiveis pra aba 3 (Indisponibilidade de Prefixo): qualquer eletricista
+      // com frequencia registrada na data — ausente OU presente (equipe pode
+      // ficar indisponivel mesmo com o eletricista presente, por falta de
+      // EPI/EPC/viatura etc.) — que ainda nao teve indisponibilidade justificada.
       // Compara tanto pelo id numerico (eletricista_id) quanto pelo uuid permanente
       // (id_eletricista), pra nao reaparecer como pendente quando uma reimportacao
       // da Estrutura Online no meio do dia trocou o id numerico depois do carimbo.
       const idsComIndisp = new Set(registrosIndisp.map(r => r.eletricista_id))
       const idEletComIndisp = new Set(registrosIndisp.map(r => r.id_eletricista).filter(Boolean))
-      const idsAusentesArr = [...idsAusentes].filter(id => {
+      const idsElegiveisArr = [...idsRegistrados].filter(id => {
         if (idsComIndisp.has(id)) return false
-        const idElet = idEletPorEletricistaIdAusente.get(id)
+        const idElet = idEletPorEletricistaIdRegistro.get(id)
         return !(idElet && idEletComIndisp.has(idElet))
       })
-      if (idsAusentesArr.length > 0) {
-        const { data: eletAusentes } = await supabase.from('estrutura_equipes')
-          .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe').in('id', idsAusentesArr).order('colaborador')
-        setAusentesHoje(eletAusentes || [])
+      if (idsElegiveisArr.length > 0) {
+        const { data: eletElegiveis } = await supabase.from('estrutura_equipes')
+          .select('id, id_eletricista, colaborador, matricula, prefixo, superv_campo, processo_equipe').in('id', idsElegiveisArr).order('colaborador')
+        setEletricistasElegiveisIndisp((eletElegiveis || []).map(e => ({
+          ...e, statusFrequencia: idsPresentes.has(e.id) ? 'presente' : 'ausente',
+        })))
       } else {
-        setAusentesHoje([])
+        setEletricistasElegiveisIndisp([])
       }
 
     } catch (e) {
@@ -937,7 +944,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
   // ─── Indisponibilidade ────────────────────────────────────────────────────
   const onEletristaIndispChange = (eletristaId) => {
-    const elet = ausentesHoje.find(e => String(e.id) === String(eletristaId))
+    const elet = eletricistasElegiveisIndisp.find(e => String(e.id) === String(eletristaId))
     setFormIndisp(f => ({ ...f, eletricista_id: eletristaId, prefixo: elet?.prefixo || '' }))
   }
 
@@ -947,7 +954,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     if (!formIndisp.prefixo)        { setErro('Informe o prefixo da equipe.'); return }
     setSalvandoIndisp(true); setErro(''); setSucesso('')
     try {
-      const elet = ausentesHoje.find(e => String(e.id) === String(formIndisp.eletricista_id))
+      const elet = eletricistasElegiveisIndisp.find(e => String(e.id) === String(formIndisp.eletricista_id))
       const motivoSelecionado = motivos.find(m => String(m.id) === String(formIndisp.motivo_id))
       const linhaIndisponibilidade = {
         data,
@@ -1473,20 +1480,24 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
             <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #fed7aa', padding: '20px' }}>
               <p style={{ fontSize: 14, fontWeight: 700, color: '#9a3412', marginBottom: 4 }}>⚠️ Registrar Indisponibilidade de Equipe</p>
               <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.5 }}>
-                Selecione um eletricista <strong>ausente</strong> e registre qual equipe/prefixo ficou parado.
+                Selecione um eletricista com frequência registrada — ausente, ou <strong>presente sem condições de atuar</strong> (falta de EPI/EPC/viatura etc.) — e registre qual equipe/prefixo ficou parado.
               </p>
-              {ausentesHoje.length === 0 ? (
+              {eletricistasElegiveisIndisp.length === 0 ? (
                 <div style={{ background: '#f8fafc', borderRadius: 10, padding: '20px', textAlign: 'center', color: '#64748b' }}>
-                  <p style={{ fontWeight: 700 }}>Nenhum eletricista ausente registrado para esta data.</p>
-                  <p style={{ fontSize: 12, marginTop: 6 }}>Registre as ausências na aba "Frequência de Pessoal" primeiro.</p>
+                  <p style={{ fontWeight: 700 }}>Nenhum eletricista com frequência registrada para esta data.</p>
+                  <p style={{ fontSize: 12, marginTop: 6 }}>Registre a frequência (presença ou ausência) na aba "Frequência de Pessoal" primeiro.</p>
                 </div>
               ) : (
                 <>
                   <div className="form-group">
                     <label className="form-label">Eletricista *</label>
                     <select className="form-input" value={formIndisp.eletricista_id} onChange={e => onEletristaIndispChange(e.target.value)}>
-                      <option value="">— Selecione o eletricista ausente —</option>
-                      {ausentesHoje.map(e => <option key={e.id} value={e.id}>{e.colaborador} (Mat: {e.matricula})</option>)}
+                      <option value="">— Selecione o eletricista —</option>
+                      {eletricistasElegiveisIndisp.map(e => (
+                        <option key={e.id} value={e.id}>
+                          {e.colaborador} (Mat: {e.matricula}) — {e.statusFrequencia === 'presente' ? 'Presente' : 'Ausente'}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="form-group">
@@ -1532,7 +1543,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({indispRegistradas.length})</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {indispRegistradas.map(r => {
-                    const elet = ausentesHoje.find(e => String(e.id) === String(r.eletricista_id))
+                    const elet = eletricistasElegiveisIndisp.find(e => String(e.id) === String(r.eletricista_id))
                     const nomeEletricista = r.colaborador || elet?.colaborador || `Eletricista #${r.eletricista_id}`
                     const matriculaEletricista = r.matricula || elet?.matricula
                     return (
