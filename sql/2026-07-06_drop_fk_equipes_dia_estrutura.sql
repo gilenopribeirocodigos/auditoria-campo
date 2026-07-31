@@ -10,4 +10,3 @@ alter table if exists dev.equipes_dia
 
 alter table if exists public.equipes_dia
   drop constraint if exists equipes_dia_eletricista_id_fkey;
-
