@@ -25,6 +25,7 @@ import RegistrosOperacionais    from './pages/RegistrosOperacionais.jsx'
 import RelatorioEvidencias      from './pages/RelatorioEvidencias.jsx'
 import PaginaAssinar            from './pages/PaginaAssinar.jsx'
 import PaginaAlertaSTC          from './pages/PaginaAlertaSTC.jsx'
+import AlertasTMA               from './pages/AlertasTMA.jsx'
 // ── NOVO: Módulo de Indisponibilidade ────────────────────────────────────────
 import IndisponibilidadePage    from './pages/IndisponibilidadePage.jsx'
 import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
@@ -414,6 +415,7 @@ export default function App() {
   if (tela === 'dashboard-indisp')     return <DashboardIndisponibilidade usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'rotinas-admin')        return <RotinasAdministrativas   usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
+  if (tela === 'alertas-tma' && temPermissao(usuario, 'alertas_tma')) return <AlertasTMA usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'diagnostico-rastreio') return <DiagnosticoRastreio       onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
@@ -608,6 +610,14 @@ export default function App() {
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>🛠️ Tratamento de Não Conformidades</button>
+          )}
+
+          {temPermissao(usuario, 'alertas_tma') && (
+            <button onClick={() => setTela('alertas-tma')} style={{
+              background: 'linear-gradient(135deg, rgba(217,119,6,0.96), rgba(180,83,9,0.96))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>⏱️ Alertas TMA</button>
           )}
 
           {temPermissao(usuario, 'rotinas_administrativas') && (
