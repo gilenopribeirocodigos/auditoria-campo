@@ -43,3 +43,27 @@ export async function encerrarAlertaSTC(token, encerradoPor, justificativa) {
 
   return primeiroRegistro(data)
 }
+
+export async function listarAlertasTMA(filtros = {}) {
+  const { data, error } = await bancoSTC().rpc('stc_painel_alertas_tma', {
+    p_status: filtros.status || null,
+    p_busca: filtros.busca?.trim() || null,
+    p_fiscal: filtros.fiscal || null,
+    p_data_inicio: filtros.dataInicio || null,
+    p_data_fim: filtros.dataFim || null,
+    p_limite: filtros.limite || 500,
+    p_offset: filtros.offset || 0,
+  })
+
+  if (error) {
+    console.error('Erro ao consultar painel de Alertas TMA:', error)
+    throw new Error('Não foi possível carregar os Alertas TMA.')
+  }
+
+  return data || {
+    resumo: { total: 0, pendentes: 0, encerrados: 0 },
+    total_resultados: 0,
+    fiscais: [],
+    alertas: [],
+  }
+}
