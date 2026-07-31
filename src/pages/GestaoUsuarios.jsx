@@ -34,6 +34,7 @@ const TODAS_PERMISSOES = [
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
   { id: 'dashboard_indisponibilidade', label: '📈 Dashboard Indisponibilidade' },
+  { id: 'alertas_tma',      label: '⏱️ Alertas TMA - acompanhamento e respostas' },
   { id: 'rotinas_administrativas', label: '🗓️ Rotinas Administrativas' },
   { id: 'rotinas_configurar',      label: '🛠️ Rotinas — configurar modelos' },
   { id: 'rotinas_dashboard',       label: '📊 Rotinas — acompanhamento geral' },
