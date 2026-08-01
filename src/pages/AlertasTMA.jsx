@@ -42,13 +42,6 @@ function formatarMinutos(valor) {
   return `${valor} min`
 }
 
-function textoDisparo(disparo) {
-  const destino = disparo.destino_nome || disparo.tipo_destino || 'Destino'
-  if (disparo.status_envio === 'ENVIADO') return `${destino}: enviado`
-  if (disparo.status_envio?.startsWith('ERRO')) return `${destino}: erro no envio`
-  return `${destino}: ${disparo.status_envio || 'preparado'}`
-}
-
 function Resumo({ resumo, statusAtivo, onStatus }) {
   const itens = [
     { chave: '', rotulo: 'Total', valor: resumo.total || 0, classe: 'total' },
@@ -107,18 +100,8 @@ function CartaoAlerta({ alerta }) {
         <div><span>Início</span><strong>{alerta.inicio_atividade || 'Não informado'}</strong></div>
         <div><span>Tempo / limite</span><strong>{alerta.tempo_apurado_hhmmss || '—'} · {formatarMinutos(alerta.tempo_limite_min)}</strong></div>
         <div><span>Alerta criado</span><strong>{formatarDataHora(alerta.criado_em)}</strong></div>
-        <div><span>Disparos</span><strong>{enviados}/{disparos.length} enviados</strong></div>
+        <div><span>Disparos enviados</span><strong>{enviados}</strong></div>
       </div>
-
-      {disparos.length > 0 && (
-        <div className="tma-disparos">
-          {disparos.map((disparo, indice) => (
-            <span key={`${disparo.tipo_destino}-${disparo.destino_nome}-${indice}`} className={disparo.status_envio === 'ENVIADO' ? 'ok' : 'atencao'}>
-              {textoDisparo(disparo)}
-            </span>
-          ))}
-        </div>
-      )}
 
       {encerrado && (
         <div className="tma-tratamento">
