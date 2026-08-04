@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { buscarDuplicatasPotenciais } from '../lib/prestacaoContas.js'
+import PCSearchSelect from './PCSearchSelect.jsx'
 
 export default function PCRevisaoEnvio({
   itens, destinatarios, destinatarioId, onMudarDestinatario, onEnviar, onVoltar, enviando,
@@ -74,10 +75,12 @@ export default function PCRevisaoEnvio({
 
       <div className="form-group">
         <label className="form-label">Enviar para *</label>
-        <select className="form-input" value={destinatarioId || ''} onChange={e => onMudarDestinatario(e.target.value)}>
-          <option value="">Selecione...</option>
-          {destinatarios.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
-        </select>
+        <PCSearchSelect
+          opcoes={destinatarios.map(d => ({ value: d.id, label: d.nome }))}
+          valor={destinatarioId || ''}
+          onSelecionar={onMudarDestinatario}
+          placeholder="Selecione..."
+        />
         <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
           Lista mostra só usuários habilitados a receber prestações de contas.
         </p>

@@ -10,7 +10,7 @@ import {
   LABEL_STYLE,
   INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
-import { CarregandoHexagono } from '../components/Shared.jsx'
+import { CarregandoHexagono, SearchSelect } from '../components/Shared.jsx'
 import { listarMotivos as listarMotivosAuditoria } from '../lib/motivosAuditoria.js'
 import MotivosAuditoria from './MotivosAuditoria.jsx'
 
@@ -1221,10 +1221,12 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
 
             <div className="form-group">
               <label className="form-label">Fiscal Responsável *</label>
-              <select className="form-input" value={formData.fiscal_login} onChange={e => upd('fiscal_login', e.target.value)}>
-                <option value="">Selecione o fiscal...</option>
-                {fiscais.map(f => <option key={f.login} value={f.login}>{f.nome} ({f.login})</option>)}
-              </select>
+              <SearchSelect
+                opcoes={fiscais.map(f => ({ value: f.login, label: `${f.nome} (${f.login})` }))}
+                valor={formData.fiscal_login}
+                onSelecionar={v => upd('fiscal_login', v)}
+                placeholder="Selecione o fiscal..."
+              />
             </div>
 
             <div className="form-group">
