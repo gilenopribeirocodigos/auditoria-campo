@@ -115,6 +115,9 @@ export function CarregandoHexagono({ texto = 'Carregando...', tamanho = 56, padd
 // Campo de escolha única com busca — botão que abre um painel com campo
 // "Buscar..." + lista clicável (mesmo padrão visual do PCSearchSelect da
 // Prestação de Contas, aqui reutilizável por qualquer módulo).
+// `opcoes` aceita tanto strings simples (valor exibido == valor selecionado,
+// ex.: lista de motivos) quanto objetos { value, label } quando o valor
+// salvo precisa ser diferente do texto exibido (ex.: login vs. "Nome (login)").
 export function SearchSelect({ opcoes, valor, onSelecionar, placeholder = 'Selecione...' }) {
   const [aberto, setAberto] = useState(false)
   const [busca, setBusca] = useState('')
@@ -126,12 +129,14 @@ export function SearchSelect({ opcoes, valor, onSelecionar, placeholder = 'Selec
     return () => document.removeEventListener('mousedown', fn)
   }, [])
 
+  const opcoesNorm = opcoes.map(o => typeof o === 'string' ? { value: o, label: o } : o)
   const opcoesFiltradas = busca
-    ? opcoes.filter(o => o.toLowerCase().includes(busca.toLowerCase()))
-    : opcoes
+    ? opcoesNorm.filter(o => o.label.toLowerCase().includes(busca.toLowerCase()))
+    : opcoesNorm
+  const selecionado = opcoesNorm.find(o => o.value === valor)
 
   const escolher = (op) => {
-    onSelecionar(op)
+    onSelecionar(op.value)
     setAberto(false)
     setBusca('')
   }
@@ -150,7 +155,7 @@ export function SearchSelect({ opcoes, valor, onSelecionar, placeholder = 'Selec
           borderColor: aberto ? '#3b82f6' : undefined,
         }}
       >
-        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{valor || placeholder}</span>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selecionado ? selecionado.label : (valor || placeholder)}</span>
         <span style={{ fontSize: 10, color: '#94a3b8', marginLeft: 8, flexShrink: 0 }}>▼</span>
       </button>
 
@@ -175,9 +180,9 @@ export function SearchSelect({ opcoes, valor, onSelecionar, placeholder = 'Selec
           {opcoesFiltradas.length === 0 ? (
             <p style={{ padding: 14, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>Nenhum resultado</p>
           ) : opcoesFiltradas.map(op => {
-            const sel = op === valor
+            const sel = op.value === valor
             return (
-              <button key={op} type="button" onClick={() => escolher(op)}
+              <button key={op.value} type="button" onClick={() => escolher(op)}
                 style={{
                   display: 'block', width: '100%', padding: '9px 12px',
                   background: sel ? '#eff6ff' : 'none', border: 'none', borderBottom: '1px solid #f8fafc',
@@ -185,7 +190,7 @@ export function SearchSelect({ opcoes, valor, onSelecionar, placeholder = 'Selec
                 }}
                 onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#f8fafc' }}
                 onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}
-              >{op}</button>
+              >{op.label}</button>
             )
           })}
         </div>
