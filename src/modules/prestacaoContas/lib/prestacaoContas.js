@@ -391,10 +391,16 @@ export async function fecharPrestacoes(prestacoes, usuarioId, { periodoDe, perio
   return fechamento
 }
 
-export async function listarFechamentos() {
+// verTodas=true (permissão prestacao_contas_ver_todas) traz TODOS os
+// fechamentos do sistema; senão só os que o próprio usuário fechou
+// (fechado_por = usuarioId) — mesma regra de isolamento de listarAprovadas,
+// pra não misturar fechamento de um coordenador com o de outro.
+export async function listarFechamentos(usuarioId, verTodas) {
   assertSupabase()
-  const { data, error } = await supabase
+  let query = supabase
     .from('pc_fechamentos').select('*').order('fechado_em', { ascending: false })
+  if (!verTodas) query = query.eq('fechado_por', usuarioId)
+  const { data, error } = await query
   if (error) throw error
 
   const usuarioIds = [...new Set((data || []).map(f => f.fechado_por))]

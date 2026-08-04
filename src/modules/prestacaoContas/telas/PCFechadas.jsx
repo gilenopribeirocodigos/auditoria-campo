@@ -3,7 +3,7 @@ import { CarregandoHexagono } from '../../../components/Shared.jsx'
 import { listarFechamentos, listarPrestacoesDoFechamento } from '../lib/prestacaoContas.js'
 import { gerarExcelConsolidado, baixarFotosConsolidadas } from '../lib/exportacao.js'
 
-export default function PCFechadas({ onVoltar, onHome }) {
+export default function PCFechadas({ usuarioLogado, verTodas, onVoltar, onHome }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [fechamentos, setFechamentos] = useState([])
@@ -16,14 +16,14 @@ export default function PCFechadas({ onVoltar, onHome }) {
   useEffect(() => {
     (async () => {
       try {
-        setFechamentos(await listarFechamentos())
+        setFechamentos(await listarFechamentos(usuarioLogado.id, verTodas))
       } catch (e) {
         setErro(e.message || 'Erro ao carregar fechamentos.')
       } finally {
         setCarregando(false)
       }
     })()
-  }, [])
+  }, [usuarioLogado.id, verTodas])
 
   const abrir = async (id) => {
     if (abertoId === id) { setAbertoId(null); return }
