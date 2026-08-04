@@ -215,7 +215,7 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   }
 
   if (mostrarFechadas) {
-    return <PCFechadas onVoltar={() => setMostrarFechadas(false)} onHome={onVoltar} />
+    return <PCFechadas usuarioLogado={usuarioLogado} verTodas={verTodas} onVoltar={() => setMostrarFechadas(false)} onHome={onVoltar} />
   }
 
   if (detalheId) {
