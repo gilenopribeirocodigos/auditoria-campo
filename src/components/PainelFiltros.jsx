@@ -508,7 +508,15 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
 
     return lista.filter(item => {
       const pref = item[prefixoField]
-      if (!pref) return false
+
+      // Sem prefixo (ex.: reserva sem equipe fixa) — não tem como aplicar
+      // segregação por estrutura nem os filtros de Regional/Supervisor
+      // Operacional/Supervisor de Campo (todos dependem do prefixo pra
+      // achar o dono via mapPrefixo). Fica visível por padrão em vez de
+      // sumir da lista só por não ter prefixo definido; só é escondido se
+      // o usuário filtrar explicitamente por um Prefixo específico (nesse
+      // caso, de fato não bate com nenhum).
+      if (!pref) return selPrefixos.length === 0
 
       // Segregação por estrutura (sempre aplicada quando há restrição)
       if (setPermitidos && !setPermitidos.has(pref)) return false
