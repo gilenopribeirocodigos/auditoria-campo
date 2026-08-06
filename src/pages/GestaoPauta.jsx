@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { listarPautas, criarPauta, atualizarPauta, deletarPauta } from '../lib/pautas.js'
+import { listarPautas, criarPauta, atualizarPauta, deletarPauta, pararRecorrenciaPauta, cancelarPendentesDaRecorrencia } from '../lib/pautas.js'
 import { supabase } from '../lib/supabase.js'
 import { gerarNumeroAS, numeroASDaPauta } from '../lib/numeroAS.js'
 import { isAdmin, temPermissao } from '../lib/auth.js'
@@ -25,7 +25,8 @@ const MOTIVO_MATERIAL_APLICADO = 'MATERIAL APLICADO EM CAMPO'
 const FORM_VAZIO = {
   prefixo: '', fiscal_login: '', data_prevista: new Date().toISOString().split('T')[0],
   tipo_servico: 'CORTE', tipo_auditoria: 'DESEMPENHO',
-  recorrencia: 'UNICA', observacao: '', os: '', uc: '',
+  recorrencia: 'UNICA', recorrencia_max_execucoes: '', recorrencia_fim_data: '',
+  observacao: '', os: '', uc: '',
   motivo_auditoria: '', qtde_cabos_os: '',
   latitude: '', longitude: '', cidade: '', bairro: '', endereco_referencia: '',
   data_os: '', prioridade_execucao: '',
@@ -536,6 +537,8 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       endereco_referencia: p.endereco_referencia || '',
       data_os: p.data_os || '',
       prioridade_execucao: p.prioridade_execucao ?? '',
+      recorrencia_max_execucoes: p.recorrencia_max_execucoes ?? '',
+      recorrencia_fim_data: p.recorrencia_fim_data || '',
     })
     // Ao editar, o prefixo já existe — será validado silenciosamente pelo componente
     setPrefixoValido(false)
@@ -575,13 +578,18 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
           : null,
         matricula_eletricista1: (formData.matricula_eletricista1 || '').replace(/\D/g, ''),
         matricula_eletricista2: (formData.matricula_eletricista2 || '').replace(/\D/g, ''),
+        recorrencia_max_execucoes: formData.recorrencia === 'UNICA' ? null : inteiroOuNull(formData.recorrencia_max_execucoes),
+        recorrencia_fim_data:      formData.recorrencia === 'UNICA' ? null : normalizarDataOuNull(formData.recorrencia_fim_data),
       }
       const [enriquecido] = await enriquecerComEletricistas([baseLimpo])
       const payload = enriquecido
       if (editando) {
         await atualizarPauta(editando.id, payload)
       } else {
-        await criarPauta({ ...payload, status: 'PENDENTE', ...dadosCriacaoPauta() })
+        await criarPauta({
+          ...payload, status: 'PENDENTE', ...dadosCriacaoPauta(),
+          recorrencia_origem_id: null, recorrencia_ativa: true, recorrencia_execucoes_geradas: 1,
+        })
         setStatusTab('PENDENTE')
       }
       await carregar(); fechar()
@@ -594,6 +602,29 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     if (!window.confirm(`Cancelar pauta ${p.prefixo}?`)) return
     try { await atualizarPauta(p.id, { status: 'CANCELADA' }); await carregar() }
     catch (e) { alert(e.message) }
+  }
+
+  // Interrompe a cadeia de recorrência a partir de qualquer pauta dela (a
+  // original ou uma já gerada) — só impede novas gerações; as pautas já
+  // existentes (pendentes ou concluídas) não são tocadas, a menos que o
+  // usuário confirme também no segundo passo.
+  const pararRecorrencia = async p => {
+    if (!podeCancelar) { alert('Seu perfil nao possui permissao para isso.'); return }
+    if (!window.confirm(
+      `Parar a recorrência ${RECORRENCIA_LABEL[p.recorrencia] || p.recorrencia} de ${p.prefixo}?\n\n` +
+      `Nenhuma pauta nova será gerada a partir de agora. As pautas já criadas por essa recorrência ` +
+      `(pendentes ou concluídas) não são afetadas por esta ação.`
+    )) return
+    try {
+      await pararRecorrenciaPauta(p)
+      if (window.confirm(
+        'Recorrência interrompida.\n\nTambém quer CANCELAR as pautas PENDENTES já geradas por essa ' +
+        'recorrência (datas futuras ainda não realizadas)? As já concluídas nunca são afetadas.'
+      )) {
+        await cancelarPendentesDaRecorrencia(p)
+      }
+      await carregar()
+    } catch (e) { alert(e.message) }
   }
 
   const excluir = async p => {
@@ -1187,6 +1218,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         {podeEditarReprogramar && (
                           <button onClick={() => abrirEditar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 14 }}>✏️</button>
                         )}
+                        {podeCancelar && p.recorrencia !== 'UNICA' && (
+                          <button onClick={() => pararRecorrencia(p)} title="Parar Recorrência" style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fef3c7', color: '#b45309', cursor: 'pointer', fontSize: 14 }}>🛑</button>
+                        )}
                         {podeCancelar && (
                           <button onClick={() => cancelar(p)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: '#fee2e2', color: '#dc2626', cursor: 'pointer', fontSize: 14 }}>✕</button>
                         )}
@@ -1324,6 +1358,24 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                 {RECORRENCIAS.map(r => <option key={r} value={r}>{RECORRENCIA_LABEL[r]}</option>)}
               </select>
             </div>
+
+            {!editando && formData.recorrencia !== 'UNICA' && (
+              <div className="form-group">
+                <label className="form-label">Repetir até...</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <input className="form-input" type="number" min="1" placeholder="Nº de execuções (ex: 3)"
+                    value={formData.recorrencia_max_execucoes}
+                    onChange={e => upd('recorrencia_max_execucoes', e.target.value.replace(/\D/g, ''))} />
+                  <input className="form-input" type="date" placeholder="Ou uma data final"
+                    value={formData.recorrencia_fim_data}
+                    onChange={e => upd('recorrencia_fim_data', e.target.value)} />
+                </div>
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
+                  Deixe os dois em branco pra repetir sem limite — dá pra usar "🛑 Parar Recorrência" na pauta a
+                  qualquer momento pra interromper. Se preencher os dois, para no que vier primeiro.
+                </p>
+              </div>
+            )}
 
             <div className="form-group">
               <label className="form-label">🎯 Motivo da Auditoria</label>

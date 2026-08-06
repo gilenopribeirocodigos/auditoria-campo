@@ -132,12 +132,36 @@ export async function concluirPauta(id, auditoria_id, dadosConclusao = {}) {
   if (error) throw error
 }
 
+// Uma pauta recorrente (Diária/Semanal) pode ter uma condição de parada
+// definida na pauta ORIGINAL da cadeia (recorrencia_max_execucoes e/ou
+// recorrencia_fim_data) e/ou ter sido interrompida manualmente
+// (recorrencia_ativa=false, via "Parar Recorrência"). Essas condições vivem
+// só na raiz da cadeia (recorrencia_origem_id NULL) — toda pauta gerada
+// automaticamente aponta pra essa raiz, nunca pra pauta anterior, pra achar a
+// condição de parada em 1 SELECT só, independente de quantas execuções já
+// passaram.
 export async function criarProximaRecorrencia(pauta) {
   if (pauta.recorrencia === 'UNICA') return
+
+  const origemId = pauta.recorrencia_origem_id || pauta.id
+  const { data: origem, error: errOrigem } = await supabase
+    .from('pautas')
+    .select('recorrencia_ativa, recorrencia_max_execucoes, recorrencia_fim_data, recorrencia_execucoes_geradas')
+    .eq('id', origemId)
+    .single()
+  if (errOrigem) throw errOrigem
+  if (!origem || origem.recorrencia_ativa === false) return
+
+  const executadas = origem.recorrencia_execucoes_geradas || 1
+  if (origem.recorrencia_max_execucoes && executadas >= origem.recorrencia_max_execucoes) return
+
   const dataAtual = new Date(pauta.data_prevista)
   const proxData  = new Date(dataAtual)
   if (pauta.recorrencia === 'DIARIA')  proxData.setDate(dataAtual.getDate() + 1)
   if (pauta.recorrencia === 'SEMANAL') proxData.setDate(dataAtual.getDate() + 7)
+
+  if (origem.recorrencia_fim_data && proxData > new Date(origem.recorrencia_fim_data)) return
+
   const createdAt = new Date().toISOString()
   const geracao = separarDataHoraFortaleza(createdAt)
   await criarPauta({
@@ -147,6 +171,7 @@ export async function criarProximaRecorrencia(pauta) {
     tipo_servico:           pauta.tipo_servico,
     tipo_auditoria:         pauta.tipo_auditoria,
     recorrencia:            pauta.recorrencia,
+    recorrencia_origem_id:  origemId,
     observacao:             pauta.observacao,
     motivo_auditoria:       pauta.motivo_auditoria,
     qtde_cabos_os:          pauta.qtde_cabos_os ?? null,
@@ -169,4 +194,31 @@ export async function criarProximaRecorrencia(pauta) {
     hora_geracao:           geracao.hora,
     created_at:             createdAt,
   })
+
+  await supabase.from('pautas')
+    .update({ recorrencia_execucoes_geradas: executadas + 1 })
+    .eq('id', origemId)
+}
+
+// Kill-switch manual da recorrência ("🛑 Parar Recorrência") — só impede
+// futuras gerações a partir de agora; não apaga nem cancela pautas já
+// criadas (pendentes ou concluídas). Funciona a partir de qualquer pauta da
+// cadeia (a raiz ou uma já gerada), sempre resolvendo pra raiz.
+export async function pararRecorrenciaPauta(pauta) {
+  const origemId = pauta.recorrencia_origem_id || pauta.id
+  const { error } = await supabase.from('pautas').update({ recorrencia_ativa: false }).eq('id', origemId)
+  if (error) throw error
+}
+
+// Complementar ao pararRecorrenciaPauta: cancela (status CANCELADA) as
+// pautas PENDENTES já geradas por essa cadeia — usado quando o usuário quer
+// interromper tudo de uma vez, não só as futuras gerações.
+export async function cancelarPendentesDaRecorrencia(pauta) {
+  const origemId = pauta.recorrencia_origem_id || pauta.id
+  const { error } = await supabase
+    .from('pautas')
+    .update({ status: 'CANCELADA' })
+    .or(`id.eq.${origemId},recorrencia_origem_id.eq.${origemId}`)
+    .eq('status', 'PENDENTE')
+  if (error) throw error
 }
