@@ -241,9 +241,15 @@ function resumirSituacoes(linhas, motivos) {
   return [...map.values()].sort((a, b) => (a.info.ordem_exibicao || 999) - (b.info.ordem_exibicao || 999))
 }
 
-function montarRegistro(r, idEletricista, timestamp) {
+function montarRegistro(r, idEletricista, timestamp, idExistente) {
   const linha = normalizarLinha(r)
   return {
+    // Reaproveita o id numérico de quem já estava na estrutura (mantidos/
+    // movimentados) — sem isso, toda carga gerava um id novo até pra quem
+    // não mudou nada, e a Frequência/Indisponibilidade (que referenciam
+    // esse id em equipes_dia) perdiam o vínculo e voltavam como "não
+    // justificado" mesmo já tendo sido marcado Presente/Ausente no dia.
+    ...(idExistente ? { id: idExistente } : {}),
     id_eletricista: idEletricista,
     regional: linha.regional,
     polo: linha.polo,
@@ -400,8 +406,8 @@ async function importarEstrutura(rows) {
   const novaEstrutura = []
   novos.forEach(n => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
   voltaram.forEach(v => { const id = idMap.get(v.novo.matricula); if (id) novaEstrutura.push(montarRegistro(v.novo, id, agora)) })
-  mantidos.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora)) })
-  movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora)) })
+  mantidos.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+  movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
 
   for (let i = 0; i < novaEstrutura.length; i += 100) {
     const { error } = await supabase.from('estrutura_equipes').insert(novaEstrutura.slice(i, i + 100))
