@@ -66,6 +66,41 @@ function Resumo({ resumo, statusAtivo, onStatus }) {
   )
 }
 
+function ResumoPorFiscal({ alertas, status, aberto, onToggle }) {
+  if (!status) return null
+  const contagem = new Map()
+  alertas.forEach(a => {
+    const nome = a.fiscal_nome || a.lider || 'Não informado'
+    contagem.set(nome, (contagem.get(nome) || 0) + 1)
+  })
+  const itens = [...contagem.entries()]
+    .map(([fiscal, qtd]) => ({ fiscal, qtd }))
+    .sort((a, b) => b.qtd - a.qtd)
+  if (itens.length === 0) return null
+
+  const classe = status === 'PENDENTE' ? 'pendente' : 'encerrado'
+  const rotulo = status === 'PENDENTE' ? 'Pendentes' : 'Encerrados'
+
+  return (
+    <div className={`tma-resumo-fiscal ${classe}`}>
+      <div className="tma-resumo-fiscal-header" onClick={onToggle}>
+        <strong>📋 {rotulo} por Fiscal ({itens.length})</strong>
+        <span>{aberto ? '▾' : '▸'}</span>
+      </div>
+      {aberto && (
+        <div className="tma-chips">
+          {itens.map(({ fiscal, qtd }) => (
+            <div key={fiscal} className="tma-chip">
+              <span className="tma-chip-bola">{qtd}</span>
+              <span>{fiscal}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CartaoAlerta({ alerta }) {
   const encerrado = alerta.status_tratamento === 'ENCERRADO'
   const disparos = alerta.disparos || []
@@ -132,6 +167,7 @@ export default function AlertasTMA({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null)
+  const [resumoFiscalAberto, setResumoFiscalAberto] = useState(true)
 
   async function carregar(filtrosConsulta = filtros) {
     setCarregando(true)
@@ -280,6 +316,13 @@ export default function AlertasTMA({ onVoltar }) {
           </div>
           {ultimaAtualizacao && <span>Atualizado em {formatarDataHora(ultimaAtualizacao)}</span>}
         </div>
+
+        <ResumoPorFiscal
+          alertas={resultado.alertas}
+          status={filtros.status}
+          aberto={resumoFiscalAberto}
+          onToggle={() => setResumoFiscalAberto(a => !a)}
+        />
 
         {erro && <div className="tma-erro" role="alert">⚠️ {erro}</div>}
         {!erro && carregando && <div className="tma-vazio">⏳ Carregando Alertas TMA...</div>}
