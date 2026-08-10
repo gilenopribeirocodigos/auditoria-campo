@@ -66,6 +66,43 @@ function Resumo({ resumo, statusAtivo, onStatus }) {
   )
 }
 
+// Reage à aba de Status ativa (igual TratamentoNaoConformidades.jsx) — some
+// no "TODOS" pra não misturar pendente com encerrado no mesmo resumo.
+function ResumoPorFiscal({ alertas, status, aberto, onToggle }) {
+  if (!status) return null
+  const contagem = new Map()
+  alertas.forEach(a => {
+    const nome = a.fiscal_nome || a.lider || 'Não informado'
+    contagem.set(nome, (contagem.get(nome) || 0) + 1)
+  })
+  const itens = [...contagem.entries()]
+    .map(([fiscal, qtd]) => ({ fiscal, qtd }))
+    .sort((a, b) => b.qtd - a.qtd)
+  if (itens.length === 0) return null
+
+  const classe = status === 'PENDENTE' ? 'pendente' : 'encerrado'
+  const rotulo = status === 'PENDENTE' ? 'Pendentes' : 'Encerrados'
+
+  return (
+    <div className={`tma-resumo-fiscal ${classe}`}>
+      <div className="tma-resumo-fiscal-header" onClick={onToggle}>
+        <strong>📋 {rotulo} por Fiscal ({itens.length})</strong>
+        <span>{aberto ? '▾' : '▸'}</span>
+      </div>
+      {aberto && (
+        <div className="tma-chips">
+          {itens.map(({ fiscal, qtd }) => (
+            <div key={fiscal} className="tma-chip">
+              <span className="tma-chip-bola">{qtd}</span>
+              <span>{fiscal}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CartaoAlerta({ alerta }) {
   const encerrado = alerta.status_tratamento === 'ENCERRADO'
   const disparos = alerta.disparos || []
@@ -132,6 +169,7 @@ export default function AlertasTMA({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null)
+  const [resumoFiscalAberto, setResumoFiscalAberto] = useState(true)
 
   async function carregar(filtrosConsulta = filtros) {
     setCarregando(true)
@@ -236,14 +274,6 @@ export default function AlertasTMA({ onVoltar }) {
               <input type="date" value={filtros.dataFim} onChange={e => { setPeriodo('periodo'); setFiltros({ ...filtros, dataFim: e.target.value }) }} />
             </label>
             <label>
-              Status
-              <select value={filtros.status} onChange={e => setFiltros({ ...filtros, status: e.target.value })}>
-                <option value="">Todos</option>
-                <option value="PENDENTE">Pendentes</option>
-                <option value="ENCERRADO">Encerrados</option>
-              </select>
-            </label>
-            <label>
               Fiscal
               <select value={filtros.fiscal} onChange={e => setFiltros({ ...filtros, fiscal: e.target.value })}>
                 <option value="">Todos</option>
@@ -280,6 +310,24 @@ export default function AlertasTMA({ onVoltar }) {
           </div>
           {ultimaAtualizacao && <span>Atualizado em {formatarDataHora(ultimaAtualizacao)}</span>}
         </div>
+
+        <div className="tma-tabs">
+          {[{ chave: '', rotulo: 'TODOS' }, { chave: 'PENDENTE', rotulo: 'PENDENTE' }, { chave: 'ENCERRADO', rotulo: 'ENCERRADO' }].map(t => (
+            <button
+              key={t.chave || 'TODOS'}
+              type="button"
+              className={filtros.status === t.chave ? 'ativo' : ''}
+              onClick={() => filtrarStatus(t.chave)}
+            >{t.rotulo}</button>
+          ))}
+        </div>
+
+        <ResumoPorFiscal
+          alertas={resultado.alertas}
+          status={filtros.status}
+          aberto={resumoFiscalAberto}
+          onToggle={() => setResumoFiscalAberto(a => !a)}
+        />
 
         {erro && <div className="tma-erro" role="alert">⚠️ {erro}</div>}
         {!erro && carregando && <div className="tma-vazio">⏳ Carregando Alertas TMA...</div>}
