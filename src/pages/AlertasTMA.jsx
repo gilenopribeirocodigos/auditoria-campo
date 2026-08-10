@@ -66,18 +66,8 @@ function Resumo({ resumo, statusAtivo, onStatus }) {
   )
 }
 
-function ResumoPorFiscal({ alertas, status, aberto, onToggle }) {
-  if (!status) return null
-  const contagem = new Map()
-  alertas.forEach(a => {
-    const nome = a.fiscal_nome || a.lider || 'Não informado'
-    contagem.set(nome, (contagem.get(nome) || 0) + 1)
-  })
-  const itens = [...contagem.entries()]
-    .map(([fiscal, qtd]) => ({ fiscal, qtd }))
-    .sort((a, b) => b.qtd - a.qtd)
+function BlocoResumoFiscal({ status, itens, aberto, onToggle }) {
   if (itens.length === 0) return null
-
   const classe = status === 'PENDENTE' ? 'pendente' : 'encerrado'
   const rotulo = status === 'PENDENTE' ? 'Pendentes' : 'Encerrados'
 
@@ -98,6 +88,29 @@ function ResumoPorFiscal({ alertas, status, aberto, onToggle }) {
         </div>
       )}
     </div>
+  )
+}
+
+// Mostra sempre, independente do filtro de Status — quando "Todos" estiver
+// selecionado, os alertas carregados vêm misturados, então cada bloco filtra
+// só o que é dele; se um lado ficar vazio, some sozinho (BlocoResumoFiscal).
+function ResumoPorFiscal({ alertas, abertoPendente, abertoEncerrado, onTogglePendente, onToggleEncerrado }) {
+  const contar = status => {
+    const contagem = new Map()
+    alertas
+      .filter(a => a.status_tratamento === status)
+      .forEach(a => {
+        const nome = a.fiscal_nome || a.lider || 'Não informado'
+        contagem.set(nome, (contagem.get(nome) || 0) + 1)
+      })
+    return [...contagem.entries()].map(([fiscal, qtd]) => ({ fiscal, qtd })).sort((a, b) => b.qtd - a.qtd)
+  }
+
+  return (
+    <>
+      <BlocoResumoFiscal status="PENDENTE" itens={contar('PENDENTE')} aberto={abertoPendente} onToggle={onTogglePendente} />
+      <BlocoResumoFiscal status="ENCERRADO" itens={contar('ENCERRADO')} aberto={abertoEncerrado} onToggle={onToggleEncerrado} />
+    </>
   )
 }
 
@@ -167,7 +180,7 @@ export default function AlertasTMA({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
   const [ultimaAtualizacao, setUltimaAtualizacao] = useState(null)
-  const [resumoFiscalAberto, setResumoFiscalAberto] = useState(true)
+  const [resumoFiscalAberto, setResumoFiscalAberto] = useState({ PENDENTE: true, ENCERRADO: true })
 
   async function carregar(filtrosConsulta = filtros) {
     setCarregando(true)
@@ -319,9 +332,10 @@ export default function AlertasTMA({ onVoltar }) {
 
         <ResumoPorFiscal
           alertas={resultado.alertas}
-          status={filtros.status}
-          aberto={resumoFiscalAberto}
-          onToggle={() => setResumoFiscalAberto(a => !a)}
+          abertoPendente={resumoFiscalAberto.PENDENTE}
+          abertoEncerrado={resumoFiscalAberto.ENCERRADO}
+          onTogglePendente={() => setResumoFiscalAberto(a => ({ ...a, PENDENTE: !a.PENDENTE }))}
+          onToggleEncerrado={() => setResumoFiscalAberto(a => ({ ...a, ENCERRADO: !a.ENCERRADO }))}
         />
 
         {erro && <div className="tma-erro" role="alert">⚠️ {erro}</div>}
