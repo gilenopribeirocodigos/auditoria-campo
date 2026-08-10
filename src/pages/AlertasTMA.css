@@ -164,6 +164,28 @@
 .tma-acoes .secundario { background: #64748b; }
 .tma-acoes .excel { background: #16a34a; }
 
+.tma-tabs {
+  display: flex;
+  gap: 8px;
+  margin: 16px 2px 0;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.tma-tabs button {
+  border: 0;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  background: #e2e8f0;
+  color: #374151;
+}
+
+.tma-tabs button.ativo { background: #b45309; color: #fff; }
+
 .tma-lista-cabecalho {
   display: flex;
   justify-content: space-between;
