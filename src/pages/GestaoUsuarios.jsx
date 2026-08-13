@@ -65,6 +65,7 @@ const TODAS_PERMISSOES = [
   { id: 'prestacao_contas_fechar', label: '💰 Prestação de Contas - fechar prestação de contas do período (financeiro)' },
   { id: 'reabrir_frequencia', label: '🔓 Frequência de Pessoal - reabrir registro (Presente/Ausente)' },
   { id: 'frequencia_lote_siga', label: '🤖 Frequência de Pessoal - justificativa em lote via SIGA' },
+  { id: 'desfazer_indisponibilidade', label: '🔓 Indisponibilidade Prefixo - desfazer registro' },
   { id: 'cadastrar_motivos_registros', label: '📝 Registros Operacionais - cadastrar motivos' },
 ]
 

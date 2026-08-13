@@ -213,6 +213,10 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const podeReabrirFrequencia = temPermissao(usuarioLogado, 'reabrir_frequencia')
   const [reabrindoId, setReabrindoId] = useState(null)
 
+  // Desfazer indisponibilidade de prefixo já registrada (só no mesmo dia)
+  const podeDesfazerIndisponibilidade = temPermissao(usuarioLogado, 'desfazer_indisponibilidade')
+  const [desfazendoId, setDesfazendoId] = useState(null)
+
   // Justificativa em lote via extração do SIGA (aba 4)
   const podeLoteSiga = temPermissao(usuarioLogado, 'frequencia_lote_siga')
   const [loteSigaCarregando,  setLoteSigaCarregando]  = useState(false)
@@ -719,6 +723,29 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       alert('Não foi possível reabrir: ' + (e.message || e))
     } finally {
       setReabrindoId(null)
+    }
+  }
+
+  // Desfaz uma indisponibilidade de prefixo já registrada — some do relatório
+  // (Dashboard de Indisponibilidade lê direto da tabela) e o eletricista volta
+  // pra lista de elegíveis da aba, pra registrar de novo com o dado certo.
+  // Só no mesmo dia do registro, igual reabrirFrequencia.
+  const desfazerIndisponibilidade = async (registro) => {
+    if (data !== hoje) {
+      alert('Só é possível desfazer uma indisponibilidade no mesmo dia em que foi registrada. Passado o dia, não pode mais ser alterada.')
+      return
+    }
+    const nome = registro.colaborador || `Eletricista #${registro.eletricista_id}`
+    if (!confirm(`Desfazer a indisponibilidade de ${nome} (prefixo ${registro.prefixo})? Ela sai do relatório e o eletricista volta pra lista de elegíveis pra registrar de novo.`)) return
+    setDesfazendoId(registro.id)
+    try {
+      const { error } = await supabase.from('indisponibilidades').delete().eq('id', registro.id)
+      if (error) throw error
+      await carregar()
+    } catch (e) {
+      alert('Não foi possível desfazer: ' + (e.message || e))
+    } finally {
+      setDesfazendoId(null)
     }
   }
 
@@ -1568,9 +1595,22 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                             <p style={{ fontSize: 11, color: '#64748b' }}>{matriculaEletricista ? `Mat: ${matriculaEletricista} · ` : ''}Prefixo: {r.prefixo} · {r.tipo_indisponibilidade?.toUpperCase()} · {r.motivos_indisponibilidade?.descricao || '—'}</p>
                             {r.observacao && <p style={{ fontSize: 11, color: '#92400e', marginTop: 2 }}>💬 {r.observacao}</p>}
                           </div>
-                          <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, alignSelf: 'flex-start', background: r.tipo_indisponibilidade === 'total' ? '#fee2e2' : '#fef3c7', color: r.tipo_indisponibilidade === 'total' ? '#dc2626' : '#d97706' }}>
-                            {r.tipo_indisponibilidade?.toUpperCase()}
-                          </span>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: r.tipo_indisponibilidade === 'total' ? '#fee2e2' : '#fef3c7', color: r.tipo_indisponibilidade === 'total' ? '#dc2626' : '#d97706' }}>
+                              {r.tipo_indisponibilidade?.toUpperCase()}
+                            </span>
+                            {podeDesfazerIndisponibilidade && data === hoje && (
+                              <button
+                                onClick={() => desfazerIndisponibilidade(r)}
+                                disabled={desfazendoId === r.id}
+                                style={{
+                                  fontSize: 10.5, fontWeight: 700, padding: '4px 9px', borderRadius: 6,
+                                  border: '1px solid #cbd5e1', background: '#fff', color: '#475569',
+                                  cursor: desfazendoId === r.id ? 'not-allowed' : 'pointer',
+                                }}
+                              >{desfazendoId === r.id ? '⏳...' : '↩️ Desfazer'}</button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )
