@@ -362,13 +362,14 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
       }
       setProgresso(70)
 
-      // ─── 8. LIMPAR ESTRUTURA_EQUIPES ───────────────────────────────
-      setEtapa('🧹 Limpando estrutura atual...')
-      const { error: errDelete } = await supabase.from('estrutura_equipes').delete().neq('id', 0)
-      if (errDelete) throw errDelete
-      setProgresso(75)
-
-      // ─── 9. INSERIR NOVA ESTRUTURA (textos já limpos) ──────────────
+      // ─── 8. UPSERT NA ESTRUTURA_EQUIPES (sem apagar tudo) ───────────
+      // Apagar a tabela inteira antes de reinserir cria uma janela em que
+      // estrutura_equipes fica vazia (chamadas separadas ao banco, sem
+      // transação). Qualquer interrupção nessa janela faz a próxima
+      // importação enxergar a tabela vazia e recriar o id de todo mundo,
+      // quebrando o vínculo com Frequência/Indisponibilidade já marcadas —
+      // ver mesmo comentário em EstruturaOnline.jsx. Upsert por matrícula
+      // nunca apaga quem já está lá.
       setEtapa('📥 Carregando nova estrutura...')
       const novaEstrutura = []
       novos.forEach(n        => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
@@ -377,9 +378,20 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
       movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
 
       for (let i = 0; i < novaEstrutura.length; i += 100) {
-        const { error } = await supabase.from('estrutura_equipes').insert(novaEstrutura.slice(i, i + 100))
+        const { error } = await supabase.from('estrutura_equipes').upsert(novaEstrutura.slice(i, i + 100), { onConflict: 'matricula' })
         if (error) throw error
         setProgresso(75 + Math.round(((i + 100) / novaEstrutura.length) * 25))
+      }
+      setProgresso(90)
+
+      // ─── 9. REMOVER SÓ QUEM SAIU (nunca a tabela inteira) ───────────
+      if (removidos.length > 0) {
+        setEtapa('🧹 Removendo quem saiu da estrutura...')
+        const idsRemovidos = removidos.map(r => r.id)
+        for (let i = 0; i < idsRemovidos.length; i += 100) {
+          const { error } = await supabase.from('estrutura_equipes').delete().in('id', idsRemovidos.slice(i, i + 100))
+          if (error) throw error
+        }
       }
       setProgresso(100)
       setEtapa('✅ Concluído!')

@@ -400,9 +400,15 @@ async function importarEstrutura(rows) {
     }
   }
 
-  const { error: errDelete } = await supabase.from('estrutura_equipes').delete().neq('id', 0)
-  if (errDelete) throw errDelete
-
+  // UPSERT em vez de apagar tudo e inserir tudo de novo: apagar a tabela
+  // inteira antes de reinserir cria uma janela em que estrutura_equipes fica
+  // vazia (o processo faz 3+ chamadas separadas ao banco, sem transação).
+  // Se algo interromper o processo nessa janela (conexão instável no
+  // celular, app em segundo plano, recarregamento do PWA), a próxima
+  // importação lê a tabela vazia e classifica todo mundo como "voltaram",
+  // gerando id novo pra todo mundo e quebrando o vínculo com Frequência/
+  // Indisponibilidade já marcadas no dia. Com upsert por matrícula, quem já
+  // está na tabela nunca é apagado — o id existente é sempre preservado.
   const novaEstrutura = []
   novos.forEach(n => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
   voltaram.forEach(v => { const id = idMap.get(v.novo.matricula); if (id) novaEstrutura.push(montarRegistro(v.novo, id, agora)) })
@@ -410,8 +416,19 @@ async function importarEstrutura(rows) {
   movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
 
   for (let i = 0; i < novaEstrutura.length; i += 100) {
-    const { error } = await supabase.from('estrutura_equipes').insert(novaEstrutura.slice(i, i + 100))
+    const { error } = await supabase.from('estrutura_equipes').upsert(novaEstrutura.slice(i, i + 100), { onConflict: 'matricula' })
     if (error) throw error
+  }
+
+  // Só depois do upsert (que já preservou todo mundo que continua na
+  // estrutura) é que removemos, um a um por id, quem realmente saiu — nunca
+  // um DELETE geral da tabela.
+  if (removidos.length > 0) {
+    const idsRemovidos = removidos.map(r => r.id)
+    for (let i = 0; i < idsRemovidos.length; i += 100) {
+      const { error } = await supabase.from('estrutura_equipes').delete().in('id', idsRemovidos.slice(i, i + 100))
+      if (error) throw error
+    }
   }
 
   return {
