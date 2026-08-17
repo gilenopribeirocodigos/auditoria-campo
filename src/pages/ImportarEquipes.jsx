@@ -102,8 +102,11 @@ function configMudou(atual, novo) {
 }
 
 // Monta registro com TODOS os campos de texto limpos via limparTexto()
-function montarRegistro(r, idEletricista, timestamp) {
+// idExistente: reaproveita o id numérico de quem já estava na estrutura
+// (mantidos/movimentados) — ver mesmo comentário em EstruturaOnline.jsx.
+function montarRegistro(r, idEletricista, timestamp, idExistente) {
   return {
+    ...(idExistente ? { id: idExistente } : {}),
     id_eletricista:  idEletricista,
     regional:        limparTexto(r.regional),
     polo:            limparTexto(r.polo),
@@ -370,8 +373,8 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
       const novaEstrutura = []
       novos.forEach(n        => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
       voltaram.forEach(v     => { const id = idMap.get(v.novo.matricula); if (id) novaEstrutura.push(montarRegistro(v.novo, id, agora)) })
-      mantidos.forEach(m     => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora)) })
-      movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora)) })
+      mantidos.forEach(m     => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+      movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
 
       for (let i = 0; i < novaEstrutura.length; i += 100) {
         const { error } = await supabase.from('estrutura_equipes').insert(novaEstrutura.slice(i, i + 100))
