@@ -409,16 +409,29 @@ async function importarEstrutura(rows) {
   // gerando id novo pra todo mundo e quebrando o vínculo com Frequência/
   // Indisponibilidade já marcadas no dia. Com upsert por matrícula, quem já
   // está na tabela nunca é apagado — o id existente é sempre preservado.
-  const novaEstrutura = []
-  novos.forEach(n => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
-  voltaram.forEach(v => { const id = idMap.get(v.novo.matricula); if (id) novaEstrutura.push(montarRegistro(v.novo, id, agora)) })
-  mantidos.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
-  movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+  // Lotes separados: quem já tem id (mantidos/movimentados) de quem não tem
+  // (novos/voltaram). Misturar linhas com e sem a chave "id" no mesmo
+  // upsert faz o PostgREST gravar NULL explicito em "id" pra quem não tem a
+  // chave (em vez de deixar o banco gerar o id automaticamente), violando o
+  // NOT NULL da coluna.
+  const semId = []
+  novos.forEach(n => { const id = idMap.get(n.novo.matricula); if (id) semId.push(montarRegistro(n.novo, id, agora)) })
+  voltaram.forEach(v => { const id = idMap.get(v.novo.matricula); if (id) semId.push(montarRegistro(v.novo, id, agora)) })
 
-  for (let i = 0; i < novaEstrutura.length; i += 100) {
-    const { error } = await supabase.from('estrutura_equipes').upsert(novaEstrutura.slice(i, i + 100), { onConflict: 'matricula' })
+  const comId = []
+  mantidos.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) comId.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+  movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) comId.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+
+  for (let i = 0; i < semId.length; i += 100) {
+    const { error } = await supabase.from('estrutura_equipes').upsert(semId.slice(i, i + 100), { onConflict: 'matricula' })
     if (error) throw error
   }
+  for (let i = 0; i < comId.length; i += 100) {
+    const { error } = await supabase.from('estrutura_equipes').upsert(comId.slice(i, i + 100), { onConflict: 'matricula' })
+    if (error) throw error
+  }
+
+  const novaEstrutura = [...semId, ...comId]
 
   // Só depois do upsert (que já preservou todo mundo que continua na
   // estrutura) é que removemos, um a um por id, quem realmente saiu — nunca

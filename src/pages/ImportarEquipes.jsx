@@ -371,16 +371,27 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
       // ver mesmo comentário em EstruturaOnline.jsx. Upsert por matrícula
       // nunca apaga quem já está lá.
       setEtapa('📥 Carregando nova estrutura...')
-      const novaEstrutura = []
-      novos.forEach(n        => { const id = idMap.get(n.novo.matricula); if (id) novaEstrutura.push(montarRegistro(n.novo, id, agora)) })
-      voltaram.forEach(v     => { const id = idMap.get(v.novo.matricula); if (id) novaEstrutura.push(montarRegistro(v.novo, id, agora)) })
-      mantidos.forEach(m     => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
-      movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) novaEstrutura.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+      // Lotes separados: quem já tem id (mantidos/movimentados) de quem não
+      // tem (novos/voltaram) — ver mesmo comentário em EstruturaOnline.jsx.
+      // Misturar linhas com e sem "id" no mesmo upsert faz o PostgREST
+      // gravar NULL explicito pra quem não tem a chave, violando o NOT NULL.
+      const semId = []
+      novos.forEach(n        => { const id = idMap.get(n.novo.matricula); if (id) semId.push(montarRegistro(n.novo, id, agora)) })
+      voltaram.forEach(v     => { const id = idMap.get(v.novo.matricula); if (id) semId.push(montarRegistro(v.novo, id, agora)) })
 
-      for (let i = 0; i < novaEstrutura.length; i += 100) {
-        const { error } = await supabase.from('estrutura_equipes').upsert(novaEstrutura.slice(i, i + 100), { onConflict: 'matricula' })
-        if (error) throw error
-        setProgresso(75 + Math.round(((i + 100) / novaEstrutura.length) * 25))
+      const comId = []
+      mantidos.forEach(m     => { const id = idMap.get(m.novo.matricula); if (id) comId.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+      movimentados.forEach(m => { const id = idMap.get(m.novo.matricula); if (id) comId.push(montarRegistro(m.novo, id, agora, m.atual.id)) })
+
+      const novaEstrutura = [...semId, ...comId]
+      let processados = 0
+      for (const lote of [semId, comId]) {
+        for (let i = 0; i < lote.length; i += 100) {
+          const { error } = await supabase.from('estrutura_equipes').upsert(lote.slice(i, i + 100), { onConflict: 'matricula' })
+          if (error) throw error
+          processados += lote.slice(i, i + 100).length
+          setProgresso(75 + Math.round((processados / novaEstrutura.length) * 25))
+        }
       }
       setProgresso(90)
 
