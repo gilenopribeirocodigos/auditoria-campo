@@ -29,6 +29,21 @@ export async function buscarPessoasSesmtPorNome(termo) {
   return data || []
 }
 
+export async function buscarPessoasSesmtPorChapa(termo) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const t = (termo || '').trim()
+  if (!t) return []
+  const { data, error } = await supabase
+    .from('sesmt_pessoas')
+    .select('*')
+    .eq('ativo', true)
+    .ilike('chapa', `%${t}%`)
+    .order('chapa')
+    .limit(20)
+  if (error) throw error
+  return data || []
+}
+
 // linhas: [{ chapa, nome }]. Upsert por chapa — quem já está na lista
 // mantém o id; quem não veio mais na carga é marcado inativo (nunca
 // removido, pra não perder histórico de quem já assinou alguma ação).

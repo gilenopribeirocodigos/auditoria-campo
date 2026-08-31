@@ -66,7 +66,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
               <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < form.participantes.length - 1 ? '1px solid #bbf7d0' : 'none' }}>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: p.assinatura ? '#15803d' : '#1d4ed8', margin: 0 }}>{i + 1}. {p.nome}</p>
-                  {p.chapa && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Chapa: {p.chapa}</span>}
+                  {p.chapa && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Matrícula: {p.chapa}</span>}
                 </div>
                 {p.assinatura
                   ? <img src={p.assinatura} alt="assinatura" style={{ height: 36, maxWidth: 90, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />

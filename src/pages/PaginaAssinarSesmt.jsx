@@ -122,7 +122,7 @@ function AutocompleteNome({ participantesAcao, onSelect }) {
                 <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{s.nome}</span>
                 {s.fonte === 'acao' && <span style={{ fontSize: 10, color: '#16a34a', marginLeft: 8, background: '#dcfce7', padding: '1px 6px', borderRadius: 4 }}>na lista</span>}
               </div>
-              {s.chapa && <span style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>Chapa: {s.chapa}</span>}
+              {s.chapa && <span style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>Matrícula: {s.chapa}</span>}
             </button>
           ))}
         </div>
@@ -326,7 +326,7 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: 14, marginBottom: 16 }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✅ {assinadas.length} pessoa(s) já assinaram</p>
             {assinadas.map((a, i) => (
-              <div key={i} style={{ fontSize: 13, color: '#15803d', padding: '3px 0' }}>{i + 1}. {a.nome} {a.matricula ? `(Chapa: ${a.matricula})` : ''}</div>
+              <div key={i} style={{ fontSize: 13, color: '#15803d', padding: '3px 0' }}>{i + 1}. {a.nome} {a.matricula ? `(Matrícula: ${a.matricula})` : ''}</div>
             ))}
           </div>
         )}
@@ -343,9 +343,9 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
               </div>
 
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Chapa (opcional)</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Matrícula (opcional)</label>
                 <input value={chapa} onChange={e => setChapa(e.target.value)}
-                  placeholder="Sua chapa" inputMode="numeric"
+                  placeholder="Sua matrícula" inputMode="numeric"
                   style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 15, outline: 'none', boxSizing: 'border-box', background: chapa ? '#f0fdf4' : '#fff' }} />
               </div>
 

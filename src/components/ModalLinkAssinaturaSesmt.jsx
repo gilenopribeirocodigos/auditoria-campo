@@ -225,7 +225,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <p style={{ fontSize: 14, fontWeight: 700, color: '#15803d', margin: 0 }}>{i + 1}. {a.nome}</p>
-                        {a.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Chapa: {a.matricula}</p>}
+                        {a.matricula && <p style={{ fontSize: 12, color: '#64748b', margin: '2px 0 0' }}>Matrícula: {a.matricula}</p>}
                         {a.endereco_assinatura && <p style={{ fontSize: 11, color: '#2563eb', margin: '3px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>📍 {a.endereco_assinatura}</p>}
                       </div>
                       <div style={{ textAlign: 'right' }}>
