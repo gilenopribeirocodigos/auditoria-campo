@@ -107,17 +107,21 @@ function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, bu
 // ── Autocomplete: busca em sesmt_pessoas (carregada na Fase 1), pela
 // matrícula OU pelo nome — os dois campos preenchem um ao outro ao escolher
 // uma sugestão em qualquer um deles.
+// onSelect(nome, chapa, pessoaId) — pessoaId só vem quando o fiscal
+// realmente escolhe uma sugestão da lista carregada (não ao digitar texto
+// livre); grava em participantes[].pessoa_id, quando disponível, pro
+// vínculo com sesmt_pessoas ficar completo também nesse canal.
 function AutocompleteSesmt({ onSelect }) {
   const [chapa, setChapa] = useState('')
   const [nome,  setNome]  = useState('')
 
   const selecionarPorChapa = (p) => {
     setChapa(p.chapa || ''); setNome(p.nome)
-    onSelect(p.nome, p.chapa || '')
+    onSelect(p.nome, p.chapa || '', p.id)
   }
   const selecionarPorNome = (p) => {
     setNome(p.nome); setChapa(p.chapa || '')
-    onSelect(p.nome, p.chapa || '')
+    onSelect(p.nome, p.chapa || '', p.id)
   }
 
   return (
@@ -125,7 +129,7 @@ function AutocompleteSesmt({ onSelect }) {
       <CampoBusca
         label="Matrícula *" placeholder="Digite a matrícula..." autoFocus
         value={chapa}
-        onChangeTexto={v => { setChapa(v); onSelect(nome, v) }}
+        onChangeTexto={v => { setChapa(v); onSelect(nome, v, null) }}
         onSelecionar={selecionarPorChapa}
         buscarFn={buscarPessoasSesmtPorChapa}
         exibirPrincipal={p => p.chapa}
@@ -134,7 +138,7 @@ function AutocompleteSesmt({ onSelect }) {
       <CampoBusca
         label="Nome *" placeholder="Digite para buscar..."
         value={nome}
-        onChangeTexto={v => { setNome(v); onSelect(v, chapa) }}
+        onChangeTexto={v => { setNome(v); onSelect(v, chapa, null) }}
         onSelecionar={selecionarPorNome}
         buscarFn={buscarPessoasSesmtPorNome}
         exibirPrincipal={p => p.nome}
@@ -147,13 +151,14 @@ function AutocompleteSesmt({ onSelect }) {
 function FormParticipante({ onSolicitar, onCancelar }) {
   const [nome, setNome] = useState('')
   const [chapa, setChapa] = useState('')
+  const [pessoaId, setPessoaId] = useState(null)
   return (
     <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>Novo participante presencial</p>
-      <AutocompleteSesmt onSelect={(n, c) => { setNome(n); setChapa(c) }} />
+      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} />
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
-        <button onClick={() => onSolicitar(nome.trim(), chapa.trim())} disabled={!nome.trim()}
+        <button onClick={() => onSolicitar(nome.trim(), chapa.trim(), pessoaId)} disabled={!nome.trim()}
           style={{ flex: 2, padding: 11, borderRadius: 10, border: 'none', background: nome.trim() ? '#1e3a5f' : '#e2e8f0', color: nome.trim() ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: 700, cursor: nome.trim() ? 'pointer' : 'not-allowed' }}>
           ✍️ Solicitar Assinatura
         </button>
@@ -165,14 +170,15 @@ function FormParticipante({ onSolicitar, onCancelar }) {
 function FormParticipanteOnline({ onAdicionar, onCancelar }) {
   const [nome, setNome] = useState('')
   const [chapa, setChapa] = useState('')
+  const [pessoaId, setPessoaId] = useState(null)
   return (
     <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8', marginBottom: 4 }}>Participante online</p>
       <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Irá assinar via link/QR Code — sem assinatura agora</p>
-      <AutocompleteSesmt onSelect={(n, c) => { setNome(n); setChapa(c) }} />
+      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} />
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
-        <button onClick={() => onAdicionar(nome.trim(), chapa.trim())} disabled={!nome.trim()}
+        <button onClick={() => onAdicionar(nome.trim(), chapa.trim(), pessoaId)} disabled={!nome.trim()}
           style={{ flex: 2, padding: 11, borderRadius: 10, border: 'none', background: nome.trim() ? '#2563eb' : '#e2e8f0', color: nome.trim() ? '#fff' : '#94a3b8', fontSize: 13, fontWeight: 700, cursor: nome.trim() ? 'pointer' : 'not-allowed' }}>
           + Adicionar à lista
         </button>
@@ -262,7 +268,7 @@ export default function SS3Participantes({ form, upd, next, prev }) {
     const novos = (assinadasList || [])
       .filter(a => !jaTem.has(a.nome?.trim().toLowerCase()))
       .map(a => ({
-        nome: a.nome, chapa: a.matricula || '',
+        nome: a.nome, chapa: a.matricula || '', pessoa_id: a.pessoa_id || null,
         assinatura: null, assinatura_url: a.assinatura_url,
         assinado_em: a.assinado_em, modo: 'presencial',
         lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
@@ -270,10 +276,10 @@ export default function SS3Participantes({ form, upd, next, prev }) {
     if (novos.length > 0) upd('participantes', [...form.participantes, ...novos])
   }
 
-  const onSolicitarAssinatura = (nome, chapa) => {
+  const onSolicitarAssinatura = (nome, chapa, pessoaId) => {
     if (!nome) return
     setAdicionando(false); setModoAdd(null)
-    setAssinandoPart({ nome, chapa })
+    setAssinandoPart({ nome, chapa, pessoaId })
   }
 
   const assinarExistente = (idx) => {
@@ -296,17 +302,17 @@ export default function SS3Participantes({ form, upd, next, prev }) {
     }
 
     upd('participantes', [...form.participantes, {
-      nome: assinandoPart.nome, chapa: assinandoPart.chapa || '',
+      nome: assinandoPart.nome, chapa: assinandoPart.chapa || '', pessoa_id: assinandoPart.pessoaId || null,
       assinatura: png, assinado_em: new Date().toISOString(), modo: 'presencial',
       lat, lng, endereco_assinatura,
     }])
     setAssinandoPart(null)
   }
 
-  const onAdicionarOnline = (nome, chapa) => {
+  const onAdicionarOnline = (nome, chapa, pessoaId) => {
     if (!nome) return
     upd('participantes', [...form.participantes, {
-      nome, chapa: chapa || '', assinatura: null, assinado_em: null, modo: 'online',
+      nome, chapa: chapa || '', pessoa_id: pessoaId || null, assinatura: null, assinado_em: null, modo: 'online',
     }])
     setAdicionando(false); setModoAdd(null)
   }

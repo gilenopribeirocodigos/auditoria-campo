@@ -91,12 +91,12 @@ function CampoBuscaPessoa({ tipo, participantesAcao, value, placeholder, onChang
     const campoAcao = tipo === 'chapa' ? 'chapa' : 'nome'
     const doAcao = (participantesAcao || [])
       .filter(p => p[campoAcao]?.toLowerCase().includes(t))
-      .map(p => ({ nome: p.nome, chapa: p.chapa || '', fonte: 'acao' }))
+      .map(p => ({ id: p.pessoa_id || null, nome: p.nome, chapa: p.chapa || '', fonte: 'acao' }))
     let daLista = []
     try {
       const pessoas = tipo === 'chapa' ? await buscarPessoasSesmtPorChapa(v) : await buscarPessoasSesmtPorNome(v)
       const set = new Set(doAcao.map(p => p.nome?.trim().toLowerCase()))
-      daLista = pessoas.filter(p => !set.has(p.nome?.trim().toLowerCase())).map(p => ({ nome: p.nome, chapa: p.chapa || '', fonte: 'lista' }))
+      daLista = pessoas.filter(p => !set.has(p.nome?.trim().toLowerCase())).map(p => ({ id: p.id, nome: p.nome, chapa: p.chapa || '', fonte: 'lista' }))
     } catch { /* silencioso */ }
     const todos = [...doAcao, ...daLista]
     setSugestoes(todos); setAberto(todos.length > 0)
@@ -134,25 +134,27 @@ function CampoBuscaPessoa({ tipo, participantesAcao, value, placeholder, onChang
 }
 
 // ── Matrícula e Nome, cada um com busca própria — escolher uma sugestão em
-// qualquer um dos dois preenche o outro automaticamente.
+// qualquer um dos dois preenche o outro automaticamente. onSelect recebe
+// (nome, chapa, pessoaId) — pessoaId só vem preenchido quando a pessoa
+// realmente escolheu uma sugestão da lista (não ao digitar texto livre).
 function AutocompleteDual({ participantesAcao, onSelect }) {
   const [chapa, setChapa] = useState('')
   const [nome,  setNome]  = useState('')
 
-  const selecionarPorChapa = (p) => { setChapa(p.chapa || ''); setNome(p.nome); onSelect(p.nome, p.chapa || '') }
-  const selecionarPorNome  = (p) => { setNome(p.nome); setChapa(p.chapa || ''); onSelect(p.nome, p.chapa || '') }
+  const selecionarPorChapa = (p) => { setChapa(p.chapa || ''); setNome(p.nome); onSelect(p.nome, p.chapa || '', p.id) }
+  const selecionarPorNome  = (p) => { setNome(p.nome); setChapa(p.chapa || ''); onSelect(p.nome, p.chapa || '', p.id) }
 
   return (
     <div>
       <div style={{ marginBottom: 12 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Matrícula</label>
         <CampoBuscaPessoa tipo="chapa" participantesAcao={participantesAcao} value={chapa} placeholder="Digite sua matrícula..." autoFocus
-          onChangeTexto={v => { setChapa(v); onSelect(nome, v) }} onSelecionar={selecionarPorChapa} />
+          onChangeTexto={v => { setChapa(v); onSelect(nome, v, null) }} onSelecionar={selecionarPorChapa} />
       </div>
       <div>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome *</label>
         <CampoBuscaPessoa tipo="nome" participantesAcao={participantesAcao} value={nome} placeholder="Digite seu nome ou selecione abaixo..."
-          onChangeTexto={v => { setNome(v); onSelect(v, chapa) }} onSelecionar={selecionarPorNome} />
+          onChangeTexto={v => { setNome(v); onSelect(v, chapa, null) }} onSelecionar={selecionarPorNome} />
       </div>
     </div>
   )
@@ -164,6 +166,7 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
   const [assinadas,  setAssinadas]  = useState([])
   const [nome,       setNome]       = useState('')
   const [chapa,      setChapa]      = useState('')
+  const [pessoaId,   setPessoaId]   = useState(null)
   const [erro,       setErro]       = useState('')
   const [salvando,   setSalvando]   = useState(false)
   const [msgSalvando, setMsgSalvando] = useState('')
@@ -203,15 +206,23 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
     } catch (e) { console.error(e); setFase('erro') }
   }
 
-  const onSelectNome = (n, c) => { setNome(n); setChapa(c); setErro('') }
+  const onSelectNome = (n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null); setErro('') }
 
   // No modo AUTOATENDIMENTO (QR impresso), qualquer pessoa da lista geral
-  // pode assinar — não precisa já estar pré-adicionada pelo fiscal.
+  // pode assinar — não precisa já estar pré-adicionada pelo fiscal. Em
+  // troca, exige selecionar uma sugestão real da lista (pessoaId), pra
+  // garantir o vínculo com sesmt_pessoas e permitir contar quantos/quais,
+  // do total carregado, já assinaram.
   const restringeAParticipantes = tokenData?.modo !== 'AUTOATENDIMENTO'
 
   const prosseguirParaAssinatura = async () => {
     if (!nome.trim()) { setErro('Digite seu nome completo.'); return }
     setErro('')
+
+    if (!restringeAParticipantes && !pessoaId) {
+      setErro('Selecione seu nome ou matrícula numa das sugestões da lista.')
+      return
+    }
 
     if (restringeAParticipantes && participantesAcao.length > 0) {
       const participanteEncontrado = participantesAcao.find(p => p.nome?.trim().toLowerCase() === nome.trim().toLowerCase())
@@ -251,7 +262,7 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
 
     setMsgSalvando('💾 Salvando assinatura...')
     try {
-      await salvarAssinaturaSesmtColetada(tokenData.id, tokenData.acao_id, nome.trim(), chapa.trim(), assinaturaBase64, lat, lng, endereco)
+      await salvarAssinaturaSesmtColetada(tokenData.id, tokenData.acao_id, nome.trim(), chapa.trim(), pessoaId, assinaturaBase64, lat, lng, endereco)
       setFase('sucesso')
     } catch (e) {
       console.error(e)
@@ -369,7 +380,10 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
 
               <div style={{ marginBottom: 14 }}>
                 <AutocompleteDual participantesAcao={participantesAcao} onSelect={onSelectNome} />
-                {nome && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ {nome}</p>}
+                {nome && pessoaId && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ {nome}</p>}
+                {!restringeAParticipantes && nome && !pessoaId && (
+                  <p style={{ fontSize: 11, color: '#d97706', marginTop: 4 }}>⚠️ Selecione seu nome ou matrícula numa sugestão da lista</p>
+                )}
               </div>
 
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#0369a1' }}>
@@ -380,8 +394,8 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
                 <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px', marginBottom: 12, fontSize: 13, color: '#b91c1c', lineHeight: 1.5 }}>⚠️ {erro}</div>
               )}
 
-              <button onClick={prosseguirParaAssinatura} disabled={!nome.trim()}
-                style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: nome.trim() ? '#1e3a5f' : '#e2e8f0', color: nome.trim() ? '#fff' : '#94a3b8', fontSize: 16, fontWeight: 700, cursor: nome.trim() ? 'pointer' : 'not-allowed' }}>
+              <button onClick={prosseguirParaAssinatura} disabled={!nome.trim() || (!restringeAParticipantes && !pessoaId)}
+                style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: (nome.trim() && (restringeAParticipantes || pessoaId)) ? '#1e3a5f' : '#e2e8f0', color: (nome.trim() && (restringeAParticipantes || pessoaId)) ? '#fff' : '#94a3b8', fontSize: 16, fontWeight: 700, cursor: (nome.trim() && (restringeAParticipantes || pessoaId)) ? 'pointer' : 'not-allowed' }}>
                 Continuar para assinar →
               </button>
             </div>

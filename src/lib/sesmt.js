@@ -203,6 +203,7 @@ export async function prepararPayloadSesmt(form) {
     participantesComUrl.push({
       nome: p.nome,
       chapa: p.chapa || '',
+      pessoa_id: p.pessoa_id || null,
       assinatura_url: assinaturaUrl,
       assinado_em: p.assinado_em || null,
       modo: p.modo || null,
@@ -325,8 +326,11 @@ export async function verificarJaAssinouSesmt(token_id, nome) {
   return data
 }
 
+// pessoa_id: id exato de sesmt_pessoas escolhido no autocomplete — garante
+// vínculo confiável entre quem assinou e a lista carregada (pra saber
+// quantos/quais, do total, já assinaram uma ação).
 export async function salvarAssinaturaSesmtColetada(
-  token_id, acao_id, nome, chapa, assinaturaBase64,
+  token_id, acao_id, nome, chapa, pessoa_id, assinaturaBase64,
   latitude = null, longitude = null, endereco_assinatura = null
 ) {
   if (!supabase) throw new Error('Supabase não configurado.')
@@ -342,6 +346,7 @@ export async function salvarAssinaturaSesmtColetada(
     .insert({
       token_id, acao_id, nome,
       matricula: chapa || null,
+      pessoa_id: pessoa_id || null,
       assinatura_url,
       latitude: latitude || null,
       longitude: longitude || null,
