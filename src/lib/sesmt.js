@@ -282,12 +282,24 @@ export async function criarTokenAssinaturaSesmt(acao_id, expiresMinutes = 60, mo
 
 export async function buscarTokenSesmtPorUUID(token_uuid) {
   if (!supabase) throw new Error('Supabase não configurado.')
+  // Duas consultas separadas em vez de embed do PostgREST — não há foreign
+  // key entre sesmt_assinaturas_pendentes e sesmt_acoes (mesmo padrão de
+  // "sem FK" adotado nas outras tabelas do módulo), e o embed (select
+  // "*, sesmt_acoes(...)") depende de uma FK existir pra funcionar.
   const { data, error } = await supabase
     .from('sesmt_assinaturas_pendentes')
-    .select(`*, sesmt_acoes ( tipo, tema, motivo, fiscal, data_registro, hora_registro, participantes )`)
+    .select('*')
     .eq('token', token_uuid)
     .single()
   if (error) throw error
+
+  const { data: acao, error: errAcao } = await supabase
+    .from('sesmt_acoes')
+    .select('tipo, tema, motivo, fiscal, data_registro, hora_registro, participantes')
+    .eq('id', data.acao_id)
+    .single()
+  if (errAcao) throw errAcao
+  data.sesmt_acoes = acao
   return data
 }
 
