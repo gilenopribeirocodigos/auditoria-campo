@@ -68,6 +68,7 @@ const TODAS_PERMISSOES = [
   { id: 'desfazer_indisponibilidade', label: '🔓 Indisponibilidade Prefixo - desfazer registro' },
   { id: 'cadastrar_motivos_registros', label: '📝 Registros Operacionais - cadastrar motivos' },
   { id: 'sesmt_acesso', label: '🦺 Ações SESMT - acesso ao módulo' },
+  { id: 'sesmt_cadastrar_motivos', label: '⚙️ Ações SESMT - cadastrar motivos' },
 ]
 
 const FORM_VAZIO = {

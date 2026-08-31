@@ -1,4 +1,4 @@
-import { supabase } from './supabase.js'
+import { supabase, uploadBase64 } from './supabase.js'
 
 // ── Módulo AÇÕES SESMT — independente de Auditoria/Registros/Estrutura ────────
 // Pessoas carregadas só para este módulo (chapa + nome), sem relação com
@@ -78,4 +78,207 @@ export async function importarPessoasSesmt(linhas, usuarioLogin) {
   }
 
   return { importadas: payload.length, inativadas: ficamInativos.length }
+}
+
+// ── Motivos padrão por tipo de ação ────────────────────────────────────────────
+
+export async function listarMotivosSesmt(tipo) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_motivos')
+    .select('*')
+    .eq('tipo', tipo)
+    .eq('ativo', true)
+    .order('motivo')
+  if (error) throw error
+  return data || []
+}
+
+// ── Cadastro de motivos (tela de configuração — mesmo padrão de
+// src/lib/motivosRegistros.js) ─────────────────────────────────────────────
+
+export async function listarTodosMotivosSesmt() {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_motivos')
+    .select('id, tipo, motivo, ativo')
+    .eq('ativo', true)
+    .order('tipo')
+    .order('motivo')
+  if (error) throw error
+  return data || []
+}
+
+export async function criarMotivoSesmt(tipo, motivo) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_motivos')
+    .insert({ tipo, motivo: motivo.trim().toUpperCase() })
+    .select().single()
+  if (error) throw error
+  return data
+}
+
+export async function atualizarMotivoSesmt(id, tipo, motivo) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase
+    .from('sesmt_motivos')
+    .update({ tipo, motivo: motivo.trim().toUpperCase() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function removerMotivoSesmt(id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase.from('sesmt_motivos').delete().eq('id', id)
+  if (error) throw error
+}
+
+// ── Ação SESMT (Diálogo de Segurança / Treinamento / Reciclagem) ──────────────
+
+// Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
+// pra inserir em sesmt_acoes.
+export async function prepararPayloadSesmt(form) {
+  const acaoRefId = `${Date.now()}_${form.tipo}`.replace(/\s+/g, '_')
+
+  const fotosUrls = []
+  for (let i = 0; i < form.fotos.length; i++) {
+    const url = await uploadBase64(
+      form.fotos[i].url,
+      `sesmt/${acaoRefId}/foto_${i + 1}.jpg`,
+      'fotos-auditoria'
+    )
+    fotosUrls.push(url)
+  }
+
+  const participantesComUrl = []
+  for (let i = 0; i < form.participantes.length; i++) {
+    const p = form.participantes[i]
+    let assinaturaUrl = null
+    if (p.assinatura) {
+      assinaturaUrl = await uploadBase64(
+        p.assinatura,
+        `sesmt/${acaoRefId}/assinatura_part_${i + 1}.png`,
+        'fotos-auditoria'
+      )
+    }
+    participantesComUrl.push({
+      nome: p.nome,
+      chapa: p.chapa || '',
+      assinatura_url: assinaturaUrl,
+      assinado_em: p.assinado_em || null,
+      modo: p.modo || null,
+      lat: p.lat || null,
+      lng: p.lng || null,
+      endereco_assinatura: p.endereco_assinatura || null,
+    })
+  }
+
+  return {
+    tipo: form.tipo,
+    tema: form.tema || null,
+    motivo: form.motivo || null,
+    observacao: form.observacao || null,
+    fiscal: form.fiscal,
+    matricula_fiscal: form.matricula_fiscal,
+    data_registro: form.data,
+    hora_registro: form.hora,
+    participantes: participantesComUrl,
+    fotos_urls: fotosUrls,
+  }
+}
+
+export async function salvarAcaoSesmt(payload) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .insert(payload)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// ── Assinatura remota via link/QR (espelha src/lib/assinaturas.js) ────────────
+
+export async function criarTokenAssinaturaSesmt(acao_id, expiresMinutes = 60) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const expires_at = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('sesmt_assinaturas_pendentes')
+    .insert({ acao_id, status: 'ABERTO', expires_at })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function buscarTokenSesmtPorUUID(token_uuid) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_assinaturas_pendentes')
+    .select(`*, sesmt_acoes ( tipo, tema, motivo, fiscal, data_registro, hora_registro, participantes )`)
+    .eq('token', token_uuid)
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function listarAssinaturasSesmtColetadas(token_id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_assinaturas_coletadas')
+    .select('*')
+    .eq('token_id', token_id)
+    .order('assinado_em')
+  if (error) throw error
+  return data || []
+}
+
+export async function verificarJaAssinouSesmt(token_id, nome) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data } = await supabase
+    .from('sesmt_assinaturas_coletadas')
+    .select('id, nome, assinado_em')
+    .eq('token_id', token_id)
+    .ilike('nome', nome.trim())
+    .maybeSingle()
+  return data
+}
+
+export async function salvarAssinaturaSesmtColetada(
+  token_id, acao_id, nome, chapa, assinaturaBase64,
+  latitude = null, longitude = null, endereco_assinatura = null
+) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+
+  let assinatura_url = null
+  if (assinaturaBase64) {
+    const path = `sesmt/assinaturas_remotas/${token_id}/${Date.now()}_${nome.replace(/\s+/g, '_')}.png`
+    assinatura_url = await uploadBase64(assinaturaBase64, path, 'fotos-auditoria')
+  }
+
+  const { data, error } = await supabase
+    .from('sesmt_assinaturas_coletadas')
+    .insert({
+      token_id, acao_id, nome,
+      matricula: chapa || null,
+      assinatura_url,
+      latitude: latitude || null,
+      longitude: longitude || null,
+      endereco_assinatura: endereco_assinatura || null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function encerrarTokenSesmt(token_id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase
+    .from('sesmt_assinaturas_pendentes')
+    .update({ status: 'ENCERRADO' })
+    .eq('id', token_id)
+  if (error) throw error
 }
