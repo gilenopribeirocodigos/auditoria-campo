@@ -14,15 +14,21 @@ const OPCOES_MINUTOS = [
 
 // Mesma UX/UI de ModalLinkAssinatura.jsx (Registros Operacionais), apontando
 // pras tabelas/rota do módulo SESMT.
-export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }) {
+// modo 'ONLINE': link pra quem o fiscal já adicionou como participante,
+// pra assinar remotamente.
+// modo 'AUTOATENDIMENTO': QR pra imprimir/fixar no local — qualquer pessoa
+// da lista carregada pode escanear e assinar sozinha, sem pré-cadastro.
+export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ONLINE', onImportarAssinados, onFechar }) {
+  const autoatendimento = modo === 'AUTOATENDIMENTO'
   const [fase,       setFase]       = useState('configurando')
-  const [minutos,    setMinutos]    = useState(60)
+  const [minutos,    setMinutos]    = useState(autoatendimento ? 240 : 60)
   const [tokenData,  setTokenData]  = useState(null)
   const [assinadas,  setAssinadas]  = useState([])
   const [copiado,    setCopiado]    = useState(false)
   const [encerrando, setEncerrando] = useState(false)
   const [erro,       setErro]       = useState('')
   const [countdown,  setCountdown]  = useState('')
+  const [importadas, setImportadas] = useState(false)
 
   const link  = tokenData ? `${BASE_URL}/assinar-sesmt/${tokenData.token}` : ''
   const label = tipoLabel || 'Ação SESMT'
@@ -54,7 +60,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }
     setFase('gerando')
     setErro('')
     try {
-      const data = await criarTokenAssinaturaSesmt(acaoId, minutos)
+      const data = await criarTokenAssinaturaSesmt(acaoId, minutos, modo)
       setTokenData(data)
       const coletadas = await listarAssinaturasSesmtColetadas(data.id)
       setAssinadas(coletadas)
@@ -101,6 +107,55 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }
     setAssinadas(data)
   }
 
+  const importarParaLista = () => {
+    if (!onImportarAssinados || assinadas.length === 0) return
+    onImportarAssinados(assinadas)
+    setImportadas(true)
+    setTimeout(() => setImportadas(false), 2500)
+  }
+
+  // Folha pronta pra imprimir e fixar no local — QR grande + instruções.
+  const abrirImpressao = () => {
+    const qrGrande = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(link)}&format=svg&margin=2`
+    const validadeTexto = tokenData?.expires_at
+      ? new Date(tokenData.expires_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+      : ''
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+    <title>QR de Autoatendimento — ${label}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px;}
+      .folha{text-align:center;max-width:480px;}
+      h1{font-size:22px;margin-bottom:4px;}
+      p.sub{font-size:13px;color:#64748b;margin-bottom:24px;}
+      img{width:320px;height:320px;margin:0 auto 24px;display:block;}
+      .instrucoes{font-size:15px;color:#1e293b;line-height:1.8;text-align:left;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:20px 22px;}
+      .instrucoes b{color:#0f766e;}
+      .rodape{margin-top:20px;font-size:12px;color:#94a3b8;}
+      @media print { @page { margin: 18mm; } }
+    </style>
+    </head><body>
+      <div class="folha">
+        <h1>🦺 ${label}</h1>
+        <p class="sub">Assinatura de participação — DPL Construções / Equatorial Energia</p>
+        <img src="${qrGrande}" alt="QR Code" />
+        <div class="instrucoes">
+          <b>Como assinar:</b><br/>
+          1. Abra a câmera do celular e aponte para o QR Code acima<br/>
+          2. Toque no link que aparecer<br/>
+          3. Digite seu nome ou matrícula (o outro campo preenche sozinho)<br/>
+          4. Assine na tela e pronto!
+        </div>
+        ${validadeTexto ? `<div class="rodape">Válido até ${validadeTexto}</div>` : ''}
+      </div>
+      <script>window.onload = () => setTimeout(() => window.print(), 500)</script>
+    </body></html>`
+    const janela = window.open('', '_blank', 'width=700,height=900')
+    if (!janela) { alert('Permita pop-ups para abrir a folha de impressão.'); return }
+    janela.document.write(html)
+    janela.document.close()
+  }
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 3000 }}>
       <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, maxHeight: '92vh', overflowY: 'auto', padding: '24px 20px 40px' }}>
@@ -108,11 +163,19 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', marginBottom: 2 }}>🔗 Link de Assinatura</h2>
+            <h2 style={{ fontSize: 18, fontWeight: 800, color: '#1e293b', marginBottom: 2 }}>
+              {autoatendimento ? '🖨️ QR de Autoatendimento' : '🔗 Link de Assinatura'}
+            </h2>
             <p style={{ fontSize: 13, color: '#2563eb', fontWeight: 700 }}>{label}</p>
           </div>
           <button onClick={onFechar} style={{ background: 'none', border: 'none', fontSize: 22, cursor: 'pointer', color: '#94a3b8' }}>×</button>
         </div>
+
+        {autoatendimento && (
+          <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#92400e', lineHeight: 1.5 }}>
+            🖨️ Imprima e fixe no local. <strong>Qualquer pessoa da lista carregada</strong> pode escanear e assinar sozinha, sem precisar estar pré-adicionada.
+          </div>
+        )}
 
         {fase === 'configurando' && (
           <>
@@ -204,6 +267,12 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }
               <p style={{ fontSize: 12, color: '#1e293b', wordBreak: 'break-all', background: '#fff', borderRadius: 8, padding: '8px 10px', border: '1px solid #e2e8f0', lineHeight: 1.5, margin: 0 }}>{link}</p>
             </div>
 
+            {fase === 'pronto' && autoatendimento && (
+              <button onClick={abrirImpressao} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+                🖨️ Abrir folha para impressão
+              </button>
+            )}
+
             {fase === 'pronto' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
                 <button onClick={compartilharWhatsApp} style={{ padding: '12px 10px', borderRadius: 12, border: 'none', background: '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>📤 WhatsApp</button>
@@ -216,6 +285,11 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, onFechar }
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#374151', margin: 0 }}>✅ Assinaturas recebidas ({assinadas.length})</p>
                 {fase === 'pronto' && <button onClick={atualizarManual} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>🔄 Atualizar</button>}
               </div>
+              {autoatendimento && assinadas.length > 0 && onImportarAssinados && (
+                <button onClick={importarParaLista} style={{ width: '100%', padding: 10, borderRadius: 10, border: '1.5px solid #0f766e', background: importadas ? '#f0fdfa' : '#fff', color: '#0f766e', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
+                  {importadas ? '✅ Importado para a lista de participantes!' : `📥 Importar ${assinadas.length} assinatura(s) para a lista`}
+                </button>
+              )}
 
               {assinadas.length === 0 ? (
                 <p style={{ fontSize: 13, color: '#94a3b8', textAlign: 'center', padding: '12px 0' }}>Aguardando assinaturas...</p>

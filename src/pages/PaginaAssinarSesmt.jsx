@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { buscarTokenSesmtPorUUID, salvarAssinaturaSesmtColetada, verificarJaAssinouSesmt, listarAssinaturasSesmtColetadas, buscarPessoasSesmtPorNome } from '../lib/sesmt.js'
+import { buscarTokenSesmtPorUUID, salvarAssinaturaSesmtColetada, verificarJaAssinouSesmt, listarAssinaturasSesmtColetadas, buscarPessoasSesmtPorNome, buscarPessoasSesmtPorChapa } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
@@ -71,8 +71,9 @@ function AssinaturaPad({ onConfirmar }) {
   )
 }
 
-function AutocompleteNome({ participantesAcao, onSelect }) {
-  const [termo,     setTermo]     = useState('')
+// ── Campo buscável único (usado pra Matrícula e pra Nome) — busca tanto nos
+// participantes já listados pelo fiscal quanto na lista geral carregada.
+function CampoBuscaPessoa({ tipo, participantesAcao, value, placeholder, onChangeTexto, onSelecionar, autoFocus }) {
   const [sugestoes, setSugestoes] = useState([])
   const [aberto,    setAberto]    = useState(false)
   const ref = useRef(null)
@@ -84,15 +85,16 @@ function AutocompleteNome({ participantesAcao, onSelect }) {
   }, [])
 
   const buscar = async (v) => {
-    setTermo(v)
+    onChangeTexto(v)
     if (v.length < 2) { setSugestoes([]); setAberto(false); return }
     const t = v.toLowerCase()
+    const campoAcao = tipo === 'chapa' ? 'chapa' : 'nome'
     const doAcao = (participantesAcao || [])
-      .filter(p => p.nome?.toLowerCase().includes(t))
+      .filter(p => p[campoAcao]?.toLowerCase().includes(t))
       .map(p => ({ nome: p.nome, chapa: p.chapa || '', fonte: 'acao' }))
     let daLista = []
     try {
-      const pessoas = await buscarPessoasSesmtPorNome(v)
+      const pessoas = tipo === 'chapa' ? await buscarPessoasSesmtPorChapa(v) : await buscarPessoasSesmtPorNome(v)
       const set = new Set(doAcao.map(p => p.nome?.trim().toLowerCase()))
       daLista = pessoas.filter(p => !set.has(p.nome?.trim().toLowerCase())).map(p => ({ nome: p.nome, chapa: p.chapa || '', fonte: 'lista' }))
     } catch { /* silencioso */ }
@@ -101,15 +103,15 @@ function AutocompleteNome({ participantesAcao, onSelect }) {
   }
 
   const selecionar = (item) => {
-    setTermo(item.nome); setSugestoes([]); setAberto(false)
-    onSelect(item.nome, item.chapa)
+    setSugestoes([]); setAberto(false)
+    onSelecionar(item)
   }
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
-      <input value={termo} onChange={e => buscar(e.target.value)}
+      <input value={value} onChange={e => buscar(e.target.value)}
         onFocus={() => sugestoes.length > 0 && setAberto(true)}
-        placeholder="Digite seu nome ou selecione abaixo..."
+        placeholder={placeholder} inputMode={tipo === 'chapa' ? 'numeric' : 'text'} autoFocus={autoFocus}
         style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 15, outline: 'none', boxSizing: 'border-box' }} />
       {aberto && sugestoes.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 240, overflowY: 'auto' }}>
@@ -119,14 +121,39 @@ function AutocompleteNome({ participantesAcao, onSelect }) {
               onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}>
               <div>
-                <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{s.nome}</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>{tipo === 'chapa' ? s.chapa : s.nome}</span>
                 {s.fonte === 'acao' && <span style={{ fontSize: 10, color: '#16a34a', marginLeft: 8, background: '#dcfce7', padding: '1px 6px', borderRadius: 4 }}>na lista</span>}
               </div>
-              {s.chapa && <span style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>Matrícula: {s.chapa}</span>}
+              <span style={{ fontSize: 12, color: '#2563eb', background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>{tipo === 'chapa' ? s.nome : (s.chapa ? `Matrícula: ${s.chapa}` : '')}</span>
             </button>
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+// ── Matrícula e Nome, cada um com busca própria — escolher uma sugestão em
+// qualquer um dos dois preenche o outro automaticamente.
+function AutocompleteDual({ participantesAcao, onSelect }) {
+  const [chapa, setChapa] = useState('')
+  const [nome,  setNome]  = useState('')
+
+  const selecionarPorChapa = (p) => { setChapa(p.chapa || ''); setNome(p.nome); onSelect(p.nome, p.chapa || '') }
+  const selecionarPorNome  = (p) => { setNome(p.nome); setChapa(p.chapa || ''); onSelect(p.nome, p.chapa || '') }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 12 }}>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Matrícula</label>
+        <CampoBuscaPessoa tipo="chapa" participantesAcao={participantesAcao} value={chapa} placeholder="Digite sua matrícula..." autoFocus
+          onChangeTexto={v => { setChapa(v); onSelect(nome, v) }} onSelecionar={selecionarPorChapa} />
+      </div>
+      <div>
+        <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome *</label>
+        <CampoBuscaPessoa tipo="nome" participantesAcao={participantesAcao} value={nome} placeholder="Digite seu nome ou selecione abaixo..."
+          onChangeTexto={v => { setNome(v); onSelect(v, chapa) }} onSelecionar={selecionarPorNome} />
+      </div>
     </div>
   )
 }
@@ -178,11 +205,15 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
 
   const onSelectNome = (n, c) => { setNome(n); setChapa(c); setErro('') }
 
+  // No modo AUTOATENDIMENTO (QR impresso), qualquer pessoa da lista geral
+  // pode assinar — não precisa já estar pré-adicionada pelo fiscal.
+  const restringeAParticipantes = tokenData?.modo !== 'AUTOATENDIMENTO'
+
   const prosseguirParaAssinatura = async () => {
     if (!nome.trim()) { setErro('Digite seu nome completo.'); return }
     setErro('')
 
-    if (participantesAcao.length > 0) {
+    if (restringeAParticipantes && participantesAcao.length > 0) {
       const participanteEncontrado = participantesAcao.find(p => p.nome?.trim().toLowerCase() === nome.trim().toLowerCase())
       if (!participanteEncontrado) {
         setErro(`"${nome.trim()}" não está na lista de participantes. Somente as pessoas cadastradas pelo fiscal podem assinar.`)
@@ -336,17 +367,9 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
             <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
               <p style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>✍️ Sua identificação</p>
 
-              <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome *</label>
-                <AutocompleteNome participantesAcao={participantesAcao} onSelect={onSelectNome} />
-                {nome && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ {nome}</p>}
-              </div>
-
               <div style={{ marginBottom: 14 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Matrícula (opcional)</label>
-                <input value={chapa} onChange={e => setChapa(e.target.value)}
-                  placeholder="Sua matrícula" inputMode="numeric"
-                  style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 15, outline: 'none', boxSizing: 'border-box', background: chapa ? '#f0fdf4' : '#fff' }} />
+                <AutocompleteDual participantesAcao={participantesAcao} onSelect={onSelectNome} />
+                {nome && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ {nome}</p>}
               </div>
 
               <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#0369a1' }}>
