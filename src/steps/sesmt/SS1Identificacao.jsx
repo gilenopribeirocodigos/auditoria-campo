@@ -2,11 +2,41 @@ import { useEffect, useState } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
 import { listarMotivosSesmt } from '../../lib/sesmt.js'
 
+// GPS + endereço de onde a ação está sendo feita (não é a localização de
+// quem assina — isso já é capturado por participante — é o local da
+// reunião em si, pra depois comparar com onde cada um assinou).
+function capturarGPS() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) { resolve(null); return }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { timeout: 8000, enableHighAccuracy: true }
+    )
+  })
+}
+
+async function geocodificarReverso(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=pt-BR`,
+      { headers: { 'User-Agent': 'DPL-Auditoria-Campo/1.0' } }
+    )
+    const data = await res.json()
+    if (data?.address) {
+      const a = data.address
+      return [a.road || a.pedestrian, a.suburb || a.neighbourhood, a.city || a.town || a.village, a.state].filter(Boolean).join(', ')
+    }
+    return null
+  } catch { return null }
+}
+
 export default function SS1Identificacao({ form, upd, next, prev }) {
   const tipoConfig = TIPOS_ACAO_SESMT[form.tipo]
   const [motivos, setMotivos] = useState([])
   const [loading, setLoading] = useState(true)
   const [motivoOutro, setMotivoOutro] = useState(false)
+  const [statusGps, setStatusGps] = useState(form.lat ? 'ok' : 'capturando') // capturando | ok | negado
 
   useEffect(() => {
     listarMotivosSesmt(form.tipo)
@@ -14,6 +44,21 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
       .catch(() => setMotivos([]))
       .finally(() => setLoading(false))
   }, [form.tipo])
+
+  const capturarLocalizacaoAcao = async () => {
+    setStatusGps('capturando')
+    const gps = await capturarGPS()
+    if (!gps) { setStatusGps('negado'); return }
+    upd('lat', gps.lat)
+    upd('lng', gps.lng)
+    const endereco = await geocodificarReverso(gps.lat, gps.lng)
+    if (endereco) upd('endereco', endereco)
+    setStatusGps('ok')
+  }
+
+  useEffect(() => {
+    if (!form.lat) capturarLocalizacaoAcao()
+  }, [])
 
   const onSelecionarMotivo = (v) => {
     if (v === 'OUTROS') {
@@ -35,6 +80,19 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
       </div>
 
       <h2 style={{ fontSize: 17, fontWeight: 800, color: '#1e293b', marginBottom: 16 }}>Identificação</h2>
+
+      <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 10, padding: '10px 14px', marginBottom: 16, fontSize: 12, color: '#0369a1' }}>
+        {statusGps === 'capturando' && '📍 Capturando a localização de onde a ação está sendo feita...'}
+        {statusGps === 'ok' && (
+          <>📍 <strong>Local da ação:</strong> {form.endereco || `${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`}</>
+        )}
+        {statusGps === 'negado' && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+            <span>⚠️ Não foi possível capturar a localização.</span>
+            <button onClick={capturarLocalizacaoAcao} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #0369a1', background: '#fff', color: '#0369a1', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Tentar de novo</button>
+          </div>
+        )}
+      </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
         <div>

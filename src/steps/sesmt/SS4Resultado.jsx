@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { salvarAcaoSesmt, atualizarAcaoSesmt, prepararPayloadSesmt } from '../../lib/sesmt.js'
+import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, prepararPayloadSesmt } from '../../lib/sesmt.js'
 import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
 
 export default function SS4Resultado({ form, onConcluir, prev }) {
@@ -8,9 +8,14 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
   const [erro,       setErro]       = useState('')
   const [acaoSalva,  setAcaoSalva]  = useState(null)
   const [mostrarModal, setMostrarModal] = useState(false)
+  const [mostrarQrAuto, setMostrarQrAuto] = useState(false)
+  const [tokenQr,    setTokenQr]    = useState(form.tokenAutoatendimento || null)
+  // Cópia local dos participantes pra poder ir incorporando novas
+  // assinaturas coletadas pelo QR mesmo depois de já ter salvo a ação.
+  const [participantesAtuais, setParticipantesAtuais] = useState(form.participantes)
 
   const tipoConfig = TIPOS_ACAO_SESMT[form.tipo]
-  const pendentesOnline = form.participantes.filter(p => p.modo === 'online' && !p.assinatura && !p.assinatura_url).length
+  const pendentesOnline = participantesAtuais.filter(p => p.modo === 'online' && !p.assinatura && !p.assinatura_url).length
 
   const salvar = async () => {
     setStatus('saving')
@@ -31,13 +36,36 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
     }
   }
 
+  // Assinaturas novas coletadas pelo QR de autoatendimento DEPOIS da ação já
+  // salva — o token continua valendo até expirar, então o fiscal pode
+  // reabrir o QR aqui e trazer quem assinou nesse meio tempo.
+  const onImportarAssinadosPosSalvo = async (assinadasList) => {
+    const jaTem = new Set(participantesAtuais.map(p => p.nome?.trim().toLowerCase()))
+    const novos = (assinadasList || [])
+      .filter(a => !jaTem.has(a.nome?.trim().toLowerCase()))
+      .map(a => ({
+        nome: a.nome, chapa: a.matricula || '', pessoa_id: a.pessoa_id || null,
+        assinatura: null, assinatura_url: a.assinatura_url,
+        assinado_em: a.assinado_em, modo: 'presencial',
+        lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
+      }))
+    if (novos.length === 0 || !acaoSalva) return
+    const atualizados = [...participantesAtuais, ...novos]
+    setParticipantesAtuais(atualizados)
+    try {
+      await atualizarParticipantesAcaoSesmt(acaoSalva.id, atualizados)
+    } catch (e) {
+      alert('Assinaturas importadas na tela, mas houve erro ao salvar no banco: ' + e.message)
+    }
+  }
+
   return (
     <>
       <div style={{ padding: '0 0 40px' }}>
         <div style={{ background: tipoConfig?.bg, border: `2px solid ${tipoConfig?.border}`, borderRadius: 16, padding: 20, textAlign: 'center', marginBottom: 16 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>{tipoConfig?.emoji}</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: tipoConfig?.color, marginBottom: 4 }}>{tipoConfig?.label}</div>
-          <div style={{ fontSize: 13, color: tipoConfig?.color, opacity: 0.85 }}>{form.participantes.length} participante(s)</div>
+          <div style={{ fontSize: 13, color: tipoConfig?.color, opacity: 0.85 }}>{participantesAtuais.length} participante(s)</div>
         </div>
 
         <div className="card" style={{ marginBottom: 14 }}>
@@ -45,6 +73,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
           {[
             ['Fiscal', form.fiscal],
             ['Data/Hora', `${form.data} às ${form.hora}`],
+            ['Local', form.endereco || (form.lat ? `${form.lat.toFixed(5)}, ${form.lng.toFixed(5)}` : null)],
             ['Tema', form.tema],
             ['Motivo', form.motivo],
             ['Fotos', form.fotos.length > 0 ? `${form.fotos.length} foto(s)` : null],
@@ -63,13 +92,13 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
           </div>
         )}
 
-        {form.participantes?.length > 0 && (
+        {participantesAtuais?.length > 0 && (
           <div className="card" style={{ marginBottom: 14, background: '#f0fdf4', border: '1.5px solid #86efac' }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 10 }}>✅ Participantes ({form.participantes.length})</p>
-            {form.participantes.map((p, i) => {
+            <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 10 }}>✅ Participantes ({participantesAtuais.length})</p>
+            {participantesAtuais.map((p, i) => {
               const assinado = Boolean(p.assinatura || p.assinatura_url)
               return (
-                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < form.participantes.length - 1 ? '1px solid #bbf7d0' : 'none' }}>
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < participantesAtuais.length - 1 ? '1px solid #bbf7d0' : 'none' }}>
                   <div>
                     <p style={{ fontSize: 13, fontWeight: 700, color: assinado ? '#15803d' : '#1d4ed8', margin: 0 }}>{i + 1}. {p.nome}</p>
                     {p.chapa && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Matrícula: {p.chapa}</span>}
@@ -128,6 +157,12 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
               </button>
             )}
 
+            {tokenQr && (
+              <button onClick={() => setMostrarQrAuto(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: '1.5px solid #0f766e', background: '#fff', color: '#0f766e', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+                🖨️ Ver QR de Autoatendimento / Importar novas assinaturas
+              </button>
+            )}
+
             <button onClick={onConcluir} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#15803d', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer' }}>
               + Nova Ação
             </button>
@@ -140,6 +175,18 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
           acaoId={acaoSalva.id}
           tipoLabel={tipoConfig?.label}
           onFechar={() => setMostrarModal(false)}
+        />
+      )}
+
+      {mostrarQrAuto && acaoSalva && (
+        <ModalLinkAssinaturaSesmt
+          acaoId={acaoSalva.id}
+          tipoLabel={tipoConfig?.label}
+          modo="AUTOATENDIMENTO"
+          tokenInicial={tokenQr}
+          onTokenAtualizado={setTokenQr}
+          onImportarAssinados={onImportarAssinadosPosSalvo}
+          onFechar={() => setMostrarQrAuto(false)}
         />
       )}
     </>

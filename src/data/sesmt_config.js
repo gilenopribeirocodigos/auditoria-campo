@@ -39,6 +39,7 @@ export function FORM_SESMT_INICIAL() {
     fotos: [],
     lat: null,
     lng: null,
+    endereco: '',
     participantes: [],
     acaoRascunhoId: null,
     tokenAutoatendimento: null,
