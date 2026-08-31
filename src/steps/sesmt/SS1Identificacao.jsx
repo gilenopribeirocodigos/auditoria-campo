@@ -51,7 +51,7 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Tema / Pauta *</label>
-        <input value={form.tema} onChange={e => upd('tema', e.target.value)}
+        <input value={form.tema} onChange={e => upd('tema', e.target.value.toUpperCase())}
           placeholder="Ex: Uso correto de EPI em serviços com risco elétrico"
           style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }} />
       </div>
@@ -71,7 +71,7 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
           </select>
         )}
         {motivoOutro && (
-          <input value={form.motivo} onChange={e => upd('motivo', e.target.value)}
+          <input value={form.motivo} onChange={e => upd('motivo', e.target.value.toUpperCase())}
             placeholder="Descreva o motivo"
             style={{ width: '100%', marginTop: 8, padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box' }} />
         )}
@@ -79,7 +79,7 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
 
       <div style={{ marginBottom: 16 }}>
         <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Observação (opcional)</label>
-        <textarea value={form.observacao} onChange={e => upd('observacao', e.target.value)}
+        <textarea value={form.observacao} onChange={e => upd('observacao', e.target.value.toUpperCase())}
           rows={3} placeholder="Detalhes adicionais, se houver"
           style={{ width: '100%', padding: '12px 14px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 14, boxSizing: 'border-box', resize: 'vertical', fontFamily: 'inherit' }} />
       </div>
