@@ -67,6 +67,7 @@ const TODAS_PERMISSOES = [
   { id: 'frequencia_lote_siga', label: '🤖 Frequência de Pessoal - justificativa em lote via SIGA' },
   { id: 'desfazer_indisponibilidade', label: '🔓 Indisponibilidade Prefixo - desfazer registro' },
   { id: 'cadastrar_motivos_registros', label: '📝 Registros Operacionais - cadastrar motivos' },
+  { id: 'sesmt_acesso', label: '🦺 Ações SESMT - acesso ao módulo' },
 ]
 
 const FORM_VAZIO = {
