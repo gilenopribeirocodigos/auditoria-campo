@@ -94,6 +94,46 @@ export async function listarMotivosSesmt(tipo) {
   return data || []
 }
 
+// ── Cadastro de motivos (tela de configuração — mesmo padrão de
+// src/lib/motivosRegistros.js) ─────────────────────────────────────────────
+
+export async function listarTodosMotivosSesmt() {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_motivos')
+    .select('id, tipo, motivo, ativo')
+    .eq('ativo', true)
+    .order('tipo')
+    .order('motivo')
+  if (error) throw error
+  return data || []
+}
+
+export async function criarMotivoSesmt(tipo, motivo) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_motivos')
+    .insert({ tipo, motivo: motivo.trim().toUpperCase() })
+    .select().single()
+  if (error) throw error
+  return data
+}
+
+export async function atualizarMotivoSesmt(id, tipo, motivo) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase
+    .from('sesmt_motivos')
+    .update({ tipo, motivo: motivo.trim().toUpperCase() })
+    .eq('id', id)
+  if (error) throw error
+}
+
+export async function removerMotivoSesmt(id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase.from('sesmt_motivos').delete().eq('id', id)
+  if (error) throw error
+}
+
 // ── Ação SESMT (Diálogo de Segurança / Treinamento / Reciclagem) ──────────────
 
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
