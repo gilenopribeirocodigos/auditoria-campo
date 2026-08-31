@@ -32,6 +32,8 @@ import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
 import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
 import TratamentoNaoConformidades from './pages/TratamentoNaoConformidades.jsx'
 import DiagnosticoRastreio      from './pages/DiagnosticoRastreio.jsx'
+// ── NOVO: Módulo isolado Ações SESMT (Fase 1: carga de pessoas) ──────────────
+import SesmtCargaPessoas        from './pages/SesmtCargaPessoas.jsx'
 // ── NOVO: Módulo isolado de Prestação de Contas ──────────────────────────────
 import PrestacaoContasLista     from './modules/prestacaoContas/PrestacaoContasLista.jsx'
 import PrestacaoContasNovo      from './modules/prestacaoContas/PrestacaoContasNovo.jsx'
@@ -417,6 +419,7 @@ export default function App() {
   if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'alertas-tma' && temPermissao(usuario, 'alertas_tma')) return <AlertasTMA usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'diagnostico-rastreio') return <DiagnosticoRastreio       onVoltar={() => setTela('home')} />
+  if (tela === 'sesmt-pessoas')        return <SesmtCargaPessoas        usuarioLogado={usuario} onVoltar={() => setTela('home')} />
 
   if (tela === 'home') {
     return (
@@ -635,6 +638,15 @@ export default function App() {
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>🚫 Registrar Indisponibilidade</button>
+          )}
+
+          {/* ── NOVO: Ações SESMT (Fase 1) ── */}
+          {temPermissao(usuario, 'sesmt_acesso') && (
+            <button onClick={() => setTela('sesmt-pessoas')} style={{
+              background: 'linear-gradient(135deg, rgba(217,119,6,0.9), rgba(146,64,14,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🦺 Ações SESMT</button>
           )}
 
           {temPermissao(usuario, 'dashboard') && (
