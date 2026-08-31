@@ -40,5 +40,6 @@ export function FORM_SESMT_INICIAL() {
     lat: null,
     lng: null,
     participantes: [],
+    acaoRascunhoId: null,
   }
 }

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { buscarPessoasSesmtPorNome, buscarPessoasSesmtPorChapa } from '../../lib/sesmt.js'
+import { buscarPessoasSesmtPorNome, buscarPessoasSesmtPorChapa, prepararPayloadSesmt, criarAcaoRascunhoSesmt } from '../../lib/sesmt.js'
+import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
 
 // ── Canvas de assinatura (mesmo padrão de R3Participantes.jsx) ────────────────
 function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
@@ -214,13 +215,17 @@ export default function SS3Participantes({ form, upd, next, prev }) {
   const [adicionando,   setAdicionando]   = useState(false)
   const [modoAdd,       setModoAdd]       = useState(null)
   const [confirmarPend, setConfirmarPend] = useState(false)
+  const [qrAberto,      setQrAberto]      = useState(false)
+  const [preparandoQr,  setPreparandoQr]  = useState(false)
+  const [erroQr,        setErroQr]        = useState('')
 
   const podeProsseguir = form.participantes.length > 0
-  const presenciaisPendentes = form.participantes.filter(p => p.modo === 'presencial' && !p.assinatura).length
+  const presenciaisPendentes = form.participantes.filter(p => p.modo === 'presencial' && !p.assinatura && !p.assinatura_url).length
 
   // A forma de assinar (presencial/online) só é perguntada no primeiro
   // participante — os demais seguem automaticamente a mesma escolha.
   const modoTravado = form.participantes.length > 0 ? form.participantes[0].modo : null
+  const presencialAtivo = modoTravado === 'presencial' || modoAdd === 'presencial'
 
   useEffect(() => {
     if (form.participantes.length === 0 && !adicionando) setAdicionando(true)
@@ -229,6 +234,40 @@ export default function SS3Participantes({ form, upd, next, prev }) {
   const iniciarAdicao = () => {
     setAdicionando(true)
     setModoAdd(modoTravado)
+  }
+
+  // Gera (na 1ª vez) a ação como rascunho no banco — precisa de um acao_id
+  // real pra apontar o token do QR — e abre o modal do QR de autoatendimento.
+  const abrirQrAutoatendimento = async () => {
+    setErroQr('')
+    if (form.acaoRascunhoId) { setQrAberto(true); return }
+    setPreparandoQr(true)
+    try {
+      const payload = await prepararPayloadSesmt(form)
+      const rascunho = await criarAcaoRascunhoSesmt(payload)
+      upd('acaoRascunhoId', rascunho.id)
+      setQrAberto(true)
+    } catch (e) {
+      setErroQr('Erro ao preparar o QR: ' + e.message)
+    } finally {
+      setPreparandoQr(false)
+    }
+  }
+
+  // Assinaturas coletadas via QR de autoatendimento entram na lista de
+  // participantes como presenciais já assinados (sem duplicar quem já
+  // estiver lá pelo nome).
+  const onImportarAssinadosAutoatendimento = (assinadasList) => {
+    const jaTem = new Set(form.participantes.map(p => p.nome?.trim().toLowerCase()))
+    const novos = (assinadasList || [])
+      .filter(a => !jaTem.has(a.nome?.trim().toLowerCase()))
+      .map(a => ({
+        nome: a.nome, chapa: a.matricula || '',
+        assinatura: null, assinatura_url: a.assinatura_url,
+        assinado_em: a.assinado_em, modo: 'presencial',
+        lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
+      }))
+    if (novos.length > 0) upd('participantes', [...form.participantes, ...novos])
   }
 
   const onSolicitarAssinatura = (nome, chapa) => {
@@ -299,7 +338,8 @@ export default function SS3Participantes({ form, upd, next, prev }) {
       )}
 
       {form.participantes.map((p, i) => {
-        const pendentePresencial = p.modo === 'presencial' && !p.assinatura
+        const assinado = Boolean(p.assinatura || p.assinatura_url)
+        const pendentePresencial = p.modo === 'presencial' && !assinado
         const nomeColor = p.modo === 'online' ? '#1d4ed8' : pendentePresencial ? '#92400e' : '#15803d'
         return (
           <div key={i} style={{
@@ -316,12 +356,12 @@ export default function SS3Participantes({ form, upd, next, prev }) {
                 </span>
               </div>
               {p.chapa && <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 6px' }}>Matrícula: {p.chapa}</p>}
-              {p.assinatura && <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>✅ Assinado · {new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
-              {!p.assinatura && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb', margin: 0 }}>⏳ Assinará via link</p>}
+              {assinado && <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>✅ Assinado{p.assinado_em ? ` · ${new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}</p>}
+              {!assinado && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb', margin: 0 }}>⏳ Assinará via link</p>}
               {pendentePresencial && <p style={{ fontSize: 11, color: '#d97706', fontWeight: 600, margin: 0 }}>⚠️ Aguardando assinatura</p>}
             </div>
 
-            {p.assinatura && <img src={p.assinatura} alt="assinatura" style={{ width: 80, height: 40, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0', flexShrink: 0 }} />}
+            {assinado && <img src={p.assinatura || p.assinatura_url} alt="assinatura" style={{ width: 80, height: 40, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0', flexShrink: 0 }} />}
 
             {pendentePresencial && (
               <button onClick={() => assinarExistente(i)} style={{ padding: '8px 12px', borderRadius: 10, border: 'none', background: '#16a34a', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0, whiteSpace: 'nowrap' }}>✍️ Assinar</button>
@@ -366,6 +406,23 @@ export default function SS3Participantes({ form, upd, next, prev }) {
         </button>
       )}
 
+      {presencialAtivo && (
+        <div style={{ background: '#f0fdfa', border: '1.5px solid #99f6e4', borderRadius: 14, padding: 14, marginBottom: 12 }}>
+          <p style={{ fontSize: 13, fontWeight: 700, color: '#0f766e', marginBottom: 4 }}>🖨️ Prefere autoatendimento?</p>
+          <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
+            Gere um QR Code pra imprimir e fixar no local — qualquer pessoa da lista pode escanear, digitar o nome ou a matrícula e assinar sozinha, sem passar o celular.
+          </p>
+          <button onClick={abrirQrAutoatendimento} disabled={preparandoQr} style={{
+            width: '100%', padding: 12, borderRadius: 10, border: '1.5px solid #0f766e',
+            background: '#fff', color: '#0f766e', fontSize: 13, fontWeight: 700,
+            cursor: preparandoQr ? 'not-allowed' : 'pointer',
+          }}>
+            {preparandoQr ? '⏳ Preparando...' : '🖨️ Gerar QR para Autoatendimento'}
+          </button>
+          {erroQr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>{erroQr}</p>}
+        </div>
+      )}
+
       {form.participantes.length === 0 && !adicionando && (
         <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px', marginBottom: 12, textAlign: 'center' }}>
           <p style={{ fontSize: 13, color: '#92400e' }}>Adicione pelo menos 1 participante para continuar.</p>
@@ -379,6 +436,16 @@ export default function SS3Participantes({ form, upd, next, prev }) {
 
       {assinandoPart && (
         <AssinaturaPad nomeParticipante={assinandoPart.nome} onConfirmar={onConfirmarAssinatura} onCancelar={() => setAssinandoPart(null)} />
+      )}
+
+      {qrAberto && form.acaoRascunhoId && (
+        <ModalLinkAssinaturaSesmt
+          acaoId={form.acaoRascunhoId}
+          tipoLabel={tipoConfig?.label}
+          modo="AUTOATENDIMENTO"
+          onImportarAssinados={onImportarAssinadosAutoatendimento}
+          onFechar={() => setQrAberto(false)}
+        />
       )}
 
       {confirmarPend && (

@@ -190,8 +190,10 @@ export async function prepararPayloadSesmt(form) {
   const participantesComUrl = []
   for (let i = 0; i < form.participantes.length; i++) {
     const p = form.participantes[i]
-    let assinaturaUrl = null
-    if (p.assinatura) {
+    // assinatura_url já pronta (ex.: importada de assinatura coletada via QR
+    // de autoatendimento) — não re-envia; só faz upload se vier base64 novo.
+    let assinaturaUrl = p.assinatura_url || null
+    if (!assinaturaUrl && p.assinatura) {
       assinaturaUrl = await uploadBase64(
         p.assinatura,
         `sesmt/${acaoRefId}/assinatura_part_${i + 1}.png`,
@@ -235,14 +237,43 @@ export async function salvarAcaoSesmt(payload) {
   return data
 }
 
-// ── Assinatura remota via link/QR (espelha src/lib/assinaturas.js) ────────────
+// ── Rascunho de ação — usado quando o fiscal gera o QR de autoatendimento
+// ANTES de terminar o wizard: precisa existir uma ação salva (com id) pra
+// poder apontar o token pra ela. Fica com status 'RASCUNHO' até o SS4
+// finalizar (atualizarAcaoSesmt, status 'CONCLUIDA').
+export async function criarAcaoRascunhoSesmt(payload) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .insert({ ...payload, status: 'RASCUNHO' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
 
-export async function criarTokenAssinaturaSesmt(acao_id, expiresMinutes = 60) {
+export async function atualizarAcaoSesmt(id, payload) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .update({ ...payload, status: 'CONCLUIDA' })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// ── Assinatura remota via link/QR (espelha src/lib/assinaturas.js) ────────────
+// modo: 'ONLINE' (assinatura remota, restrita à lista de participantes que o
+// fiscal já adicionou) ou 'AUTOATENDIMENTO' (QR pra imprimir/fixar no local
+// — qualquer pessoa da lista geral pode assinar sozinha).
+export async function criarTokenAssinaturaSesmt(acao_id, expiresMinutes = 60, modo = 'ONLINE') {
   if (!supabase) throw new Error('Supabase não configurado.')
   const expires_at = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString()
   const { data, error } = await supabase
     .from('sesmt_assinaturas_pendentes')
-    .insert({ acao_id, status: 'ABERTO', expires_at })
+    .insert({ acao_id, status: 'ABERTO', expires_at, modo })
     .select()
     .single()
   if (error) throw error

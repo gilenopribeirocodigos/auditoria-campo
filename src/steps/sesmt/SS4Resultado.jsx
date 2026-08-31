@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { salvarAcaoSesmt, prepararPayloadSesmt } from '../../lib/sesmt.js'
+import { salvarAcaoSesmt, atualizarAcaoSesmt, prepararPayloadSesmt } from '../../lib/sesmt.js'
 import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
 
 export default function SS4Resultado({ form, onConcluir, prev }) {
@@ -10,14 +10,18 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
   const [mostrarModal, setMostrarModal] = useState(false)
 
   const tipoConfig = TIPOS_ACAO_SESMT[form.tipo]
-  const pendentesOnline = form.participantes.filter(p => p.modo === 'online' && !p.assinatura).length
+  const pendentesOnline = form.participantes.filter(p => p.modo === 'online' && !p.assinatura && !p.assinatura_url).length
 
   const salvar = async () => {
     setStatus('saving')
     setErro('')
     try {
       const payload = await prepararPayloadSesmt(form)
-      const saved   = await salvarAcaoSesmt(payload)
+      // Se um QR de autoatendimento já criou a ação como rascunho, finaliza
+      // (atualiza) em vez de inserir de novo.
+      const saved = form.acaoRascunhoId
+        ? await atualizarAcaoSesmt(form.acaoRascunhoId, payload)
+        : await salvarAcaoSesmt(payload)
       setAcaoSalva(saved)
       setStatus('saved')
     } catch (err) {
@@ -62,17 +66,20 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
         {form.participantes?.length > 0 && (
           <div className="card" style={{ marginBottom: 14, background: '#f0fdf4', border: '1.5px solid #86efac' }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 10 }}>✅ Participantes ({form.participantes.length})</p>
-            {form.participantes.map((p, i) => (
-              <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < form.participantes.length - 1 ? '1px solid #bbf7d0' : 'none' }}>
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 700, color: p.assinatura ? '#15803d' : '#1d4ed8', margin: 0 }}>{i + 1}. {p.nome}</p>
-                  {p.chapa && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Matrícula: {p.chapa}</span>}
+            {form.participantes.map((p, i) => {
+              const assinado = Boolean(p.assinatura || p.assinatura_url)
+              return (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: i < form.participantes.length - 1 ? '1px solid #bbf7d0' : 'none' }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: assinado ? '#15803d' : '#1d4ed8', margin: 0 }}>{i + 1}. {p.nome}</p>
+                    {p.chapa && <span style={{ fontSize: 11, color: '#64748b', fontWeight: 600 }}>Matrícula: {p.chapa}</span>}
+                  </div>
+                  {assinado
+                    ? <img src={p.assinatura || p.assinatura_url} alt="assinatura" style={{ height: 36, maxWidth: 90, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
+                    : <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: '1px solid #93c5fd', padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap' }}>🔗 Aguardando</span>}
                 </div>
-                {p.assinatura
-                  ? <img src={p.assinatura} alt="assinatura" style={{ height: 36, maxWidth: 90, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
-                  : <span style={{ fontSize: 11, fontWeight: 700, color: '#1d4ed8', background: '#dbeafe', border: '1px solid #93c5fd', padding: '4px 10px', borderRadius: 6, whiteSpace: 'nowrap' }}>🔗 Aguardando</span>}
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
