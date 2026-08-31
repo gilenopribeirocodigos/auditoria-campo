@@ -41,5 +41,6 @@ export function FORM_SESMT_INICIAL() {
     lng: null,
     participantes: [],
     acaoRascunhoId: null,
+    tokenAutoatendimento: null,
   }
 }
