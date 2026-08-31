@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { buscarPessoasSesmtPorNome } from '../../lib/sesmt.js'
+import { buscarPessoasSesmtPorNome, buscarPessoasSesmtPorChapa } from '../../lib/sesmt.js'
 
 // ── Canvas de assinatura (mesmo padrão de R3Participantes.jsx) ────────────────
 function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
@@ -52,13 +52,11 @@ function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
   )
 }
 
-// ── Autocomplete: busca em sesmt_pessoas (carregada na Fase 1) ────────────────
-function AutocompleteSesmt({ onSelect }) {
-  const [termo,     setTermo]     = useState('')
+// ── Um campo buscável (usado tanto pra Matrícula quanto pra Nome) — busca em
+// sesmt_pessoas pela função informada e mostra sugestões com os dois dados.
+function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, buscarFn, exibirPrincipal, exibirBadge, autoFocus }) {
   const [sugestoes, setSugestoes] = useState([])
   const [aberto,    setAberto]    = useState(false)
-  const [chapa,     setChapa]     = useState('')
-  const [nomeFinal, setNomeFinal] = useState('')
   const ref = useRef(null)
 
   useEffect(() => {
@@ -68,49 +66,79 @@ function AutocompleteSesmt({ onSelect }) {
   }, [])
 
   const buscar = async (v) => {
-    setTermo(v); setNomeFinal(v); setChapa('')
+    onChangeTexto(v)
     if (v.length < 2) { setSugestoes([]); setAberto(false); return }
     try {
-      const pessoas = await buscarPessoasSesmtPorNome(v)
+      const pessoas = await buscarFn(v)
       if (pessoas.length > 0) { setSugestoes(pessoas); setAberto(true) }
       else { setSugestoes([]); setAberto(false) }
     } catch { setSugestoes([]); setAberto(false) }
   }
 
   const selecionar = (p) => {
-    setTermo(p.nome); setNomeFinal(p.nome); setChapa(p.chapa || '')
     setSugestoes([]); setAberto(false)
+    onSelecionar(p)
+  }
+
+  return (
+    <div ref={ref} className="form-group" style={{ position: 'relative' }}>
+      <label className="form-label">{label}</label>
+      <input className="form-input" value={value} onChange={e => buscar(e.target.value)}
+        onFocus={() => sugestoes.length > 0 && setAberto(true)}
+        placeholder={placeholder} autoComplete="off" autoFocus={autoFocus} />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 240, overflowY: 'auto' }}>
+          {sugestoes.map((p, i) => (
+            <button key={i} onMouseDown={() => selecionar(p)}
+              style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '11px 14px', textAlign: 'left', background: 'none', border: 'none', borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{exibirPrincipal(p)}</span>
+              {exibirBadge(p) && <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 700, background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>{exibirBadge(p)}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Autocomplete: busca em sesmt_pessoas (carregada na Fase 1), pela
+// matrícula OU pelo nome — os dois campos preenchem um ao outro ao escolher
+// uma sugestão em qualquer um deles.
+function AutocompleteSesmt({ onSelect }) {
+  const [chapa, setChapa] = useState('')
+  const [nome,  setNome]  = useState('')
+
+  const selecionarPorChapa = (p) => {
+    setChapa(p.chapa || ''); setNome(p.nome)
+    onSelect(p.nome, p.chapa || '')
+  }
+  const selecionarPorNome = (p) => {
+    setNome(p.nome); setChapa(p.chapa || '')
     onSelect(p.nome, p.chapa || '')
   }
 
   return (
-    <div ref={ref}>
-      <div className="form-group" style={{ position: 'relative' }}>
-        <label className="form-label">Nome completo *</label>
-        <input className="form-input" value={termo} onChange={e => buscar(e.target.value)}
-          onFocus={() => sugestoes.length > 0 && setAberto(true)}
-          placeholder="Digite para buscar..." autoComplete="off" autoFocus />
-        {aberto && sugestoes.length > 0 && (
-          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 240, overflowY: 'auto' }}>
-            {sugestoes.map((p, i) => (
-              <button key={i} onMouseDown={() => selecionar(p)}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '11px 14px', textAlign: 'left', background: 'none', border: 'none', borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none', cursor: 'pointer' }}
-                onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
-                onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-                <span style={{ fontSize: 14, fontWeight: 600, color: '#1e293b' }}>{p.nome}</span>
-                {p.chapa && <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 700, background: '#eff6ff', padding: '2px 8px', borderRadius: 6 }}>Chapa: {p.chapa}</span>}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="form-group">
-        <label className="form-label">Chapa</label>
-        <input className="form-input" value={chapa} onChange={e => { setChapa(e.target.value); onSelect(nomeFinal, e.target.value) }}
-          placeholder="Preenchida automaticamente" inputMode="numeric"
-          style={{ background: chapa ? '#f0fdf4' : '#fff', borderColor: chapa ? '#86efac' : undefined }} />
-        {chapa && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 3 }}>✅ Preenchida automaticamente</p>}
-      </div>
+    <div>
+      <CampoBusca
+        label="Matrícula *" placeholder="Digite a matrícula..." autoFocus
+        value={chapa}
+        onChangeTexto={v => { setChapa(v); onSelect(nome, v) }}
+        onSelecionar={selecionarPorChapa}
+        buscarFn={buscarPessoasSesmtPorChapa}
+        exibirPrincipal={p => p.chapa}
+        exibirBadge={p => p.nome}
+      />
+      <CampoBusca
+        label="Nome completo *" placeholder="Digite para buscar..."
+        value={nome}
+        onChangeTexto={v => { setNome(v); onSelect(v, chapa) }}
+        onSelecionar={selecionarPorNome}
+        buscarFn={buscarPessoasSesmtPorNome}
+        exibirPrincipal={p => p.nome}
+        exibirBadge={p => p.chapa ? `Matrícula: ${p.chapa}` : ''}
+      />
     </div>
   )
 }
@@ -278,7 +306,7 @@ export default function SS3Participantes({ form, upd, next, prev }) {
                   {p.modo === 'online' ? '🔗 Online' : '✍️ Presencial'}
                 </span>
               </div>
-              {p.chapa && <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 6px' }}>Chapa: {p.chapa}</p>}
+              {p.chapa && <p style={{ fontSize: 12, color: '#64748b', margin: '0 0 6px' }}>Matrícula: {p.chapa}</p>}
               {p.assinatura && <p style={{ fontSize: 11, color: '#94a3b8', margin: 0 }}>✅ Assinado · {new Date(p.assinado_em).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>}
               {!p.assinatura && p.modo === 'online' && <p style={{ fontSize: 11, color: '#2563eb', margin: 0 }}>⏳ Assinará via link</p>}
               {pendentePresencial && <p style={{ fontSize: 11, color: '#d97706', fontWeight: 600, margin: 0 }}>⚠️ Aguardando assinatura</p>}
