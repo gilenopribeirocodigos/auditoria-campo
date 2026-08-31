@@ -1,6 +1,6 @@
 {
   "name": "auditoria-campo-dpl",
-  "version": "3.21.3",
+  "version": "3.21.4",
   "private": true,
   "scripts": {
     "dev": "vite",

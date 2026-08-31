@@ -218,9 +218,18 @@ export default function SS3Participantes({ form, upd, next, prev }) {
   const podeProsseguir = form.participantes.length > 0
   const presenciaisPendentes = form.participantes.filter(p => p.modo === 'presencial' && !p.assinatura).length
 
+  // A forma de assinar (presencial/online) só é perguntada no primeiro
+  // participante — os demais seguem automaticamente a mesma escolha.
+  const modoTravado = form.participantes.length > 0 ? form.participantes[0].modo : null
+
   useEffect(() => {
     if (form.participantes.length === 0 && !adicionando) setAdicionando(true)
   }, [])
+
+  const iniciarAdicao = () => {
+    setAdicionando(true)
+    setModoAdd(modoTravado)
+  }
 
   const onSolicitarAssinatura = (nome, chapa) => {
     if (!nome) return
@@ -345,14 +354,14 @@ export default function SS3Participantes({ form, upd, next, prev }) {
       )}
 
       {adicionando && modoAdd === 'presencial' && (
-        <FormParticipante onSolicitar={onSolicitarAssinatura} onCancelar={() => { setModoAdd(null); if (form.participantes.length === 0) setAdicionando(true) }} />
+        <FormParticipante onSolicitar={onSolicitarAssinatura} onCancelar={() => { setAdicionando(false); setModoAdd(null) }} />
       )}
       {adicionando && modoAdd === 'online' && (
-        <FormParticipanteOnline onAdicionar={onAdicionarOnline} onCancelar={() => { setModoAdd(null); if (form.participantes.length === 0) setAdicionando(true) }} />
+        <FormParticipanteOnline onAdicionar={onAdicionarOnline} onCancelar={() => { setAdicionando(false); setModoAdd(null) }} />
       )}
 
       {!adicionando && (
-        <button onClick={() => { setAdicionando(true); setModoAdd(null) }} style={{ width: '100%', padding: 13, borderRadius: 12, border: '2px dashed #2563eb', background: '#eff6ff', color: '#2563eb', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
+        <button onClick={iniciarAdicao} style={{ width: '100%', padding: 13, borderRadius: 12, border: '2px dashed #2563eb', background: '#eff6ff', color: '#2563eb', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
           + Adicionar participante
         </button>
       )}
