@@ -337,7 +337,7 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
               <p style={{ fontSize: 15, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>✍️ Sua identificação</p>
 
               <div style={{ marginBottom: 12 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome completo *</label>
+                <label style={{ fontSize: 12, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 6 }}>Nome *</label>
                 <AutocompleteNome participantesAcao={participantesAcao} onSelect={onSelectNome} />
                 {nome && <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ {nome}</p>}
               </div>

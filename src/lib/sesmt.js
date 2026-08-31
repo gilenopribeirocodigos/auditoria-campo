@@ -44,14 +44,27 @@ export async function buscarPessoasSesmtPorChapa(termo) {
   return data || []
 }
 
-// linhas: [{ chapa, nome }]. Upsert por chapa — quem já está na lista
-// mantém o id; quem não veio mais na carga é marcado inativo (nunca
-// removido, pra não perder histórico de quem já assinou alguma ação).
+// linhas: [{ chapa, nome, codsituacao, codsecao, regional, data_admissao,
+// dt_transferencia, data_demissao, pispasep, cpf }]. Upsert por chapa — quem
+// já está na lista mantém o id; quem não veio mais na carga é marcado
+// inativo (nunca removido, pra não perder histórico de quem já assinou
+// alguma ação).
 export async function importarPessoasSesmt(linhas, usuarioLogin) {
   if (!supabase) throw new Error('Supabase não configurado.')
 
   const validas = (linhas || [])
-    .map(l => ({ chapa: String(l.chapa || '').trim(), nome: String(l.nome || '').trim().toUpperCase() }))
+    .map(l => ({
+      chapa: String(l.chapa || '').trim(),
+      nome: String(l.nome || '').trim().toUpperCase(),
+      codsituacao: String(l.codsituacao || '').trim().toUpperCase() || null,
+      codsecao: String(l.codsecao || '').trim() || null,
+      regional: String(l.regional || '').trim().toUpperCase() || null,
+      data_admissao: l.data_admissao || null,
+      dt_transferencia: l.dt_transferencia || null,
+      data_demissao: l.data_demissao || null,
+      pispasep: String(l.pispasep || '').trim() || null,
+      cpf: String(l.cpf || '').trim() || null,
+    }))
     .filter(l => l.chapa && l.nome)
 
   if (validas.length === 0) {
@@ -69,6 +82,14 @@ export async function importarPessoasSesmt(linhas, usuarioLogin) {
   const payload = validas.map(l => ({
     chapa: l.chapa,
     nome: l.nome,
+    codsituacao: l.codsituacao,
+    codsecao: l.codsecao,
+    regional: l.regional,
+    data_admissao: l.data_admissao,
+    dt_transferencia: l.dt_transferencia,
+    data_demissao: l.data_demissao,
+    pispasep: l.pispasep,
+    cpf: l.cpf,
     ativo: true,
     carregado_por: usuarioLogin || null,
     carregado_em: agora,

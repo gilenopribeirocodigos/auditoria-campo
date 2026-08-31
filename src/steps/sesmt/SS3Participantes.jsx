@@ -131,7 +131,7 @@ function AutocompleteSesmt({ onSelect }) {
         exibirBadge={p => p.nome}
       />
       <CampoBusca
-        label="Nome completo *" placeholder="Digite para buscar..."
+        label="Nome *" placeholder="Digite para buscar..."
         value={nome}
         onChangeTexto={v => { setNome(v); onSelect(v, chapa) }}
         onSelecionar={selecionarPorNome}

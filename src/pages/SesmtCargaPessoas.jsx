@@ -9,14 +9,56 @@ const normChave = s => String(s || '')
   .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
   .toLowerCase().trim()
 
-const ALIAS_CHAPA = ['chapa', 'matricula']
-const ALIAS_NOME  = ['nome', 'colaborador', 'nome_colaborador']
+const ALIAS_CHAPA           = ['chapa', 'matricula']
+const ALIAS_NOME            = ['nome', 'colaborador', 'nome_completo', 'nome_colaborador']
+const ALIAS_CODSITUACAO     = ['codsituacao', 'cod_situacao', 'situacao']
+const ALIAS_CODSECAO        = ['codsecao', 'cod_secao', 'secao']
+const ALIAS_DATAADMISSAO    = ['dataadmissao', 'data_admissao']
+const ALIAS_DTTRANSFERENCIA = ['dttransferencia', 'dt_transferencia', 'datatransferencia', 'data_transferencia']
+const ALIAS_DATADEMISSAO    = ['datademissao', 'data_demissao']
+const ALIAS_PISPASEP        = ['pispasep', 'pis_pasep', 'pis']
+const ALIAS_CPF             = ['cpf']
 
-function extrairChapaNome(linhaObj) {
+// REGIONAL não vem no arquivo — é calculado a partir dos 3 primeiros grupos
+// de CODSECAO (ex.: "02.03.01.20.014" -> "02.03.01" -> METROPOLITANA).
+function derivarRegional(codsecao) {
+  const partes = String(codsecao || '').trim().split('.').map(p => p.trim())
+  if (partes.length < 3 || partes[0] !== '02' || partes[1] !== '03') return ''
+  const n = Number(partes[2])
+  if (n === 1) return 'METROPOLITANA'
+  if (n === 2) return 'NORTE'
+  if (n >= 3 && n <= 8) return 'SUL'
+  return ''
+}
+
+// Datas do arquivo vêm em DD/MM/AAAA — converte pra AAAA-MM-DD (coluna date).
+function parseDataBR(valor) {
+  const v = String(valor || '').trim()
+  const m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (!m) return null
+  const [, d, mes, ano] = m
+  return `${ano}-${mes.padStart(2, '0')}-${d.padStart(2, '0')}`
+}
+
+function extrairPessoa(linhaObj) {
   const chaves = Object.keys(linhaObj).reduce((acc, k) => { acc[normChave(k)] = linhaObj[k]; return acc }, {})
-  const chapaKey = ALIAS_CHAPA.find(a => chaves[a] !== undefined)
-  const nomeKey  = ALIAS_NOME.find(a => chaves[a] !== undefined)
-  return { chapa: chapaKey ? String(chaves[chapaKey] ?? '').trim() : '', nome: nomeKey ? String(chaves[nomeKey] ?? '').trim() : '' }
+  const pega = (aliases) => {
+    const key = aliases.find(a => chaves[a] !== undefined && String(chaves[a]).trim() !== '')
+    return key ? String(chaves[key]).trim() : ''
+  }
+  const codsecao = pega(ALIAS_CODSECAO)
+  return {
+    chapa: pega(ALIAS_CHAPA),
+    nome: pega(ALIAS_NOME),
+    codsituacao: pega(ALIAS_CODSITUACAO),
+    codsecao,
+    regional: derivarRegional(codsecao),
+    data_admissao: parseDataBR(pega(ALIAS_DATAADMISSAO)),
+    dt_transferencia: parseDataBR(pega(ALIAS_DTTRANSFERENCIA)),
+    data_demissao: parseDataBR(pega(ALIAS_DATADEMISSAO)),
+    pispasep: pega(ALIAS_PISPASEP),
+    cpf: pega(ALIAS_CPF),
+  }
 }
 
 function parseCsvTexto(texto) {
@@ -70,7 +112,7 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
           catch { texto = new TextDecoder('windows-1252').decode(ev.target.result) }
           objs = parseCsvTexto(texto)
         }
-        const extraidas = objs.map(extrairChapaNome).filter(l => l.chapa && l.nome)
+        const extraidas = objs.map(extrairPessoa).filter(l => l.chapa && l.nome)
         if (extraidas.length === 0) {
           setStatus('erro')
           setMsg('Nenhuma linha com CHAPA e NOME reconhecida. Confira o cabeçalho da planilha (aceita CHAPA/MATRICULA e NOME/COLABORADOR).')
@@ -132,8 +174,11 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
 
       <div style={cardStyle}>
         <p style={{ fontSize: 14, fontWeight: 800, color: '#1e293b', marginBottom: 4 }}>📤 Carregar planilha</p>
-        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
-          Arquivo Excel (.xlsx) ou CSV com colunas <strong>CHAPA</strong> e <strong>NOME</strong>.
+        <p style={{ fontSize: 12, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
+          Arquivo Excel (.xlsx) ou CSV com colunas <strong>CHAPA</strong>, <strong>NOME</strong>, CODSITUACAO,
+          CODSECAO, DATAADMISSAO, DTTRANSFERENCIA, DATADEMISSAO, PISPASEP e CPF (as duas primeiras são
+          obrigatórias, as demais opcionais). <strong>REGIONAL</strong> é calculado automaticamente a partir do
+          CODSECAO (02.03.01 → METROPOLITANA, 02.03.02 → NORTE, 02.03.03 a 02.03.08 → SUL).
         </p>
 
         <input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={onFile} style={{ marginBottom: 12 }} />
@@ -157,6 +202,7 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
                   <tr>
                     <th style={thStyle}>CHAPA</th>
                     <th style={thStyle}>NOME</th>
+                    <th style={thStyle}>REGIONAL</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -164,6 +210,7 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
                     <tr key={i}>
                       <td style={tdStyle}>{l.chapa}</td>
                       <td style={tdStyle}>{l.nome}</td>
+                      <td style={tdStyle}>{l.regional || <span style={{ color: '#dc2626' }}>—</span>}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -198,9 +245,16 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
         ) : (
           <div style={{ maxHeight: 260, overflowY: 'auto' }}>
             {ativos.map(p => (
-              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+              <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
                 <span style={{ color: '#1e293b', fontWeight: 600 }}>{p.nome}</span>
-                <span style={{ color: '#64748b' }}>{p.chapa}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {p.regional && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#0f766e', background: '#f0fdfa', border: '1px solid #5eead4', padding: '2px 7px', borderRadius: 6 }}>
+                      {p.regional}
+                    </span>
+                  )}
+                  <span style={{ color: '#64748b' }}>{p.chapa}</span>
+                </span>
               </div>
             ))}
           </div>
