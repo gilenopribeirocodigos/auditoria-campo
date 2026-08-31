@@ -18,11 +18,20 @@ const OPCOES_MINUTOS = [
 // pra assinar remotamente.
 // modo 'AUTOATENDIMENTO': QR pra imprimir/fixar no local — qualquer pessoa
 // da lista carregada pode escanear e assinar sozinha, sem pré-cadastro.
-export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ONLINE', onImportarAssinados, onFechar }) {
+// Deriva a fase inicial a partir de um token já existente (reabertura do
+// modal) — sem isso, reabrir geraria um token novo a cada vez.
+function faseInicialDe(tokenInicial) {
+  if (!tokenInicial) return 'configurando'
+  if (tokenInicial.status === 'ENCERRADO') return 'encerrado'
+  if (new Date(tokenInicial.expires_at) < new Date()) return 'expirado'
+  return 'pronto'
+}
+
+export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ONLINE', tokenInicial, onTokenAtualizado, onImportarAssinados, onFechar }) {
   const autoatendimento = modo === 'AUTOATENDIMENTO'
-  const [fase,       setFase]       = useState('configurando')
+  const [fase,       setFase]       = useState(() => faseInicialDe(tokenInicial))
   const [minutos,    setMinutos]    = useState(autoatendimento ? 240 : 60)
-  const [tokenData,  setTokenData]  = useState(null)
+  const [tokenData,  setTokenData]  = useState(tokenInicial || null)
   const [assinadas,  setAssinadas]  = useState([])
   const [copiado,    setCopiado]    = useState(false)
   const [encerrando, setEncerrando] = useState(false)
@@ -32,6 +41,14 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
 
   const link  = tokenData ? `${BASE_URL}/assinar-sesmt/${tokenData.token}` : ''
   const label = tipoLabel || 'Ação SESMT'
+
+  // Token já existente (reabertura do modal) — busca quem já assinou assim
+  // que monta, sem esperar o próximo ciclo do polling.
+  useEffect(() => {
+    if (tokenInicial && tokenData) {
+      listarAssinaturasSesmtColetadas(tokenData.id).then(setAssinadas).catch(() => {})
+    }
+  }, [])
 
   useEffect(() => {
     if (fase !== 'pronto' || !tokenData?.expires_at) return
@@ -62,6 +79,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
     try {
       const data = await criarTokenAssinaturaSesmt(acaoId, minutos, modo)
       setTokenData(data)
+      onTokenAtualizado?.(data)
       const coletadas = await listarAssinaturasSesmtColetadas(data.id)
       setAssinadas(coletadas)
       setFase('pronto')
@@ -94,6 +112,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
     try {
       await encerrarTokenSesmt(tokenData.id)
       setFase('encerrado')
+      onTokenAtualizado?.({ ...tokenData, status: 'ENCERRADO' })
     } catch (e) {
       alert('Erro ao encerrar: ' + e.message)
     } finally {

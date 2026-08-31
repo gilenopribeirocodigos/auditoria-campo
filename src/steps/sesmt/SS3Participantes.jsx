@@ -411,13 +411,14 @@ export default function SS3Participantes({ form, upd, next, prev }) {
           <p style={{ fontSize: 13, fontWeight: 700, color: '#0f766e', marginBottom: 4 }}>🖨️ Prefere autoatendimento?</p>
           <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
             Gere um QR Code pra imprimir e fixar no local — qualquer pessoa da lista pode escanear, digitar o nome ou a matrícula e assinar sozinha, sem passar o celular.
+            {form.tokenAutoatendimento && ' O mesmo QR fica disponível pra reabrir e reenviar/imprimir até expirar.'}
           </p>
           <button onClick={abrirQrAutoatendimento} disabled={preparandoQr} style={{
             width: '100%', padding: 12, borderRadius: 10, border: '1.5px solid #0f766e',
             background: '#fff', color: '#0f766e', fontSize: 13, fontWeight: 700,
             cursor: preparandoQr ? 'not-allowed' : 'pointer',
           }}>
-            {preparandoQr ? '⏳ Preparando...' : '🖨️ Gerar QR para Autoatendimento'}
+            {preparandoQr ? '⏳ Preparando...' : form.tokenAutoatendimento ? '🖨️ Ver QR de Autoatendimento' : '🖨️ Gerar QR para Autoatendimento'}
           </button>
           {erroQr && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 8 }}>{erroQr}</p>}
         </div>
@@ -443,6 +444,8 @@ export default function SS3Participantes({ form, upd, next, prev }) {
           acaoId={form.acaoRascunhoId}
           tipoLabel={tipoConfig?.label}
           modo="AUTOATENDIMENTO"
+          tokenInicial={form.tokenAutoatendimento}
+          onTokenAtualizado={t => upd('tokenAutoatendimento', t)}
           onImportarAssinados={onImportarAssinadosAutoatendimento}
           onFechar={() => setQrAberto(false)}
         />
