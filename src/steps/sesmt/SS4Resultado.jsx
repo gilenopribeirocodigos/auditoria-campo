@@ -9,6 +9,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
   const [acaoSalva,  setAcaoSalva]  = useState(null)
   const [mostrarModal, setMostrarModal] = useState(false)
   const [mostrarQrAuto, setMostrarQrAuto] = useState(false)
+  const [tokenOnline, setTokenOnline] = useState(null)
   const [tokenQr,    setTokenQr]    = useState(form.tokenAutoatendimento || null)
   const [atualizandoAssin, setAtualizandoAssin] = useState(false)
   // Cópia local dos participantes pra poder ir incorporando novas
@@ -157,9 +158,11 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
               <p style={{ color: '#64748b', fontSize: 12 }}>Dados, fotos e assinaturas enviados ao banco.</p>
             </div>
 
-            {pendentesOnline > 0 && (
+            {(pendentesOnline > 0 || tokenOnline) && (
               <button onClick={() => setMostrarModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-                🔗 Gerar Link + QR Code para Assinatura ({pendentesOnline} pendente{pendentesOnline > 1 ? 's' : ''})
+                {tokenOnline
+                  ? '🔗 Ver Link de Assinatura'
+                  : `🔗 Gerar Link + QR Code para Assinatura (${pendentesOnline} pendente${pendentesOnline > 1 ? 's' : ''})`}
               </button>
             )}
 
@@ -180,6 +183,8 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
         <ModalLinkAssinaturaSesmt
           acaoId={acaoSalva.id}
           tipoLabel={tipoConfig?.label}
+          tokenInicial={tokenOnline}
+          onTokenAtualizado={setTokenOnline}
           participantesAtuais={participantesAtuais}
           onParticipantesSincronizados={setParticipantesAtuais}
           onFechar={() => setMostrarModal(false)}
