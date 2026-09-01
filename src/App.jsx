@@ -38,6 +38,7 @@ import SesmtHome                from './pages/SesmtHome.jsx'
 import SesmtApp                 from './SesmtApp.jsx'
 import PaginaAssinarSesmt       from './pages/PaginaAssinarSesmt.jsx'
 import MotivosSesmt             from './pages/MotivosSesmt.jsx'
+import SesmtHistorico           from './pages/SesmtHistorico.jsx'
 // ── NOVO: Módulo isolado de Prestação de Contas ──────────────────────────────
 import PrestacaoContasLista     from './modules/prestacaoContas/PrestacaoContasLista.jsx'
 import PrestacaoContasNovo      from './modules/prestacaoContas/PrestacaoContasNovo.jsx'
@@ -427,9 +428,10 @@ export default function App() {
   if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'alertas-tma' && temPermissao(usuario, 'alertas_tma')) return <AlertasTMA usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'diagnostico-rastreio') return <DiagnosticoRastreio       onVoltar={() => setTela('home')} />
-  if (tela === 'sesmt-home')           return <SesmtHome onVoltar={() => setTela('home')} onNovaAcao={() => setTela('sesmt-novo')} onGerenciarPessoas={() => setTela('sesmt-pessoas')} onMotivos={() => setTela('sesmt-motivos')} podeConfigurarMotivos={temPermissao(usuario, 'sesmt_cadastrar_motivos')} />
+  if (tela === 'sesmt-home')           return <SesmtHome onVoltar={() => setTela('home')} onNovaAcao={() => setTela('sesmt-novo')} onGerenciarPessoas={() => setTela('sesmt-pessoas')} onHistorico={() => setTela('sesmt-historico')} onMotivos={() => setTela('sesmt-motivos')} podeConfigurarMotivos={temPermissao(usuario, 'sesmt_cadastrar_motivos')} />
   if (tela === 'sesmt-novo')           return <SesmtApp                 usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
   if (tela === 'sesmt-pessoas')        return <SesmtCargaPessoas        usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
+  if (tela === 'sesmt-historico')      return <SesmtHistorico           onVoltar={() => setTela('sesmt-home')} />
   if (tela === 'sesmt-motivos' && temPermissao(usuario, 'sesmt_cadastrar_motivos')) return <MotivosSesmt onVoltar={() => setTela('sesmt-home')} />
 
   if (tela === 'home') {
