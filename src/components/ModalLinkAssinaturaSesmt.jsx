@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt } from '../lib/sesmt.js'
+import { useState, useEffect, useRef } from 'react'
+import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt, concluirRascunhoAcaoSesmt, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas } from '../lib/sesmt.js'
 
 const BASE_URL = window.location.origin
 
@@ -27,7 +27,7 @@ function faseInicialDe(tokenInicial) {
   return 'pronto'
 }
 
-export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ONLINE', tokenInicial, onTokenAtualizado, onImportarAssinados, onFechar }) {
+export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ONLINE', tokenInicial, onTokenAtualizado, participantesAtuais, onParticipantesSincronizados, onFechar }) {
   const autoatendimento = modo === 'AUTOATENDIMENTO'
   const [fase,       setFase]       = useState(() => faseInicialDe(tokenInicial))
   const [minutos,    setMinutos]    = useState(autoatendimento ? 240 : 60)
@@ -37,17 +37,36 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
   const [encerrando, setEncerrando] = useState(false)
   const [erro,       setErro]       = useState('')
   const [countdown,  setCountdown]  = useState('')
-  const [importadas, setImportadas] = useState(false)
 
   const link  = tokenData ? `${BASE_URL}/assinar-sesmt/${tokenData.token}` : ''
   const label = tipoLabel || 'Ação SESMT'
 
-  // Token já existente (reabertura do modal) — busca quem já assinou assim
-  // que monta, sem esperar o próximo ciclo do polling.
-  useEffect(() => {
-    if (tokenInicial && tokenData) {
-      listarAssinaturasSesmtColetadas(tokenData.id).then(setAssinadas).catch(() => {})
+  // Mantém a lista de participantes conhecida numa ref pra poder comparar
+  // dentro do polling sem precisar recriar o intervalo a cada mudança.
+  const participantesRef = useRef(participantesAtuais || [])
+  useEffect(() => { participantesRef.current = participantesAtuais || [] }, [participantesAtuais])
+
+  // Busca quem já assinou e, no modo autoatendimento, mescla os novos
+  // direto na lista de participantes (local + banco) — sem precisar de um
+  // clique manual de "importar".
+  const sincronizarAssinaturas = async (tokenAtual) => {
+    const t = tokenAtual || tokenData
+    if (!t) return
+    const coletadas = await listarAssinaturasSesmtColetadas(t.id)
+    setAssinadas(coletadas)
+    if (autoatendimento && acaoId && onParticipantesSincronizados) {
+      const mesclados = mesclarAssinaturasColetadas(participantesRef.current, coletadas)
+      if (mesclados.length !== participantesRef.current.length) {
+        try { await atualizarParticipantesAcaoSesmt(acaoId, mesclados) } catch { /* tenta de novo na próxima sincronização */ }
+        onParticipantesSincronizados(mesclados)
+      }
     }
+  }
+
+  // Token já existente (reabertura do modal) — busca/sincroniza assim que
+  // monta, sem esperar o próximo ciclo do polling.
+  useEffect(() => {
+    if (tokenInicial && tokenData) sincronizarAssinaturas(tokenData)
   }, [])
 
   useEffect(() => {
@@ -67,9 +86,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
 
   useEffect(() => {
     if (fase !== 'pronto' || !tokenData) return
-    const id = setInterval(() => {
-      listarAssinaturasSesmtColetadas(tokenData.id).then(setAssinadas).catch(() => {})
-    }, 8000)
+    const id = setInterval(() => { sincronizarAssinaturas(tokenData) }, 8000)
     return () => clearInterval(id)
   }, [fase, tokenData])
 
@@ -80,8 +97,12 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
       const data = await criarTokenAssinaturaSesmt(acaoId, minutos, modo)
       setTokenData(data)
       onTokenAtualizado?.(data)
-      const coletadas = await listarAssinaturasSesmtColetadas(data.id)
-      setAssinadas(coletadas)
+      // A partir daqui a ação já é considerada salva/oficial (aparece no
+      // Histórico), mesmo que o fiscal nunca volte pra tela de Resultado.
+      if (autoatendimento && acaoId) {
+        try { await concluirRascunhoAcaoSesmt(acaoId) } catch { /* ainda pode ser salva depois, ao finalizar o wizard */ }
+      }
+      await sincronizarAssinaturas(data)
       setFase('pronto')
     } catch (e) {
       setErro('Erro ao gerar link: ' + e.message)
@@ -120,18 +141,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
     }
   }
 
-  const atualizarManual = async () => {
-    if (!tokenData) return
-    const data = await listarAssinaturasSesmtColetadas(tokenData.id)
-    setAssinadas(data)
-  }
-
-  const importarParaLista = () => {
-    if (!onImportarAssinados || assinadas.length === 0) return
-    onImportarAssinados(assinadas)
-    setImportadas(true)
-    setTimeout(() => setImportadas(false), 2500)
-  }
+  const atualizarManual = () => sincronizarAssinaturas(tokenData)
 
   // Folha pronta pra imprimir e fixar no local — QR grande + instruções.
   const abrirImpressao = () => {
@@ -304,10 +314,8 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#374151', margin: 0 }}>✅ Assinaturas recebidas ({assinadas.length})</p>
                 {fase === 'pronto' && <button onClick={atualizarManual} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>🔄 Atualizar</button>}
               </div>
-              {autoatendimento && assinadas.length > 0 && onImportarAssinados && (
-                <button onClick={importarParaLista} style={{ width: '100%', padding: 10, borderRadius: 10, border: '1.5px solid #0f766e', background: importadas ? '#f0fdfa' : '#fff', color: '#0f766e', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
-                  {importadas ? '✅ Importado para a lista de participantes!' : `📥 Importar ${assinadas.length} assinatura(s) para a lista`}
-                </button>
+              {autoatendimento && onParticipantesSincronizados && (
+                <p style={{ fontSize: 11, color: '#0f766e', margin: '0 0 12px', fontWeight: 600 }}>🔄 Sincronizado automaticamente com a lista de participantes.</p>
               )}
 
               {assinadas.length === 0 ? (
