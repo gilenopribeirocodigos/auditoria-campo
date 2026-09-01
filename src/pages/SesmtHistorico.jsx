@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { listarAcoesSesmt } from '../lib/sesmt.js'
+import { useEffect, useRef, useState } from 'react'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 
@@ -17,6 +17,7 @@ export default function SesmtHistorico({ onVoltar }) {
   const [loading, setLoading] = useState(true)
   const [erro,    setErro]    = useState('')
   const [detalhe, setDetalhe] = useState(null)
+  const [sincronizando, setSincronizando] = useState(false)
 
   const buscar = async () => {
     setLoading(true)
@@ -32,6 +33,40 @@ export default function SesmtHistorico({ onVoltar }) {
   }
 
   useEffect(() => { buscar() }, [])
+
+  // Enquanto o card de detalhe estiver aberto, traz assinaturas coletadas
+  // via QR de autoatendimento (mesmo que o link ainda esteja ativo) e
+  // mescla na lista de participantes — tanto na tela quanto no banco.
+  const detalheRef = useRef(null)
+  useEffect(() => { detalheRef.current = detalhe }, [detalhe])
+
+  const sincronizarDetalhe = async (acaoAtual) => {
+    if (!acaoAtual) return
+    try {
+      const coletadas = await listarAssinaturasSesmtColetadasPorAcao(acaoAtual.id)
+      const participantesAtuais = acaoAtual.participantes || []
+      const mesclados = mesclarAssinaturasColetadas(participantesAtuais, coletadas)
+      if (mesclados.length !== participantesAtuais.length) {
+        try { await atualizarParticipantesAcaoSesmt(acaoAtual.id, mesclados) } catch { /* tenta de novo na próxima sincronização */ }
+        const atualizada = { ...acaoAtual, participantes: mesclados }
+        setDetalhe(d => (d && d.id === atualizada.id ? atualizada : d))
+        setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+      }
+    } catch { /* silencioso — próxima tentativa (polling ou atualizar manual) tenta de novo */ }
+  }
+
+  const abrirDetalhe = (a) => { setDetalhe(a); sincronizarDetalhe(a) }
+
+  const atualizarDetalheManual = async () => {
+    setSincronizando(true)
+    try { await sincronizarDetalhe(detalheRef.current) } finally { setSincronizando(false) }
+  }
+
+  useEffect(() => {
+    if (!detalhe) return
+    const id = setInterval(() => { sincronizarDetalhe(detalheRef.current) }, 8000)
+    return () => clearInterval(id)
+  }, [detalhe?.id])
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -104,7 +139,7 @@ export default function SesmtHistorico({ onVoltar }) {
               const qtdParticipantes = Array.isArray(a.participantes) ? a.participantes.length : 0
               const qtdAssinados = Array.isArray(a.participantes) ? a.participantes.filter(p => p.assinatura_url).length : 0
               return (
-                <div key={a.id} onClick={() => setDetalhe(a)} style={{
+                <div key={a.id} onClick={() => abrirDetalhe(a)} style={{
                   background: '#fff', borderRadius: 14, border: `1.5px solid ${tc.border || '#e2e8f0'}`,
                   padding: '14px 16px', cursor: 'pointer',
                 }}>
@@ -143,7 +178,12 @@ export default function SesmtHistorico({ onVoltar }) {
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <h3 style={{ fontSize: 17, fontWeight: 800 }}>{tc.emoji} {tc.label}</h3>
-                    <button onClick={() => setDetalhe(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <button onClick={atualizarDetalheManual} disabled={sincronizando} style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 700, color: '#0f766e', cursor: sincronizando ? 'default' : 'pointer' }}>
+                        {sincronizando ? '⏳ Atualizando...' : '🔄 Atualizar'}
+                      </button>
+                      <button onClick={() => setDetalhe(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+                    </div>
                   </div>
 
                   <div style={{ background: tc.bg, border: `2px solid ${tc.border}`, borderRadius: 14, padding: 16, textAlign: 'center', marginBottom: 16 }}>
