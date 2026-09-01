@@ -46,17 +46,18 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
   const participantesRef = useRef(participantesAtuais || [])
   useEffect(() => { participantesRef.current = participantesAtuais || [] }, [participantesAtuais])
 
-  // Busca quem já assinou e, no modo autoatendimento, mescla os novos
-  // direto na lista de participantes (local + banco) — sem precisar de um
-  // clique manual de "importar".
+  // Busca quem já assinou e mescla direto na lista de participantes (local +
+  // banco) — sem precisar de um clique manual de "importar". Vale tanto pro
+  // autoatendimento (gente nova que assinou) quanto pro link online (gente
+  // já adicionada pelo fiscal que ainda não tinha assinado).
   const sincronizarAssinaturas = async (tokenAtual) => {
     const t = tokenAtual || tokenData
     if (!t) return
     const coletadas = await listarAssinaturasSesmtColetadas(t.id)
     setAssinadas(coletadas)
-    if (autoatendimento && acaoId && onParticipantesSincronizados) {
+    if (acaoId && onParticipantesSincronizados) {
       const mesclados = mesclarAssinaturasColetadas(participantesRef.current, coletadas)
-      if (mesclados.length !== participantesRef.current.length) {
+      if (mesclados !== participantesRef.current) {
         try { await atualizarParticipantesAcaoSesmt(acaoId, mesclados) } catch { /* tenta de novo na próxima sincronização */ }
         onParticipantesSincronizados(mesclados)
       }
@@ -314,7 +315,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#374151', margin: 0 }}>✅ Assinaturas recebidas ({assinadas.length})</p>
                 {fase === 'pronto' && <button onClick={atualizarManual} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>🔄 Atualizar</button>}
               </div>
-              {autoatendimento && onParticipantesSincronizados && (
+              {onParticipantesSincronizados && (
                 <p style={{ fontSize: 11, color: '#0f766e', margin: '0 0 12px', fontWeight: 600 }}>🔄 Sincronizado automaticamente com a lista de participantes.</p>
               )}
 

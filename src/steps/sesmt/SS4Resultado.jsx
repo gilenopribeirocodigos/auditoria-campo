@@ -46,7 +46,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
     try {
       const coletadas = await listarAssinaturasSesmtColetadas(tokenQr.id)
       const mesclados = mesclarAssinaturasColetadas(participantesAtuais, coletadas)
-      if (mesclados.length !== participantesAtuais.length) {
+      if (mesclados !== participantesAtuais) {
         setParticipantesAtuais(mesclados)
         const acaoIdAtual = acaoSalva?.id || form.acaoRascunhoId
         if (acaoIdAtual) await atualizarParticipantesAcaoSesmt(acaoIdAtual, mesclados)
@@ -180,6 +180,8 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
         <ModalLinkAssinaturaSesmt
           acaoId={acaoSalva.id}
           tipoLabel={tipoConfig?.label}
+          participantesAtuais={participantesAtuais}
+          onParticipantesSincronizados={setParticipantesAtuais}
           onFechar={() => setMostrarModal(false)}
         />
       )}
