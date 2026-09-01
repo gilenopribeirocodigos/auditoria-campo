@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas } from '../lib/sesmt.js'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
+import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
 
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 const inicioMesISO = () => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) }
@@ -18,6 +19,8 @@ export default function SesmtHistorico({ onVoltar }) {
   const [erro,    setErro]    = useState('')
   const [detalhe, setDetalhe] = useState(null)
   const [sincronizando, setSincronizando] = useState(false)
+  const [tokenDetalhe, setTokenDetalhe] = useState(null)
+  const [mostrarLinkModal, setMostrarLinkModal] = useState(false)
 
   const buscar = async () => {
     setLoading(true)
@@ -55,7 +58,14 @@ export default function SesmtHistorico({ onVoltar }) {
     } catch { /* silencioso — próxima tentativa (polling ou atualizar manual) tenta de novo */ }
   }
 
-  const abrirDetalhe = (a) => { setDetalhe(a); sincronizarDetalhe(a) }
+  const abrirDetalhe = (a) => {
+    setDetalhe(a)
+    setTokenDetalhe(null)
+    sincronizarDetalhe(a)
+    buscarTokenMaisRecenteSesmtPorAcao(a.id).then(setTokenDetalhe).catch(() => {})
+  }
+
+  const fecharDetalhe = () => { setDetalhe(null); setTokenDetalhe(null); setMostrarLinkModal(false) }
 
   const atualizarDetalheManual = async () => {
     setSincronizando(true)
@@ -169,7 +179,7 @@ export default function SesmtHistorico({ onVoltar }) {
 
       {detalhe && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
-          onClick={e => { if (e.target === e.currentTarget) setDetalhe(null) }}>
+          onClick={e => { if (e.target === e.currentTarget) fecharDetalhe() }}>
           <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '24px 20px 40px' }}>
             {(() => {
               const tc = TIPOS_ACAO_SESMT[detalhe.tipo] || {}
@@ -182,7 +192,7 @@ export default function SesmtHistorico({ onVoltar }) {
                       <button onClick={atualizarDetalheManual} disabled={sincronizando} style={{ background: 'none', border: 'none', fontSize: 12, fontWeight: 700, color: '#0f766e', cursor: sincronizando ? 'default' : 'pointer' }}>
                         {sincronizando ? '⏳ Atualizando...' : '🔄 Atualizar'}
                       </button>
-                      <button onClick={() => setDetalhe(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+                      <button onClick={() => fecharDetalhe()} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
                     </div>
                   </div>
 
@@ -207,6 +217,28 @@ export default function SesmtHistorico({ onVoltar }) {
                       </div>
                     ))}
                   </div>
+
+                  {tokenDetalhe && (() => {
+                    const encerrado = tokenDetalhe.status === 'ENCERRADO'
+                    const expirado  = !encerrado && new Date(tokenDetalhe.expires_at) < new Date()
+                    const ativo     = !encerrado && !expirado
+                    return (
+                      <div style={{ background: '#f0fdfa', border: '1.5px solid #99f6e4', borderRadius: 12, padding: '12px 14px', marginBottom: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        <div>
+                          <p style={{ fontSize: 12, fontWeight: 700, color: ativo ? '#0f766e' : '#94a3b8', margin: 0 }}>
+                            {ativo ? '✅ Link ativo' : encerrado ? '🔒 Link encerrado' : '⏰ Link expirado'}
+                          </p>
+                          <p style={{ fontSize: 11, color: '#64748b', margin: '2px 0 0' }}>
+                            {tokenDetalhe.modo === 'AUTOATENDIMENTO' ? 'QR de autoatendimento' : 'Link online'}
+                            {ativo ? ` · expira às ${new Date(tokenDetalhe.expires_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                          </p>
+                        </div>
+                        <button onClick={() => setMostrarLinkModal(true)} style={{ padding: '8px 14px', borderRadius: 10, border: '1.5px solid #0f766e', background: '#fff', color: '#0f766e', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                          🔗 Ver link/QR
+                        </button>
+                      </div>
+                    )
+                  })()}
 
                   {detalhe.observacao && (
                     <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
@@ -260,7 +292,7 @@ export default function SesmtHistorico({ onVoltar }) {
                     </div>
                   )}
 
-                  <button onClick={() => setDetalhe(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                  <button onClick={() => fecharDetalhe()} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Fechar
                   </button>
                 </>
@@ -268,6 +300,23 @@ export default function SesmtHistorico({ onVoltar }) {
             })()}
           </div>
         </div>
+      )}
+
+      {mostrarLinkModal && tokenDetalhe && detalhe && (
+        <ModalLinkAssinaturaSesmt
+          acaoId={detalhe.id}
+          tipoLabel={(TIPOS_ACAO_SESMT[detalhe.tipo] || {}).label}
+          modo={tokenDetalhe.modo}
+          tokenInicial={tokenDetalhe}
+          onTokenAtualizado={setTokenDetalhe}
+          participantesAtuais={detalhe.participantes || []}
+          onParticipantesSincronizados={novos => {
+            const atualizada = { ...detalhe, participantes: novos }
+            setDetalhe(atualizada)
+            setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+          }}
+          onFechar={() => setMostrarLinkModal(false)}
+        />
       )}
     </div>
   )

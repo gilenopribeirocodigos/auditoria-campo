@@ -225,7 +225,10 @@ export default function SS3Participantes({ form, upd, next, prev }) {
   const [preparandoQr,  setPreparandoQr]  = useState(false)
   const [erroQr,        setErroQr]        = useState('')
 
-  const podeProsseguir = form.participantes.length > 0
+  // Com QR de autoatendimento gerado, a ação já está salva no banco — não
+  // precisa esperar nenhuma assinatura chegar pra poder continuar/finalizar
+  // o wizard (elas vão sendo sincronizadas sozinhas depois).
+  const podeProsseguir = form.participantes.length > 0 || Boolean(form.tokenAutoatendimento)
   const presenciaisPendentes = form.participantes.filter(p => p.modo === 'presencial' && !p.assinatura && !p.assinatura_url).length
 
   // A forma de assinar (presencial/online) só é perguntada no primeiro
@@ -414,7 +417,7 @@ export default function SS3Participantes({ form, upd, next, prev }) {
         </div>
       )}
 
-      {form.participantes.length === 0 && !adicionando && (
+      {form.participantes.length === 0 && !adicionando && !form.tokenAutoatendimento && (
         <div style={{ background: '#fef3c7', border: '1px solid #fcd34d', borderRadius: 10, padding: '12px 14px', marginBottom: 12, textAlign: 'center' }}>
           <p style={{ fontSize: 13, color: '#92400e' }}>Adicione pelo menos 1 participante para continuar.</p>
         </div>
