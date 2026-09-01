@@ -390,6 +390,20 @@ export async function listarAssinaturasSesmtColetadas(token_id) {
   return data || []
 }
 
+// Todas as assinaturas coletadas de uma ação, independente de qual token/QR
+// foi usado — usado pelo Histórico pra manter o card sincronizado enquanto
+// o link de autoatendimento ainda estiver ativo.
+export async function listarAssinaturasSesmtColetadasPorAcao(acao_id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_assinaturas_coletadas')
+    .select('*')
+    .eq('acao_id', acao_id)
+    .order('assinado_em')
+  if (error) throw error
+  return data || []
+}
+
 export async function verificarJaAssinouSesmt(token_id, nome) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const { data } = await supabase
