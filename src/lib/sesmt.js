@@ -447,6 +447,23 @@ export async function salvarAssinaturaSesmtColetada(
   return data
 }
 
+// Token mais recente gerado pra uma ação (ONLINE ou AUTOATENDIMENTO) —
+// usado pelo Histórico pra mostrar se ainda há um link ativo coletando
+// assinaturas e permitir encerrá-lo por lá também, sem precisar voltar
+// pro wizard.
+export async function buscarTokenMaisRecenteSesmtPorAcao(acao_id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_assinaturas_pendentes')
+    .select('*')
+    .eq('acao_id', acao_id)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw error
+  return data || null
+}
+
 export async function encerrarTokenSesmt(token_id) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const { error } = await supabase
