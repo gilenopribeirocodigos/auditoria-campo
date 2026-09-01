@@ -104,6 +104,81 @@ function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, bu
   )
 }
 
+// ── Escopo regional da busca ("Buscar em...") — por enquanto só usado no
+// fluxo Online (ver comentário em FormParticipanteOnline); se o teste for
+// bem, replica pro Presencial depois. Regionais batem com o que já é
+// gravado em sesmt_pessoas.regional na carga (derivado do CODSECAO).
+const REGIONAIS_SESMT = [
+  { key: 'METROPOLITANA', label: 'Regional Metropolitana', codigo: '02.03.01' },
+  { key: 'NORTE',         label: 'Regional Norte',          codigo: '02.03.02' },
+  { key: 'SUL',           label: 'Regional Sul',            codigo: '02.03.03–08' },
+]
+
+function labelBuscarEm(regionais) {
+  if (!regionais || regionais.length === 0) return 'Buscar em... (todas)'
+  if (regionais.length === 1) {
+    const r = REGIONAIS_SESMT.find(x => x.key === regionais[0])
+    return `Buscar em: ${r ? r.label.replace('Regional ', '') : regionais[0]}`
+  }
+  return `Buscar em: ${regionais.length} regionais`
+}
+
+// ── Modal: escolher em quais regionais a busca por nome/matrícula vai
+// procurar — não adiciona ninguém à lista sozinho, só restringe a busca.
+function ModalBuscarEm({ selecionadas, onAplicar, onFechar }) {
+  const [sel, setSel] = useState(selecionadas)
+  const listaTotal = sel.length === 0
+
+  const optStyle = (marcado) => ({
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+    padding: '11px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+    border: `1.5px solid ${marcado ? '#7c3aed' : '#e2e8f0'}`,
+    background: marcado ? '#faf5ff' : '#fff',
+  })
+  const boxStyle = (marcado) => ({
+    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+    border: `1.6px solid ${marcado ? '#7c3aed' : '#cbd5e1'}`,
+    background: marcado ? '#7c3aed' : '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#fff', fontSize: 12, fontWeight: 800,
+  })
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 2500 }}
+      onClick={e => { if (e.target === e.currentTarget) onFechar() }}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '20px 18px 30px' }}>
+        <div style={{ width: 36, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 16px' }} />
+        <p style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>🌎 Buscar em...</p>
+        <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, margin: '0 0 16px' }}>
+          Define de onde a busca por nome/matrícula vai puxar os participantes — não adiciona ninguém à lista sozinho.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+          <button onClick={() => setSel([])} style={optStyle(listaTotal)}>
+            <span style={boxStyle(listaTotal)}>{listaTotal && '✓'}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: listaTotal ? '#6d28d9' : '#374151' }}>Lista Total</span>
+          </button>
+          {REGIONAIS_SESMT.map(r => {
+            const marcado = sel.includes(r.key)
+            return (
+              <button key={r.key} onClick={() => setSel(prev => marcado ? prev.filter(k => k !== r.key) : [...prev, r.key])} style={optStyle(marcado)}>
+                <span style={boxStyle(marcado)}>{marcado && '✓'}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: marcado ? '#6d28d9' : '#374151', flex: 1 }}>{r.label}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: "'Courier New', monospace" }}>{r.codigo}</span>
+              </button>
+            )
+          })}
+        </div>
+        <button onClick={() => onAplicar(sel)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+          Aplicar filtro
+        </button>
+        <button onClick={onFechar} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Autocomplete: busca em sesmt_pessoas (carregada na Fase 1), pela
 // matrícula OU pelo nome — os dois campos preenchem um ao outro ao escolher
 // uma sugestão em qualquer um deles.
@@ -111,7 +186,9 @@ function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, bu
 // realmente escolhe uma sugestão da lista carregada (não ao digitar texto
 // livre); grava em participantes[].pessoa_id, quando disponível, pro
 // vínculo com sesmt_pessoas ficar completo também nesse canal.
-function AutocompleteSesmt({ onSelect }) {
+// regionaisFiltro/onAbrirScopePicker são opcionais — só quem passa (por
+// enquanto, só o fluxo Online) ganha o botão "Buscar em...".
+function AutocompleteSesmt({ onSelect, regionaisFiltro, onAbrirScopePicker }) {
   const [chapa, setChapa] = useState('')
   const [nome,  setNome]  = useState('')
 
@@ -126,12 +203,21 @@ function AutocompleteSesmt({ onSelect }) {
 
   return (
     <div>
+      {onAbrirScopePicker && (
+        <button type="button" onClick={onAbrirScopePicker} style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%',
+          padding: '9px 12px', borderRadius: 9, border: '1.5px solid #c4b5fd', background: '#faf5ff',
+          color: '#6d28d9', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 12,
+        }}>
+          🌎 {labelBuscarEm(regionaisFiltro)}
+        </button>
+      )}
       <CampoBusca
         label="Matrícula *" placeholder="Digite a matrícula..." autoFocus
         value={chapa}
         onChangeTexto={v => { setChapa(v); onSelect(nome, v, null) }}
         onSelecionar={selecionarPorChapa}
-        buscarFn={buscarPessoasSesmtPorChapa}
+        buscarFn={v => buscarPessoasSesmtPorChapa(v, regionaisFiltro)}
         exibirPrincipal={p => p.chapa}
         exibirBadge={p => p.nome}
       />
@@ -140,7 +226,7 @@ function AutocompleteSesmt({ onSelect }) {
         value={nome}
         onChangeTexto={v => { setNome(v); onSelect(v, chapa, null) }}
         onSelecionar={selecionarPorNome}
-        buscarFn={buscarPessoasSesmtPorNome}
+        buscarFn={v => buscarPessoasSesmtPorNome(v, regionaisFiltro)}
         exibirPrincipal={p => p.nome}
         exibirBadge={p => p.chapa ? `Matrícula: ${p.chapa}` : ''}
       />
@@ -167,7 +253,7 @@ function FormParticipante({ onSolicitar, onCancelar }) {
   )
 }
 
-function FormParticipanteOnline({ onAdicionar, onCancelar }) {
+function FormParticipanteOnline({ onAdicionar, onCancelar, regionaisFiltro, onAbrirScopePicker }) {
   const [nome, setNome] = useState('')
   const [chapa, setChapa] = useState('')
   const [pessoaId, setPessoaId] = useState(null)
@@ -175,7 +261,8 @@ function FormParticipanteOnline({ onAdicionar, onCancelar }) {
     <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: '#1d4ed8', marginBottom: 4 }}>Participante online</p>
       <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>Irá assinar via link/QR Code — sem assinatura agora</p>
-      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} />
+      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }}
+        regionaisFiltro={regionaisFiltro} onAbrirScopePicker={onAbrirScopePicker} />
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
         <button onClick={() => onAdicionar(nome.trim(), chapa.trim(), pessoaId)} disabled={!nome.trim()}
@@ -224,6 +311,10 @@ export default function SS3Participantes({ form, upd, next, prev }) {
   const [qrAberto,      setQrAberto]      = useState(false)
   const [preparandoQr,  setPreparandoQr]  = useState(false)
   const [erroQr,        setErroQr]        = useState('')
+  // Escopo regional da busca — por enquanto só no fluxo Online (ver
+  // REGIONAIS_SESMT/ModalBuscarEm acima).
+  const [regionaisFiltro,   setRegionaisFiltro]   = useState([])
+  const [scopePickerAberto, setScopePickerAberto] = useState(false)
 
   // Com QR de autoatendimento gerado, a ação já está salva no banco — não
   // precisa esperar nenhuma assinatura chegar pra poder continuar/finalizar
@@ -390,7 +481,8 @@ export default function SS3Participantes({ form, upd, next, prev }) {
         <FormParticipante onSolicitar={onSolicitarAssinatura} onCancelar={() => { setAdicionando(false); setModoAdd(null) }} />
       )}
       {adicionando && modoAdd === 'online' && (
-        <FormParticipanteOnline onAdicionar={onAdicionarOnline} onCancelar={() => { setAdicionando(false); setModoAdd(null) }} />
+        <FormParticipanteOnline onAdicionar={onAdicionarOnline} onCancelar={() => { setAdicionando(false); setModoAdd(null) }}
+          regionaisFiltro={regionaisFiltro} onAbrirScopePicker={() => setScopePickerAberto(true)} />
       )}
 
       {!adicionando && (
@@ -442,6 +534,14 @@ export default function SS3Participantes({ form, upd, next, prev }) {
           participantesAtuais={form.participantes}
           onParticipantesSincronizados={novos => upd('participantes', novos)}
           onFechar={() => setQrAberto(false)}
+        />
+      )}
+
+      {scopePickerAberto && (
+        <ModalBuscarEm
+          selecionadas={regionaisFiltro}
+          onAplicar={novo => { setRegionaisFiltro(novo); setScopePickerAberto(false) }}
+          onFechar={() => setScopePickerAberto(false)}
         />
       )}
 

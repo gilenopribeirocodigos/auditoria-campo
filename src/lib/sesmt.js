@@ -14,32 +14,34 @@ export async function listarPessoasSesmt() {
   return data || []
 }
 
-export async function buscarPessoasSesmtPorNome(termo) {
+// regionais: array opcional (ex.: ['NORTE']) — restringe a busca a quem tem
+// esse valor na coluna `regional`. Vazio/omitido = busca em todo mundo.
+export async function buscarPessoasSesmtPorNome(termo, regionais) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const t = (termo || '').trim()
   if (!t) return []
-  const { data, error } = await supabase
+  let q = supabase
     .from('sesmt_pessoas')
     .select('*')
     .eq('ativo', true)
     .ilike('nome', `%${t}%`)
-    .order('nome')
-    .limit(20)
+  if (regionais && regionais.length > 0) q = q.in('regional', regionais)
+  const { data, error } = await q.order('nome').limit(20)
   if (error) throw error
   return data || []
 }
 
-export async function buscarPessoasSesmtPorChapa(termo) {
+export async function buscarPessoasSesmtPorChapa(termo, regionais) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const t = (termo || '').trim()
   if (!t) return []
-  const { data, error } = await supabase
+  let q = supabase
     .from('sesmt_pessoas')
     .select('*')
     .eq('ativo', true)
     .ilike('chapa', `%${t}%`)
-    .order('chapa')
-    .limit(20)
+  if (regionais && regionais.length > 0) q = q.in('regional', regionais)
+  const { data, error } = await q.order('chapa').limit(20)
   if (error) throw error
   return data || []
 }
