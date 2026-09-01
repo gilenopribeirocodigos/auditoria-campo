@@ -53,7 +53,7 @@ export default function SesmtHistorico({ onVoltar }) {
       const coletadas = await listarAssinaturasSesmtColetadasPorAcao(acaoAtual.id)
       const participantesAtuais = acaoAtual.participantes || []
       const mesclados = mesclarAssinaturasColetadas(participantesAtuais, coletadas)
-      if (mesclados.length !== participantesAtuais.length) {
+      if (mesclados !== participantesAtuais) {
         try { await atualizarParticipantesAcaoSesmt(acaoAtual.id, mesclados) } catch { /* tenta de novo na próxima sincronização */ }
         const atualizada = { ...acaoAtual, participantes: mesclados }
         setDetalhe(d => (d && d.id === atualizada.id ? atualizada : d))

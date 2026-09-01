@@ -320,12 +320,38 @@ export async function concluirRascunhoAcaoSesmt(id) {
   return data
 }
 
-// Mescla assinaturas coletadas via QR na lista de participantes já
-// conhecida, sem duplicar quem já estiver lá (por pessoa_id ou, na falta
-// dele, pelo nome). Retorna a mesma referência quando não há nada novo.
+// Mescla assinaturas coletadas (via QR de autoatendimento OU via link
+// online) na lista de participantes já conhecida:
+// 1. Quem já estava na lista mas ainda não tinha assinado (ex.: participante
+//    online pré-adicionado pelo fiscal) recebe a assinatura assim que ela
+//    aparece em sesmt_assinaturas_coletadas — casando por pessoa_id ou,
+//    na falta dele, pelo nome.
+// 2. Quem assinou sem estar na lista (autoatendimento) entra como novo
+//    participante, sem duplicar.
+// Retorna a mesma referência quando não há nada novo.
 export function mesclarAssinaturasColetadas(participantesAtuais, coletadas) {
-  const idsConhecidos = new Set((participantesAtuais || []).filter(p => p.pessoa_id).map(p => p.pessoa_id))
-  const nomesConhecidos = new Set((participantesAtuais || []).map(p => p.nome?.trim().toLowerCase()))
+  const lista = participantesAtuais || []
+  let mudou = false
+
+  const atualizados = lista.map(p => {
+    if (p.assinatura_url) return p
+    const nomeP = p.nome?.trim().toLowerCase()
+    const match = (coletadas || []).find(a =>
+      p.pessoa_id ? a.pessoa_id === p.pessoa_id : a.nome?.trim().toLowerCase() === nomeP
+    )
+    if (!match) return p
+    mudou = true
+    return {
+      ...p,
+      pessoa_id: p.pessoa_id || match.pessoa_id || null,
+      assinatura_url: match.assinatura_url,
+      assinado_em: match.assinado_em,
+      lat: match.latitude, lng: match.longitude, endereco_assinatura: match.endereco_assinatura,
+    }
+  })
+
+  const idsConhecidos = new Set(atualizados.filter(p => p.pessoa_id).map(p => p.pessoa_id))
+  const nomesConhecidos = new Set(atualizados.map(p => p.nome?.trim().toLowerCase()))
   const novos = (coletadas || [])
     .filter(a => {
       if (a.pessoa_id && idsConhecidos.has(a.pessoa_id)) return false
@@ -337,7 +363,9 @@ export function mesclarAssinaturasColetadas(participantesAtuais, coletadas) {
       assinado_em: a.assinado_em, modo: 'presencial',
       lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
     }))
-  return novos.length > 0 ? [...participantesAtuais, ...novos] : participantesAtuais
+  if (novos.length > 0) mudou = true
+
+  return mudou ? [...atualizados, ...novos] : participantesAtuais
 }
 
 // ── Assinatura remota via link/QR (espelha src/lib/assinaturas.js) ────────────
