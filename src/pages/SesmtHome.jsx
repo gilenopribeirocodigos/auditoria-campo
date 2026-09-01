@@ -1,4 +1,4 @@
-export default function SesmtHome({ onNovaAcao, onGerenciarPessoas, onMotivos, podeConfigurarMotivos, onVoltar }) {
+export default function SesmtHome({ onNovaAcao, onGerenciarPessoas, onHistorico, onMotivos, podeConfigurarMotivos, onVoltar }) {
   return (
     <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 12px 60px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -28,6 +28,18 @@ export default function SesmtHome({ onNovaAcao, onGerenciarPessoas, onMotivos, p
           <div>
             <div>Lista de Pessoas</div>
             <div style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginTop: 2 }}>Carregar/atualizar CHAPA e NOME</div>
+          </div>
+        </button>
+
+        <button onClick={onHistorico} style={{
+          background: '#fff', color: '#1e293b', border: '1.5px solid #e2e8f0',
+          padding: '20px 16px', borderRadius: 14, fontSize: 15, fontWeight: 700, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+        }}>
+          <span style={{ fontSize: 26 }}>📂</span>
+          <div>
+            <div>Histórico</div>
+            <div style={{ fontSize: 12, fontWeight: 500, color: '#64748b', marginTop: 2 }}>Ver ações registradas e assinaturas coletadas</div>
           </div>
         </button>
 

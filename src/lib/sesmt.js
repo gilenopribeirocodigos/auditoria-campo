@@ -172,6 +172,27 @@ export async function removerMotivoSesmt(id) {
 
 // ── Ação SESMT (Diálogo de Segurança / Treinamento / Reciclagem) ──────────────
 
+// Histórico — só ações concluídas (rascunhos abandonados de QR de
+// autoatendimento não aparecem aqui).
+export async function listarAcoesSesmt(filtros = {}) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  let q = supabase
+    .from('sesmt_acoes')
+    .select('*')
+    .eq('status', 'CONCLUIDA')
+    .order('data_registro', { ascending: false })
+    .order('hora_registro', { ascending: false })
+
+  if (filtros.tipo)     q = q.eq('tipo', filtros.tipo)
+  if (filtros.dataIni)  q = q.gte('data_registro', filtros.dataIni)
+  if (filtros.dataFim)  q = q.lte('data_registro', filtros.dataFim)
+  if (filtros.fiscal)   q = q.ilike('fiscal', `%${filtros.fiscal}%`)
+
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
+}
+
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
 // pra inserir em sesmt_acoes.
 export async function prepararPayloadSesmt(form) {
