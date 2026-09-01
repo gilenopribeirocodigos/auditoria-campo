@@ -260,22 +260,6 @@ export default function SS3Participantes({ form, upd, next, prev }) {
     }
   }
 
-  // Assinaturas coletadas via QR de autoatendimento entram na lista de
-  // participantes como presenciais já assinados (sem duplicar quem já
-  // estiver lá pelo nome).
-  const onImportarAssinadosAutoatendimento = (assinadasList) => {
-    const jaTem = new Set(form.participantes.map(p => p.nome?.trim().toLowerCase()))
-    const novos = (assinadasList || [])
-      .filter(a => !jaTem.has(a.nome?.trim().toLowerCase()))
-      .map(a => ({
-        nome: a.nome, chapa: a.matricula || '', pessoa_id: a.pessoa_id || null,
-        assinatura: null, assinatura_url: a.assinatura_url,
-        assinado_em: a.assinado_em, modo: 'presencial',
-        lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
-      }))
-    if (novos.length > 0) upd('participantes', [...form.participantes, ...novos])
-  }
-
   const onSolicitarAssinatura = (nome, chapa, pessoaId) => {
     if (!nome) return
     setAdicionando(false); setModoAdd(null)
@@ -417,7 +401,7 @@ export default function SS3Participantes({ form, upd, next, prev }) {
           <p style={{ fontSize: 13, fontWeight: 700, color: '#0f766e', marginBottom: 4 }}>🖨️ Prefere autoatendimento?</p>
           <p style={{ fontSize: 12, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
             Gere um QR Code pra imprimir e fixar no local — qualquer pessoa da lista pode escanear, digitar o nome ou a matrícula e assinar sozinha, sem passar o celular.
-            {form.tokenAutoatendimento && ' O mesmo QR fica disponível pra reabrir e reenviar/imprimir até expirar.'}
+            {form.tokenAutoatendimento && ' A ação já está salva no sistema — as assinaturas são sincronizadas automaticamente até o QR expirar.'}
           </p>
           <button onClick={abrirQrAutoatendimento} disabled={preparandoQr} style={{
             width: '100%', padding: 12, borderRadius: 10, border: '1.5px solid #0f766e',
@@ -452,7 +436,8 @@ export default function SS3Participantes({ form, upd, next, prev }) {
           modo="AUTOATENDIMENTO"
           tokenInicial={form.tokenAutoatendimento}
           onTokenAtualizado={t => upd('tokenAutoatendimento', t)}
-          onImportarAssinados={onImportarAssinadosAutoatendimento}
+          participantesAtuais={form.participantes}
+          onParticipantesSincronizados={novos => upd('participantes', novos)}
           onFechar={() => setQrAberto(false)}
         />
       )}

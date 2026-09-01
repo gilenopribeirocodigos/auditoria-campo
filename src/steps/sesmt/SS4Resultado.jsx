@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, prepararPayloadSesmt } from '../../lib/sesmt.js'
+import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, prepararPayloadSesmt, listarAssinaturasSesmtColetadas, mesclarAssinaturasColetadas } from '../../lib/sesmt.js'
 import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
 
 export default function SS4Resultado({ form, onConcluir, prev }) {
@@ -10,6 +10,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
   const [mostrarModal, setMostrarModal] = useState(false)
   const [mostrarQrAuto, setMostrarQrAuto] = useState(false)
   const [tokenQr,    setTokenQr]    = useState(form.tokenAutoatendimento || null)
+  const [atualizandoAssin, setAtualizandoAssin] = useState(false)
   // Cópia local dos participantes pra poder ir incorporando novas
   // assinaturas coletadas pelo QR mesmo depois de já ter salvo a ação.
   const [participantesAtuais, setParticipantesAtuais] = useState(form.participantes)
@@ -36,26 +37,24 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
     }
   }
 
-  // Assinaturas novas coletadas pelo QR de autoatendimento DEPOIS da ação já
-  // salva — o token continua valendo até expirar, então o fiscal pode
-  // reabrir o QR aqui e trazer quem assinou nesse meio tempo.
-  const onImportarAssinadosPosSalvo = async (assinadasList) => {
-    const jaTem = new Set(participantesAtuais.map(p => p.nome?.trim().toLowerCase()))
-    const novos = (assinadasList || [])
-      .filter(a => !jaTem.has(a.nome?.trim().toLowerCase()))
-      .map(a => ({
-        nome: a.nome, chapa: a.matricula || '', pessoa_id: a.pessoa_id || null,
-        assinatura: null, assinatura_url: a.assinatura_url,
-        assinado_em: a.assinado_em, modo: 'presencial',
-        lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
-      }))
-    if (novos.length === 0 || !acaoSalva) return
-    const atualizados = [...participantesAtuais, ...novos]
-    setParticipantesAtuais(atualizados)
+  // Traz assinaturas coletadas via QR direto do banco, sem precisar abrir o
+  // modal — o QR/token continua valendo até expirar (mesmo antes de "Salvar
+  // Ação" ser clicado, já que gerar o QR já deixa a ação registrada).
+  const atualizarAssinaturasAgora = async () => {
+    if (!tokenQr) return
+    setAtualizandoAssin(true)
     try {
-      await atualizarParticipantesAcaoSesmt(acaoSalva.id, atualizados)
+      const coletadas = await listarAssinaturasSesmtColetadas(tokenQr.id)
+      const mesclados = mesclarAssinaturasColetadas(participantesAtuais, coletadas)
+      if (mesclados.length !== participantesAtuais.length) {
+        setParticipantesAtuais(mesclados)
+        const acaoIdAtual = acaoSalva?.id || form.acaoRascunhoId
+        if (acaoIdAtual) await atualizarParticipantesAcaoSesmt(acaoIdAtual, mesclados)
+      }
     } catch (e) {
-      alert('Assinaturas importadas na tela, mas houve erro ao salvar no banco: ' + e.message)
+      alert('Erro ao atualizar assinaturas: ' + e.message)
+    } finally {
+      setAtualizandoAssin(false)
     }
   }
 
@@ -94,7 +93,14 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
 
         {participantesAtuais?.length > 0 && (
           <div className="card" style={{ marginBottom: 14, background: '#f0fdf4', border: '1.5px solid #86efac' }}>
-            <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', marginBottom: 10 }}>✅ Participantes ({participantesAtuais.length})</p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <p style={{ fontSize: 12, fontWeight: 700, color: '#15803d', margin: 0 }}>✅ Participantes ({participantesAtuais.length})</p>
+              {tokenQr && (
+                <button onClick={atualizarAssinaturasAgora} disabled={atualizandoAssin} style={{ fontSize: 12, color: '#0f766e', background: 'none', border: 'none', cursor: atualizandoAssin ? 'default' : 'pointer', fontWeight: 700 }}>
+                  {atualizandoAssin ? '⏳ Atualizando...' : '🔄 Atualizar'}
+                </button>
+              )}
+            </div>
             {participantesAtuais.map((p, i) => {
               const assinado = Boolean(p.assinatura || p.assinatura_url)
               return (
@@ -159,7 +165,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
 
             {tokenQr && (
               <button onClick={() => setMostrarQrAuto(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: '1.5px solid #0f766e', background: '#fff', color: '#0f766e', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-                🖨️ Ver QR de Autoatendimento / Importar novas assinaturas
+                🖨️ Ver QR de Autoatendimento
               </button>
             )}
 
@@ -185,7 +191,8 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
           modo="AUTOATENDIMENTO"
           tokenInicial={tokenQr}
           onTokenAtualizado={setTokenQr}
-          onImportarAssinados={onImportarAssinadosPosSalvo}
+          participantesAtuais={participantesAtuais}
+          onParticipantesSincronizados={setParticipantesAtuais}
           onFechar={() => setMostrarQrAuto(false)}
         />
       )}

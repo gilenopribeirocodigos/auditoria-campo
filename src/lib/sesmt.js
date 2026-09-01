@@ -304,6 +304,42 @@ export async function atualizarAcaoSesmt(id, payload) {
   return data
 }
 
+// Marca o rascunho como concluído sem tocar nos demais campos — chamado no
+// momento em que o fiscal gera o QR de autoatendimento: a partir daí a ação
+// já é considerada salva/oficial (aparece no Histórico), mesmo que o fiscal
+// nunca volte pra tela de Resultado pra clicar em "Salvar Ação".
+export async function concluirRascunhoAcaoSesmt(id) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .update({ status: 'CONCLUIDA' })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Mescla assinaturas coletadas via QR na lista de participantes já
+// conhecida, sem duplicar quem já estiver lá (por pessoa_id ou, na falta
+// dele, pelo nome). Retorna a mesma referência quando não há nada novo.
+export function mesclarAssinaturasColetadas(participantesAtuais, coletadas) {
+  const idsConhecidos = new Set((participantesAtuais || []).filter(p => p.pessoa_id).map(p => p.pessoa_id))
+  const nomesConhecidos = new Set((participantesAtuais || []).map(p => p.nome?.trim().toLowerCase()))
+  const novos = (coletadas || [])
+    .filter(a => {
+      if (a.pessoa_id && idsConhecidos.has(a.pessoa_id)) return false
+      return !nomesConhecidos.has(a.nome?.trim().toLowerCase())
+    })
+    .map(a => ({
+      nome: a.nome, chapa: a.matricula || '', pessoa_id: a.pessoa_id || null,
+      assinatura: null, assinatura_url: a.assinatura_url,
+      assinado_em: a.assinado_em, modo: 'presencial',
+      lat: a.latitude, lng: a.longitude, endereco_assinatura: a.endereco_assinatura,
+    }))
+  return novos.length > 0 ? [...participantesAtuais, ...novos] : participantesAtuais
+}
+
 // ── Assinatura remota via link/QR (espelha src/lib/assinaturas.js) ────────────
 // modo: 'ONLINE' (assinatura remota, restrita à lista de participantes que o
 // fiscal já adicionou) ou 'AUTOATENDIMENTO' (QR pra imprimir/fixar no local
