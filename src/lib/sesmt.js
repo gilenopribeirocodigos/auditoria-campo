@@ -222,9 +222,27 @@ export async function prepararPayloadSesmt(form) {
     matricula_fiscal: form.matricula_fiscal,
     data_registro: form.data,
     hora_registro: form.hora,
+    lat: form.lat || null,
+    lng: form.lng || null,
+    endereco: form.endereco || null,
     participantes: participantesComUrl,
     fotos_urls: fotosUrls,
   }
+}
+
+// Atualiza só a lista de participantes de uma ação já salva — usado quando
+// novas assinaturas chegam via QR de autoatendimento depois que a ação já
+// foi concluída (o link/QR continua valendo até expirar).
+export async function atualizarParticipantesAcaoSesmt(id, participantes) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .update({ participantes })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
 }
 
 export async function salvarAcaoSesmt(payload) {
