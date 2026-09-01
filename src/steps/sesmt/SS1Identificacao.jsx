@@ -5,12 +5,22 @@ import { listarMotivosSesmt } from '../../lib/sesmt.js'
 // GPS + endereço de onde a ação está sendo feita (não é a localização de
 // quem assina — isso já é capturado por participante — é o local da
 // reunião em si, pra depois comparar com onde cada um assinou).
+// Resolve com { erro } em vez de engolir o motivo — sem isso, "permissão
+// negada", "sinal indisponível" e "demorou demais" viravam a mesma mensagem
+// genérica, impossível de diagnosticar (esse era exatamente o caso: em
+// desktop, sem GPS de hardware, é comum a captura estourar o tempo).
 function capturarGPS() {
   return new Promise(resolve => {
-    if (!navigator.geolocation) { resolve(null); return }
+    if (!navigator.geolocation) { resolve({ erro: 'indisponivel' }); return }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve(null),
+      err => {
+        console.warn('GPS error (identificação da ação SESMT):', err.code, err.message)
+        const erro = err.code === err.PERMISSION_DENIED ? 'permissao'
+          : err.code === err.TIMEOUT ? 'tempo'
+          : 'indisponivel'
+        resolve({ erro })
+      },
       { timeout: 8000, enableHighAccuracy: true }
     )
   })
@@ -37,6 +47,7 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
   const [loading, setLoading] = useState(true)
   const [motivoOutro, setMotivoOutro] = useState(false)
   const [statusGps, setStatusGps] = useState(form.lat ? 'ok' : 'capturando') // capturando | ok | negado
+  const [motivoErroGps, setMotivoErroGps] = useState('')
 
   useEffect(() => {
     listarMotivosSesmt(form.tipo)
@@ -47,8 +58,9 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
 
   const capturarLocalizacaoAcao = async () => {
     setStatusGps('capturando')
+    setMotivoErroGps('')
     const gps = await capturarGPS()
-    if (!gps) { setStatusGps('negado'); return }
+    if (gps.erro) { setMotivoErroGps(gps.erro); setStatusGps('negado'); return }
     upd('lat', gps.lat)
     upd('lng', gps.lng)
     const endereco = await geocodificarReverso(gps.lat, gps.lng)
@@ -88,7 +100,11 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
         )}
         {statusGps === 'negado' && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <span>⚠️ Não foi possível capturar a localização.</span>
+            <span>⚠️ {
+              motivoErroGps === 'permissao' ? 'Permissão de localização negada — libere o acesso nas configurações do navegador/app.'
+                : motivoErroGps === 'tempo' ? 'O sinal de GPS demorou demais a responder (fraco ou indisponível aqui).'
+                : 'Não foi possível capturar a localização (GPS indisponível neste dispositivo).'
+            }</span>
             <button onClick={capturarLocalizacaoAcao} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #0369a1', background: '#fff', color: '#0369a1', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Tentar de novo</button>
           </div>
         )}
