@@ -46,6 +46,18 @@ export async function buscarPessoasSesmtPorChapa(termo, regionais) {
   return data || []
 }
 
+// Lista TODAS as pessoas ativas de uma (ou mais) regional — sem limite de 20
+// como as buscas por texto acima, porque aqui o objetivo é trazer todo mundo
+// pra importar em lote. regionais vazio/omitido = lista total.
+export async function listarPessoasSesmtPorRegional(regionais) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  let q = supabase.from('sesmt_pessoas').select('*').eq('ativo', true)
+  if (regionais && regionais.length > 0) q = q.in('regional', regionais)
+  const { data, error } = await q.order('nome')
+  if (error) throw error
+  return data || []
+}
+
 // linhas: [{ chapa, nome, codsituacao, codsecao, regional, data_admissao,
 // dt_transferencia, data_demissao, pispasep, cpf }]. Upsert por chapa — quem
 // já está na lista mantém o id; quem não veio mais na carga é marcado
