@@ -208,18 +208,26 @@ export async function listarAcoesSesmt(filtros = {}) {
   return data || []
 }
 
-// Regional do usuário que está abrindo a ação — cruza a matrícula dele com
-// sesmt_pessoas.regional (mesma fonte usada em todo o módulo). Sem match
-// (usuário não cadastrado em sesmt_pessoas), devolve null — a ação fica
-// sem regional e só aparece com o filtro "Todas" no Histórico.
-export async function buscarRegionalPorMatriculaSesmt(matricula) {
-  if (!supabase || !matricula) return null
-  const { data } = await supabase
-    .from('sesmt_pessoas')
-    .select('regional')
-    .eq('chapa', String(matricula).trim())
-    .maybeSingle()
-  return data?.regional || null
+// Regional predominante da ação, calculada a partir dos participantes (não
+// de quem abriu a ação — o fiscal/supervisor normalmente é um usuário do
+// sistema, não está cadastrado em sesmt_pessoas, então cruzar por ele
+// nunca dava match). Só considera participantes com pessoa_id (veio de uma
+// sugestão real da lista, não texto livre digitado). Com regionais
+// misturadas usa a que aparece mais vezes; em empate, a primeira. Sem
+// nenhum participante com pessoa_id, devolve null — a ação fica sem
+// regional e só aparece com o filtro "Todas" no Histórico.
+export async function calcularRegionalPredominanteSesmt(participantes) {
+  if (!supabase) return null
+  const ids = [...new Set((participantes || []).filter(p => p.pessoa_id).map(p => p.pessoa_id))]
+  if (ids.length === 0) return null
+  const { data, error } = await supabase.from('sesmt_pessoas').select('id, regional').in('id', ids)
+  if (error || !data) return null
+  const contagem = {}
+  data.forEach(p => { if (p.regional) contagem[p.regional] = (contagem[p.regional] || 0) + 1 })
+  const entradas = Object.entries(contagem)
+  if (entradas.length === 0) return null
+  entradas.sort((a, b) => b[1] - a[1])
+  return entradas[0][0]
 }
 
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
@@ -263,7 +271,7 @@ export async function prepararPayloadSesmt(form) {
     })
   }
 
-  const regional = await buscarRegionalPorMatriculaSesmt(form.matricula_fiscal)
+  const regional = await calcularRegionalPredominanteSesmt(form.participantes)
 
   return {
     tipo: form.tipo,
