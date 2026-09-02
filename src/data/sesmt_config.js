@@ -11,13 +11,13 @@ export const TIPOS_ACAO_SESMT = {
     label: 'Treinamento', emoji: '🎓',
     descricao: 'Capacitações técnicas e comportamentais com tema e carga horária',
     color: '#5b21b6', bg: '#f5f3ff', border: '#ddd6fe',
-    disponivel: false,
+    disponivel: true,
   },
   RECICLAGEM: {
     label: 'Reciclagem', emoji: '♻️',
     descricao: 'Reciclagem periódica de normas e procedimentos (NR-10, NR-35...)',
     color: '#9a3412', bg: '#fff7ed', border: '#fed7aa',
-    disponivel: false,
+    disponivel: true,
   },
 }
 
