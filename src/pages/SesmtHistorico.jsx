@@ -106,8 +106,23 @@ export default function SesmtHistorico({ onVoltar }) {
   // duas ações do mesmo tipo no mesmo dia já saem com HORA (e quase sempre
   // TEMA) diferentes, e as linhas de cada uma ficam sempre juntas/contíguas
   // na planilha (a lista já vem ordenada por data/hora).
+  // Acima disso, confirma antes de gerar — não é a consulta ao banco que
+  // pesa (filtro por data já é rápido), é montar/segurar uma planilha muito
+  // grande na memória do navegador (às vezes um celular em campo). Baseado
+  // no nº de linhas real do filtro atual, não numa data de corte fixa — um
+  // período de 1 ano com poucas ações passa direto; um período de 1 mês com
+  // ações importadas em massa por regional (centenas de participantes cada)
+  // pode disparar o aviso.
+  const LIMITE_LINHAS_AVISO_EXPORT = 3000
+
   const exportarExcel = async () => {
     if (acoes.length === 0) return
+    const totalLinhas = acoes.reduce((soma, a) => soma + Math.max(1, (a.participantes || []).length), 0)
+    if (totalLinhas > LIMITE_LINHAS_AVISO_EXPORT && !window.confirm(
+      `Esse filtro vai gerar uma planilha com ${totalLinhas} linha(s) (${acoes.length} ação(ões)). ` +
+      'Pode demorar um pouco pra gerar, principalmente no celular. Prefira períodos menores (ex.: por mês) sempre que possível.\n\n' +
+      'Quer continuar mesmo assim?'
+    )) return
     setExportando(true)
     try {
       const idsPessoas = [...new Set(acoes.flatMap(a => (a.participantes || []).filter(p => p.pessoa_id).map(p => p.pessoa_id)))]
