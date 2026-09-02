@@ -32,6 +32,8 @@ const TODAS_PERMISSOES = [
   { id: 'estrutura_online_motivos',    label: 'Estrutura Online - botão Motivos (cadastrar/excluir)' },
   { id: 'estrutura_csv_importar',      label: 'Estrutura Operacional - importar via arquivo CSV' },
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
+  { id: 'acesso_historico_auditorias', label: '📁 Acesso a Histórico de Auditorias' },
+  { id: 'acesso_registros_operacionais', label: '📝 Acesso a Registros Operacionais' },
   { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },

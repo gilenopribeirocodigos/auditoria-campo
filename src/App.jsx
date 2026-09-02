@@ -590,17 +590,21 @@ export default function App() {
             </button>
           )}
 
-          <button onClick={() => setTela('historico')} style={{
-            background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
-            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>📁 Histórico de Auditorias</button>
+          {temPermissao(usuario, 'acesso_historico_auditorias') && (
+            <button onClick={() => setTela('historico')} style={{
+              background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📁 Histórico de Auditorias</button>
+          )}
 
-          <button onClick={() => setTela('registros-historico')} style={{
-            background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
-            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>📝 Registros Operacionais</button>
+          {temPermissao(usuario, 'acesso_registros_operacionais') && (
+            <button onClick={() => setTela('registros-historico')} style={{
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📝 Registros Operacionais</button>
+          )}
 
           {(pcAcessoBotao === true || (pcAcessoBotao !== false && (temPermissao(usuario, 'prestacao_contas_enviar') || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')))) && (
             <button onClick={() => setTela('prestacao-contas')} style={{
