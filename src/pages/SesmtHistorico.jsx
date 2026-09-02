@@ -5,9 +5,12 @@ import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+// Mesmos tokens visuais/helpers de data do painel de filtros padrão do app
+// (Registros Operacionais) — reaproveitados aqui pra ficar com a cara igual,
+// sem puxar a parte de Regional/Supervisor/Prefixo (que depende de
+// estrutura_equipes e não existe no módulo SESMT).
+import { LABEL_STYLE, INPUT_STYLE, FIELD_HEIGHT, calcHoje, calcMesAtual, mesLabel, fmtData } from '../components/PainelFiltros.jsx'
 
-const hojeISO = () => new Date().toISOString().slice(0, 10)
-const inicioMesISO = () => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) }
 const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
 // A partir de qual distância do local da ação uma assinatura passa a ser
@@ -23,10 +26,47 @@ function formatarDistancia(metros) {
 }
 
 export default function SesmtHistorico({ onVoltar }) {
-  const [dataIni, setDataIni] = useState(inicioMesISO())
-  const [dataFim, setDataFim] = useState(hojeISO())
+  // Período no mesmo padrão do painel de filtros de Registros Operacionais
+  // (Hoje / Mês / Período) — default "Mês" preserva o comportamento antigo
+  // (mês atual).
+  const [tipoPeriodo, setTipoPeriodo] = useState('mes')
+  const [mesAno,      setMesAno]      = useState(calcMesAtual())
+  const [dataIni,     setDataIni]     = useState('')
+  const [dataFim,     setDataFim]     = useState('')
   const [tipo,    setTipo]    = useState('')
   const [fiscal,  setFiscal]  = useState('')
+
+  const getDatasFiltro = () => {
+    if (tipoPeriodo === 'hoje') {
+      const hoje = calcHoje()
+      return { ini: hoje, fim: hoje }
+    }
+    if (tipoPeriodo === 'periodo' && dataIni) {
+      return { ini: dataIni, fim: dataFim || dataIni }
+    }
+    if (tipoPeriodo === 'mes' && mesAno) {
+      const [ano, mes] = mesAno.split('-')
+      return { ini: `${ano}-${mes}-01`, fim: new Date(parseInt(ano), parseInt(mes), 0).toISOString().split('T')[0] }
+    }
+    return { ini: null, fim: null }
+  }
+
+  const periodoLabel = tipoPeriodo === 'hoje'
+    ? `Hoje (${fmtData(calcHoje())})`
+    : tipoPeriodo === 'periodo' && dataIni
+      ? (dataFim && dataFim !== dataIni ? `${fmtData(dataIni)} → ${fmtData(dataFim)}` : fmtData(dataIni))
+      : tipoPeriodo === 'mes' && mesAno ? mesLabel(mesAno) : 'Todos'
+
+  const temFiltrosAtivos = tipoPeriodo !== 'mes' || mesAno !== calcMesAtual() || tipo !== '' || fiscal.trim() !== ''
+
+  const limparFiltros = () => {
+    setTipoPeriodo('mes')
+    setMesAno(calcMesAtual())
+    setDataIni('')
+    setDataFim('')
+    setTipo('')
+    setFiscal('')
+  }
 
   const [acoes,   setAcoes]   = useState([])
   const [loading, setLoading] = useState(true)
@@ -42,7 +82,8 @@ export default function SesmtHistorico({ onVoltar }) {
     setLoading(true)
     setErro('')
     try {
-      const data = await listarAcoesSesmt({ tipo, dataIni, dataFim, fiscal: fiscal.trim() })
+      const { ini, fim } = getDatasFiltro()
+      const data = await listarAcoesSesmt({ tipo, dataIni: ini, dataFim: fim, fiscal: fiscal.trim() })
       setAcoes(data)
     } catch (e) {
       setErro(e.message || 'Erro ao carregar histórico.')
@@ -328,36 +369,94 @@ export default function SesmtHistorico({ onVoltar }) {
       </div>
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '16px 16px 80px' }}>
-        <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 14, padding: 16, marginBottom: 16 }}>
-          <p style={{ fontSize: 13, fontWeight: 800, color: '#1e293b', marginBottom: 12 }}>🔍 Filtros</p>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>De</label>
-              <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)}
-                style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }} />
-            </div>
-            <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Até</label>
-              <input type="date" value={dataFim} onChange={e => setDataFim(e.target.value)}
-                style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }} />
-            </div>
+        <div style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #e2e8f0', padding: '16px 18px', marginBottom: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.04)' }}>
+          {/* Header — mesmo padrão do painel de filtros de Registros Operacionais */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, paddingBottom: 10, borderBottom: '1px solid #f1f5f9', flexWrap: 'wrap', gap: 8 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', margin: 0, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              🔍 Filtros
+              <span style={{ fontSize: 10, fontWeight: 700, color: '#92400e', background: '#fef3c7', padding: '2px 8px', borderRadius: 6, textTransform: 'uppercase', letterSpacing: 0.5 }}>SESMT</span>
+            </p>
+            {temFiltrosAtivos && (
+              <button onClick={limparFiltros} style={{ fontSize: 11, fontWeight: 700, color: '#dc2626', background: '#fef2f2', border: '1px solid #fecaca', padding: '4px 10px', borderRadius: 6, cursor: 'pointer' }}>
+                ✕ Limpar filtros
+              </button>
+            )}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+
+          {/* Grid de campos */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14, alignItems: 'flex-start' }}>
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Tipo</label>
-              <select value={tipo} onChange={e => setTipo(e.target.value)}
-                style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box', background: '#fff' }}>
+              <label style={LABEL_STYLE}>Período</label>
+
+              <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 10, padding: 3, gap: 2, marginBottom: 8, height: FIELD_HEIGHT, boxSizing: 'border-box' }}>
+                {[['hoje', '📍 Hoje'], ['mes', '📅 Mês'], ['periodo', '📆 Período']].map(([v, label]) => (
+                  <button key={v} type="button" onClick={() => {
+                    setTipoPeriodo(v)
+                    if (v === 'periodo' && !dataIni) { const hoje = calcHoje(); setDataIni(hoje); setDataFim(hoje) }
+                    if (v === 'mes' && !mesAno) setMesAno(calcMesAtual())
+                  }} style={{
+                    flex: 1, borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
+                    background: tipoPeriodo === v ? '#fff' : 'transparent',
+                    color: tipoPeriodo === v ? '#1e3a5f' : '#64748b',
+                    boxShadow: tipoPeriodo === v ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+                    whiteSpace: 'nowrap',
+                  }}>{label}</button>
+                ))}
+              </div>
+
+              {tipoPeriodo === 'hoje' && (
+                <div style={{ ...INPUT_STYLE, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: '#eff6ff', color: '#1e3a5f', borderColor: '#bfdbfe' }}>
+                  <span>Hoje</span>
+                  <span style={{ fontSize: 12, color: '#2563eb', fontWeight: 800 }}>{fmtData(calcHoje())}</span>
+                </div>
+              )}
+
+              {tipoPeriodo === 'mes' && (
+                <select value={mesAno} onChange={e => setMesAno(e.target.value)} style={{ ...INPUT_STYLE, cursor: 'pointer' }}>
+                  {Array.from({ length: 6 }, (_, i) => {
+                    const d = new Date(); d.setMonth(d.getMonth() - 5 + i)
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+                  }).map(m => (
+                    <option key={m} value={m}>{mesLabel(m)}{m === calcMesAtual() ? ' ← atual' : ''}</option>
+                  ))}
+                </select>
+              )}
+
+              {tipoPeriodo === 'periodo' && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>DE</p>
+                    <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} style={{ ...INPUT_STYLE, padding: '0 10px', fontSize: 12, cursor: 'pointer' }} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>ATÉ</p>
+                    <input type="date" value={dataFim} min={dataIni} onChange={e => setDataFim(e.target.value)} style={{ ...INPUT_STYLE, padding: '0 10px', fontSize: 12, cursor: 'pointer' }} />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label style={LABEL_STYLE}>Tipo</label>
+              <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ ...INPUT_STYLE, cursor: 'pointer' }}>
                 <option value="">Todos</option>
                 {Object.entries(TIPOS_ACAO_SESMT).map(([k, t]) => <option key={k} value={k}>{t.emoji} {t.label}</option>)}
               </select>
             </div>
+
             <div>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#64748b', display: 'block', marginBottom: 4 }}>Fiscal</label>
-              <input value={fiscal} onChange={e => setFiscal(e.target.value)} placeholder="Nome do fiscal"
-                style={{ width: '100%', padding: '9px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', fontSize: 13, boxSizing: 'border-box' }} />
+              <label style={LABEL_STYLE}>Fiscal</label>
+              <input value={fiscal} onChange={e => setFiscal(e.target.value)} placeholder="Nome do fiscal" style={INPUT_STYLE} />
             </div>
           </div>
-          <button onClick={buscar} style={{ padding: '10px 20px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+
+          {(tipoPeriodo === 'hoje' || tipoPeriodo === 'periodo') && (
+            <div style={{ fontSize: 11, color: tipoPeriodo === 'periodo' && !dataIni ? '#d97706' : '#1d4ed8', fontWeight: 700, marginTop: 10, textAlign: 'right' }}>
+              {tipoPeriodo === 'periodo' && !dataIni ? '⚠️ Selecione a data inicial para aplicar' : `📆 Filtrando: ${periodoLabel}`}
+            </div>
+          )}
+
+          <button onClick={buscar} style={{ marginTop: 14, padding: '10px 20px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
             🔍 Buscar
           </button>
         </div>
