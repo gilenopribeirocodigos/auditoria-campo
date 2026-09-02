@@ -229,6 +229,74 @@ function ModalImportarRegional({ participantesJaAdicionados, onImportar, onFecha
   )
 }
 
+// ── Escopo regional da busca (só Presencial) — o fiscal escolhe Lista Total
+// ou uma/mais regionais ANTES de buscar; ninguém é carregado automaticamente,
+// só a busca por nome/matrícula fica restrita àquele escopo. Diferente da
+// importação em lote do Online (que adiciona todo mundo de uma vez).
+function labelBuscarEmRegional(regionais) {
+  if (!regionais || regionais.length === 0) return 'Buscar em... (todas)'
+  if (regionais.length === 1) {
+    const r = REGIONAIS_SESMT.find(x => x.key === regionais[0])
+    return `Buscar em: ${r ? r.label.replace('Regional ', '') : regionais[0]}`
+  }
+  return `Buscar em: ${regionais.length} regionais`
+}
+
+function ModalBuscarEmRegional({ selecionadas, onAplicar, onFechar }) {
+  const [sel, setSel] = useState(selecionadas)
+  const listaTotal = sel.length === 0
+  const toggleRegional = (key) => setSel(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key])
+
+  const optStyle = (marcado) => ({
+    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+    padding: '11px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+    border: `1.5px solid ${marcado ? '#7c3aed' : '#e2e8f0'}`,
+    background: marcado ? '#faf5ff' : '#fff',
+  })
+  const boxStyle = (marcado) => ({
+    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+    border: `1.6px solid ${marcado ? '#7c3aed' : '#cbd5e1'}`,
+    background: marcado ? '#7c3aed' : '#fff',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    color: '#fff', fontSize: 12, fontWeight: 800,
+  })
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 2500 }}
+      onClick={e => { if (e.target === e.currentTarget) onFechar() }}>
+      <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '20px 18px 30px' }}>
+        <div style={{ width: 36, height: 4, background: '#e2e8f0', borderRadius: 2, margin: '0 auto 16px' }} />
+        <p style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', margin: '0 0 4px' }}>🌎 Buscar Participantes em...</p>
+        <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5, margin: '0 0 16px' }}>
+          Escolha a Lista Total ou uma/mais regionais — a busca por nome/matrícula abaixo só vai trazer gente desse escopo. Não adiciona ninguém sozinho.
+        </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
+          <button onClick={() => setSel([])} style={optStyle(listaTotal)}>
+            <span style={boxStyle(listaTotal)}>{listaTotal && '✓'}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: listaTotal ? '#6d28d9' : '#374151' }}>Lista Total</span>
+          </button>
+          {REGIONAIS_SESMT.map(r => {
+            const marcado = sel.includes(r.key)
+            return (
+              <button key={r.key} onClick={() => toggleRegional(r.key)} style={optStyle(marcado)}>
+                <span style={boxStyle(marcado)}>{marcado && '✓'}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: marcado ? '#6d28d9' : '#374151', flex: 1 }}>{r.label}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: "'Courier New', monospace" }}>{r.codigo}</span>
+              </button>
+            )
+          })}
+        </div>
+        <button onClick={() => onAplicar(sel)} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+          Aplicar
+        </button>
+        <button onClick={onFechar} style={{ width: '100%', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+          Cancelar
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Autocomplete: busca em sesmt_pessoas (carregada na Fase 1), pela
 // matrícula OU pelo nome — os dois campos preenchem um ao outro ao escolher
 // uma sugestão em qualquer um deles.
@@ -236,7 +304,8 @@ function ModalImportarRegional({ participantesJaAdicionados, onImportar, onFecha
 // realmente escolhe uma sugestão da lista carregada (não ao digitar texto
 // livre); grava em participantes[].pessoa_id, quando disponível, pro
 // vínculo com sesmt_pessoas ficar completo também nesse canal.
-function AutocompleteSesmt({ onSelect }) {
+// regionaisFiltro é opcional — só o Presencial passa (ver FormParticipante).
+function AutocompleteSesmt({ onSelect, regionaisFiltro }) {
   const [chapa, setChapa] = useState('')
   const [nome,  setNome]  = useState('')
 
@@ -256,7 +325,7 @@ function AutocompleteSesmt({ onSelect }) {
         value={chapa}
         onChangeTexto={v => { setChapa(v); onSelect(nome, v, null) }}
         onSelecionar={selecionarPorChapa}
-        buscarFn={buscarPessoasSesmtPorChapa}
+        buscarFn={v => buscarPessoasSesmtPorChapa(v, regionaisFiltro)}
         exibirPrincipal={p => p.chapa}
         exibirBadge={p => p.nome}
       />
@@ -265,7 +334,7 @@ function AutocompleteSesmt({ onSelect }) {
         value={nome}
         onChangeTexto={v => { setNome(v); onSelect(v, chapa, null) }}
         onSelecionar={selecionarPorNome}
-        buscarFn={buscarPessoasSesmtPorNome}
+        buscarFn={v => buscarPessoasSesmtPorNome(v, regionaisFiltro)}
         exibirPrincipal={p => p.nome}
         exibirBadge={p => p.chapa ? `Matrícula: ${p.chapa}` : ''}
       />
@@ -273,14 +342,23 @@ function AutocompleteSesmt({ onSelect }) {
   )
 }
 
-function FormParticipante({ onSolicitar, onCancelar }) {
+function FormParticipante({ onSolicitar, onCancelar, regionaisFiltro, onAbrirScopePicker }) {
   const [nome, setNome] = useState('')
   const [chapa, setChapa] = useState('')
   const [pessoaId, setPessoaId] = useState(null)
   return (
     <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: 14, padding: 16, marginBottom: 12 }}>
       <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 12 }}>Novo participante presencial</p>
-      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} />
+
+      <button type="button" onClick={onAbrirScopePicker} style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%',
+        padding: '9px 12px', borderRadius: 9, border: '1.5px solid #c4b5fd', background: '#faf5ff',
+        color: '#6d28d9', fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 12,
+      }}>
+        🌎 {labelBuscarEmRegional(regionaisFiltro)}
+      </button>
+
+      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} regionaisFiltro={regionaisFiltro} />
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
         <button onClick={() => onSolicitar(nome.trim(), chapa.trim(), pessoaId)} disabled={!nome.trim()}
@@ -370,6 +448,9 @@ export default function SS3Participantes({ form, upd, next, prev }) {
   // Lista de participantes pode crescer bastante com a importação em lote —
   // não renderiza tudo de uma vez, só os primeiros + botão "ver mais".
   const [verTodosParticipantes, setVerTodosParticipantes] = useState(false)
+  // Escopo regional da busca — só Presencial (ver ModalBuscarEmRegional acima).
+  const [regionaisBuscaPresencial, setRegionaisBuscaPresencial] = useState([])
+  const [scopePickerPresencialAberto, setScopePickerPresencialAberto] = useState(false)
 
   // Com QR de autoatendimento gerado, a ação já está salva no banco — não
   // precisa esperar nenhuma assinatura chegar pra poder continuar/finalizar
@@ -554,7 +635,8 @@ export default function SS3Participantes({ form, upd, next, prev }) {
       )}
 
       {adicionando && modoAdd === 'presencial' && (
-        <FormParticipante onSolicitar={onSolicitarAssinatura} onCancelar={() => { setAdicionando(false); setModoAdd(null) }} />
+        <FormParticipante onSolicitar={onSolicitarAssinatura} onCancelar={() => { setAdicionando(false); setModoAdd(null) }}
+          regionaisFiltro={regionaisBuscaPresencial} onAbrirScopePicker={() => setScopePickerPresencialAberto(true)} />
       )}
       {adicionando && modoAdd === 'online' && (
         <FormParticipanteOnline onAdicionar={onAdicionarOnline} onCancelar={() => { setAdicionando(false); setModoAdd(null) }}
@@ -610,6 +692,14 @@ export default function SS3Participantes({ form, upd, next, prev }) {
           participantesAtuais={form.participantes}
           onParticipantesSincronizados={novos => upd('participantes', novos)}
           onFechar={() => setQrAberto(false)}
+        />
+      )}
+
+      {scopePickerPresencialAberto && (
+        <ModalBuscarEmRegional
+          selecionadas={regionaisBuscaPresencial}
+          onAplicar={novo => { setRegionaisBuscaPresencial(novo); setScopePickerPresencialAberto(false) }}
+          onFechar={() => setScopePickerPresencialAberto(false)}
         />
       )}
 
