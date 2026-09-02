@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
+import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../../data/sesmt_config.js'
 import { buscarPessoasSesmtPorNome, buscarPessoasSesmtPorChapa, listarPessoasSesmtPorRegional, prepararPayloadSesmt, criarAcaoRascunhoSesmt } from '../../lib/sesmt.js'
 import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
 
@@ -103,16 +103,6 @@ function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, bu
     </div>
   )
 }
-
-// ── Importação em lote por regional — por enquanto só usado no fluxo Online
-// (ver FormParticipanteOnline); se o teste for bem, replica pro Presencial
-// depois. Regionais batem com o que já é gravado em sesmt_pessoas.regional
-// na carga (derivado do CODSECAO).
-const REGIONAIS_SESMT = [
-  { key: 'METROPOLITANA', label: 'Regional Metropolitana', codigo: '02.03.01' },
-  { key: 'NORTE',         label: 'Regional Norte',          codigo: '02.03.02' },
-  { key: 'SUL',           label: 'Regional Sul',            codigo: '02.03.03–08' },
-]
 
 const LIMITE_PREVIEW_IMPORT = 40
 

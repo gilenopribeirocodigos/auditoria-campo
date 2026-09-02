@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt } from '../lib/sesmt.js'
-import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
+import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
@@ -33,8 +33,9 @@ export default function SesmtHistorico({ onVoltar }) {
   const [mesAno,      setMesAno]      = useState(calcMesAtual())
   const [dataIni,     setDataIni]     = useState('')
   const [dataFim,     setDataFim]     = useState('')
-  const [tipo,    setTipo]    = useState('')
-  const [fiscal,  setFiscal]  = useState('')
+  const [tipo,     setTipo]     = useState('')
+  const [regional, setRegional] = useState('')
+  const [fiscal,   setFiscal]   = useState('')
 
   const getDatasFiltro = () => {
     if (tipoPeriodo === 'hoje') {
@@ -57,7 +58,7 @@ export default function SesmtHistorico({ onVoltar }) {
       ? (dataFim && dataFim !== dataIni ? `${fmtData(dataIni)} → ${fmtData(dataFim)}` : fmtData(dataIni))
       : tipoPeriodo === 'mes' && mesAno ? mesLabel(mesAno) : 'Todos'
 
-  const temFiltrosAtivos = tipoPeriodo !== 'mes' || mesAno !== calcMesAtual() || tipo !== '' || fiscal.trim() !== ''
+  const temFiltrosAtivos = tipoPeriodo !== 'mes' || mesAno !== calcMesAtual() || tipo !== '' || regional !== '' || fiscal.trim() !== ''
 
   const limparFiltros = () => {
     setTipoPeriodo('mes')
@@ -65,6 +66,7 @@ export default function SesmtHistorico({ onVoltar }) {
     setDataIni('')
     setDataFim('')
     setTipo('')
+    setRegional('')
     setFiscal('')
   }
 
@@ -83,7 +85,7 @@ export default function SesmtHistorico({ onVoltar }) {
     setErro('')
     try {
       const { ini, fim } = getDatasFiltro()
-      const data = await listarAcoesSesmt({ tipo, dataIni: ini, dataFim: fim, fiscal: fiscal.trim() })
+      const data = await listarAcoesSesmt({ tipo, regional, dataIni: ini, dataFim: fim, fiscal: fiscal.trim() })
       setAcoes(data)
     } catch (e) {
       setErro(e.message || 'Erro ao carregar histórico.')
@@ -150,7 +152,7 @@ export default function SesmtHistorico({ onVoltar }) {
 
         <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
           <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Ação</p>
-          ${infoRow('Fiscal', acao.fiscal)}
+          ${infoRow('Usuário', acao.fiscal)}
           ${infoRow('Matrícula', acao.matricula_fiscal)}
           ${infoRow('Data / Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`)}
           ${acao.endereco ? infoRow('Local', acao.endereco) : ''}
@@ -237,7 +239,7 @@ export default function SesmtHistorico({ onVoltar }) {
     </div>
     <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
       <table style="width:100%;border-collapse:collapse;">
-        ${[['Fiscal', acao.fiscal], ['Matrícula', acao.matricula_fiscal], ['Data/Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`],
+        ${[['Usuário', acao.fiscal], ['Matrícula', acao.matricula_fiscal], ['Data/Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`],
            ['Local', acao.endereco], ['Tema', acao.tema], ['Motivo', acao.motivo]]
           .filter(([, v]) => v)
           .map(([l, v]) => `<tr><td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;width:140px;">${l}</td><td style="padding:8px 12px;color:#1e293b;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`)
@@ -437,6 +439,14 @@ export default function SesmtHistorico({ onVoltar }) {
             </div>
 
             <div>
+              <label style={LABEL_STYLE}>Regional</label>
+              <select value={regional} onChange={e => setRegional(e.target.value)} style={{ ...INPUT_STYLE, cursor: 'pointer' }}>
+                <option value="">Todas</option>
+                {REGIONAIS_SESMT.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+              </select>
+            </div>
+
+            <div>
               <label style={LABEL_STYLE}>Tipo</label>
               <select value={tipo} onChange={e => setTipo(e.target.value)} style={{ ...INPUT_STYLE, cursor: 'pointer' }}>
                 <option value="">Todos</option>
@@ -445,8 +455,8 @@ export default function SesmtHistorico({ onVoltar }) {
             </div>
 
             <div>
-              <label style={LABEL_STYLE}>Fiscal</label>
-              <input value={fiscal} onChange={e => setFiscal(e.target.value)} placeholder="Nome do fiscal" style={INPUT_STYLE} />
+              <label style={LABEL_STYLE}>Usuário</label>
+              <input value={fiscal} onChange={e => setFiscal(e.target.value)} placeholder="Nome do usuário" style={INPUT_STYLE} />
             </div>
           </div>
 
@@ -532,7 +542,7 @@ export default function SesmtHistorico({ onVoltar }) {
 
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 14 }}>
                     {[
-                      ['Fiscal',    detalhe.fiscal],
+                      ['Usuário',   detalhe.fiscal],
                       ['Matrícula', detalhe.matricula_fiscal],
                       ['Data/Hora', `${formatData(detalhe.data_registro)} às ${detalhe.hora_registro}`],
                       ['Local',     detalhe.endereco || (detalhe.lat ? `${detalhe.lat}, ${detalhe.lng}` : null)],
