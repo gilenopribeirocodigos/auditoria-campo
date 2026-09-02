@@ -382,6 +382,21 @@ export function mesclarAssinaturasColetadas(participantesAtuais, coletadas) {
   return mudou ? [...atualizados, ...novos] : participantesAtuais
 }
 
+// Distância em metros entre duas coordenadas (haversine) — usada pra
+// comparar o local onde a ação foi registrada com o local de onde cada
+// participante assinou, e sinalizar quando alguém assinou longe demais
+// (indício de que o link foi repassado pra alguém fora do local, seja
+// presencial ou online — os dois guardam lat/lng no momento da assinatura).
+export function distanciaMetrosSesmt(lat1, lng1, lat2, lng2) {
+  if (lat1 == null || lng1 == null || lat2 == null || lng2 == null) return null
+  const R = 6371000
+  const toRad = d => d * Math.PI / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 // Diz se um token (linha de sesmt_assinaturas_pendentes) já expirou ou foi
 // encerrado — usado pra decidir se é hora de limpar quem não assinou.
 export function tokenExpiradoOuEncerrado(token) {

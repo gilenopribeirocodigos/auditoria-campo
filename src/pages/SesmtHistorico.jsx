@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados } from '../lib/sesmt.js'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
@@ -9,6 +9,18 @@ import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanv
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 const inicioMesISO = () => { const d = new Date(); d.setDate(1); return d.toISOString().slice(0, 10) }
 const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
+
+// A partir de qual distância do local da ação uma assinatura passa a ser
+// tratada como suspeita (sinal de que o link pode ter sido repassado pra
+// alguém fora do local) — GPS de celular varia uns 10-100m, prédios/canteiro
+// de obra podem ter algumas dezenas de metros, então 500m dá folga real sem
+// deixar passar quem assinou de longe.
+const LIMITE_DISTANCIA_SUSPEITA_M = 500
+
+function formatarDistancia(metros) {
+  if (metros < 1000) return `${Math.round(metros)} m`
+  return `${(metros / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km`
+}
 
 export default function SesmtHistorico({ onVoltar }) {
   const [dataIni, setDataIni] = useState(inicioMesISO())
@@ -486,6 +498,15 @@ export default function SesmtHistorico({ onVoltar }) {
                                 <span style={{ flexShrink: 0 }}>📍</span><span>{p.endereco_assinatura}</span>
                               </p>
                             )}
+                            {assinado && detalhe.lat && p.lat && (() => {
+                              const dist = distanciaMetrosSesmt(detalhe.lat, detalhe.lng, p.lat, p.lng)
+                              const suspeita = dist > LIMITE_DISTANCIA_SUSPEITA_M
+                              return (
+                                <p style={{ fontSize: 11, fontWeight: suspeita ? 800 : 500, color: suspeita ? '#dc2626' : '#94a3b8', margin: '3px 0 0', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  {suspeita ? '🚩' : '📏'} {formatarDistancia(dist)} do local da ação{suspeita ? ' — verificar' : ''}
+                                </p>
+                              )
+                            })()}
                             {!assinado && <p style={{ fontSize: 11, color: '#d97706', fontWeight: 600, margin: '4px 0 0' }}>⚠️ Não assinou</p>}
                           </div>
                           {assinado && (
