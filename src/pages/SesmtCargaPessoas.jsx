@@ -175,7 +175,7 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h1 style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', margin: 0 }}>🦺 Ações SESMT — Lista de Pessoas</h1>
         <button onClick={onVoltar} style={{ background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 14px', fontSize: 13, fontWeight: 700, color: '#475569', cursor: 'pointer' }}>
-          ← Home
+          ← Voltar
         </button>
       </div>
 
