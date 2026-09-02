@@ -55,7 +55,7 @@ function AssinaturaPad({ nomeParticipante, onConfirmar, onCancelar }) {
 
 // ── Um campo buscável (usado tanto pra Matrícula quanto pra Nome) — busca em
 // sesmt_pessoas pela função informada e mostra sugestões com os dois dados.
-function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, buscarFn, exibirPrincipal, exibirBadge, autoFocus }) {
+function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, buscarFn, exibirPrincipal, exibirBadge, autoFocus, onBlurCampo }) {
   const [sugestoes, setSugestoes] = useState([])
   const [aberto,    setAberto]    = useState(false)
   const ref = useRef(null)
@@ -86,6 +86,7 @@ function CampoBusca({ label, placeholder, value, onChangeTexto, onSelecionar, bu
       <label className="form-label">{label}</label>
       <input className="form-input" value={value} onChange={e => buscar(e.target.value)}
         onFocus={() => sugestoes.length > 0 && setAberto(true)}
+        onBlur={() => onBlurCampo && onBlurCampo()}
         placeholder={placeholder} autoComplete="off" autoFocus={autoFocus} />
       {aberto && sugestoes.length > 0 && (
         <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 500, background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 10, boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 240, overflowY: 'auto' }}>
@@ -295,17 +296,35 @@ function ModalBuscarEmRegional({ selecionadas, onAplicar, onFechar }) {
 // livre); grava em participantes[].pessoa_id, quando disponível, pro
 // vínculo com sesmt_pessoas ficar completo também nesse canal.
 // regionaisFiltro é opcional — só o Presencial passa (ver FormParticipante).
-function AutocompleteSesmt({ onSelect, regionaisFiltro }) {
+// onPronto (opcional) — dispara sozinho quando o fiscal termina de
+// identificar a pessoa, sem precisar de um botão separado: ao selecionar
+// uma sugestão (matrícula ou nome), ou ao sair do campo Nome com texto
+// digitado manualmente (sem selecionar nada). Evita o caso de digitar o
+// nome, esquecer de clicar em "Solicitar Assinatura" e achar que ficou
+// registrado.
+function AutocompleteSesmt({ onSelect, regionaisFiltro, onPronto }) {
   const [chapa, setChapa] = useState('')
   const [nome,  setNome]  = useState('')
+  const jaSelecionadoRef = useRef(false)
 
   const selecionarPorChapa = (p) => {
     setChapa(p.chapa || ''); setNome(p.nome)
     onSelect(p.nome, p.chapa || '', p.id)
+    jaSelecionadoRef.current = true
+    onPronto?.(p.nome, p.chapa || '', p.id)
   }
   const selecionarPorNome = (p) => {
     setNome(p.nome); setChapa(p.chapa || '')
     onSelect(p.nome, p.chapa || '', p.id)
+    jaSelecionadoRef.current = true
+    onPronto?.(p.nome, p.chapa || '', p.id)
+  }
+  // Só considera "terminou de digitar" se ninguém foi selecionado da lista
+  // (senão já disparou acima) e o nome tem tamanho mínimo — evita abrir a
+  // assinatura cedo demais, no meio da digitação.
+  const onBlurNome = () => {
+    if (jaSelecionadoRef.current) return
+    if (nome.trim().length >= 3) onPronto?.(nome.trim(), chapa.trim(), null)
   }
 
   return (
@@ -327,6 +346,7 @@ function AutocompleteSesmt({ onSelect, regionaisFiltro }) {
         buscarFn={v => buscarPessoasSesmtPorNome(v, regionaisFiltro)}
         exibirPrincipal={p => p.nome}
         exibirBadge={p => p.chapa ? `Matrícula: ${p.chapa}` : ''}
+        onBlurCampo={onPronto ? onBlurNome : undefined}
       />
     </div>
   )
@@ -348,7 +368,9 @@ function FormParticipante({ onSolicitar, onCancelar, regionaisFiltro, onAbrirSco
         🌎 {labelBuscarEmRegional(regionaisFiltro)}
       </button>
 
-      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} regionaisFiltro={regionaisFiltro} />
+      <AutocompleteSesmt onSelect={(n, c, id) => { setNome(n); setChapa(c); setPessoaId(id || null) }} regionaisFiltro={regionaisFiltro}
+        onPronto={(n, c, id) => onSolicitar(n.trim(), (c || '').trim(), id)} />
+      <p style={{ fontSize: 11, color: '#94a3b8', margin: '2px 0 8px' }}>A assinatura abre sozinha ao selecionar da lista ou ao terminar de digitar o nome.</p>
       <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
         {onCancelar && <button onClick={onCancelar} style={{ flex: 1, padding: 11, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Cancelar</button>}
         <button onClick={() => onSolicitar(nome.trim(), chapa.trim(), pessoaId)} disabled={!nome.trim()}
