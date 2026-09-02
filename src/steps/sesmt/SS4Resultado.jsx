@@ -71,7 +71,7 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
         <div className="card" style={{ marginBottom: 14 }}>
           <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10 }}>Resumo</p>
           {[
-            ['Fiscal', form.fiscal],
+            ['Usuário', form.fiscal],
             ['Data/Hora', `${form.data} às ${form.hora}`],
             ['Local', form.endereco || (form.lat ? `${form.lat.toFixed(5)}, ${form.lng.toFixed(5)}` : null)],
             ['Tema', form.tema],

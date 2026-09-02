@@ -23,6 +23,16 @@ export const TIPOS_ACAO_SESMT = {
 
 export const STEPS_SESMT = ['Tipo de Ação', 'Identificação', 'Evidências', 'Participantes', 'Resultado']
 
+// Regionais do módulo SESMT — batem com sesmt_pessoas.regional (derivado do
+// CODSECAO na carga da lista de pessoas). Usado tanto no filtro de busca/
+// importação de participantes (SS3Participantes) quanto no filtro do
+// Histórico (SesmtHistorico).
+export const REGIONAIS_SESMT = [
+  { key: 'METROPOLITANA', label: 'Regional Metropolitana', codigo: '02.03.01' },
+  { key: 'NORTE',         label: 'Regional Norte',          codigo: '02.03.02' },
+  { key: 'SUL',           label: 'Regional Sul',            codigo: '02.03.03–08' },
+]
+
 const hojeISO = () => new Date().toISOString().slice(0, 10)
 const horaAtual = () => new Date().toTimeString().slice(0, 5)
 

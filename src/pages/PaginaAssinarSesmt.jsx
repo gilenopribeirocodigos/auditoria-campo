@@ -312,7 +312,7 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
               <span style={{ fontSize: 15, fontWeight: 800, color: tipoConfig?.color }}>{tipoConfig?.label}</span>
             </div>
             <p style={{ fontSize: 13, color: '#475569' }}>
-              <strong>Fiscal:</strong> {acao.fiscal}<br />
+              <strong>Usuário:</strong> {acao.fiscal}<br />
               <strong>Data:</strong> {formatData(acao.data_registro)} às {acao.hora_registro}
             </p>
           </div>
@@ -349,7 +349,7 @@ export default function PaginaAssinarSesmt({ tokenUUID }) {
         {acao && (
           <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: 16, marginBottom: 16 }}>
             <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 10, textTransform: 'uppercase' }}>Detalhes da Ação</p>
-            {[['Fiscal', acao.fiscal], ['Data/Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`], ['Tema', acao.tema]].filter(([, v]) => v).map(([l, v]) => (
+            {[['Usuário', acao.fiscal], ['Data/Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`], ['Tema', acao.tema]].filter(([, v]) => v).map(([l, v]) => (
               <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
                 <span style={{ color: '#94a3b8', fontWeight: 500 }}>{l}</span>
                 <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '65%', wordBreak: 'break-word' }}>{v}</span>

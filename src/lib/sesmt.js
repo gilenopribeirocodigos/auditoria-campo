@@ -198,6 +198,7 @@ export async function listarAcoesSesmt(filtros = {}) {
     .order('hora_registro', { ascending: false })
 
   if (filtros.tipo)     q = q.eq('tipo', filtros.tipo)
+  if (filtros.regional) q = q.eq('regional', filtros.regional)
   if (filtros.dataIni)  q = q.gte('data_registro', filtros.dataIni)
   if (filtros.dataFim)  q = q.lte('data_registro', filtros.dataFim)
   if (filtros.fiscal)   q = q.ilike('fiscal', `%${filtros.fiscal}%`)
@@ -205,6 +206,20 @@ export async function listarAcoesSesmt(filtros = {}) {
   const { data, error } = await q
   if (error) throw error
   return data || []
+}
+
+// Regional do usuário que está abrindo a ação — cruza a matrícula dele com
+// sesmt_pessoas.regional (mesma fonte usada em todo o módulo). Sem match
+// (usuário não cadastrado em sesmt_pessoas), devolve null — a ação fica
+// sem regional e só aparece com o filtro "Todas" no Histórico.
+export async function buscarRegionalPorMatriculaSesmt(matricula) {
+  if (!supabase || !matricula) return null
+  const { data } = await supabase
+    .from('sesmt_pessoas')
+    .select('regional')
+    .eq('chapa', String(matricula).trim())
+    .maybeSingle()
+  return data?.regional || null
 }
 
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
@@ -248,6 +263,8 @@ export async function prepararPayloadSesmt(form) {
     })
   }
 
+  const regional = await buscarRegionalPorMatriculaSesmt(form.matricula_fiscal)
+
   return {
     tipo: form.tipo,
     tema: form.tema || null,
@@ -255,6 +272,7 @@ export async function prepararPayloadSesmt(form) {
     observacao: form.observacao || null,
     fiscal: form.fiscal,
     matricula_fiscal: form.matricula_fiscal,
+    regional,
     data_registro: form.data,
     hora_registro: form.hora,
     lat: form.lat || null,
