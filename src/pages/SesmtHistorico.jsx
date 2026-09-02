@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt } from '../lib/sesmt.js'
+import * as XLSX from 'xlsx'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
@@ -79,6 +80,7 @@ export default function SesmtHistorico({ onVoltar }) {
   const [mostrarLinkModal, setMostrarLinkModal] = useState(false)
   const [capturando, setCapturando] = useState(false)
   const [gerandoPDF, setGerandoPDF] = useState(false)
+  const [exportando, setExportando] = useState(false)
 
   const buscar = async () => {
     setLoading(true)
@@ -95,6 +97,66 @@ export default function SesmtHistorico({ onVoltar }) {
   }
 
   useEffect(() => { buscar() }, [])
+
+  // Exporta as ações do filtro atual em Excel — uma linha por participante.
+  // O que identifica cada ação (mesmo tendo mais de uma do mesmo tipo no
+  // mesmo dia) é o conjunto REGIONAL + TIPO REGISTRO + TEMA + MOTIVO + DATA +
+  // HORA + ENDEREÇO REUNIÃO repetido em todas as linhas dos participantes
+  // daquela ação — HORA é capturada no minuto do registro, então na prática
+  // duas ações do mesmo tipo no mesmo dia já saem com HORA (e quase sempre
+  // TEMA) diferentes, e as linhas de cada uma ficam sempre juntas/contíguas
+  // na planilha (a lista já vem ordenada por data/hora).
+  const exportarExcel = async () => {
+    if (acoes.length === 0) return
+    setExportando(true)
+    try {
+      const idsPessoas = [...new Set(acoes.flatMap(a => (a.participantes || []).filter(p => p.pessoa_id).map(p => p.pessoa_id)))]
+      const cpfPorId = await buscarCpfsSesmtPorIds(idsPessoas)
+
+      const linhas = []
+      acoes.forEach(a => {
+        const tc = TIPOS_ACAO_SESMT[a.tipo] || {}
+        const participantes = a.participantes || []
+        const base = {
+          'REGIONAL': a.regional || '',
+          'TIPO REGISTRO': tc.label || a.tipo || '',
+          'TEMA': a.tema || '',
+          'MOTIVO': a.motivo || '',
+          'DATA': formatData(a.data_registro),
+          'HORA': a.hora_registro || '',
+          'ENDEREÇO REUNIÃO': a.endereco || '',
+        }
+        if (participantes.length === 0) {
+          linhas.push({ ...base, 'NOME': '', 'MATRICULA': '', 'CPF': '', 'ASSINATURA': '', 'ENDEREÇO ASSINATURA': '', 'DISTANCIA ASSINATURA': '', 'MODALIDADE': '' })
+          return
+        }
+        participantes.forEach(p => {
+          const assinado = Boolean(p.assinatura_url)
+          const dist = assinado && a.lat && a.lng && p.lat && p.lng ? distanciaMetrosSesmt(a.lat, a.lng, p.lat, p.lng) : null
+          linhas.push({
+            ...base,
+            'NOME': p.nome || '',
+            'MATRICULA': p.chapa || '',
+            'CPF': (p.pessoa_id && cpfPorId[p.pessoa_id]) || '',
+            'ASSINATURA': assinado ? 'SIM' : 'NÃO',
+            'ENDEREÇO ASSINATURA': p.endereco_assinatura || '',
+            'DISTANCIA ASSINATURA': dist != null ? Math.round(dist) : '',
+            'MODALIDADE': p.modo ? p.modo.toUpperCase() : '',
+          })
+        })
+      })
+
+      const ws = XLSX.utils.json_to_sheet(linhas)
+      ws['!cols'] = Object.keys(linhas[0] || {}).map(k => ({ wch: Math.max(k.length + 2, 14) }))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Ações SESMT')
+      XLSX.writeFile(wb, `acoes_sesmt_${new Date().toISOString().slice(0, 10)}.xlsx`)
+    } catch (e) {
+      alert('Erro ao gerar Excel: ' + (e.message || e))
+    } finally {
+      setExportando(false)
+    }
+  }
 
   // Enquanto o card de detalhe estiver aberto, traz assinaturas coletadas
   // via QR de autoatendimento (mesmo que o link ainda esteja ativo) e
@@ -466,9 +528,18 @@ export default function SesmtHistorico({ onVoltar }) {
             </div>
           )}
 
-          <button onClick={buscar} style={{ marginTop: 14, padding: '10px 20px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-            🔍 Buscar
-          </button>
+          <div style={{ display: 'flex', gap: 10, marginTop: 14, flexWrap: 'wrap' }}>
+            <button onClick={buscar} style={{ padding: '10px 20px', background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              🔍 Buscar
+            </button>
+            <button onClick={exportarExcel} disabled={exportando || acoes.length === 0} style={{
+              padding: '10px 20px', background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: 10,
+              fontSize: 13, fontWeight: 700, cursor: (exportando || acoes.length === 0) ? 'not-allowed' : 'pointer',
+              opacity: (exportando || acoes.length === 0) ? 0.6 : 1,
+            }}>
+              {exportando ? '⏳ Gerando...' : '📥 Exportar Excel'}
+            </button>
+          </div>
         </div>
 
         {loading ? (

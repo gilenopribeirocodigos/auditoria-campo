@@ -230,6 +230,18 @@ export async function calcularRegionalPredominanteSesmt(participantes) {
   return entradas[0][0]
 }
 
+// Usado na exportação em Excel do Histórico — o CPF não fica salvo dentro do
+// participante da ação (só nome/chapa/pessoa_id), então busca em lote em
+// sesmt_pessoas pelos pessoa_id de todos os participantes exportados.
+// Participante sem pessoa_id (nome digitado manualmente, sem match na lista)
+// não tem como recuperar o CPF — fica em branco na planilha.
+export async function buscarCpfsSesmtPorIds(ids) {
+  if (!supabase || !ids || ids.length === 0) return {}
+  const { data, error } = await supabase.from('sesmt_pessoas').select('id, cpf').in('id', ids)
+  if (error || !data) return {}
+  return Object.fromEntries(data.map(p => [p.id, p.cpf || '']))
+}
+
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
 // pra inserir em sesmt_acoes.
 export async function prepararPayloadSesmt(form) {
