@@ -26,6 +26,18 @@ function formatarDistancia(metros) {
   return `${(metros / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} km`
 }
 
+// "Hoje" e "Mês" já são naturalmente limitados (1 dia / 1 mês); só "Período"
+// permite um intervalo arbitrário — por isso é o único que precisa de um
+// teto. 31 dias cobre o uso normal (comparar meses, virada de mês) sem abrir
+// espaço pra alguém sem querer puxar o histórico inteiro de uma vez.
+const MAX_DIAS_PERIODO = 31
+
+function somarDias(dataISO, dias) {
+  const d = new Date(dataISO + 'T00:00:00')
+  d.setDate(d.getDate() + dias)
+  return d.toISOString().split('T')[0]
+}
+
 export default function SesmtHistorico({ onVoltar }) {
   // Período no mesmo padrão do painel de filtros de Registros Operacionais
   // (Hoje / Mês / Período) — default "Mês" preserva o comportamento antigo
@@ -44,7 +56,9 @@ export default function SesmtHistorico({ onVoltar }) {
       return { ini: hoje, fim: hoje }
     }
     if (tipoPeriodo === 'periodo' && dataIni) {
-      return { ini: dataIni, fim: dataFim || dataIni }
+      const max = somarDias(dataIni, MAX_DIAS_PERIODO - 1)
+      const fim = dataFim || dataIni
+      return { ini: dataIni, fim: fim > max ? max : fim }
     }
     if (tipoPeriodo === 'mes' && mesAno) {
       const [ano, mes] = mesAno.split('-')
@@ -502,16 +516,34 @@ export default function SesmtHistorico({ onVoltar }) {
               )}
 
               {tipoPeriodo === 'periodo' && (
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>DE</p>
-                    <input type="date" value={dataIni} onChange={e => setDataIni(e.target.value)} style={{ ...INPUT_STYLE, padding: '0 10px', fontSize: 12, cursor: 'pointer' }} />
+                <>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>DE</p>
+                      <input type="date" value={dataIni} onChange={e => {
+                        const novaIni = e.target.value
+                        setDataIni(novaIni)
+                        if (novaIni && dataFim) {
+                          const max = somarDias(novaIni, MAX_DIAS_PERIODO - 1)
+                          if (dataFim < novaIni || dataFim > max) setDataFim(max)
+                        }
+                      }} style={{ ...INPUT_STYLE, padding: '0 10px', fontSize: 12, cursor: 'pointer' }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>ATÉ</p>
+                      <input type="date" value={dataFim} min={dataIni} max={dataIni ? somarDias(dataIni, MAX_DIAS_PERIODO - 1) : undefined}
+                        onChange={e => {
+                          let v = e.target.value
+                          if (dataIni) {
+                            const max = somarDias(dataIni, MAX_DIAS_PERIODO - 1)
+                            if (v > max) v = max
+                          }
+                          setDataFim(v)
+                        }} style={{ ...INPUT_STYLE, padding: '0 10px', fontSize: 12, cursor: 'pointer' }} />
+                    </div>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <p style={{ fontSize: 9, color: '#94a3b8', fontWeight: 700, marginBottom: 3, letterSpacing: 0.5 }}>ATÉ</p>
-                    <input type="date" value={dataFim} min={dataIni} onChange={e => setDataFim(e.target.value)} style={{ ...INPUT_STYLE, padding: '0 10px', fontSize: 12, cursor: 'pointer' }} />
-                  </div>
-                </div>
+                  <p style={{ fontSize: 10, color: '#94a3b8', marginTop: 4 }}>Máximo de {MAX_DIAS_PERIODO} dias por período.</p>
+                </>
               )}
             </div>
 
