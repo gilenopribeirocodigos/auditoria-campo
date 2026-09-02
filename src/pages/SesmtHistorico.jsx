@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao } from '../lib/sesmt.js'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
@@ -47,12 +47,19 @@ export default function SesmtHistorico({ onVoltar }) {
   const detalheRef = useRef(null)
   useEffect(() => { detalheRef.current = detalhe }, [detalhe])
 
+  // Sabendo se o link/QR daquela ação já expirou/foi encerrado, dá pra
+  // também limpar quem nunca assinou (ver removerParticipantesOnlineNaoAssinados) —
+  // não tem processo de fundo, roda na próxima sincronização mesmo.
+  const tokenDetalheRef = useRef(null)
+  useEffect(() => { tokenDetalheRef.current = tokenDetalhe }, [tokenDetalhe])
+
   const sincronizarDetalhe = async (acaoAtual) => {
     if (!acaoAtual) return
     try {
       const coletadas = await listarAssinaturasSesmtColetadasPorAcao(acaoAtual.id)
       const participantesAtuais = acaoAtual.participantes || []
-      const mesclados = mesclarAssinaturasColetadas(participantesAtuais, coletadas)
+      let mesclados = mesclarAssinaturasColetadas(participantesAtuais, coletadas)
+      if (tokenExpiradoOuEncerrado(tokenDetalheRef.current)) mesclados = removerParticipantesOnlineNaoAssinados(mesclados)
       if (mesclados !== participantesAtuais) {
         try { await atualizarParticipantesAcaoSesmt(acaoAtual.id, mesclados) } catch { /* tenta de novo na próxima sincronização */ }
         const atualizada = { ...acaoAtual, participantes: mesclados }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt, concluirRascunhoAcaoSesmt, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas } from '../lib/sesmt.js'
+import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt, concluirRascunhoAcaoSesmt, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados } from '../lib/sesmt.js'
 
 const BASE_URL = window.location.origin
 
@@ -50,16 +50,20 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
   // banco) — sem precisar de um clique manual de "importar". Vale tanto pro
   // autoatendimento (gente nova que assinou) quanto pro link online (gente
   // já adicionada pelo fiscal que ainda não tinha assinado).
+  // Se o token já expirou/foi encerrado, também limpa quem nunca assinou —
+  // sem processo de fundo, isso só roda na próxima sincronização (aqui
+  // mesmo: polling, "Atualizar", ou reabrir o modal depois da expiração).
   const sincronizarAssinaturas = async (tokenAtual) => {
     const t = tokenAtual || tokenData
     if (!t) return
     const coletadas = await listarAssinaturasSesmtColetadas(t.id)
     setAssinadas(coletadas)
     if (acaoId && onParticipantesSincronizados) {
-      const mesclados = mesclarAssinaturasColetadas(participantesRef.current, coletadas)
-      if (mesclados !== participantesRef.current) {
-        try { await atualizarParticipantesAcaoSesmt(acaoId, mesclados) } catch { /* tenta de novo na próxima sincronização */ }
-        onParticipantesSincronizados(mesclados)
+      let novos = mesclarAssinaturasColetadas(participantesRef.current, coletadas)
+      if (tokenExpiradoOuEncerrado(t)) novos = removerParticipantesOnlineNaoAssinados(novos)
+      if (novos !== participantesRef.current) {
+        try { await atualizarParticipantesAcaoSesmt(acaoId, novos) } catch { /* tenta de novo na próxima sincronização */ }
+        onParticipantesSincronizados(novos)
       }
     }
   }
