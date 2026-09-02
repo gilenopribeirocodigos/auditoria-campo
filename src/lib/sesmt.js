@@ -235,11 +235,21 @@ export async function calcularRegionalPredominanteSesmt(participantes) {
 // sesmt_pessoas pelos pessoa_id de todos os participantes exportados.
 // Participante sem pessoa_id (nome digitado manualmente, sem match na lista)
 // não tem como recuperar o CPF — fica em branco na planilha.
+// Em lotes de 200 ids por consulta — um período muito longo (com várias
+// ações importadas em massa por regional) pode juntar milhares de ids
+// únicos, e um `.in()` só com todos de uma vez viraria uma URL gigante
+// (lenta ou sujeita a erro). Em lotes fica rápido e sem esse risco,
+// independente de quão longo for o período escolhido no filtro.
 export async function buscarCpfsSesmtPorIds(ids) {
   if (!supabase || !ids || ids.length === 0) return {}
-  const { data, error } = await supabase.from('sesmt_pessoas').select('id, cpf').in('id', ids)
-  if (error || !data) return {}
-  return Object.fromEntries(data.map(p => [p.id, p.cpf || '']))
+  const TAMANHO_LOTE = 200
+  const mapa = {}
+  for (let i = 0; i < ids.length; i += TAMANHO_LOTE) {
+    const lote = ids.slice(i, i + TAMANHO_LOTE)
+    const { data, error } = await supabase.from('sesmt_pessoas').select('id, cpf').in('id', lote)
+    if (!error && data) data.forEach(p => { mapa[p.id] = p.cpf || '' })
+  }
+  return mapa
 }
 
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
