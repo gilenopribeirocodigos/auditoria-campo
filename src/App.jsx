@@ -11,6 +11,8 @@ import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/r
 import { gerarNumeroAS } from './lib/numeroAS.js'
 
 import Login                    from './pages/Login.jsx'
+import DefinirNovaSenha         from './pages/DefinirNovaSenha.jsx'
+import AlterarSenha             from './pages/AlterarSenha.jsx'
 import GestaoUsuarios           from './pages/GestaoUsuarios.jsx'
 import ImportarEquipes          from './pages/ImportarEquipes.jsx'
 import GestaoPauta              from './pages/GestaoPauta.jsx'
@@ -406,7 +408,14 @@ export default function App() {
 
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
 
+  // Bloqueia o Home até o usuário definir uma senha nova — senha padrão
+  // inicial (migração) ou resetada por um admin em Gestão de Usuários.
+  if (usuario.precisa_trocar_senha) {
+    return <DefinirNovaSenha usuario={usuario} onSenhaDefinida={u => setUsuario(u)} onSair={logout} />
+  }
+
   // ── Rotas das telas ──────────────────────────────────────────────────────────
+  if (tela === 'alterar-senha')        return <AlterarSenha             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'gestao')               return <GestaoUsuarios           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'importar')             return <ImportarEquipes          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'pauta')                return <GestaoPauta              usuarioLogado={usuario} onVoltar={() => setTela('home')} />
@@ -521,10 +530,16 @@ export default function App() {
               {online  && <span style={{ color: '#86efac', marginLeft: 8 }}>● online</span>}
             </p>
           </div>
-          <button onClick={logout} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
-            padding: '7px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-          }}>Sair</button>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => setTela('alterar-senha')} style={{
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+              padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>🔑 Alterar Senha</button>
+            <button onClick={logout} style={{
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+              padding: '7px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+            }}>Sair</button>
+          </div>
         </div>
 
         {pendentesOffline > 0 && online && (
