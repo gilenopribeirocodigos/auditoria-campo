@@ -61,6 +61,19 @@ function extrairPessoa(linhaObj) {
   }
 }
 
+// Modelo de planilha gerado no próprio navegador — cabeçalho igual aos ALIAS_*
+// (preferência: nome "canônico") + uma linha de exemplo, para o usuário saber
+// exatamente o que preencher antes de montar o arquivo real.
+function baixarModeloExcel() {
+  const cabecalho = ['CHAPA', 'NOME', 'CODSITUACAO', 'CODSECAO', 'DATAADMISSAO', 'DTTRANSFERENCIA', 'DATADEMISSAO', 'PISPASEP', 'CPF']
+  const exemplo = ['12345', 'JOÃO DA SILVA', 'ATIVO', '02.03.01.20.014', '01/03/2020', '', '', '12345678900', '12345678900']
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, exemplo])
+  ws['!cols'] = cabecalho.map(c => ({ wch: Math.max(c.length + 2, 16) }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Pessoas')
+  XLSX.writeFile(wb, 'modelo_carga_pessoas_sesmt.xlsx')
+}
+
 function parseCsvTexto(texto) {
   const linhas = texto.replace(/\r/g, '').split('\n').filter(l => l.trim())
   if (linhas.length === 0) return []
@@ -181,7 +194,15 @@ export default function SesmtCargaPessoas({ usuarioLogado, onVoltar }) {
           CODSECAO (02.03.01 → METROPOLITANA, 02.03.02 → NORTE, 02.03.03 a 02.03.08 → SUL).
         </p>
 
-        <input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={onFile} style={{ marginBottom: 12 }} />
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+          <input type="file" accept=".csv,.xlsx,.xls,.txt" onChange={onFile} />
+          <button type="button" onClick={baixarModeloExcel} style={{
+            background: '#f0fdfa', border: '1px solid #5eead4', borderRadius: 8,
+            padding: '8px 12px', fontSize: 12, fontWeight: 700, color: '#0f766e', cursor: 'pointer',
+          }}>
+            📥 Baixar modelo (.xlsx)
+          </button>
+        </div>
 
         {msg && (
           <div style={{
