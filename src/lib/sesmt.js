@@ -382,6 +382,28 @@ export function mesclarAssinaturasColetadas(participantesAtuais, coletadas) {
   return mudou ? [...atualizados, ...novos] : participantesAtuais
 }
 
+// Diz se um token (linha de sesmt_assinaturas_pendentes) já expirou ou foi
+// encerrado — usado pra decidir se é hora de limpar quem não assinou.
+export function tokenExpiradoOuEncerrado(token) {
+  if (!token) return false
+  if (token.status === 'ENCERRADO') return true
+  return new Date(token.expires_at) < new Date()
+}
+
+// Remove da lista quem nunca assinou via link online — só faz sentido
+// chamar depois que o token confirmadamente expirou/foi encerrado (ver
+// tokenExpiradoOuEncerrado). Presencial nunca entra aqui: só é adicionado
+// à lista já com a assinatura feita, então "não assinou" só existe pra
+// modo 'online' (adicionado manualmente ou importado em lote). Não existe
+// processo de fundo no projeto — isso roda na próxima sincronização
+// (polling, botão Atualizar, ou reabrir o link/Histórico) depois da
+// expiração, não no instante exato em que o tempo zera.
+export function removerParticipantesOnlineNaoAssinados(participantes) {
+  const lista = participantes || []
+  const filtrados = lista.filter(p => !(p.modo === 'online' && !p.assinatura_url && !p.assinatura))
+  return filtrados.length !== lista.length ? filtrados : participantes
+}
+
 // ── Assinatura remota via link/QR (espelha src/lib/assinaturas.js) ────────────
 // modo: 'ONLINE' (assinatura remota, restrita à lista de participantes que o
 // fiscal já adicionou) ou 'AUTOATENDIMENTO' (QR pra imprimir/fixar no local
