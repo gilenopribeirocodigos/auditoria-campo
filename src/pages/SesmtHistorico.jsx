@@ -102,12 +102,37 @@ export default function SesmtHistorico({ onVoltar }) {
     try {
       const { ini, fim } = getDatasFiltro()
       const data = await listarAcoesSesmt({ tipo, regional, dataIni: ini, dataFim: fim, fiscal: fiscal.trim() })
+      await limparNaoAssinadosNaLista(data)
       setAcoes(data)
     } catch (e) {
       setErro(e.message || 'Erro ao carregar histórico.')
     } finally {
       setLoading(false)
     }
+  }
+
+  // A limpeza de quem não assinou (ver removerParticipantesOnlineNaoAssinados)
+  // só rodava quando alguém abria o card de detalhe daquela ação — se
+  // ninguém abrisse depois que o link expirasse, ela ficava com todo mundo
+  // pra sempre, inclusive na lista e no Excel exportado. Aqui roda pra toda
+  // ação da busca atual que tenha participante online pendente, em paralelo
+  // e só consultando o token de quem realmente precisa (evita 1 consulta por
+  // ação da lista inteira). Muta as ações in-place antes do setAcoes, pra
+  // Histórico e Exportar Excel já saírem consistentes.
+  const limparNaoAssinadosNaLista = async (lista) => {
+    const comPendencia = lista.filter(a => (a.participantes || []).some(p => p.modo === 'online' && !p.assinatura_url && !p.assinatura))
+    if (comPendencia.length === 0) return
+    await Promise.all(comPendencia.map(async a => {
+      try {
+        const token = await buscarTokenMaisRecenteSesmtPorAcao(a.id)
+        if (!tokenExpiradoOuEncerrado(token)) return
+        const limpos = removerParticipantesOnlineNaoAssinados(a.participantes)
+        if (limpos !== a.participantes) {
+          await atualizarParticipantesAcaoSesmt(a.id, limpos)
+          a.participantes = limpos
+        }
+      } catch { /* silencioso — próxima busca tenta de novo */ }
+    }))
   }
 
   useEffect(() => { buscar() }, [])
@@ -424,8 +449,16 @@ export default function SesmtHistorico({ onVoltar }) {
   const abrirDetalhe = (a) => {
     setDetalhe(a)
     setTokenDetalhe(null)
-    sincronizarDetalhe(a)
-    buscarTokenMaisRecenteSesmtPorAcao(a.id).then(setTokenDetalhe).catch(() => {})
+    // Busca o token ANTES de sincronizar — sincronizarDetalhe decide se limpa
+    // quem não assinou com base em tokenDetalheRef.current, que só existe
+    // depois que o token é conhecido. Sincronizar antes disso (como era)
+    // corria o risco de rodar com o ref ainda desatualizado (de uma ação
+    // anterior, ou nulo), adiando a limpeza pro próximo polling (8s depois)
+    // em vez de já acontecer na abertura do card.
+    buscarTokenMaisRecenteSesmtPorAcao(a.id)
+      .then(token => { setTokenDetalhe(token); tokenDetalheRef.current = token })
+      .catch(() => {})
+      .finally(() => sincronizarDetalhe(a))
   }
 
   const fecharDetalhe = () => { setDetalhe(null); setTokenDetalhe(null); setMostrarLinkModal(false) }
