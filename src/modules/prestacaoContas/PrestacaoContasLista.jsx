@@ -3,6 +3,7 @@ import { CarregandoHexagono } from '../../components/Shared.jsx'
 import { temPermissao } from '../../lib/auth.js'
 import PCRecebidaDetalhe from './telas/PCRecebidaDetalhe.jsx'
 import PCHistorico from './telas/PCHistorico.jsx'
+import PCItensComFotos from './telas/PCItensComFotos.jsx'
 import PCPadroes from './telas/PCPadroes.jsx'
 import PCAprovadas from './telas/PCAprovadas.jsx'
 import PCFechadas from './telas/PCFechadas.jsx'
@@ -78,6 +79,13 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   const [remetenteNome, setRemetenteNome] = useState('')
   const [processando, setProcessando] = useState(false)
   const [historicoAberto, setHistoricoAberto] = useState(null)
+  // "Minhas Prestações" só trazia total_itens/valor_total (sem pc_fotos, pra
+  // manter a lista leve) — sem nenhum jeito de rever o próprio comprovante
+  // depois de enviar. Busca os itens+fotos sob demanda ao expandir, e guarda
+  // em cache por id pra não buscar de novo ao fechar/abrir de novo.
+  const [itensAbertos,   setItensAbertos]   = useState(null)
+  const [itensPorId,     setItensPorId]     = useState({})
+  const [carregandoItens, setCarregandoItens] = useState(false)
 
   const carregarListas = async () => {
     setCarregando(true)
@@ -100,6 +108,22 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   }, [usuarioLogado.id])
 
   useEffect(() => { carregarListas() }, [usuarioLogado.id, podeReceber]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleItens = async (p) => {
+    if (itensAbertos === p.id) { setItensAbertos(null); return }
+    setItensAbertos(p.id)
+    if (itensPorId[p.id]) return
+    setCarregandoItens(true)
+    try {
+      const completa = await obterPrestacao(p.id)
+      setItensPorId(prev => ({ ...prev, [p.id]: completa.pc_itens || [] }))
+    } catch (e) {
+      alert('Não foi possível carregar os comprovantes: ' + (e.message || e))
+      setItensAbertos(null)
+    } finally {
+      setCarregandoItens(false)
+    }
+  }
 
   const abrirDetalhe = async (prestacaoId, remetenteId) => {
     setDetalheId(prestacaoId)
@@ -341,14 +365,29 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                         <p style={{ fontSize: 12, color: '#b91c1c', marginTop: 6 }}>Motivo mais recente: "{p.motivo_rejeicao}"</p>
                       )}
                       {p.status !== 'RASCUNHO' && (
-                        <button onClick={() => setHistoricoAberto(historicoAberto === p.id ? null : p.id)} style={{
-                          marginTop: 6, border: 'none', background: 'transparent', color: '#1e3a5f',
-                          fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0,
-                        }}>{historicoAberto === p.id ? '▲ Esconder histórico' : '▼ Ver histórico completo'}</button>
+                        <div style={{ display: 'flex', gap: 14, marginTop: 6 }}>
+                          <button onClick={() => setHistoricoAberto(historicoAberto === p.id ? null : p.id)} style={{
+                            border: 'none', background: 'transparent', color: '#1e3a5f',
+                            fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0,
+                          }}>{historicoAberto === p.id ? '▲ Esconder histórico' : '▼ Ver histórico completo'}</button>
+                          <button onClick={() => toggleItens(p)} style={{
+                            border: 'none', background: 'transparent', color: '#1e3a5f',
+                            fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0,
+                          }}>{itensAbertos === p.id ? '▲ Esconder comprovante(s)' : '📷 Ver comprovante(s)'}</button>
+                        </div>
                       )}
                       {historicoAberto === p.id && (
                         <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
                           <PCHistorico prestacaoId={p.id} />
+                        </div>
+                      )}
+                      {itensAbertos === p.id && (
+                        <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
+                          {carregandoItens && !itensPorId[p.id] ? (
+                            <p style={{ fontSize: 12, color: '#94a3b8' }}>Carregando...</p>
+                          ) : (
+                            <PCItensComFotos itens={itensPorId[p.id] || []} />
+                          )}
                         </div>
                       )}
                       {p.status === 'REJEITADO' && (
