@@ -437,9 +437,9 @@ export default function App() {
   if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'alertas-tma' && temPermissao(usuario, 'alertas_tma')) return <AlertasTMA usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'diagnostico-rastreio') return <DiagnosticoRastreio       onVoltar={() => setTela('home')} />
-  if (tela === 'sesmt-home')           return <SesmtHome onVoltar={() => setTela('home')} onNovaAcao={() => setTela('sesmt-novo')} onGerenciarPessoas={() => setTela('sesmt-pessoas')} onHistorico={() => setTela('sesmt-historico')} onMotivos={() => setTela('sesmt-motivos')} podeConfigurarMotivos={temPermissao(usuario, 'sesmt_cadastrar_motivos')} />
+  if (tela === 'sesmt-home')           return <SesmtHome onVoltar={() => setTela('home')} onNovaAcao={() => setTela('sesmt-novo')} onGerenciarPessoas={() => setTela('sesmt-pessoas')} onHistorico={() => setTela('sesmt-historico')} onMotivos={() => setTela('sesmt-motivos')} podeGerenciarPessoas={temPermissao(usuario, 'sesmt_gerenciar_pessoas')} podeConfigurarMotivos={temPermissao(usuario, 'sesmt_cadastrar_motivos')} />
   if (tela === 'sesmt-novo')           return <SesmtApp                 usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
-  if (tela === 'sesmt-pessoas')        return <SesmtCargaPessoas        usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
+  if (tela === 'sesmt-pessoas' && temPermissao(usuario, 'sesmt_gerenciar_pessoas')) return <SesmtCargaPessoas usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
   if (tela === 'sesmt-historico')      return <SesmtHistorico           onVoltar={() => setTela('sesmt-home')} />
   if (tela === 'sesmt-motivos' && temPermissao(usuario, 'sesmt_cadastrar_motivos')) return <MotivosSesmt onVoltar={() => setTela('sesmt-home')} />
 
