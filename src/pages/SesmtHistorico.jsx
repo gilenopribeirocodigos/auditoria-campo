@@ -138,13 +138,10 @@ export default function SesmtHistorico({ onVoltar }) {
   useEffect(() => { buscar() }, [])
 
   // Exporta as ações do filtro atual em Excel — uma linha por participante.
-  // O que identifica cada ação (mesmo tendo mais de uma do mesmo tipo no
-  // mesmo dia) é o conjunto REGIONAL + TIPO REGISTRO + TEMA + MOTIVO + DATA +
-  // HORA + ENDEREÇO REUNIÃO repetido em todas as linhas dos participantes
-  // daquela ação — HORA é capturada no minuto do registro, então na prática
-  // duas ações do mesmo tipo no mesmo dia já saem com HORA (e quase sempre
-  // TEMA) diferentes, e as linhas de cada uma ficam sempre juntas/contíguas
-  // na planilha (a lista já vem ordenada por data/hora).
+  // Cada ação sai com um NUMERO_ACAO único (o id da linha em sesmt_acoes,
+  // que já existe e nunca se repete) na primeira coluna — é ele que
+  // identifica com certeza quais linhas pertencem à mesma ação, mesmo
+  // havendo mais de uma do mesmo tipo no mesmo dia e com o mesmo tema.
   // Acima disso, confirma antes de gerar — não é a consulta ao banco que
   // pesa (filtro por data já é rápido), é montar/segurar uma planilha muito
   // grande na memória do navegador (às vezes um celular em campo). Baseado
@@ -172,6 +169,7 @@ export default function SesmtHistorico({ onVoltar }) {
         const tc = TIPOS_ACAO_SESMT[a.tipo] || {}
         const participantes = a.participantes || []
         const base = {
+          'NUMERO_ACAO': a.id,
           'REGIONAL': a.regional || '',
           'TIPO REGISTRO': tc.label || a.tipo || '',
           'TEMA': a.tema || '',
