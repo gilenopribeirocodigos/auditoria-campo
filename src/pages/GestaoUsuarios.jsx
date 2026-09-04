@@ -3,6 +3,7 @@ import {
   listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp,
   listarProcessosUsuario, salvarProcessosUsuario,
   listarRegionaisUsuario, salvarRegionaisUsuario,
+  resetarSenhaUsuario,
 } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 import { processoToKey, regionalToKey } from '../components/PainelFiltros.jsx'
@@ -12,7 +13,7 @@ import { CarregandoHexagono } from '../components/Shared.jsx'
 // Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
 import { obterPermissaoUsuario as obterPermissaoUsuarioPC, definirPermissaoUsuario as definirPermissaoUsuarioPC } from '../modules/prestacaoContas/lib/prestacaoContas.js'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
@@ -21,6 +22,8 @@ const PERFIL_CORES = {
   'SUPERV. CAMPO':    { bg: '#dbeafe', color: '#1e40af' },
   'ANALISTA':         { bg: '#fef3c7', color: '#92400e' },
   'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
+  'TÉCNICO SESMT':    { bg: '#fee2e2', color: '#991b1b' },
+  'ADMIN SESMT':      { bg: '#ffe4e6', color: '#9f1239' },
 }
 
 const TODAS_PERMISSOES = [
@@ -30,6 +33,8 @@ const TODAS_PERMISSOES = [
   { id: 'estrutura_online_motivos',    label: 'Estrutura Online - botão Motivos (cadastrar/excluir)' },
   { id: 'estrutura_csv_importar',      label: 'Estrutura Operacional - importar via arquivo CSV' },
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
+  { id: 'acesso_historico_auditorias', label: '📁 Acesso a Histórico de Auditorias' },
+  { id: 'acesso_registros_operacionais', label: '📝 Acesso a Registros Operacionais' },
   { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
@@ -67,6 +72,9 @@ const TODAS_PERMISSOES = [
   { id: 'frequencia_lote_siga', label: '🤖 Frequência de Pessoal - justificativa em lote via SIGA' },
   { id: 'desfazer_indisponibilidade', label: '🔓 Indisponibilidade Prefixo - desfazer registro' },
   { id: 'cadastrar_motivos_registros', label: '📝 Registros Operacionais - cadastrar motivos' },
+  { id: 'sesmt_acesso', label: '🦺 Ações SESMT - acesso ao módulo' },
+  { id: 'sesmt_gerenciar_pessoas', label: '👥 Ações SESMT - gerenciar Lista de Pessoas' },
+  { id: 'sesmt_cadastrar_motivos', label: '⚙️ Ações SESMT - cadastrar motivos' },
 ]
 
 const FORM_VAZIO = {
@@ -98,6 +106,8 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const [erro,        setErro]        = useState('')
   const [abaAtiva,    setAbaAtiva]    = useState('usuarios')
   const [versaoSistema, setVersaoSistema] = useState('')
+  const [senhaGerada, setSenhaGerada] = useState(null) // { usuario, senha } — resultado do reset, mostrado uma vez
+  const [resetando,   setResetando]   = useState(false)
 
   // Permissões
   const [permissoes,       setPermissoes]       = useState({}) // { perfil: [permissao,...] }
@@ -277,6 +287,20 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     const novoStatus = ciclo[u.status] || 'ATIVO'
     try { await atualizarUsuario(u.id, { status: novoStatus }); await carregar() }
     catch (e) { alert(e.message) }
+  }
+
+  const resetarSenha = async u => {
+    if (!window.confirm(`Resetar a senha de ${u.nome}?\n\nUma senha temporária será gerada e ele(a) vai precisar trocá-la no próximo login.`)) return
+    setResetando(true)
+    try {
+      const senha = await resetarSenhaUsuario(u.id)
+      setSenhaGerada({ usuario: u, senha })
+      await carregar()
+    } catch (e) {
+      alert(e.message)
+    } finally {
+      setResetando(false)
+    }
   }
 
   const excluir = async u => {
@@ -462,6 +486,11 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                             width: 34, height: 34, borderRadius: 8, border: 'none',
                             background: '#fef3c7', color: '#92400e', cursor: 'pointer', fontSize: 15,
                           }}>✏️</button>
+                          <button onClick={() => resetarSenha(u)} disabled={resetando} style={{
+                            width: 34, height: 34, borderRadius: 8, border: 'none',
+                            background: '#eff6ff', color: '#1d4ed8', cursor: resetando ? 'not-allowed' : 'pointer', fontSize: 15,
+                            opacity: resetando ? 0.6 : 1,
+                          }}>🔑</button>
                           <button onClick={() => alternarStatus(u)} style={{
                             width: 34, height: 34, borderRadius: 8, border: 'none',
                             background: u.status === 'ATIVO' ? '#fef3c7' : u.status === 'RESERVA' ? '#fee2e2' : '#dcfce7',
@@ -815,6 +844,30 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
             )}
             <button className="btn-primary" onClick={salvar} disabled={salvando} style={{ background: salvando ? '#64748b' : '#7c3aed' }}>
               {salvando ? '⏳ Salvando...' : '💾 Salvar'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Resultado do reset de senha — senha temporária mostrada uma única vez */}
+      {senhaGerada && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 24 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: '26px 24px', width: '100%', maxWidth: 340, boxShadow: '0 20px 50px rgba(0,0,0,0.3)' }}>
+            <p style={{ fontSize: 16, fontWeight: 800, color: '#15803d', margin: '0 0 8px' }}>✅ Senha redefinida</p>
+            <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.5, margin: '0 0 16px' }}>
+              Uma senha temporária foi gerada para <strong>{senhaGerada.usuario.nome}</strong>. Compartilhe com ele(a) — no próximo login, o sistema vai pedir pra criar uma senha nova.
+            </p>
+            <div style={{ background: '#f0fdf4', border: '1.5px dashed #86efac', borderRadius: 10, padding: 14, textAlign: 'center', marginBottom: 16 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px' }}>Senha temporária</p>
+              <p style={{ fontSize: 20, fontWeight: 800, color: '#14532d', fontFamily: "'Courier New', monospace", letterSpacing: 1, margin: 0 }}>{senhaGerada.senha}</p>
+            </div>
+            <button onClick={() => {
+              if (navigator.clipboard) navigator.clipboard.writeText(senhaGerada.senha).catch(() => {})
+            }} style={{ display: 'block', width: '100%', padding: 12, background: '#f0fdf4', color: '#15803d', border: '1px solid #86efac', borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+              📋 Copiar Senha
+            </button>
+            <button onClick={() => setSenhaGerada(null)} style={{ display: 'block', width: '100%', padding: 12, background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+              Concluir
             </button>
           </div>
         </div>

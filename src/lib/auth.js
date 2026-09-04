@@ -73,6 +73,7 @@ export async function fazerLogin(login, senha) {
     matricula:   usuario.matricula,
     base_regiao: usuario.base_regiao,
     permissoes,
+    precisa_trocar_senha: usuario.precisa_trocar_senha || false,
   }
 
   localStorage.setItem(SESSION_KEY, JSON.stringify(usuarioSessao))
@@ -188,6 +189,65 @@ export async function atualizarUsuario(id, payload) {
 export async function deletarUsuario(id) {
   const { error } = await supabase.from('usuarios').delete().eq('id', id)
   if (error) throw error
+}
+
+// ─── Senha ────────────────────────────────────────────────────────────────────
+function gerarSenhaTemporaria() {
+  const sufixo = Math.random().toString(36).slice(-6).toUpperCase()
+  const numero = Math.floor(1000 + Math.random() * 9000)
+  return `Eq${numero}#${sufixo}`
+}
+
+// Self-service (tela "🔑 Alterar Senha" no Home) — o próprio usuário troca a
+// senha a qualquer momento, confirmando a senha atual antes.
+export async function alterarPropriaSenha(usuarioId, senhaAtual, novaSenha) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase.from('usuarios').select('senha').eq('id', usuarioId).single()
+  if (error || !data) throw new Error('Usuário não encontrado.')
+  if (data.senha !== senhaAtual) throw new Error('Senha atual incorreta.')
+  const { error: errUpd } = await supabase
+    .from('usuarios')
+    .update({ senha: novaSenha, precisa_trocar_senha: false })
+    .eq('id', usuarioId)
+  if (errUpd) throw new Error('Erro ao salvar nova senha: ' + errUpd.message)
+}
+
+// Troca obrigatória (tela DefinirNovaSenha, logo após o login) — usada
+// quando precisa_trocar_senha está true (senha padrão inicial ou resetada
+// por um admin). Não pede a senha atual: o usuário já passou pelo login
+// com ela pra chegar até aqui.
+export async function definirNovaSenhaObrigatoria(usuarioId, novaSenha) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ senha: novaSenha, precisa_trocar_senha: false })
+    .eq('id', usuarioId)
+  if (error) throw new Error('Erro ao salvar nova senha: ' + error.message)
+}
+
+// Admin (botão 🔑 em Gestão de Usuários) — gera uma senha temporária única e
+// marca precisa_trocar_senha, forçando o usuário a definir uma senha nova no
+// próximo login. A senha só é devolvida aqui, na hora, pro admin copiar e
+// repassar — não fica salva em texto visível em nenhuma outra tela depois.
+export async function resetarSenhaUsuario(usuarioId) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const novaSenha = gerarSenhaTemporaria()
+  const { error } = await supabase
+    .from('usuarios')
+    .update({ senha: novaSenha, precisa_trocar_senha: true })
+    .eq('id', usuarioId)
+  if (error) throw new Error('Erro ao resetar senha: ' + error.message)
+  return novaSenha
+}
+
+// Atualiza a sessão local (localStorage) logo após a troca de senha, pra já
+// refletir precisa_trocar_senha:false sem precisar de um novo login.
+export function atualizarPrecisaTrocarSenhaNaSessao() {
+  const atual = getUsuarioLogado()
+  if (!atual) return null
+  const atualizado = { ...atual, precisa_trocar_senha: false }
+  localStorage.setItem(SESSION_KEY, JSON.stringify(atualizado))
+  return atualizado
 }
 
 // ─── CRUD Processos do Usuário (granularidade individual) ────────────────────

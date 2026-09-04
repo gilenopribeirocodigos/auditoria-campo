@@ -11,6 +11,8 @@ import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/r
 import { gerarNumeroAS } from './lib/numeroAS.js'
 
 import Login                    from './pages/Login.jsx'
+import DefinirNovaSenha         from './pages/DefinirNovaSenha.jsx'
+import AlterarSenha             from './pages/AlterarSenha.jsx'
 import GestaoUsuarios           from './pages/GestaoUsuarios.jsx'
 import ImportarEquipes          from './pages/ImportarEquipes.jsx'
 import GestaoPauta              from './pages/GestaoPauta.jsx'
@@ -32,6 +34,13 @@ import DashboardIndisponibilidade from './pages/DashboardIndisponibilidade.jsx'
 import RotinasAdministrativas   from './pages/RotinasAdministrativas.jsx'
 import TratamentoNaoConformidades from './pages/TratamentoNaoConformidades.jsx'
 import DiagnosticoRastreio      from './pages/DiagnosticoRastreio.jsx'
+// ── NOVO: Módulo isolado Ações SESMT ──────────────────────────────────────────
+import SesmtCargaPessoas        from './pages/SesmtCargaPessoas.jsx'
+import SesmtHome                from './pages/SesmtHome.jsx'
+import SesmtApp                 from './SesmtApp.jsx'
+import PaginaAssinarSesmt       from './pages/PaginaAssinarSesmt.jsx'
+import MotivosSesmt             from './pages/MotivosSesmt.jsx'
+import SesmtHistorico           from './pages/SesmtHistorico.jsx'
 // ── NOVO: Módulo isolado de Prestação de Contas ──────────────────────────────
 import PrestacaoContasLista     from './modules/prestacaoContas/PrestacaoContasLista.jsx'
 import PrestacaoContasNovo      from './modules/prestacaoContas/PrestacaoContasNovo.jsx'
@@ -393,9 +402,20 @@ export default function App() {
   const pathToken = window.location.pathname.match(/^\/assinar\/([0-9a-f-]+)$/i)?.[1]
   if (pathToken) return <PaginaAssinar tokenUUID={pathToken} />
 
+  // ── Rota pública: /assinar-sesmt/:token ───────────────────────────────────────
+  const sesmtToken = window.location.pathname.match(/^\/assinar-sesmt\/([0-9a-f-]+)$/i)?.[1]
+  if (sesmtToken) return <PaginaAssinarSesmt tokenUUID={sesmtToken} />
+
   if (!usuario) return <Login onLogin={u => { setUsuario(u) }} />
 
+  // Bloqueia o Home até o usuário definir uma senha nova — senha padrão
+  // inicial (migração) ou resetada por um admin em Gestão de Usuários.
+  if (usuario.precisa_trocar_senha) {
+    return <DefinirNovaSenha usuario={usuario} onSenhaDefinida={u => setUsuario(u)} onSair={logout} />
+  }
+
   // ── Rotas das telas ──────────────────────────────────────────────────────────
+  if (tela === 'alterar-senha')        return <AlterarSenha             usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'gestao')               return <GestaoUsuarios           usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'importar')             return <ImportarEquipes          usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'pauta')                return <GestaoPauta              usuarioLogado={usuario} onVoltar={() => setTela('home')} />
@@ -417,6 +437,11 @@ export default function App() {
   if (tela === 'tratamento-ncs')       return <TratamentoNaoConformidades usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'alertas-tma' && temPermissao(usuario, 'alertas_tma')) return <AlertasTMA usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'diagnostico-rastreio') return <DiagnosticoRastreio       onVoltar={() => setTela('home')} />
+  if (tela === 'sesmt-home')           return <SesmtHome onVoltar={() => setTela('home')} onNovaAcao={() => setTela('sesmt-novo')} onGerenciarPessoas={() => setTela('sesmt-pessoas')} onHistorico={() => setTela('sesmt-historico')} onMotivos={() => setTela('sesmt-motivos')} podeGerenciarPessoas={temPermissao(usuario, 'sesmt_gerenciar_pessoas')} podeConfigurarMotivos={temPermissao(usuario, 'sesmt_cadastrar_motivos')} />
+  if (tela === 'sesmt-novo')           return <SesmtApp                 usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
+  if (tela === 'sesmt-pessoas' && temPermissao(usuario, 'sesmt_gerenciar_pessoas')) return <SesmtCargaPessoas usuarioLogado={usuario} onVoltar={() => setTela('sesmt-home')} />
+  if (tela === 'sesmt-historico')      return <SesmtHistorico           onVoltar={() => setTela('sesmt-home')} />
+  if (tela === 'sesmt-motivos' && temPermissao(usuario, 'sesmt_cadastrar_motivos')) return <MotivosSesmt onVoltar={() => setTela('sesmt-home')} />
 
   if (tela === 'home') {
     return (
@@ -505,10 +530,16 @@ export default function App() {
               {online  && <span style={{ color: '#86efac', marginLeft: 8 }}>● online</span>}
             </p>
           </div>
-          <button onClick={logout} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
-            padding: '7px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
-          }}>Sair</button>
+          <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button onClick={() => setTela('alterar-senha')} style={{
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+              padding: '7px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>🔑 Alterar Senha</button>
+            <button onClick={logout} style={{
+              background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
+              padding: '7px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+            }}>Sair</button>
+          </div>
         </div>
 
         {pendentesOffline > 0 && online && (
@@ -574,17 +605,21 @@ export default function App() {
             </button>
           )}
 
-          <button onClick={() => setTela('historico')} style={{
-            background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
-            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>📁 Histórico de Auditorias</button>
+          {temPermissao(usuario, 'acesso_historico_auditorias') && (
+            <button onClick={() => setTela('historico')} style={{
+              background: 'rgba(30,58,95,0.9)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📁 Histórico de Auditorias</button>
+          )}
 
-          <button onClick={() => setTela('registros-historico')} style={{
-            background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
-            padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
-            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
-          }}>📝 Registros Operacionais</button>
+          {temPermissao(usuario, 'acesso_registros_operacionais') && (
+            <button onClick={() => setTela('registros-historico')} style={{
+              background: 'linear-gradient(135deg, rgba(124,58,237,0.9), rgba(109,40,217,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>📝 Registros Operacionais</button>
+          )}
 
           {(pcAcessoBotao === true || (pcAcessoBotao !== false && (temPermissao(usuario, 'prestacao_contas_enviar') || temPermissao(usuario, 'prestacao_contas_receber') || temPermissao(usuario, 'prestacao_contas_ver_todas')))) && (
             <button onClick={() => setTela('prestacao-contas')} style={{
@@ -635,6 +670,15 @@ export default function App() {
               padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>🚫 Registrar Indisponibilidade</button>
+          )}
+
+          {/* ── NOVO: Ações SESMT ── */}
+          {temPermissao(usuario, 'sesmt_acesso') && (
+            <button onClick={() => setTela('sesmt-home')} style={{
+              background: 'linear-gradient(135deg, rgba(217,119,6,0.9), rgba(146,64,14,0.9))', color: '#fff', border: 'none',
+              padding: '16px', borderRadius: 14, fontSize: 15, fontWeight: 700,
+              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+            }}>🦺 Ações SESMT</button>
           )}
 
           {temPermissao(usuario, 'dashboard') && (
