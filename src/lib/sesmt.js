@@ -252,6 +252,36 @@ export async function buscarCpfsSesmtPorIds(ids) {
   return mapa
 }
 
+// Numero_Acao — identificador único e legível de cada ação SESMT, no mesmo
+// padrão visual do "Número AS" das Auditorias (ver src/lib/numeroAS.js),
+// mas isolado aqui: o módulo SESMT não depende de nada de Auditoria.
+// Gerado uma única vez em FORM_SESMT_INICIAL() (data/sesmt_config.js) —
+// fica estável durante rascunho/edição/conclusão da mesma ação.
+export function gerarNumeroAcaoSesmt() {
+  const agora = new Date()
+  const partes = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Fortaleza',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(agora)
+  const valor = tipo => partes.find(p => p.type === tipo)?.value || '00'
+  const data = `${valor('year')}${valor('month')}${valor('day')}`
+  const hora = `${valor('hour')}${valor('minute')}${valor('second')}`
+  const sufixo = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, 'X')
+  return `SESMT-${data}-${hora}-${sufixo}`
+}
+
+// Ações salvas antes da coluna numero_acao existir ficam com esse campo
+// null — em vez de rodar um backfill no banco, gera um número "legado" a
+// partir do que a ação já tem (id/data/hora), só na hora de exibir/exportar.
+export function numeroAcaoSesmt(acao) {
+  if (acao?.numero_acao) return acao.numero_acao
+  const data = String(acao?.data_registro || '').replace(/\D/g, '').padEnd(8, '0').slice(0, 8)
+  const hora = String(acao?.hora_registro || '').replace(/\D/g, '').padEnd(6, '0').slice(0, 6)
+  const base = Number(acao?.id || 0).toString(36).toUpperCase().padStart(4, '0')
+  return `SESMT-${data}-${hora}-${base}`
+}
+
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
 // pra inserir em sesmt_acoes.
 export async function prepararPayloadSesmt(form) {
@@ -296,6 +326,7 @@ export async function prepararPayloadSesmt(form) {
   const regional = await calcularRegionalPredominanteSesmt(form.participantes)
 
   return {
+    numero_acao: form.numero_acao || gerarNumeroAcaoSesmt(),
     tipo: form.tipo,
     tema: form.tema || null,
     motivo: form.motivo || null,

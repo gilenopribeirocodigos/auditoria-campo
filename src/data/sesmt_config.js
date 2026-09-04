@@ -1,3 +1,5 @@
+import { gerarNumeroAcaoSesmt } from '../lib/sesmt.js'
+
 // ── Config do módulo Ações SESMT — independente de Auditoria/Registros ───────
 
 export const TIPOS_ACAO_SESMT = {
@@ -38,6 +40,7 @@ const horaAtual = () => new Date().toTimeString().slice(0, 5)
 
 export function FORM_SESMT_INICIAL() {
   return {
+    numero_acao: gerarNumeroAcaoSesmt(),
     tipo: '',
     tema: '',
     motivo: '',
