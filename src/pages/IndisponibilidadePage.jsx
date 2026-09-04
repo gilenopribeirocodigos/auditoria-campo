@@ -167,6 +167,11 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   const [buscaEletAberta, setBuscaEletAberta] = useState(false)
   const eletFiltroRef = useRef(null)
 
+  // ── Filtro extra: só pendentes de justificar (aba Frequência) — esconde o
+  // bloco "Registradas nesta data" pra quem só quer ver quem falta marcar
+  // Presente/Ausente, sem precisar rolar a tela passando pelos já registrados.
+  const [soPendentes, setSoPendentes] = useState(false)
+
   useEffect(() => {
     const handler = e => {
       if (eletFiltroRef.current && !eletFiltroRef.current.contains(e.target))
@@ -1088,6 +1093,22 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     </div>
   )
 
+  const FiltroSoPendentes = abaAtiva === 'frequencia' ? (
+    <div>
+      <label style={LABEL_STYLE}>Pendências</label>
+      <button type="button" onClick={() => setSoPendentes(v => !v)} style={{
+        ...INPUT_STYLE, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+        background: soPendentes ? '#fef3c7' : '#fff',
+        borderColor: soPendentes ? '#f59e0b' : '#e2e8f0',
+        color: soPendentes ? '#92400e' : '#64748b',
+        fontWeight: soPendentes ? 700 : 500,
+      }}>
+        <span style={{ fontSize: 15, lineHeight: 1 }}>{soPendentes ? '☑' : '☐'}</span>
+        Só quem falta justificar
+      </button>
+    </div>
+  ) : null
+
   // ── Painel de contadores (reativo à aba ativa) ───────────────────────────
   // Frequência: mostra eletricistas | Indisponível: mostra prefixos
   const totalPrefixosIndisp = useMemo(() =>
@@ -1173,7 +1194,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           titulo="🔍 Filtros do Registro"
           badge="supervisor · prefixo · eletricista"
           mostrarMesPeriodo={false}
-          extras={FiltroEletricista}
+          extras={<>{FiltroEletricista}{FiltroSoPendentes}</>}
         />
 
         {/* ── Painel de contadores ── */}
@@ -1215,7 +1236,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         ══════════════════════════════════════════════ */}
         {abaAtiva === 'frequencia' && (
           <>
-            {frequenciasRegistradasFiltradas.length > 0 && (
+            {!soPendentes && frequenciasRegistradasFiltradas.length > 0 && (
               <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
                 <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
