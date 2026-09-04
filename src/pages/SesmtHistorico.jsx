@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import * as XLSX from 'xlsx'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds } from '../lib/sesmt.js'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds, numeroAcaoSesmt } from '../lib/sesmt.js'
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
@@ -138,10 +138,12 @@ export default function SesmtHistorico({ onVoltar }) {
   useEffect(() => { buscar() }, [])
 
   // Exporta as ações do filtro atual em Excel — uma linha por participante.
-  // Cada ação sai com um NUMERO_ACAO único (o id da linha em sesmt_acoes,
-  // que já existe e nunca se repete) na primeira coluna — é ele que
+  // Cada ação sai com um NUMERO_ACAO único (padrão SESMT-AAAAMMDD-HHMMSS-XXXX,
+  // ver gerarNumeroAcaoSesmt em lib/sesmt.js) na primeira coluna — é ele que
   // identifica com certeza quais linhas pertencem à mesma ação, mesmo
   // havendo mais de uma do mesmo tipo no mesmo dia e com o mesmo tema.
+  // Ações salvas antes dessa coluna existir usam numeroAcaoSesmt(), que
+  // gera um número "legado" a partir do id/data/hora só na hora de exportar.
   // Acima disso, confirma antes de gerar — não é a consulta ao banco que
   // pesa (filtro por data já é rápido), é montar/segurar uma planilha muito
   // grande na memória do navegador (às vezes um celular em campo). Baseado
@@ -169,7 +171,7 @@ export default function SesmtHistorico({ onVoltar }) {
         const tc = TIPOS_ACAO_SESMT[a.tipo] || {}
         const participantes = a.participantes || []
         const base = {
-          'NUMERO_ACAO': a.id,
+          'NUMERO_ACAO': numeroAcaoSesmt(a),
           'REGIONAL': a.regional || '',
           'TIPO REGISTRO': tc.label || a.tipo || '',
           'TEMA': a.tema || '',
