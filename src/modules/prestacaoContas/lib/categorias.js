@@ -18,4 +18,4 @@ export const CATEGORIAS_SUGERIDAS = [
 
 export const FORMAS_PAGAMENTO = ['PIX', 'Dinheiro', 'Cartão', 'Transferência']
 
-export const TIPOS_COMPROVANTE = ['Recibo', 'Nota Fiscal', 'Extrato Conta', 'Outro']
+export const TIPOS_COMPROVANTE = ['RECIBO', 'NOTA FISCAL', 'EXTRATO CONTA', 'OUTRO']
