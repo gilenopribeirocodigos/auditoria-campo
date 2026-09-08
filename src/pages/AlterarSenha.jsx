@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { alterarPropriaSenha } from '../lib/auth.js'
+import { CampoSenha } from '../components/Shared.jsx'
 
 // Self-service — acessível a qualquer momento pelo atalho "🔑 Alterar Senha"
 // no Home, ao lado do "Sair". Diferente da troca obrigatória
@@ -49,23 +50,12 @@ export default function AlterarSenha({ usuarioLogado, onVoltar }) {
             </div>
           ) : (
             <form onSubmit={salvar}>
-              <div className="form-group">
-                <label className="form-label">Senha atual</label>
-                <input className="form-input" type="password" placeholder="••••••••"
-                  value={senhaAtual} onChange={e => setSenhaAtual(e.target.value)} autoFocus />
-              </div>
+              <CampoSenha label="Senha atual" value={senhaAtual} onChange={setSenhaAtual} autoFocus />
 
-              <div className="form-group">
-                <label className="form-label">Nova senha</label>
-                <input className="form-input" type="password" placeholder="••••••••"
-                  value={novaSenha} onChange={e => setNovaSenha(e.target.value)} />
-                <p style={{ fontSize: 11, color: '#94a3b8', margin: '5px 0 0' }}>Mínimo de 6 caracteres.</p>
-              </div>
+              <CampoSenha label="Nova senha" value={novaSenha} onChange={setNovaSenha} hint="Mínimo de 6 caracteres." />
 
-              <div className="form-group" style={{ marginBottom: 20 }}>
-                <label className="form-label">Confirmar nova senha</label>
-                <input className="form-input" type="password" placeholder="••••••••"
-                  value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} />
+              <div style={{ marginBottom: 20 }}>
+                <CampoSenha label="Confirmar nova senha" value={confirmarSenha} onChange={setConfirmarSenha} />
               </div>
 
               {erro && (

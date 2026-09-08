@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { definirNovaSenhaObrigatoria, atualizarPrecisaTrocarSenhaNaSessao, getVersaoApp } from '../lib/auth.js'
+import { CampoSenha } from '../components/Shared.jsx'
 
 const VERSAO = getVersaoApp()
 
@@ -83,16 +84,9 @@ export default function DefinirNovaSenha({ usuario, onSenhaDefinida, onSair }) {
           </div>
 
           <form onSubmit={salvar}>
-            <div className="form-group">
-              <label className="form-label">Nova senha</label>
-              <input className="form-input" type="password" placeholder="••••••••"
-                value={novaSenha} onChange={e => setNovaSenha(e.target.value)} autoFocus />
-              <p style={{ fontSize: 11, color: '#94a3b8', margin: '5px 0 0' }}>Mínimo de 6 caracteres.</p>
-            </div>
-            <div className="form-group" style={{ marginBottom: 20 }}>
-              <label className="form-label">Confirmar nova senha</label>
-              <input className="form-input" type="password" placeholder="••••••••"
-                value={confirmarSenha} onChange={e => setConfirmarSenha(e.target.value)} />
+            <CampoSenha label="Nova senha" value={novaSenha} onChange={setNovaSenha} autoFocus hint="Mínimo de 6 caracteres." />
+            <div style={{ marginBottom: 20 }}>
+              <CampoSenha label="Confirmar nova senha" value={confirmarSenha} onChange={setConfirmarSenha} />
             </div>
 
             {erro && (

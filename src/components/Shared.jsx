@@ -22,6 +22,47 @@ export function Field({ label, value, onChange, type = 'text', placeholder, requ
   )
 }
 
+// Campo de senha com "olhinho" pra mostrar/ocultar o valor digitado — mesmo
+// padrão visual/ícones já usados em Login.jsx, reaproveitado aqui pra não
+// duplicar em cada tela que pede senha (Alterar Senha, Definir Nova Senha,
+// cadastro de usuário em Gestão de Usuários).
+export function CampoSenha({ label, value, onChange, placeholder = '••••••••', required, autoFocus, hint }) {
+  const [mostrar, setMostrar] = useState(false)
+  return (
+    <div className="form-group">
+      {label && <label className="form-label">{label}{required && ' *'}</label>}
+      <div style={{ position: 'relative' }}>
+        <input
+          className="form-input" type={mostrar ? 'text' : 'password'} placeholder={placeholder}
+          value={value} onChange={e => onChange(e.target.value)} autoFocus={autoFocus}
+          style={{ paddingRight: 44 }}
+        />
+        <button type="button" onClick={() => setMostrar(v => !v)}
+          aria-label={mostrar ? 'Ocultar senha' : 'Mostrar senha'}
+          style={{
+            position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)',
+            width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 0,
+          }}>
+          {mostrar ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+              <circle cx="12" cy="12" r="3" />
+            </svg>
+          ) : (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3l18 18" />
+              <path d="M10.6 5.2A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a13.2 13.2 0 0 1-3.4 4.2M6.6 6.6C3.6 8.5 2 12 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4.4-1" />
+              <path d="M9.5 9.7A3 3 0 0 0 12 15a3 3 0 0 0 2.3-1.06" />
+            </svg>
+          )}
+        </button>
+      </div>
+      {hint && <p style={{ fontSize: 11, color: '#94a3b8', margin: '5px 0 0' }}>{hint}</p>}
+    </div>
+  )
+}
+
 export function Textarea({ label, value, onChange, placeholder, rows = 3 }) {
   return (
     <div className="form-group">
