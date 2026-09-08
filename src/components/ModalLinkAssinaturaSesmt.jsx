@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
+import QRCode from 'qrcode'
 import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt, concluirRascunhoAcaoSesmt, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados } from '../lib/sesmt.js'
 import { compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 
@@ -153,11 +154,13 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
 
   // Miolo da folha (sem <html>/<body>) — reaproveitado tanto na versão web
   // (documento completo pra window.print()) quanto na nativa (renderizado
-  // pra canvas via renderizarHtmlParaCanvas, ver abaixo). PNG em vez de SVG
-  // no QR: html2canvas captura imagem rasterizada de forma bem mais
-  // confiável que um <img> apontando pra um SVG externo.
-  const folhaConteudoHtml = () => {
-    const qrGrande = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(link)}&format=png&margin=2`
+  // pra canvas via renderizarHtmlParaCanvas, ver abaixo). Recebe o `src` do
+  // QR já pronto: na web é a URL remota de sempre; no nativo é um data URI
+  // gerado localmente (ver geração do PDF abaixo) — o QR de um serviço
+  // externo (api.qrserver.com) desenhado num <canvas> deixava o canvas
+  // "tainted" por CORS, e o .toDataURL() daí saía corrompido ("wrong PNG
+  // signature" no jsPDF) em vez de gerar a folha.
+  const folhaConteudoHtml = (qrSrc) => {
     const validadeTexto = tokenData?.expires_at
       ? new Date(tokenData.expires_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
       : ''
@@ -174,7 +177,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
       <div class="folha">
         <h1>🦺 ${label}</h1>
         <p class="sub">Assinatura de participação — DPL Construções / Equatorial Energia</p>
-        <img src="${qrGrande}" alt="QR Code" crossorigin="anonymous" />
+        <img src="${qrSrc}" alt="QR Code" />
         <div class="instrucoes">
           <b>Como assinar:</b><br/>
           1. Abra a câmera do celular e aponte para o QR Code acima<br/>
@@ -199,7 +202,10 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
     if (Capacitor.isNativePlatform()) {
       setGerandoImpressao(true)
       try {
-        const canvas = await renderizarHtmlParaCanvas(folhaConteudoHtml(), {
+        // QR gerado localmente (lib qrcode), sem depender de rede/CORS de
+        // um serviço externo — ver nota em folhaConteudoHtml.
+        const qrDataUri = await QRCode.toDataURL(link, { width: 420, margin: 1 })
+        const canvas = await renderizarHtmlParaCanvas(folhaConteudoHtml(qrDataUri), {
           largura: 520, escala: 4, aguardarImagens: true, exigirNaturalWidth: true, corFundo: '#ffffff',
         })
         await compartilharPDFNativo(canvas, `qr_autoatendimento_${label}.pdf`.replace(/\s+/g, '_'), {
@@ -213,11 +219,12 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
       return
     }
 
+    const qrGrande = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(link)}&format=png&margin=2`
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
     <title>QR de Autoatendimento — ${label}</title>
     <style>*{box-sizing:border-box;margin:0;padding:0;} body{display:flex;align-items:center;justify-content:center;min-height:100vh;} @media print { @page { margin: 18mm; } }</style>
     </head><body>
-      ${folhaConteudoHtml()}
+      ${folhaConteudoHtml(qrGrande)}
       <script>window.onload = () => setTimeout(() => window.print(), 500)</script>
     </body></html>`
     const janela = window.open('', '_blank', 'width=700,height=900')
