@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import QRCode from 'qrcode'
 import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt, concluirRascunhoAcaoSesmt, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados } from '../lib/sesmt.js'
-import { compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharPDFNativo, descreverErro } from '../lib/compartilhar.js'
 
 const BASE_URL = window.location.origin
 
@@ -152,14 +152,13 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
 
   const atualizarManual = () => sincronizarAssinaturas(tokenData)
 
-  // Miolo da folha (sem <html>/<body>) — reaproveitado tanto na versão web
-  // (documento completo pra window.print()) quanto na nativa (renderizado
-  // pra canvas via renderizarHtmlParaCanvas, ver abaixo). Recebe o `src` do
-  // QR já pronto: na web é a URL remota de sempre; no nativo é um data URI
-  // gerado localmente (ver geração do PDF abaixo) — o QR de um serviço
-  // externo (api.qrserver.com) desenhado num <canvas> deixava o canvas
-  // "tainted" por CORS, e o .toDataURL() daí saía corrompido ("wrong PNG
-  // signature" no jsPDF) em vez de gerar a folha.
+  // Miolo da folha (sem <html>/<body>) — usado só na versão web, pro
+  // documento completo de window.print(). No app Android nativo a folha é
+  // desenhada direto num <canvas> (ver gerarCanvasFolhaNativo), sem passar
+  // pelo DOM/html2canvas — depois de duas tentativas usando html2canvas
+  // pra capturar esse HTML (primeiro com QR remoto, depois com QR local),
+  // ambas esbarraram no mesmo erro "wrong PNG signature" no jsPDF; desenhar
+  // direto no canvas evita esse caminho por completo.
   const folhaConteudoHtml = (qrSrc) => {
     const validadeTexto = tokenData?.expires_at
       ? new Date(tokenData.expires_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
@@ -189,6 +188,105 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
       </div>`
   }
 
+  // Quebra um texto em linhas que cabem em `maxWidth`, pra desenhar com
+  // ctx.fillText (que não quebra linha sozinho).
+  function quebrarLinhas(ctx, texto, maxWidth) {
+    const palavras = texto.split(' ')
+    const linhas = []
+    let atual = ''
+    palavras.forEach(palavra => {
+      const tentativa = atual ? `${atual} ${palavra}` : palavra
+      if (ctx.measureText(tentativa).width > maxWidth && atual) {
+        linhas.push(atual)
+        atual = palavra
+      } else {
+        atual = tentativa
+      }
+    })
+    if (atual) linhas.push(atual)
+    return linhas
+  }
+
+  // Desenha a folha direto num <canvas> puro (sem passar pelo DOM/
+  // html2canvas) — usado só no app Android nativo. O QR já chega como
+  // data URI gerado localmente (lib qrcode): como todo o desenho é feito
+  // com a própria API do Canvas 2D (fillText/fillRect/drawImage de uma
+  // imagem same-origin), o canvas nunca fica "tainted" por CORS, então
+  // .toDataURL() sempre devolve um PNG válido — diferente de tentar
+  // capturar um <div> com html2canvas, que já causou esse mesmo erro
+  // duas vezes (ver histórico deste arquivo).
+  async function gerarCanvasFolhaNativo(qrDataUri, validadeTexto) {
+    const LARG = 720
+    const ALT = 980
+    const canvas = document.createElement('canvas')
+    canvas.width = LARG
+    canvas.height = ALT
+    const ctx = canvas.getContext('2d')
+
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, LARG, ALT)
+
+    ctx.fillStyle = '#1e293b'
+    ctx.textAlign = 'center'
+    ctx.font = '700 30px -apple-system, Segoe UI, sans-serif'
+    ctx.fillText(`🦺 ${label}`, LARG / 2, 60)
+
+    ctx.fillStyle = '#64748b'
+    ctx.font = '400 16px -apple-system, Segoe UI, sans-serif'
+    ctx.fillText('Assinatura de participação — DPL Construções / Equatorial Energia', LARG / 2, 92)
+
+    const qrImg = await new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => resolve(img)
+      img.onerror = () => reject(new Error('Não foi possível carregar o QR gerado.'))
+      img.src = qrDataUri
+    })
+    const qrTam = 440
+    const qrX = (LARG - qrTam) / 2
+    const qrY = 130
+    ctx.drawImage(qrImg, qrX, qrY, qrTam, qrTam)
+
+    let y = qrY + qrTam + 60
+    ctx.fillStyle = '#f8fafc'
+    ctx.strokeStyle = '#e2e8f0'
+    ctx.lineWidth = 1.5
+    const caixaX = 40, caixaW = LARG - 80, caixaAlt = 230
+    ctx.beginPath()
+    ctx.roundRect ? ctx.roundRect(caixaX, y, caixaW, caixaAlt, 16) : ctx.rect(caixaX, y, caixaW, caixaAlt)
+    ctx.fill()
+    ctx.stroke()
+
+    ctx.textAlign = 'left'
+    ctx.fillStyle = '#0f766e'
+    ctx.font = '700 20px -apple-system, Segoe UI, sans-serif'
+    ctx.fillText('Como assinar:', caixaX + 24, y + 34)
+
+    ctx.fillStyle = '#1e293b'
+    ctx.font = '400 18px -apple-system, Segoe UI, sans-serif'
+    const passos = [
+      '1. Abra a câmera do celular e aponte para o QR Code acima',
+      '2. Toque no link que aparecer',
+      '3. Digite seu nome ou matrícula (o outro campo preenche sozinho)',
+      '4. Assine na tela e pronto!',
+    ]
+    let linhaY = y + 70
+    passos.forEach(passo => {
+      quebrarLinhas(ctx, passo, caixaW - 48).forEach(linha => {
+        ctx.fillText(linha, caixaX + 24, linhaY)
+        linhaY += 28
+      })
+    })
+
+    if (validadeTexto) {
+      ctx.textAlign = 'center'
+      ctx.fillStyle = '#94a3b8'
+      ctx.font = '400 15px -apple-system, Segoe UI, sans-serif'
+      ctx.fillText(`Válido até ${validadeTexto}`, LARG / 2, y + caixaAlt + 34)
+    }
+
+    return canvas
+  }
+
   // Folha pronta pra imprimir e fixar no local — QR grande + instruções.
   // window.open()+document.write()+window.print() funciona na web, mas
   // dentro do WebView do app Android nativo o "_blank" não abre uma aba de
@@ -205,9 +303,10 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
         // QR gerado localmente (lib qrcode), sem depender de rede/CORS de
         // um serviço externo — ver nota em folhaConteudoHtml.
         const qrDataUri = await QRCode.toDataURL(link, { width: 420, margin: 1 })
-        const canvas = await renderizarHtmlParaCanvas(folhaConteudoHtml(qrDataUri), {
-          largura: 520, escala: 4, aguardarImagens: true, exigirNaturalWidth: true, corFundo: '#ffffff',
-        })
+        const validadeTexto = tokenData?.expires_at
+          ? new Date(tokenData.expires_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
+          : ''
+        const canvas = await gerarCanvasFolhaNativo(qrDataUri, validadeTexto)
         await compartilharPDFNativo(canvas, `qr_autoatendimento_${label}.pdf`.replace(/\s+/g, '_'), {
           titulo: 'QR de Autoatendimento', texto: label,
         })
