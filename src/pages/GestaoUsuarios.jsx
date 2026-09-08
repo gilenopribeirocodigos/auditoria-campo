@@ -7,7 +7,7 @@ import {
 } from '../lib/auth.js'
 import { supabase } from '../lib/supabase.js'
 import { processoToKey, regionalToKey } from '../components/PainelFiltros.jsx'
-import { CarregandoHexagono } from '../components/Shared.jsx'
+import { CarregandoHexagono, CampoSenha } from '../components/Shared.jsx'
 // Prestação de Contas — módulo isolado: só essas 2 funções são usadas aqui,
 // pra configurar a permissão por usuário (aprovador / acesso ao botão).
 // Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
@@ -637,10 +637,10 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
               <label className="form-label">Matrícula</label>
               <input className="form-input" value={formData.matricula || ''} onChange={e => upd('matricula', e.target.value)} placeholder="Ex: 12345" />
             </div>
-            <div className="form-group">
-              <label className="form-label">Senha {editando ? '(deixe vazio para manter)' : '*'}</label>
-              <input className="form-input" type="password" value={formData.senha} onChange={e => upd('senha', e.target.value)} placeholder="••••••••" />
-            </div>
+            <CampoSenha
+              label={`Senha ${editando ? '(deixe vazio para manter)' : '*'}`}
+              value={formData.senha} onChange={v => upd('senha', v)}
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div className="form-group">
                 <label className="form-label">Perfil</label>
