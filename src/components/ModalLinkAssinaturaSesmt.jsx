@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { criarTokenAssinaturaSesmt, listarAssinaturasSesmtColetadas, encerrarTokenSesmt, concluirRascunhoAcaoSesmt, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados } from '../lib/sesmt.js'
+import { compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 
 const BASE_URL = window.location.origin
 
@@ -37,6 +39,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
   const [encerrando, setEncerrando] = useState(false)
   const [erro,       setErro]       = useState('')
   const [countdown,  setCountdown]  = useState('')
+  const [gerandoImpressao, setGerandoImpressao] = useState(false)
 
   const link  = tokenData ? `${BASE_URL}/assinar-sesmt/${tokenData.token}` : ''
   const label = tipoLabel || 'Ação SESMT'
@@ -148,31 +151,30 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
 
   const atualizarManual = () => sincronizarAssinaturas(tokenData)
 
-  // Folha pronta pra imprimir e fixar no local — QR grande + instruções.
-  const abrirImpressao = () => {
-    const qrGrande = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(link)}&format=svg&margin=2`
+  // Miolo da folha (sem <html>/<body>) — reaproveitado tanto na versão web
+  // (documento completo pra window.print()) quanto na nativa (renderizado
+  // pra canvas via renderizarHtmlParaCanvas, ver abaixo). PNG em vez de SVG
+  // no QR: html2canvas captura imagem rasterizada de forma bem mais
+  // confiável que um <img> apontando pra um SVG externo.
+  const folhaConteudoHtml = () => {
+    const qrGrande = `https://api.qrserver.com/v1/create-qr-code/?size=420x420&data=${encodeURIComponent(link)}&format=png&margin=2`
     const validadeTexto = tokenData?.expires_at
       ? new Date(tokenData.expires_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })
       : ''
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
-    <title>QR de Autoatendimento — ${label}</title>
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0;}
-      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;color:#1e293b;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:40px;}
-      .folha{text-align:center;max-width:480px;}
-      h1{font-size:22px;margin-bottom:4px;}
-      p.sub{font-size:13px;color:#64748b;margin-bottom:24px;}
-      img{width:320px;height:320px;margin:0 auto 24px;display:block;}
-      .instrucoes{font-size:15px;color:#1e293b;line-height:1.8;text-align:left;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:20px 22px;}
-      .instrucoes b{color:#0f766e;}
-      .rodape{margin-top:20px;font-size:12px;color:#94a3b8;}
-      @media print { @page { margin: 18mm; } }
-    </style>
-    </head><body>
+    return `
+      <style>
+        .folha{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;text-align:center;max-width:480px;background:#fff;color:#1e293b;padding:40px;box-sizing:border-box;}
+        .folha h1{font-size:22px;margin:0 0 4px;}
+        .folha p.sub{font-size:13px;color:#64748b;margin:0 0 24px;}
+        .folha img{width:320px;height:320px;margin:0 auto 24px;display:block;}
+        .folha .instrucoes{font-size:15px;color:#1e293b;line-height:1.8;text-align:left;background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:14px;padding:20px 22px;}
+        .folha .instrucoes b{color:#0f766e;}
+        .folha .rodape{margin-top:20px;font-size:12px;color:#94a3b8;}
+      </style>
       <div class="folha">
         <h1>🦺 ${label}</h1>
         <p class="sub">Assinatura de participação — DPL Construções / Equatorial Energia</p>
-        <img src="${qrGrande}" alt="QR Code" />
+        <img src="${qrGrande}" alt="QR Code" crossorigin="anonymous" />
         <div class="instrucoes">
           <b>Como assinar:</b><br/>
           1. Abra a câmera do celular e aponte para o QR Code acima<br/>
@@ -181,7 +183,41 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
           4. Assine na tela e pronto!
         </div>
         ${validadeTexto ? `<div class="rodape">Válido até ${validadeTexto}</div>` : ''}
-      </div>
+      </div>`
+  }
+
+  // Folha pronta pra imprimir e fixar no local — QR grande + instruções.
+  // window.open()+document.write()+window.print() funciona na web, mas
+  // dentro do WebView do app Android nativo o "_blank" não abre uma aba de
+  // verdade — ele navega o próprio WebView pra essa página estática, sem
+  // nenhuma barra de navegador (sem botão voltar), deixando o usuário preso
+  // ali (só reabrindo o app resolve). No nativo, gera a folha como PDF e
+  // abre a folha de compartilhamento do Android (Salvar/Imprimir/WhatsApp
+  // etc.) em vez de tentar abrir uma janela — mesmo padrão já usado nos
+  // outros botões de compartilhar/PDF do app (ver lib/compartilhar.js).
+  const abrirImpressao = async () => {
+    if (Capacitor.isNativePlatform()) {
+      setGerandoImpressao(true)
+      try {
+        const canvas = await renderizarHtmlParaCanvas(folhaConteudoHtml(), {
+          largura: 520, escala: 4, aguardarImagens: true, exigirNaturalWidth: true, corFundo: '#ffffff',
+        })
+        await compartilharPDFNativo(canvas, `qr_autoatendimento_${label}.pdf`.replace(/\s+/g, '_'), {
+          titulo: 'QR de Autoatendimento', texto: label,
+        })
+      } catch (err) {
+        alert('Não foi possível gerar a folha: ' + descreverErro(err))
+      } finally {
+        setGerandoImpressao(false)
+      }
+      return
+    }
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+    <title>QR de Autoatendimento — ${label}</title>
+    <style>*{box-sizing:border-box;margin:0;padding:0;} body{display:flex;align-items:center;justify-content:center;min-height:100vh;} @media print { @page { margin: 18mm; } }</style>
+    </head><body>
+      ${folhaConteudoHtml()}
       <script>window.onload = () => setTimeout(() => window.print(), 500)</script>
     </body></html>`
     const janela = window.open('', '_blank', 'width=700,height=900')
@@ -302,8 +338,12 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
             </div>
 
             {fase === 'pronto' && autoatendimento && (
-              <button onClick={abrirImpressao} style={{ width: '100%', padding: 13, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-                🖨️ Abrir folha para impressão
+              <button onClick={abrirImpressao} disabled={gerandoImpressao} style={{
+                width: '100%', padding: 13, borderRadius: 12, border: 'none',
+                background: gerandoImpressao ? '#94a3b8' : '#0f766e', color: '#fff', fontSize: 14, fontWeight: 700,
+                cursor: gerandoImpressao ? 'not-allowed' : 'pointer', marginBottom: 10,
+              }}>
+                {gerandoImpressao ? '⏳ Gerando...' : '🖨️ Abrir folha para impressão'}
               </button>
             )}
 

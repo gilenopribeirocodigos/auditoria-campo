@@ -5,7 +5,7 @@ import PCSearchSelect from './PCSearchSelect.jsx'
 
 const ITEM_VAZIO = {
   classificacao: '', descricao: '', fornecedor: '', forma_pagamento: 'PIX',
-  tipo_comprovante: 'Recibo', data_emissao: '', valor: '', observacao: '',
+  tipo_comprovante: 'RECIBO', data_emissao: '', valor: '', observacao: '',
 }
 
 export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCancelar, salvando }) {
@@ -14,7 +14,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
     ? {
         classificacao: itemInicial.classificacao || '', descricao: itemInicial.descricao || '',
         fornecedor: itemInicial.fornecedor || '', forma_pagamento: itemInicial.forma_pagamento || 'PIX',
-        tipo_comprovante: itemInicial.tipo_comprovante || 'Recibo', data_emissao: itemInicial.data_emissao || '',
+        tipo_comprovante: itemInicial.tipo_comprovante || 'RECIBO', data_emissao: itemInicial.data_emissao || '',
         valor: itemInicial.valor ?? '', observacao: itemInicial.observacao || '',
       }
     : ITEM_VAZIO)

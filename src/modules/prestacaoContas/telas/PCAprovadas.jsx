@@ -136,8 +136,9 @@ export default function PCAprovadas({ usuarioLogado, verTodas, onVoltar, onHome 
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
               <p style={{ fontSize: 12, color: '#64748b' }}>{selecionadasNaLista.length} de {filtradas.length} selecionada(s)</p>
+              <p style={{ fontSize: 13, fontWeight: 800, color: '#1e293b' }}>Total: R$ {totalSelecionado.toFixed(2).replace('.', ',')}</p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button onClick={selecionarTodasFiltradas} style={{ border: 'none', background: 'transparent', color: '#1e3a5f', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Selecionar todas</button>
                 <button onClick={limparSelecao} style={{ border: 'none', background: 'transparent', color: '#dc2626', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Limpar</button>
