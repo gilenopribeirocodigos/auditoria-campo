@@ -7,9 +7,14 @@ import R3Participantes from './steps/R3Participantes.jsx'
 import R4Conteudo      from './steps/R4Conteudo.jsx'
 import R5Evidencias    from './steps/R5Evidencias.jsx'
 import R6ResultadoReg  from './steps/R6ResultadoReg.jsx'
+import AberturaOcorrencia from './pages/AberturaOcorrencia.jsx'
 
 export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   const [step, setStep] = useState(0)
+  // Abertura de Ocorrência não segue o wizard padrão (sem modalidade/
+  // participantes/checklist) — é uma tela à parte, aberta a partir do
+  // card extra em R0TipoRegistro.
+  const [mostrarOcorrencia, setMostrarOcorrencia] = useState(false)
   const [form, setForm] = useState(() => ({
     ...FORM_REGISTRO_INICIAL(),
     fiscal:           usuarioLogado?.nome      || '',
@@ -28,6 +33,18 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   }
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const stepProps  = { form, upd, setForm, next, prev }
+
+  if (mostrarOcorrencia) {
+    return (
+      <AberturaOcorrencia
+        usuarioLogado={usuarioLogado}
+        isOnline={isOnline}
+        onHome={onVoltar}
+        onVoltar={() => setMostrarOcorrencia(false)}
+      />
+    )
+  }
+
   return (
     <div className="app-shell">
       {/* Header — padrão VérticeGP (idêntico ao header da Auditoria em App.jsx) */}
@@ -62,7 +79,7 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
       </header>
       {/* Conteúdo */}
       <main className="app-content">
-        {step === 0 && <R0TipoRegistro  {...stepProps} />}
+        {step === 0 && <R0TipoRegistro  {...stepProps} onAbrirOcorrencia={() => setMostrarOcorrencia(true)} />}
         {step === 1 && <R1Modalidade    {...stepProps} />}
         {step === 2 && <R2Identificacao {...stepProps} />}
         {step === 3 && <R3Participantes {...stepProps} />}

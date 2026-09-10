@@ -1,6 +1,6 @@
 import { TIPOS_REGISTRO } from '../data/registros_config.js'
 
-export default function R0TipoRegistro({ form, upd, next }) {
+export default function R0TipoRegistro({ form, upd, next, onAbrirOcorrencia }) {
   const selecionar = (tipo) => {
     upd('tipo', tipo)
     upd('motivo', '') // reset motivo — a lista de opções depende do tipo
@@ -66,6 +66,37 @@ export default function R0TipoRegistro({ form, upd, next }) {
             <div style={{ fontSize: 18, color: form.tipo === key ? tipo.color : '#cbd5e1' }}>›</div>
           </button>
         ))}
+
+        {/* Abertura de Ocorrência — não é um "registro" comum: em vez de
+            seguir modalidade/participantes/checklist, abre um fluxo
+            simplificado à parte (ver AberturaOcorrencia.jsx) e direciona
+            para um fiscal tratar em Tratamento de Não Conformidades. */}
+        <button
+          onClick={onAbrirOcorrencia}
+          style={{
+            background: '#fff', border: '2px solid #c7d2fe', borderRadius: 14,
+            padding: '16px', textAlign: 'left', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 14,
+          }}
+        >
+          <div style={{
+            width: 48, height: 48, borderRadius: 12,
+            background: '#eef2ff', border: '1.5px solid #c7d2fe',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 22, flexShrink: 0,
+          }}>
+            📦
+          </div>
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: '#4338ca', marginBottom: 2 }}>
+              Abertura de Ocorrência
+            </p>
+            <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
+              Relate um problema (ex: devolução de material não realizada) e direcione para o fiscal tratar
+            </p>
+          </div>
+          <div style={{ fontSize: 18, color: '#4338ca' }}>›</div>
+        </button>
       </div>
     </div>
   )
