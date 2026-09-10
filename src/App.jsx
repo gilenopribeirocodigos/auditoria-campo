@@ -8,6 +8,7 @@ import { buscarAuditoriasReabertas } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
 import { sincronizarPendentes, contarPendentes } from './lib/offline.js'
 import { sincronizarPendentesRegistros, contarPendentesRegistros } from './lib/registros_offline.js'
+import { sincronizarPendentesOcorrencias, contarPendentesOcorrencias } from './lib/ocorrencias_offline.js'
 import { gerarNumeroAS } from './lib/numeroAS.js'
 
 import Login                    from './pages/Login.jsx'
@@ -97,6 +98,7 @@ export default function App() {
   const [sincronizando,       setSincronizando]       = useState(false)
   const [msgSync,             setMsgSync]             = useState('')
   const [pendentesReg,        setPendentesReg]        = useState(0)
+  const [pendentesOc,         setPendentesOc]         = useState(0)
 
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
     // [DPL] Checa por atualização periodicamente (não só na primeira carga)
@@ -182,19 +184,23 @@ export default function App() {
       if (navigator.onLine) {
         const qtdAud = await contarPendentes()
         const qtdReg = await contarPendentesRegistros()
+        const qtdOc  = await contarPendentesOcorrencias()
         setPendentesOffline(qtdAud)
         setPendentesReg(qtdReg)
-        const total = qtdAud + qtdReg
+        setPendentesOc(qtdOc)
+        const total = qtdAud + qtdReg + qtdOc
         if (total > 0) {
           setSincronizando(true)
           setMsgSync(`🔄 Sincronizando ${total} item(ns) pendente(s)...`)
           try {
-            let okAud = 0, okReg = 0
+            let okAud = 0, okReg = 0, okOc = 0
             if (qtdAud > 0) okAud = await sincronizarPendentes()
             if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
+            if (qtdOc  > 0) okOc  = await sincronizarPendentesOcorrencias()
             setPendentesOffline(0)
             setPendentesReg(0)
-            setMsgSync(`✅ ${okAud + okReg} item(ns) sincronizado(s) com sucesso!`)
+            setPendentesOc(0)
+            setMsgSync(`✅ ${okAud + okReg + okOc} item(ns) sincronizado(s) com sucesso!`)
             setTimeout(() => setMsgSync(''), 4000)
           } catch (e) {
             setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
@@ -204,8 +210,10 @@ export default function App() {
       } else {
         const qtdAud = await contarPendentes()
         const qtdReg = await contarPendentesRegistros()
+        const qtdOc  = await contarPendentesOcorrencias()
         setPendentesOffline(qtdAud)
         setPendentesReg(qtdReg)
+        setPendentesOc(qtdOc)
       }
     }
     syncInicial()
@@ -216,17 +224,20 @@ export default function App() {
       setOnline(true)
       const qtdAud = await contarPendentes()
       const qtdReg = await contarPendentesRegistros()
-      const total  = qtdAud + qtdReg
+      const qtdOc  = await contarPendentesOcorrencias()
+      const total  = qtdAud + qtdReg + qtdOc
       if (total > 0) {
         setSincronizando(true)
         setMsgSync(`🔄 Sincronizando ${total} item(ns) salvos offline...`)
         try {
-          let okAud = 0, okReg = 0
+          let okAud = 0, okReg = 0, okOc = 0
           if (qtdAud > 0) okAud = await sincronizarPendentes()
           if (qtdReg > 0) okReg = await sincronizarPendentesRegistros()
+          if (qtdOc  > 0) okOc  = await sincronizarPendentesOcorrencias()
           setPendentesOffline(0)
           setPendentesReg(0)
-          setMsgSync(`✅ ${okAud + okReg} item(ns) sincronizado(s) com sucesso!`)
+          setPendentesOc(0)
+          setMsgSync(`✅ ${okAud + okReg + okOc} item(ns) sincronizado(s) com sucesso!`)
           setTimeout(() => setMsgSync(''), 4000)
         } catch (e) {
           setMsgSync('❌ Erro ao sincronizar. Tente mais tarde.')
@@ -542,22 +553,28 @@ export default function App() {
           </div>
         </div>
 
-        {pendentesOffline > 0 && online && (
+        {(pendentesOffline + pendentesReg + pendentesOc) > 0 && online && (
           <div style={{
             width: '100%', maxWidth: 380, marginBottom: 16,
             background: '#fef3c7', border: '2px solid #f59e0b', borderRadius: 14, padding: '12px 16px',
           }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 8 }}>
-              📤 {pendentesOffline + pendentesReg} item(ns) aguardando sincronização
+              📤 {pendentesOffline + pendentesReg + pendentesOc} item(ns) aguardando sincronização
               {pendentesOffline > 0 && ` (${pendentesOffline} auditoria(s)`}
-              {pendentesReg > 0 && ` · ${pendentesReg} registro(s))`}
+              {pendentesReg > 0 && ` · ${pendentesReg} registro(s)`}
+              {pendentesOc > 0 && ` · ${pendentesOc} ocorrência(s)`}
+              {(pendentesOffline > 0 || pendentesReg > 0 || pendentesOc > 0) && ')'}
             </p>
             <button onClick={async () => {
               setSincronizando(true)
-              setMsgSync(`🔄 Sincronizando ${pendentesOffline} auditoria(s)...`)
-              const ok = await sincronizarPendentes()
+              setMsgSync(`🔄 Sincronizando ${pendentesOffline + pendentesReg + pendentesOc} item(ns)...`)
+              const okAud = pendentesOffline > 0 ? await sincronizarPendentes() : 0
+              const okReg = pendentesReg     > 0 ? await sincronizarPendentesRegistros() : 0
+              const okOc  = pendentesOc      > 0 ? await sincronizarPendentesOcorrencias() : 0
               setPendentesOffline(0)
-              setMsgSync(`✅ ${ok} auditoria(s) sincronizada(s)!`)
+              setPendentesReg(0)
+              setPendentesOc(0)
+              setMsgSync(`✅ ${okAud + okReg + okOc} item(ns) sincronizado(s)!`)
               setSincronizando(false)
               setTimeout(() => setMsgSync(''), 4000)
             }} disabled={sincronizando} style={{
