@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Field, Textarea, SearchSelect } from '../components/Shared.jsx'
+import { useState, useEffect, useRef } from 'react'
+import { supabase } from '../lib/supabase.js'
+import { Textarea, SearchSelect } from '../components/Shared.jsx'
 import { prepararPayloadOcorrencia, salvarOcorrenciaBD, listarFiscaisParaDirecionamento } from '../lib/ocorrencias.js'
 import { salvarOcorrenciaOffline } from '../lib/ocorrencias_offline.js'
 
@@ -99,9 +100,141 @@ function CampoFiscalDestino({ nome, matricula, onNome, onMatricula }) {
   )
 }
 
+// Campo com autocomplete de prefixo — mesmo padrão de PrefixoInput em
+// R3Participantes.jsx: sugestões conforme digita, buscando em
+// estrutura_equipes. Sem internet, a busca simplesmente não retorna nada e
+// o campo continua aceitando digitação livre (offline-first).
+function CampoPrefixo({ value, onChange }) {
+  const [sugestoes, setSugestoes] = useState([])
+  const [aberto,    setAberto]    = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const buscar = async v => {
+    if (!v || v.length < 1) { setSugestoes([]); setAberto(false); return }
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select('prefixo')
+        .ilike('prefixo', `%${v}%`)
+        .not('prefixo', 'is', null)
+        .neq('prefixo', '')
+        .order('prefixo')
+        .limit(15)
+      const unicos = [...new Set((data || []).map(r => r.prefixo?.trim()).filter(Boolean))]
+      setSugestoes(unicos)
+      setAberto(unicos.length > 0)
+    } catch { setSugestoes([]); setAberto(false) }
+  }
+
+  const handleChange = e => {
+    const v = e.target.value.toUpperCase()
+    onChange(v)
+    buscar(v)
+  }
+
+  const selecionar = s => { onChange(s); setSugestoes([]); setAberto(false) }
+
+  return (
+    <div ref={ref} className="form-group" style={{ position: 'relative' }}>
+      <label className="form-label">Prefixo / Equipe *</label>
+      <input className="form-input" value={value} onChange={handleChange}
+        onFocus={() => value && buscar(value)}
+        placeholder="Ex: PI-THE-C001M" autoComplete="off" />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} onMouseDown={() => selecionar(s)}
+              style={{
+                display: 'block', width: '100%', padding: '9px 12px',
+                textAlign: 'left', background: 'none', border: 'none',
+                borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Campo com autocomplete de colaborador — mesmo padrão de
+// AutocompleteEletricista em R3Participantes.jsx, buscando em
+// estrutura_equipes.colaborador.
+function CampoColaboradorEnvolvido({ value, onChange }) {
+  const [sugestoes, setSugestoes] = useState([])
+  const [aberto,    setAberto]    = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const buscar = async v => {
+    if (!v || v.length < 2) { setSugestoes([]); setAberto(false); return }
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select('colaborador').ilike('colaborador', `%${v}%`).order('colaborador').limit(15)
+      const unicos = [...new Set((data || []).map(r => r.colaborador?.trim()).filter(Boolean))]
+      setSugestoes(unicos)
+      setAberto(unicos.length > 0)
+    } catch { setSugestoes([]); setAberto(false) }
+  }
+
+  const handleChange = e => {
+    const v = e.target.value
+    onChange(v)
+    buscar(v)
+  }
+
+  const selecionar = s => { onChange(s); setSugestoes([]); setAberto(false) }
+
+  return (
+    <div ref={ref} className="form-group" style={{ position: 'relative' }}>
+      <label className="form-label">Colaborador(es) envolvido(s)</label>
+      <input className="form-input" value={value} onChange={handleChange}
+        onFocus={() => value && buscar(value)}
+        placeholder="Opcional — nome do(s) colaborador(es)" autoComplete="off" />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} onMouseDown={() => selecionar(s)}
+              style={{
+                display: 'block', width: '100%', padding: '9px 12px',
+                textAlign: 'left', background: 'none', border: 'none',
+                borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, onVoltar }) {
   const [prefixo,            setPrefixo]            = useState('')
-  const [eletricistaEquipe,  setEletricistaEquipe]  = useState('')
+  const [colaboradorEnvolvido, setColaboradorEnvolvido] = useState('')
   const [direcionadoPara,    setDirecionadoPara]    = useState('')
   const [matriculaDestino,   setMatriculaDestino]   = useState('')
   const [descricao,          setDescricao]          = useState('')
@@ -110,7 +243,58 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   const [erro,                setErro]              = useState('')
   const [salvoOffline,        setSalvoOffline]      = useState(false)
 
+  // Data/Hora de abertura — preenchidas automaticamente, mas editáveis
+  // (mesmo padrão de R2Identificacao.jsx).
+  const [data, setData] = useState(() => new Date().toISOString().split('T')[0])
+  const [hora, setHora] = useState(() => new Date().toTimeString().slice(0, 5))
+
+  // GPS/Endereço — captura automática ao abrir a tela; só mostra botão pra
+  // tentar de novo se der erro (mesmo padrão de R2Identificacao.jsx, mas
+  // sem exigir toque do usuário pra disparar a primeira captura).
+  const [endereco,   setEndereco]   = useState('')
+  const [lat,         setLat]       = useState(null)
+  const [lng,         setLng]       = useState(null)
+  const [gpsStatus,   setGpsStatus] = useState('idle') // idle | buscando | ok | erro
+  const [geocodando,  setGeocodando] = useState(false)
+
   const online = isOnline !== undefined ? isOnline : navigator.onLine
+
+  const obterGPS = () => {
+    if (!navigator.geolocation) { setGpsStatus('erro'); return }
+    setGpsStatus('buscando')
+    navigator.geolocation.getCurrentPosition(
+      async pos => {
+        const latitude  = pos.coords.latitude
+        const longitude = pos.coords.longitude
+        setLat(latitude); setLng(longitude); setGpsStatus('ok')
+
+        setGeocodando(true)
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json&accept-language=pt-BR`,
+            { headers: { 'Accept-Language': 'pt-BR' } }
+          )
+          const geo = await res.json()
+          if (geo?.address) {
+            const a = geo.address
+            const partes = [
+              a.road || a.pedestrian || a.path,
+              a.house_number,
+              a.suburb || a.neighbourhood || a.quarter,
+              a.city || a.town || a.village,
+              a.state,
+            ].filter(Boolean)
+            setEndereco(partes.join(', '))
+          }
+        } catch { /* silencioso — endereço fica em branco, GPS já foi capturado */ }
+        finally { setGeocodando(false) }
+      },
+      () => setGpsStatus('erro'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
+  useEffect(() => { obterGPS() }, [])
 
   const podeEnviar = prefixo.trim() && direcionadoPara.trim() && descricao.trim().length > 0
 
@@ -129,13 +313,14 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
     const form = {
       prefixo:                   prefixo.trim().toUpperCase(),
-      eletricista_equipe:        eletricistaEquipe.trim(),
+      eletricista_equipe:        colaboradorEnvolvido.trim(),
       direcionado_para:          direcionadoPara.trim(),
       matricula_fiscal_destino:  matriculaDestino,
       descricao:                 descricao.trim(),
       foto,
       aberto_por:                usuarioLogado?.nome || '',
       matricula_aberto_por:      usuarioLogado?.matricula || '',
+      data, hora, endereco, lat, lng,
     }
 
     if (!online) {
@@ -163,8 +348,11 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   }
 
   const reiniciar = () => {
-    setPrefixo(''); setEletricistaEquipe(''); setDirecionadoPara(''); setMatriculaDestino('')
+    setPrefixo(''); setColaboradorEnvolvido(''); setDirecionadoPara(''); setMatriculaDestino('')
     setDescricao(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
+    setData(new Date().toISOString().split('T')[0]); setHora(new Date().toTimeString().slice(0, 5))
+    setEndereco(''); setLat(null); setLng(null); setGpsStatus('idle')
+    obterGPS()
   }
 
   return (
@@ -216,11 +404,70 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
             </>
           ) : (
             <>
-              <Field label="Prefixo / Equipe" value={prefixo} onChange={v => setPrefixo(v.toUpperCase())}
-                placeholder="Ex: PI-THE-C001M" required />
+              <div className="form-group">
+                <label className="form-label">Nome usuário</label>
+                <input className="form-input" value={usuarioLogado?.nome || ''} disabled
+                  style={{ background: '#f0fdf4', borderColor: '#86efac', color: '#166534', fontWeight: 700 }} />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Matrícula usuário</label>
+                <input className="form-input" value={usuarioLogado?.matricula || ''} disabled
+                  style={{ background: '#f0fdf4', borderColor: '#86efac', color: '#166534', fontWeight: 700 }} />
+                <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ Preenchidos automaticamente do seu cadastro</p>
+              </div>
 
-              <Field label="Eletricista(s) envolvido(s)" value={eletricistaEquipe} onChange={setEletricistaEquipe}
-                placeholder="Opcional — nome(s) do(s) eletricista(s)" />
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-group">
+                  <label className="form-label">Data *</label>
+                  <input className="form-input" type="date" value={data} onChange={e => setData(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Hora *</label>
+                  <input className="form-input" type="time" value={hora} onChange={e => setHora(e.target.value)} />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  Local / Endereço
+                  {geocodando && <span style={{ fontSize: 11, color: '#2563eb', marginLeft: 8 }}>📍 Buscando endereço...</span>}
+                </label>
+                <input className="form-input" value={endereco} onChange={e => setEndereco(e.target.value)}
+                  placeholder="Preenchido automaticamente pelo GPS" />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">GPS</label>
+                {gpsStatus === 'ok' ? (
+                  <div style={{
+                    width: '100%', padding: '11px 13px', borderRadius: 10,
+                    border: '2px solid #86efac', background: '#f0fdf4', color: '#15803d',
+                    fontSize: 13, fontWeight: 700,
+                  }}>
+                    ✅ GPS capturado: {lat?.toFixed(5)}, {lng?.toFixed(5)}
+                  </div>
+                ) : gpsStatus === 'buscando' ? (
+                  <div style={{
+                    width: '100%', padding: '11px 13px', borderRadius: 10,
+                    border: '2px solid #f59e0b', background: '#fffbeb', color: '#92400e',
+                    fontSize: 13, fontWeight: 700,
+                  }}>
+                    ⏳ Capturando localização...
+                  </div>
+                ) : (
+                  <button onClick={obterGPS} style={{
+                    width: '100%', padding: '13px', borderRadius: 10,
+                    border: '2px solid #fca5a5', background: '#fef2f2', color: '#dc2626',
+                    fontSize: 14, fontWeight: 700, cursor: 'pointer',
+                  }}>
+                    ❌ Erro ao capturar GPS — toque para tentar novamente
+                  </button>
+                )}
+              </div>
+
+              <CampoPrefixo value={prefixo} onChange={setPrefixo} />
+
+              <CampoColaboradorEnvolvido value={colaboradorEnvolvido} onChange={setColaboradorEnvolvido} />
 
               <CampoFiscalDestino
                 nome={direcionadoPara} matricula={matriculaDestino}
@@ -241,13 +488,24 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                     }}>×</button>
                   </div>
                 ) : (
-                  <label style={{ cursor: 'pointer' }}>
-                    <input type="file" accept="image/*" capture="environment" onChange={addFoto} style={{ display: 'none' }} />
-                    <div className="upload-zone">
-                      <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
-                      <p style={{ color: '#4338ca', fontWeight: 700, fontSize: 13 }}>Tirar ou anexar foto</p>
-                    </div>
-                  </label>
+                  <div style={{ display: 'flex', gap: 10 }}>
+                    <label style={{ flex: 1, cursor: 'pointer' }}>
+                      <input type="file" accept="image/*" capture="environment" onChange={addFoto} style={{ display: 'none' }} />
+                      <div className="upload-zone" style={{ marginBottom: 0 }}>
+                        <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                        <p style={{ color: '#4338ca', fontWeight: 700, fontSize: 13 }}>Tirar foto</p>
+                        <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Câmera</p>
+                      </div>
+                    </label>
+                    <label style={{ flex: 1, cursor: 'pointer' }}>
+                      <input type="file" accept="image/*" onChange={addFoto} style={{ display: 'none' }} />
+                      <div className="upload-zone" style={{ marginBottom: 0 }}>
+                        <div style={{ fontSize: 28, marginBottom: 6 }}>🖼️</div>
+                        <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 13 }}>Da galeria</p>
+                        <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Galeria</p>
+                      </div>
+                    </label>
+                  </div>
                 )}
               </div>
 
