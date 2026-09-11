@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
+import { listarOcorrenciasDoUsuario, numeroOcorrencia } from '../lib/ocorrencias.js'
 import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
@@ -160,6 +161,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
+  const [ocorrencias,   setOcorrencias]   = useState([])
+  const [ocAberta,      setOcAberta]      = useState(null) // id da ocorrência expandida na lista
   const [detalhe,       setDetalhe]       = useState(null)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
@@ -180,8 +183,22 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       if (!ini || !fim) {
         setRegistros([])
         setTokensAtivos({})
+        setOcorrencias([])
         setLoading(false)
         return
+      }
+
+      // ─── Ocorrências abertas pelo usuário (ou todas, se privilegiado) ───
+      // Aparecem junto com os registros normais nesta tela pra fins de
+      // busca/acompanhamento — status PENDENTE/TRATADA acompanha o que foi
+      // feito em Tratamento de Não Conformidades.
+      try {
+        const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
+        const ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
+        setOcorrencias(filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' }))
+      } catch (e) {
+        console.error('Erro ao carregar ocorrências:', e)
+        setOcorrencias([])
       }
 
       // ─── 1) Determina supervisores permitidos combinando 2 fontes ───
@@ -406,6 +423,53 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             display: 'inline-flex', alignItems: 'center', gap: 6,
           }}>🔍 Buscar</button>
         </div>
+
+        {ocorrencias.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#4338ca', marginBottom: 10 }}>
+              📦 Ocorrências ({ocorrencias.length})
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {ocorrencias.map(oc => {
+                const pendente = oc.status === 'PENDENTE'
+                const abertaAgora = ocAberta === oc.id
+                return (
+                  <div key={oc.id} onClick={() => setOcAberta(a => a === oc.id ? null : oc.id)}
+                    style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
+                          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{numeroOcorrencia(oc)}</span>
+                          <span style={{
+                            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                        </div>
+                        <p style={{ fontSize: 12, color: '#64748b' }}>
+                          Direcionada para: <strong>{oc.direcionado_para}</strong> · {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                        </p>
+                      </div>
+                      <span style={{ fontSize: 16, color: '#94a3b8', flexShrink: 0 }}>{abertaAgora ? '▲' : '▼'}</span>
+                    </div>
+                    {abertaAgora && (
+                      <div style={{ marginTop: 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
+                        <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
+                        {oc.eletricista_equipe && <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>}
+                        {!pendente && (
+                          <p style={{ fontSize: 11, color: '#15803d', margin: '6px 0 0' }}>
+                            ✅ Tratada por {oc.tratado_por || '—'} em {oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : '—'}
+                            {oc.tratamento_observacao && ` — ${oc.tratamento_observacao}`}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
 
         {loading ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>

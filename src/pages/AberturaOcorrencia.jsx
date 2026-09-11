@@ -141,7 +141,7 @@ function CampoPrefixo({ value, onChange }) {
 
   return (
     <div ref={ref} className="form-group" style={{ position: 'relative' }}>
-      <label className="form-label">Prefixo / Equipe *</label>
+      <label className="form-label">Prefixo / Equipe</label>
       <input className="form-input" value={value} onChange={handleChange}
         onFocus={() => value && buscar(value)}
         placeholder="Ex: PI-THE-C001M" autoComplete="off" />
@@ -204,10 +204,10 @@ function CampoColaboradorEnvolvido({ value, onChange }) {
 
   return (
     <div ref={ref} className="form-group" style={{ position: 'relative' }}>
-      <label className="form-label">Colaborador(es) envolvido(s)</label>
+      <label className="form-label">Colaborador(es) envolvido(s) *</label>
       <input className="form-input" value={value} onChange={handleChange}
         onFocus={() => value && buscar(value)}
-        placeholder="Opcional — nome do(s) colaborador(es)" autoComplete="off" />
+        placeholder="Nome do(s) colaborador(es)" autoComplete="off" />
       {aberto && sugestoes.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
@@ -296,7 +296,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
   useEffect(() => { obterGPS() }, [])
 
-  const podeEnviar = prefixo.trim() && direcionadoPara.trim() && descricao.trim().length > 0
+  const podeEnviar = colaboradorEnvolvido.trim() && direcionadoPara.trim() && descricao.trim().length > 0 && !!foto
 
   const addFoto = async e => {
     const file = e.target.files?.[0]
@@ -407,13 +407,13 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
               <div className="form-group">
                 <label className="form-label">Nome usuário</label>
                 <input className="form-input" value={usuarioLogado?.nome || ''} disabled
-                  style={{ background: '#f0fdf4', borderColor: '#86efac', color: '#166534', fontWeight: 700 }} />
+                  style={{ background: '#eef2ff', borderColor: '#c7d2fe', color: '#3730a3', fontWeight: 700 }} />
               </div>
               <div className="form-group">
                 <label className="form-label">Matrícula usuário</label>
                 <input className="form-input" value={usuarioLogado?.matricula || ''} disabled
-                  style={{ background: '#f0fdf4', borderColor: '#86efac', color: '#166534', fontWeight: 700 }} />
-                <p style={{ fontSize: 11, color: '#16a34a', marginTop: 4 }}>✅ Preenchidos automaticamente do seu cadastro</p>
+                  style={{ background: '#eef2ff', borderColor: '#c7d2fe', color: '#3730a3', fontWeight: 700 }} />
+                <p style={{ fontSize: 11, color: '#4338ca', marginTop: 4 }}>✅ Preenchidos automaticamente do seu cadastro</p>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
@@ -478,7 +478,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                 placeholder="Descreva o que aconteceu (ex: devolução de medidor antigo não realizada)..." rows={4} />
 
               <div className="form-group">
-                <label className="form-label">Foto (opcional)</label>
+                <label className="form-label">Foto *</label>
                 {foto ? (
                   <div style={{ position: 'relative', display: 'inline-block' }}>
                     <img src={foto} alt="Evidência" style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }} />

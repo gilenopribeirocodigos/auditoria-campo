@@ -106,17 +106,41 @@ export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) 
 }
 
 // ─── Confirma o tratamento de uma ocorrência ──────────────────────────────────
-export async function tratarOcorrencia(id, { observacao, usuarioLogado }) {
+// Exige evidência (mín. 1 foto) e assinatura do colaborador envolvido, mesmo
+// padrão do tratamento de Não Conformidade (auditorias_nao_conformes).
+export async function tratarOcorrencia(id, { observacao, fotosUrls, assinaturaUrl, assinaturaNome, usuarioLogado }) {
   if (!supabase) throw new Error('Supabase não configurado.')
-  const { error } = await supabase
-    .from('ocorrencias')
-    .update({
-      status:                 'TRATADA',
-      tratamento_observacao:  observacao.trim(),
-      tratado_por:            usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
-      tratado_em:             new Date().toISOString(),
-    })
-    .eq('id', id)
-    .eq('status', 'PENDENTE')
+  const payload = {
+    status:                     'TRATADA',
+    tratamento_observacao:      observacao.trim(),
+    tratamento_fotos_urls:      fotosUrls || [],
+    tratamento_assinatura_url:  assinaturaUrl || null,
+    tratamento_assinatura_nome: assinaturaNome || null,
+    tratado_por:                usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
+    tratado_em:                 new Date().toISOString(),
+  }
+  let { error } = await supabase.from('ocorrencias').update(payload).eq('id', id).eq('status', 'PENDENTE')
+
+  // Mantém o tratamento funcionando caso o deploy chegue antes da migração
+  // SQL que adiciona tratamento_fotos_urls/tratamento_assinatura_* (mesmo
+  // padrão de salvarOcorrenciaBD acima).
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const { tratamento_fotos_urls, tratamento_assinatura_url, tratamento_assinatura_nome, ...payloadCompat } = payload
+    ;({ error } = await supabase.from('ocorrencias').update(payloadCompat).eq('id', id).eq('status', 'PENDENTE'))
+  }
+
   if (error) throw error
+}
+
+// ─── Lista ocorrências abertas pelo usuário logado (ou todas, se privilegiado)
+// — usado em RegistrosOperacionais.jsx pra aparecerem junto com os registros
+// comuns (mesma regra de visibilidade de listarRegistros em lib/registros.js).
+export async function listarOcorrenciasDoUsuario(usuarioLogado) {
+  if (!supabase) return []
+  let q = supabase.from('ocorrencias').select('*').order('criado_em', { ascending: false })
+  const podeVerTodas = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
+  if (!podeVerTodas) q = q.eq('matricula_aberto_por', usuarioLogado?.matricula)
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
 }
