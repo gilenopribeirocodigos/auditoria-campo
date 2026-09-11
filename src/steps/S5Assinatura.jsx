@@ -35,8 +35,13 @@ export function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura
     }
   }
 
+  // traced marca se algum lineTo/stroke de fato aconteceu durante o gesto
+  // atual — sem isso, um simples toque sem arrastar (mousedown+mouseup no
+  // mesmo ponto) já disparava endDraw() e salvava o canvas em branco como
+  // assinatura válida.
+  const traced = useRef(false)
   const startDraw = e => {
-    e.preventDefault(); drawing.current = true
+    e.preventDefault(); drawing.current = true; traced.current = false
     const c = canvasRef.current; const ctx = c.getContext('2d')
     const p = getPos(e, c); ctx.beginPath(); ctx.moveTo(p.x, p.y)
   }
@@ -44,10 +49,12 @@ export function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura
     e.preventDefault(); if (!drawing.current) return
     const c = canvasRef.current; const ctx = c.getContext('2d')
     const p = getPos(e, c); ctx.lineTo(p.x, p.y); ctx.stroke()
+    traced.current = true
   }
   const endDraw = e => {
     e.preventDefault(); if (!drawing.current) return
     drawing.current = false
+    if (!traced.current) return
     const dataURL = canvasRef.current.toDataURL()
     onAssinatura(dataURL); setSigned(true)
   }
