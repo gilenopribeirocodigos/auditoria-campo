@@ -191,14 +191,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       // ─── Ocorrências abertas pelo usuário (ou todas, se privilegiado) ───
       // Aparecem junto com os registros normais nesta tela pra fins de
       // busca/acompanhamento — status PENDENTE/TRATADA acompanha o que foi
-      // feito em Tratamento de Não Conformidades.
-      try {
-        const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
-        const ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
-        setOcorrencias(filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' }))
-      } catch (e) {
-        console.error('Erro ao carregar ocorrências:', e)
+      // feito em Tratamento de Não Conformidades. Respeita o filtro Tipo:
+      // some se um tipo diferente de "Todos"/"Abertura de Ocorrência" for
+      // selecionado (mesmo comportamento de um tipo de registro comum).
+      if (tipo !== '' && tipo !== 'OCORRENCIA') {
         setOcorrencias([])
+      } else {
+        try {
+          const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
+          const ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
+          setOcorrencias(filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' }))
+        } catch (e) {
+          console.error('Erro ao carregar ocorrências:', e)
+          setOcorrencias([])
+        }
       }
 
       // ─── 1) Determina supervisores permitidos combinando 2 fontes ───
@@ -344,6 +350,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           {Object.entries(TIPOS_REGISTRO).map(([k, t]) => (
             <option key={k} value={k}>{t.emoji} {t.label}</option>
           ))}
+          <option value="OCORRENCIA">📦 Abertura de Ocorrência</option>
         </select>
       </div>
       <div>
@@ -436,24 +443,30 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 return (
                   <div key={oc.id} onClick={() => setOcAberta(a => a === oc.id ? null : oc.id)}
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
-                          <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{numeroOcorrencia(oc)}</span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                          <span style={{ fontSize: 18 }}>📦</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Abertura de Ocorrência</span>
                           <span style={{
-                            fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                             background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
                           }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
                         </div>
-                        <p style={{ fontSize: 12, color: '#64748b' }}>
-                          Direcionada para: <strong>{oc.direcionado_para}</strong> · {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                        </p>
+                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+                          <span>👤 {oc.aberto_por}</span>
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📅 {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          {oc.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {oc.prefixo}</span></>)}
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📨 {oc.direcionado_para}</span>
+                        </div>
                       </div>
-                      <span style={{ fontSize: 16, color: '#94a3b8', flexShrink: 0 }}>{abertaAgora ? '▲' : '▼'}</span>
+                      <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>{abertaAgora ? '▲' : '▼'}</span>
                     </div>
                     {abertaAgora && (
                       <div style={{ marginTop: 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
+                        <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 6px', fontFamily: 'monospace' }}>{numeroOcorrencia(oc)}</p>
                         <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
                         {oc.eletricista_equipe && <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>}
                         {!pendente && (

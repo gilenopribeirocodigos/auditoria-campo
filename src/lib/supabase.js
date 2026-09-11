@@ -33,6 +33,19 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
   return todas
 }
 
+// Conta pendências de tratamento pro badge do botão "Tratamento de Não
+// Conformidades" na Home — soma auditorias_nao_conformes pendentes +
+// ocorrências pendentes (mesmo total que a tela mostra somando as duas
+// abas). Usa count:'exact', head:true pra não trazer as linhas, só o total.
+export async function contarPendenciasTratamentoNC() {
+  if (!supabase) return 0
+  const [nc, oc] = await Promise.all([
+    supabase.from('auditorias_nao_conformes').select('*', { count: 'exact', head: true }).eq('status_tratamento', 'PENDENTE'),
+    supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE'),
+  ])
+  return (nc.count || 0) + (oc.count || 0)
+}
+
 // Upload de imagem base64 para o Storage
 export async function uploadBase64(base64, path, bucket = 'fotos-auditoria') {
   if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')
