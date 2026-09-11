@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase.js'
+import { supabase, buscarTodasLinhas } from '../lib/supabase.js'
 import { temPermissao } from '../lib/auth.js'
 import EstruturaOnline from './EstruturaOnline.jsx'
 
@@ -287,12 +287,15 @@ export default function ImportarEquipes({ onVoltar, usuarioLogado }) {
 
       // ─── 4. BUSCAR ESTADO ATUAL ────────────────────────────────────
       setEtapa('📊 Comparando com a base atual...')
-      const { data: atualData,  error: errAtual  } = await supabase.from('estrutura_equipes').select('*')
-      if (errAtual) throw errAtual
-      const { data: mestreData, error: errMestre } = await supabase.from('eletricistas_cadastro').select('id_eletricista, matricula, nome')
-      if (errMestre) throw errMestre
-      const { data: histData,   error: errHist   } = await supabase.from('historico_estrutura_equipes').select('matricula')
-      if (errHist) throw errHist
+      const atualData = await buscarTodasLinhas((ini, fim) =>
+        supabase.from('estrutura_equipes').select('*').range(ini, fim)
+      )
+      const mestreData = await buscarTodasLinhas((ini, fim) =>
+        supabase.from('eletricistas_cadastro').select('id_eletricista, matricula, nome').range(ini, fim)
+      )
+      const histData = await buscarTodasLinhas((ini, fim) =>
+        supabase.from('historico_estrutura_equipes').select('matricula').range(ini, fim)
+      )
 
       const atualMap     = new Map((atualData  || []).map(a => [a.matricula, a]))
       const mestreMap    = new Map((mestreData || []).map(m => [m.matricula, m]))
