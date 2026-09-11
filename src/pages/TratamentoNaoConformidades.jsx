@@ -303,23 +303,48 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   )
 }
 
-// ─── Card de uma Ocorrência: descrição + 1 tratamento simplificado ──────────
-// Sem checklist e sem assinatura — só observação do que foi feito.
+// ─── Card de uma Ocorrência: descrição + 1 tratamento com evidência ─────────
+// Mesmo padrão de exigência do tratamento de Não Conformidade: observação +
+// mín. 1 foto + assinatura do colaborador envolvido.
 function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   const pendente = oc.status === 'PENDENTE'
-  const [aberto,     setAberto]     = useState(false)
-  const [observacao, setObservacao] = useState('')
-  const [salvando,   setSalvando]   = useState(false)
-  const [erro,       setErro]       = useState('')
+  const [aberto,           setAberto]           = useState(false)
+  const [observacao,       setObservacao]       = useState('')
+  const [fotos,             setFotos]           = useState([])
+  const [nomeColaborador,  setNomeColaborador]  = useState(oc.eletricista_equipe || '')
+  const [assinatura,        setAssinatura]      = useState(null)
+  const [salvando,          setSalvando]        = useState(false)
+  const [erro,              setErro]            = useState('')
 
-  const podeConfirmar = observacao.trim().length > 0
+  const addFoto = async e => {
+    const files = Array.from(e.target.files)
+    for (const file of files) {
+      const url = await processarFotoEvidencia(file, oc.prefixo, usuarioLogado?.nome)
+      setFotos(f => [...f, url])
+    }
+    e.target.value = ''
+  }
+  const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
+
+  const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && !!assinatura
 
   const confirmarTratamento = async () => {
     if (!podeConfirmar) return
     setSalvando(true)
     setErro('')
     try {
-      await tratarOcorrencia(oc.id, { observacao, usuarioLogado })
+      const fotosUrls = []
+      for (let i = 0; i < fotos.length; i++) {
+        const url = await uploadBase64(fotos[i], `ocorrencias_tratamento/${oc.id}/foto_${Date.now()}_${i + 1}.jpg`)
+        fotosUrls.push(url)
+      }
+      const assinaturaUrl = await uploadBase64(assinatura, `ocorrencias_tratamento/${oc.id}/assinatura_${Date.now()}.png`)
+
+      await tratarOcorrencia(oc.id, {
+        observacao, fotosUrls, assinaturaUrl,
+        assinaturaNome: nomeColaborador || null,
+        usuarioLogado,
+      })
       onTratado()
     } catch (e) {
       setErro(e.message || 'Erro ao salvar tratamento.')
@@ -383,6 +408,18 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
           {oc.tratamento_observacao && (
             <p style={{ marginTop: 4 }}><strong>Observação:</strong> {oc.tratamento_observacao}</p>
           )}
+          {oc.tratamento_assinatura_nome && (
+            <p style={{ marginTop: 4 }}><strong>Colaborador cientificado:</strong> {oc.tratamento_assinatura_nome}</p>
+          )}
+          {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {oc.tratamento_fotos_urls.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt={`Evidência ${i + 1}`} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -394,6 +431,49 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
 
           <Textarea label="Observação do tratamento *" value={observacao} onChange={setObservacao}
             placeholder="Descreva a correção feita junto à equipe..." rows={3} />
+
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+              Evidência (mín. 1 foto) *
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <label style={{ flex: 1, cursor: 'pointer' }}>
+                <input type="file" accept="image/*" capture="environment" multiple onChange={addFoto} style={{ display: 'none' }} />
+                <div className="upload-zone" style={{ marginBottom: 0 }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                  <p style={{ color: '#1e3a5f', fontWeight: 700, fontSize: 13 }}>Tirar foto</p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Câmera</p>
+                </div>
+              </label>
+              <label style={{ flex: 1, cursor: 'pointer' }}>
+                <input type="file" accept="image/*" multiple onChange={addFoto} style={{ display: 'none' }} />
+                <div className="upload-zone" style={{ marginBottom: 0 }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>🖼️</div>
+                  <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 13 }}>Da galeria</p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Galeria</p>
+                </div>
+              </label>
+            </div>
+            {fotos.length > 0 && (
+              <div className="photo-grid" style={{ marginTop: 10 }}>
+                {fotos.map((url, i) => (
+                  <div key={i} className="photo-thumb">
+                    <img src={url} alt={`Evidência ${i + 1}`} />
+                    <button className="photo-remove" onClick={() => removerFoto(i)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <PainelAssinatura
+            label="Colaborador envolvido"
+            nome={nomeColaborador}
+            onNome={setNomeColaborador}
+            assinatura={assinatura}
+            onAssinatura={setAssinatura}
+            obrigatorio={true}
+          />
 
           {erro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erro}</div>}
 
