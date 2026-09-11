@@ -12,6 +12,27 @@ export const supabase = (url && key)
   ? createClient(url, key, { db: { schema } })
   : null
 
+// O PostgREST do Supabase limita cada resposta a um número máximo de linhas
+// por padrão (hoje 1000) — sem paginar explicitamente, uma tabela com mais
+// linhas que isso trunca DE FORMA SILENCIOSA (sem erro nenhum). Usar sempre
+// que uma tela precisa buscar uma tabela INTEIRA (não uma busca com limite
+// intencional, tipo autocomplete). `montarQuery(ini, fim)` recebe os limites
+// de `.range()` e deve devolver a query já pronta (com `.select()`, filtros
+// etc, só sem `.range()`).
+const TAMANHO_PAGINA_PADRAO = 1000
+export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAGINA_PADRAO) {
+  const todas = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await montarQuery(offset, offset + tamanhoPagina - 1)
+    if (error) throw error
+    todas.push(...(data || []))
+    if (!data || data.length < tamanhoPagina) break
+    offset += tamanhoPagina
+  }
+  return todas
+}
+
 // Upload de imagem base64 para o Storage
 export async function uploadBase64(base64, path, bucket = 'fotos-auditoria') {
   if (!supabase) throw new Error('Supabase não configurado — verifique as variáveis de ambiente.')

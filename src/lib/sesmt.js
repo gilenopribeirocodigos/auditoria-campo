@@ -238,10 +238,16 @@ export async function calcularRegionalPredominanteSesmt(participantes) {
   if (!supabase) return null
   const ids = [...new Set((participantes || []).filter(p => p.pessoa_id).map(p => p.pessoa_id))]
   if (ids.length === 0) return null
-  const { data, error } = await supabase.from('sesmt_pessoas').select('id, regional').in('id', ids)
-  if (error || !data) return null
+  // Em lotes de 200 (mesmo padrão de buscarCpfsSesmtPorIds) — uma importação
+  // em massa (ex.: Lista Total com milhares de pessoas) num .in() só de uma
+  // vez pode estourar o tamanho máximo da requisição/URL e falhar.
+  const TAMANHO_LOTE = 200
   const contagem = {}
-  data.forEach(p => { if (p.regional) contagem[p.regional] = (contagem[p.regional] || 0) + 1 })
+  for (let i = 0; i < ids.length; i += TAMANHO_LOTE) {
+    const lote = ids.slice(i, i + TAMANHO_LOTE)
+    const { data, error } = await supabase.from('sesmt_pessoas').select('id, regional').in('id', lote)
+    if (!error && data) data.forEach(p => { if (p.regional) contagem[p.regional] = (contagem[p.regional] || 0) + 1 })
+  }
   const entradas = Object.entries(contagem)
   if (entradas.length === 0) return null
   entradas.sort((a, b) => b[1] - a[1])
