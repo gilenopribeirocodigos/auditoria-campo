@@ -4,6 +4,7 @@ import { isAdmin } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
+import { listarOcorrencias, tratarOcorrencia, numeroOcorrencia } from '../lib/ocorrencias.js'
 
 const TIPO_LABEL = { DESEMPENHO: '📊 Desempenho Operacional', POS_SERVICO: '✅ Pós Serviço' }
 
@@ -302,6 +303,191 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   )
 }
 
+// ─── Card de uma Ocorrência: descrição + 1 tratamento com evidência ─────────
+// Mesmo padrão de exigência do tratamento de Não Conformidade: observação +
+// mín. 1 foto + assinatura do colaborador envolvido.
+function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
+  const pendente = oc.status === 'PENDENTE'
+  const [aberto,           setAberto]           = useState(false)
+  const [observacao,       setObservacao]       = useState('')
+  const [fotos,             setFotos]           = useState([])
+  const [nomeColaborador,  setNomeColaborador]  = useState(oc.eletricista_equipe || '')
+  const [assinatura,        setAssinatura]      = useState(null)
+  const [salvando,          setSalvando]        = useState(false)
+  const [erro,              setErro]            = useState('')
+
+  const addFoto = async e => {
+    const files = Array.from(e.target.files)
+    for (const file of files) {
+      const url = await processarFotoEvidencia(file, oc.prefixo, usuarioLogado?.nome)
+      setFotos(f => [...f, url])
+    }
+    e.target.value = ''
+  }
+  const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
+
+  const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && !!assinatura
+
+  const confirmarTratamento = async () => {
+    if (!podeConfirmar) return
+    setSalvando(true)
+    setErro('')
+    try {
+      const fotosUrls = []
+      for (let i = 0; i < fotos.length; i++) {
+        const url = await uploadBase64(fotos[i], `ocorrencias_tratamento/${oc.id}/foto_${Date.now()}_${i + 1}.jpg`)
+        fotosUrls.push(url)
+      }
+      const assinaturaUrl = await uploadBase64(assinatura, `ocorrencias_tratamento/${oc.id}/assinatura_${Date.now()}.png`)
+
+      await tratarOcorrencia(oc.id, {
+        observacao, fotosUrls, assinaturaUrl,
+        assinaturaNome: nomeColaborador || null,
+        usuarioLogado,
+      })
+      onTratado()
+    } catch (e) {
+      setErro(e.message || 'Erro ao salvar tratamento.')
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  return (
+    <div className="card" style={{ border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, cursor: 'pointer' }}
+      onClick={() => setAberto(a => !a)}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
+            <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
+            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{numeroOcorrencia(oc)}</span>
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+              background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+            }}>
+              {pendente ? '🟣 pendente' : '🟢 tratada'}
+            </span>
+          </div>
+          <p style={{ fontSize: 11, color: '#64748b' }}>
+            Encaminhada para: <strong>{oc.direcionado_para}</strong> · aberta por {oc.aberto_por} · {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+          </p>
+          {!aberto && (
+            <p style={{ fontSize: 12, color: '#334155', marginTop: 6 }}>
+              {oc.descricao.length > 90 ? oc.descricao.slice(0, 90) + '...' : oc.descricao} — toque para {pendente ? 'tratar' : 'ver detalhes'}
+            </p>
+          )}
+        </div>
+        <span style={{ fontSize: 16, color: '#94a3b8', flexShrink: 0 }}>{aberto ? '▲' : '▼'}</span>
+      </div>
+
+      {aberto && <div onClick={e => e.stopPropagation()}>
+
+      <div style={{ marginTop: 10, marginBottom: pendente ? 14 : 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
+        <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
+        {oc.eletricista_equipe && (
+          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>
+        )}
+        {(oc.data_abertura || oc.endereco) && (
+          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
+            {oc.data_abertura && `📅 ${new Date(oc.data_abertura + 'T00:00:00').toLocaleDateString('pt-BR')}${oc.hora_abertura ? ` às ${oc.hora_abertura}` : ''}`}
+            {oc.data_abertura && oc.endereco && ' · '}
+            {oc.endereco && `📍 ${oc.endereco}`}
+          </p>
+        )}
+        {oc.foto_url && (
+          <a href={oc.foto_url} target="_blank" rel="noreferrer">
+            <img src={oc.foto_url} alt="Evidência" style={{ marginTop: 8, width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid #c7d2fe', display: 'block' }} />
+          </a>
+        )}
+      </div>
+
+      {!pendente && (
+        <div style={{ background: '#f8fafc', borderRadius: 10, padding: 12, fontSize: 11, color: '#475569' }}>
+          <p><strong>Tratado por:</strong> {oc.tratado_por || '—'} em {oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : '—'}</p>
+          {oc.tratamento_observacao && (
+            <p style={{ marginTop: 4 }}><strong>Observação:</strong> {oc.tratamento_observacao}</p>
+          )}
+          {oc.tratamento_assinatura_nome && (
+            <p style={{ marginTop: 4 }}><strong>Colaborador cientificado:</strong> {oc.tratamento_assinatura_nome}</p>
+          )}
+          {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {oc.tratamento_fotos_urls.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt={`Evidência ${i + 1}`} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                </a>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {pendente && (
+        <div style={{ background: '#fff7ed', border: '1px solid #fdba74', borderRadius: 12, padding: 14 }}>
+          <p style={{ fontSize: 11, fontWeight: 800, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+            Tratamento da ocorrência
+          </p>
+
+          <Textarea label="Observação do tratamento *" value={observacao} onChange={setObservacao}
+            placeholder="Descreva a correção feita junto à equipe..." rows={3} />
+
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
+              Evidência (mín. 1 foto) *
+            </p>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+              <label style={{ flex: 1, cursor: 'pointer' }}>
+                <input type="file" accept="image/*" capture="environment" multiple onChange={addFoto} style={{ display: 'none' }} />
+                <div className="upload-zone" style={{ marginBottom: 0 }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                  <p style={{ color: '#1e3a5f', fontWeight: 700, fontSize: 13 }}>Tirar foto</p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Câmera</p>
+                </div>
+              </label>
+              <label style={{ flex: 1, cursor: 'pointer' }}>
+                <input type="file" accept="image/*" multiple onChange={addFoto} style={{ display: 'none' }} />
+                <div className="upload-zone" style={{ marginBottom: 0 }}>
+                  <div style={{ fontSize: 28, marginBottom: 6 }}>🖼️</div>
+                  <p style={{ color: '#7c3aed', fontWeight: 700, fontSize: 13 }}>Da galeria</p>
+                  <p style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Galeria</p>
+                </div>
+              </label>
+            </div>
+            {fotos.length > 0 && (
+              <div className="photo-grid" style={{ marginTop: 10 }}>
+                {fotos.map((url, i) => (
+                  <div key={i} className="photo-thumb">
+                    <img src={url} alt={`Evidência ${i + 1}`} />
+                    <button className="photo-remove" onClick={() => removerFoto(i)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <PainelAssinatura
+            label="Colaborador envolvido"
+            nome={nomeColaborador}
+            onNome={setNomeColaborador}
+            assinatura={assinatura}
+            onAssinatura={setAssinatura}
+            obrigatorio={true}
+          />
+
+          {erro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erro}</div>}
+
+          <button className="btn-primary" onClick={confirmarTratamento} disabled={!podeConfirmar || salvando}
+            style={{ background: (!podeConfirmar || salvando) ? undefined : '#15803d' }}>
+            {salvando ? '⏳ Salvando...' : '✅ Confirmar Tratamento'}
+          </button>
+        </div>
+      )}
+      </div>}
+    </div>
+  )
+}
+
 export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ usuarioLogado, inicializarMes: false })
   const [ncs,            setNcs]           = useState([])
@@ -309,6 +495,14 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
   const [statusTab,       setStatusTab]     = useState('PENDENTE')
   const [tipoFiltro,      setTipoFiltro]    = useState('TODOS')
   const [numeroASFiltro,  setNumeroASFiltro] = useState('')
+
+  // ── Módulo Ocorrências (Almoxarifado → Fiscal) — aba separada, mesmo filtro
+  // de período/estrutura da tela, mas fonte de dados independente (tabela
+  // `ocorrencias`, sem relação com auditorias_nao_conformes) ──
+  const [modulo,          setModulo]        = useState('NC') // 'NC' | 'OCORRENCIAS'
+  const [ocorrencias,     setOcorrencias]   = useState([])
+  const [loadingOc,       setLoadingOc]     = useState(true)
+  const [pendentesOcQtd,  setPendentesOcQtd] = useState(0) // badge no botão do toggle
 
   const carregar = async () => {
     setLoading(true)
@@ -364,8 +558,56 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
     return [...map.values()].sort((a, b) => (b.itens[0]?.criado_em || '').localeCompare(a.itens[0]?.criado_em || ''))
   }, [ncs, tipoFiltro, numeroASFiltro, filtros])
 
+  // ─── Ocorrências ───────────────────────────────────────────────────────────
+  const carregarOcorrencias = async () => {
+    setLoadingOc(true)
+    try {
+      const { ini, fim } = filtros.getDatasQuery()
+      const data = await listarOcorrencias(statusTab === 'TODOS' ? 'TODOS' : statusTab, { ini, fim })
+      setOcorrencias(data)
+    } catch (e) {
+      console.error('Erro ao carregar ocorrências:', e)
+      setOcorrencias([])
+    } finally {
+      setLoadingOc(false)
+    }
+  }
+
+  useEffect(() => { carregarOcorrencias() }, [statusTab, filtros.tipoPeriodo, filtros.mesAno, filtros.dataIni, filtros.dataFim])
+
+  // Badge de pendências — carregado 1x (independe da aba/status selecionado)
+  // pra ficar visível assim que o fiscal abre a tela, sem precisar trocar de aba.
+  const atualizarBadgeOc = () => {
+    listarOcorrencias('PENDENTE').then(d => setPendentesOcQtd(d.length)).catch(() => {})
+  }
+  useEffect(() => { atualizarBadgeOc() }, [])
+
+  const ocorrenciasFiltradas = useMemo(
+    () => filtros.filtrar(ocorrencias, { prefixoField: 'prefixo' }),
+    [ocorrencias, filtros]
+  )
+
+  const resumoPorFiscalOc = useMemo(() => {
+    if (statusTab === 'TODOS') return []
+    const contagem = new Map()
+    ocorrenciasFiltradas.forEach(oc => {
+      const nome = oc.direcionado_para || '—'
+      contagem.set(nome, (contagem.get(nome) || 0) + 1)
+    })
+    return [...contagem.entries()]
+      .map(([fiscal, qtd]) => ({ fiscal, qtd }))
+      .sort((a, b) => b.qtd - a.qtd)
+  }, [ocorrenciasFiltradas, statusTab])
+
+  const onOcorrenciaTratada = () => {
+    carregarOcorrencias()
+    atualizarBadgeOc()
+  }
+
   const totalPendentes = ncs.filter(n => n.status_tratamento === 'PENDENTE').length
   const totalTratadas  = ncs.filter(n => n.status_tratamento === 'TRATADA').length
+  const totalPendentesOc = ocorrencias.filter(o => o.status === 'PENDENTE').length
+  const totalTratadasOc  = ocorrencias.filter(o => o.status === 'TRATADA').length
 
   // Resumo por fiscal — conta por AS (grupo), não por item de NC.
   // Só faz sentido nas abas PENDENTE/TRATADA: como `grupos` já vem filtrado
@@ -396,15 +638,15 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>🛠️ Tratamento de Não Conformidades</h1>
-              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Ações pendentes de tratamento (Pós Serviço) e histórico</p>
+              <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>Ações pendentes de tratamento (Pós Serviço, Ocorrências) e histórico</p>
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 60 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{totalPendentes}</div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{modulo === 'NC' ? totalPendentes : totalPendentesOc}</div>
                 <div style={{ fontSize: 9, opacity: 0.8 }}>PENDENTES</div>
               </div>
               <div style={{ background: 'rgba(255,255,255,0.15)', borderRadius: 10, padding: '6px 10px', textAlign: 'center', minWidth: 60 }}>
-                <div style={{ fontSize: 16, fontWeight: 800 }}>{totalTratadas}</div>
+                <div style={{ fontSize: 16, fontWeight: 800 }}>{modulo === 'NC' ? totalTratadas : totalTratadasOc}</div>
                 <div style={{ fontSize: 9, opacity: 0.8 }}>TRATADAS</div>
               </div>
             </div>
@@ -413,11 +655,38 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
       </div>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
+
+        {/* Toggle Não Conformidades / Ocorrências — dois módulos, mesma tela */}
+        <div style={{ display: 'flex', gap: 8, background: '#fff', border: '1.5px solid #e2e8f0', borderRadius: 12, padding: 5, marginBottom: 16 }}>
+          <button onClick={() => setModulo('NC')} style={{
+            flex: 1, padding: 10, borderRadius: 9, border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 700,
+            background: modulo === 'NC' ? '#c2410c' : 'transparent',
+            color: modulo === 'NC' ? '#fff' : '#64748b',
+          }}>🛠️ Não Conformidades</button>
+          <button onClick={() => setModulo('OCORRENCIAS')} style={{
+            position: 'relative',
+            flex: 1, padding: 10, borderRadius: 9, border: 'none', cursor: 'pointer',
+            fontSize: 13, fontWeight: 700,
+            background: modulo === 'OCORRENCIAS' ? '#4338ca' : 'transparent',
+            color: modulo === 'OCORRENCIAS' ? '#fff' : '#64748b',
+          }}>
+            📦 Ocorrências
+            {pendentesOcQtd > 0 && (
+              <span style={{
+                position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff',
+                borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 18, height: 18, padding: '0 4px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
+              }}>{pendentesOcQtd}</span>
+            )}
+          </button>
+        </div>
+
         <PainelFiltros
           filtros={filtros}
           titulo="🔍 Filtros"
-          badge="não conformidades"
-          extras={
+          badge={modulo === 'NC' ? 'não conformidades' : 'ocorrências'}
+          extras={modulo === 'NC' ? (
             <>
               <div>
                 <label style={LABEL_STYLE}>Tipo de Auditoria</label>
@@ -433,7 +702,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
                   placeholder="AS-..." style={INPUT_STYLE} />
               </div>
             </>
-          }
+          ) : null}
         />
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto', paddingBottom: 4 }}>
@@ -441,65 +710,118 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             <button key={s} onClick={() => setStatusTab(s)} style={{
               padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-              background: statusTab === s ? '#c2410c' : '#e2e8f0',
+              background: statusTab === s ? (modulo === 'NC' ? '#c2410c' : '#4338ca') : '#e2e8f0',
               color: statusTab === s ? '#fff' : '#374151',
             }}>{s}</button>
           ))}
         </div>
 
-        {resumoPorFiscal.length > 0 && (() => {
-          const cor = statusTab === 'PENDENTE'
-            ? { borda: '#fdba74', fundo: '#fff7ed', texto: '#9a3412', chipFundo: '#fef3c7', chipTexto: '#92400e', bolaFundo: '#f59e0b' }
-            : { borda: '#86efac', fundo: '#f0fdf4', texto: '#166534', chipFundo: '#dcfce7', chipTexto: '#15803d', bolaFundo: '#22c55e' }
-          return (
-            <div style={{
-              background: cor.fundo, border: `1.5px solid ${cor.borda}`, borderRadius: 12,
-              padding: '10px 14px', marginBottom: 14,
-            }}>
-              <div
-                onClick={() => setResumoAberto(a => !a)}
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
-              >
-                <p style={{ fontSize: 11, fontWeight: 800, color: cor.texto, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                  📋 Por Fiscal ({resumoPorFiscal.length})
-                </p>
-                <span style={{ fontSize: 13, color: cor.texto }}>{resumoAberto ? '▾' : '▸'}</span>
-              </div>
+        {modulo === 'NC' ? (
+          <>
+            {resumoPorFiscal.length > 0 && (() => {
+              const cor = statusTab === 'PENDENTE'
+                ? { borda: '#fdba74', fundo: '#fff7ed', texto: '#9a3412', chipFundo: '#fef3c7', chipTexto: '#92400e', bolaFundo: '#f59e0b' }
+                : { borda: '#86efac', fundo: '#f0fdf4', texto: '#166534', chipFundo: '#dcfce7', chipTexto: '#15803d', bolaFundo: '#22c55e' }
+              return (
+                <div style={{
+                  background: cor.fundo, border: `1.5px solid ${cor.borda}`, borderRadius: 12,
+                  padding: '10px 14px', marginBottom: 14,
+                }}>
+                  <div
+                    onClick={() => setResumoAberto(a => !a)}
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                  >
+                    <p style={{ fontSize: 11, fontWeight: 800, color: cor.texto, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                      📋 Por Fiscal ({resumoPorFiscal.length})
+                    </p>
+                    <span style={{ fontSize: 13, color: cor.texto }}>{resumoAberto ? '▾' : '▸'}</span>
+                  </div>
 
-              {resumoAberto && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 10 }}>
-                  {resumoPorFiscal.map(({ fiscal, qtd }) => (
-                    <div key={fiscal} style={{
-                      display: 'flex', alignItems: 'center', gap: 7,
-                      background: cor.chipFundo, borderRadius: 20, padding: '5px 12px 5px 5px',
-                    }}>
-                      <span style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        width: 20, height: 20, borderRadius: '50%', background: cor.bolaFundo,
-                        color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0,
-                      }}>{qtd}</span>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: cor.chipTexto, whiteSpace: 'nowrap' }}>{fiscal}</span>
+                  {resumoAberto && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 10 }}>
+                      {resumoPorFiscal.map(({ fiscal, qtd }) => (
+                        <div key={fiscal} style={{
+                          display: 'flex', alignItems: 'center', gap: 7,
+                          background: cor.chipFundo, borderRadius: 20, padding: '5px 12px 5px 5px',
+                        }}>
+                          <span style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: 20, height: 20, borderRadius: '50%', background: cor.bolaFundo,
+                            color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0,
+                          }}>{qtd}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: cor.chipTexto, whiteSpace: 'nowrap' }}>{fiscal}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  )}
                 </div>
-              )}
-            </div>
-          )
-        })()}
+              )
+            })()}
 
-        {loading ? (
-          <CarregandoHexagono />
-        ) : grupos.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-            <div style={{ fontSize: 40, marginBottom: 10 }}>🛠️</div>
-            <p>Nenhuma não conformidade encontrada para os filtros selecionados</p>
-          </div>
+            {loading ? (
+              <CarregandoHexagono />
+            ) : grupos.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>🛠️</div>
+                <p>Nenhuma não conformidade encontrada para os filtros selecionados</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {grupos.map(g => (
+                  <GrupoNC key={g.chave} grupo={g} usuarioLogado={usuarioLogado} onTratado={carregar} />
+                ))}
+              </div>
+            )}
+          </>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {grupos.map(g => (
-              <GrupoNC key={g.chave} grupo={g} usuarioLogado={usuarioLogado} onTratado={carregar} />
-            ))}
-          </div>
+          <>
+            {resumoPorFiscalOc.length > 0 && (
+              <div style={{ background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
+                <div
+                  onClick={() => setResumoAberto(a => !a)}
+                  style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
+                >
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#3730a3', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    📋 Por Fiscal ({resumoPorFiscalOc.length})
+                  </p>
+                  <span style={{ fontSize: 13, color: '#3730a3' }}>{resumoAberto ? '▾' : '▸'}</span>
+                </div>
+
+                {resumoAberto && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingTop: 10 }}>
+                    {resumoPorFiscalOc.map(({ fiscal, qtd }) => (
+                      <div key={fiscal} style={{
+                        display: 'flex', alignItems: 'center', gap: 7,
+                        background: '#e0e7ff', borderRadius: 20, padding: '5px 12px 5px 5px',
+                      }}>
+                        <span style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          width: 20, height: 20, borderRadius: '50%', background: '#4f46e5',
+                          color: '#fff', fontSize: 11, fontWeight: 800, flexShrink: 0,
+                        }}>{qtd}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#3730a3', whiteSpace: 'nowrap' }}>{fiscal}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {loadingOc ? (
+              <CarregandoHexagono />
+            ) : ocorrenciasFiltradas.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>📦</div>
+                <p>Nenhuma ocorrência encontrada para os filtros selecionados</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {ocorrenciasFiltradas.map(oc => (
+                  <CardOcorrencia key={oc.id} oc={oc} usuarioLogado={usuarioLogado} onTratado={onOcorrenciaTratada} />
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

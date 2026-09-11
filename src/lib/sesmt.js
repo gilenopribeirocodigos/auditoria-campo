@@ -4,14 +4,30 @@ import { supabase, uploadBase64 } from './supabase.js'
 // Pessoas carregadas só para este módulo (chapa + nome), sem relação com
 // estrutura_equipes/eletricistas_cadastro.
 
+// O PostgREST do Supabase limita cada resposta a um número máximo de linhas
+// por padrão (hoje 1000) — sem paginar explicitamente, uma tabela com mais
+// linhas que isso trunca DE FORMA SILENCIOSA (sem erro nenhum). Usado pelas
+// duas funções abaixo, que precisam trazer TODO MUNDO (não é uma busca com
+// limite intencional como as de nome/chapa, que já usam .limit(20)).
+const TAMANHO_PAGINA_SESMT = 1000
+async function buscarTodasPaginado(montarQuery) {
+  const todas = []
+  let offset = 0
+  while (true) {
+    const { data, error } = await montarQuery(offset, offset + TAMANHO_PAGINA_SESMT - 1)
+    if (error) throw error
+    todas.push(...(data || []))
+    if (!data || data.length < TAMANHO_PAGINA_SESMT) break
+    offset += TAMANHO_PAGINA_SESMT
+  }
+  return todas
+}
+
 export async function listarPessoasSesmt() {
   if (!supabase) throw new Error('Supabase não configurado.')
-  const { data, error } = await supabase
-    .from('sesmt_pessoas')
-    .select('*')
-    .order('nome')
-  if (error) throw error
-  return data || []
+  return buscarTodasPaginado((ini, fim) =>
+    supabase.from('sesmt_pessoas').select('*').order('nome').range(ini, fim)
+  )
 }
 
 // regionais: array opcional (ex.: ['NORTE']) — restringe a busca a quem tem
@@ -48,14 +64,16 @@ export async function buscarPessoasSesmtPorChapa(termo, regionais) {
 
 // Lista TODAS as pessoas ativas de uma (ou mais) regional — sem limite de 20
 // como as buscas por texto acima, porque aqui o objetivo é trazer todo mundo
-// pra importar em lote. regionais vazio/omitido = lista total.
+// pra importar em lote. regionais vazio/omitido = lista total. Pagina em
+// lotes de TAMANHO_PAGINA_SESMT (ver buscarTodasPaginado) pra não truncar
+// silenciosamente quando a regional/lista total tem mais de 1000 pessoas.
 export async function listarPessoasSesmtPorRegional(regionais) {
   if (!supabase) throw new Error('Supabase não configurado.')
-  let q = supabase.from('sesmt_pessoas').select('*').eq('ativo', true)
-  if (regionais && regionais.length > 0) q = q.in('regional', regionais)
-  const { data, error } = await q.order('nome')
-  if (error) throw error
-  return data || []
+  return buscarTodasPaginado((ini, fim) => {
+    let q = supabase.from('sesmt_pessoas').select('*').eq('ativo', true)
+    if (regionais && regionais.length > 0) q = q.in('regional', regionais)
+    return q.order('nome').range(ini, fim)
+  })
 }
 
 // linhas: [{ chapa, nome, codsituacao, codsecao, regional, data_admissao,
@@ -220,10 +238,16 @@ export async function calcularRegionalPredominanteSesmt(participantes) {
   if (!supabase) return null
   const ids = [...new Set((participantes || []).filter(p => p.pessoa_id).map(p => p.pessoa_id))]
   if (ids.length === 0) return null
-  const { data, error } = await supabase.from('sesmt_pessoas').select('id, regional').in('id', ids)
-  if (error || !data) return null
+  // Em lotes de 200 (mesmo padrão de buscarCpfsSesmtPorIds) — uma importação
+  // em massa (ex.: Lista Total com milhares de pessoas) num .in() só de uma
+  // vez pode estourar o tamanho máximo da requisição/URL e falhar.
+  const TAMANHO_LOTE = 200
   const contagem = {}
-  data.forEach(p => { if (p.regional) contagem[p.regional] = (contagem[p.regional] || 0) + 1 })
+  for (let i = 0; i < ids.length; i += TAMANHO_LOTE) {
+    const lote = ids.slice(i, i + TAMANHO_LOTE)
+    const { data, error } = await supabase.from('sesmt_pessoas').select('id, regional').in('id', lote)
+    if (!error && data) data.forEach(p => { if (p.regional) contagem[p.regional] = (contagem[p.regional] || 0) + 1 })
+  }
   const entradas = Object.entries(contagem)
   if (entradas.length === 0) return null
   entradas.sort((a, b) => b[1] - a[1])
