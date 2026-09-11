@@ -60,17 +60,35 @@ export async function prepararPayloadOcorrencia(form) {
     direcionado_para:          form.direcionado_para,
     matricula_fiscal_destino:  form.matricula_fiscal_destino || null,
     foto_url:                  fotoUrl,
+    data_abertura:             form.data || null,
+    hora_abertura:             form.hora || null,
+    endereco:                  form.endereco || null,
+    lat:                       form.lat ?? null,
+    lng:                       form.lng ?? null,
   }
 }
 
 // ─── Salva a ocorrência no banco ──────────────────────────────────────────────
 export async function salvarOcorrenciaBD(payload) {
   if (!supabase) throw new Error('Supabase não configurado.')
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from('ocorrencias')
     .insert(payload)
     .select()
     .single()
+
+  // Mantém o salvamento funcionando caso o deploy do app chegue antes da
+  // migração SQL que adiciona data_abertura/hora_abertura/endereco/lat/lng
+  // (mesmo padrão de salvarRegistroBD em lib/registros.js).
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const { data_abertura, hora_abertura, endereco, lat, lng, ...payloadCompat } = payload
+    ;({ data, error } = await supabase
+      .from('ocorrencias')
+      .insert(payloadCompat)
+      .select()
+      .single())
+  }
+
   if (error) throw error
   return data
 }

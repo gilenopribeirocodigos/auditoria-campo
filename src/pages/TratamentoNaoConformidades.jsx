@@ -363,6 +363,13 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
         {oc.eletricista_equipe && (
           <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>
         )}
+        {(oc.data_abertura || oc.endereco) && (
+          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
+            {oc.data_abertura && `📅 ${new Date(oc.data_abertura + 'T00:00:00').toLocaleDateString('pt-BR')}${oc.hora_abertura ? ` às ${oc.hora_abertura}` : ''}`}
+            {oc.data_abertura && oc.endereco && ' · '}
+            {oc.endereco && `📍 ${oc.endereco}`}
+          </p>
+        )}
         {oc.foto_url && (
           <a href={oc.foto_url} target="_blank" rel="noreferrer">
             <img src={oc.foto_url} alt="Evidência" style={{ marginTop: 8, width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid #c7d2fe', display: 'block' }} />
