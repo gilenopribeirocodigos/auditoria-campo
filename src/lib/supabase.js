@@ -38,13 +38,13 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
 // ocorrências pendentes (mesmo total que a tela mostra somando as duas
 // abas). Usa count:'exact', head:true pra não trazer as linhas, só o total.
 //
-// ADMIN/SUPERV. OPERAÇÃO/SUPERV. CAMPO veem o total geral (mesmo padrão de
-// TratamentoNaoConformidades.jsx); os demais perfis só contam o que é deles
-// (por matrícula), pra o badge bater com o que a pessoa realmente vai ver
-// ao entrar na tela.
+// Só o ADMIN vê o total geral (mesmo padrão de TratamentoNaoConformidades.jsx
+// — fila pessoal de tarefas, não segregação hierárquica); os demais perfis
+// (incluindo supervisores) só contam o que é deles (por matrícula), pra o
+// badge bater com o que a pessoa realmente vai ver ao entrar na tela.
 export async function contarPendenciasTratamentoNC(usuarioLogado) {
   if (!supabase) return 0
-  const podeVerTodas = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
+  const podeVerTodas = usuarioLogado?.perfil === 'ADMIN'
 
   let ncQ = supabase.from('auditorias_nao_conformes').select('*', { count: 'exact', head: true }).eq('status_tratamento', 'PENDENTE')
   let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE')
