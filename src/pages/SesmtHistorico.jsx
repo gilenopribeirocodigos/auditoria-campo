@@ -360,63 +360,67 @@ export default function SesmtHistorico({ onVoltar }) {
       pagina               = 1,
       totalPaginas         = 1,
     } = opcoes
+    const infoRow = (label, value) => value ? `
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid #e2e8f0;">
+        <span style="color:#475569;font-weight:800;font-size:17px;min-width:120px;flex-shrink:0;">${label}</span>
+        <span style="color:#0f172a;font-weight:800;font-size:17px;text-align:right;flex:1;padding-left:10px;">${value}</span>
+      </div>` : ''
     return `
     ${mostrarCabecalho ? `
-    <div style="background:linear-gradient(135deg,#92400e,#d97706);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
-      <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">Plataforma de Gestão Operacional</div>
-      <div style="font-size:20px;font-weight:800;">${tc.emoji} ${tc.label}</div>
+    <div style="background:${tc.bg};border:3px solid ${tc.border};border-radius:18px;padding:24px;text-align:center;margin-bottom:16px;">
+      <div style="font-size:52px;margin-bottom:10px;">${tc.emoji}</div>
+      <div style="font-size:26px;font-weight:900;color:${tc.color};margin-bottom:6px;">${tc.label}</div>
+      <div style="font-size:15px;color:${tc.color};opacity:0.9;font-weight:600;">${totalParticipantes} participante(s)</div>
     </div>
-    <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
-      <table style="width:100%;border-collapse:collapse;">
-        ${[['Usuário', acao.fiscal], ['Matrícula', acao.matricula_fiscal], ['Data/Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`],
-           ['Local', acao.endereco], ['Tema', acao.tema], ['Motivo', acao.motivo]]
-          .filter(([, v]) => v)
-          .map(([l, v]) => `<tr><td style="padding:8px 12px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;width:140px;">${l}</td><td style="padding:8px 12px;color:#1e293b;font-size:13px;font-weight:600;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`)
-          .join('')}
-      </table>
+
+    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:18px;margin-bottom:16px;">
+      <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Dados da Ação</p>
+      ${infoRow('Usuário', acao.fiscal)}
+      ${infoRow('Matrícula', acao.matricula_fiscal)}
+      ${infoRow('Data / Hora', `${formatData(acao.data_registro)} às ${acao.hora_registro}`)}
+      ${acao.endereco ? infoRow('Local', acao.endereco) : ''}
+      ${infoRow('Tema', acao.tema)}
+      ${infoRow('Motivo', acao.motivo)}
     </div>
+
     ${acao.observacao ? `
-    <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
-      <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">OBSERVAÇÃO</div>
-      <div style="font-size:13px;color:#475569;line-height:1.7;">${acao.observacao}</div>
+    <div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:16px;padding:18px;margin-bottom:16px;">
+      <p style="font-size:14px;font-weight:900;color:#92400e;margin:0 0 6px 0;text-transform:uppercase;letter-spacing:0.5px;">Observação:</p>
+      <p style="font-size:17px;color:#1e293b;font-weight:600;line-height:1.6;margin:0;">${acao.observacao}</p>
     </div>` : ''}
     ` : `
-    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
-      <p style="font-size:12px;font-weight:700;color:#92400e;margin:0;">${tc.emoji} ${tc.label} — continuação (página ${pagina} de ${totalPaginas})</p>
+    <div style="background:${tc.bg};border:2px solid ${tc.border};border-radius:14px;padding:14px 18px;margin-bottom:16px;">
+      <p style="font-size:14px;font-weight:800;color:${tc.color};margin:0;">${tc.emoji} ${tc.label} — continuação (página ${pagina} de ${totalPaginas})</p>
     </div>
     `}
-    <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
-      <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;">
-        PARTICIPANTES (${totalParticipantes})${totalPaginas > 1 ? ` — página ${pagina}/${totalPaginas}` : ''}
-      </div>
-      <table style="width:100%;border-collapse:collapse;">
-        <tr style="background:#92400e;">
-          <th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;width:30px;">Nº</th>
-          <th style="padding:8px 10px;color:#fff;font-size:12px;text-align:left;">Nome</th>
-          <th style="padding:8px 10px;color:#fff;font-size:12px;">Matrícula</th>
-          <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura / Status</th>
-        </tr>
-        ${participantesPagina.map((p, i) => `
-          <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:8px 10px;font-size:13px;">${i + numeroInicial}</td>
-            <td style="padding:8px 10px;font-size:13px;font-weight:600;">
-              ${p.nome}
-              ${p.modo === 'online' ? '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:4px;">🔗 online</span>' : ''}
-            </td>
-            <td style="padding:8px 10px;font-size:13px;text-align:center;">${p.chapa || '—'}</td>
-            <td style="padding:4px 8px;">
-              ${p.assinatura_url
-                ? `<img src="${p.assinatura_url}" style="height:40px;max-width:120px;object-fit:contain;"/>`
-                : '<span style="font-size:11px;color:#d97706;background:#fef3c7;padding:2px 8px;border-radius:4px;border:1px solid #fcd34d;">⚠️ Não assinou</span>'
-              }
-            </td>
-          </tr>`).join('')}
-      </table>
+
+    <div style="background:#f0fdf4;border:2px solid #86efac;border-radius:16px;padding:18px;margin-bottom:16px;">
+      <p style="font-size:17px;font-weight:900;color:#15803d;margin:0 0 12px 0;">✅ Participantes (${totalParticipantes})${totalPaginas > 1 ? ` — página ${pagina}/${totalPaginas}` : ''}</p>
+      ${participantesPagina.map((p, i) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;padding:11px 0;${i < participantesPagina.length - 1 ? 'border-bottom:1px solid #bbf7d0;' : ''}">
+          <div style="flex:1;min-width:0;">
+            <span style="font-size:17px;font-weight:900;color:#15803d;">${i + numeroInicial}. ${p.nome}</span>
+            ${p.chapa ? `<span style="font-size:14px;color:#475569;font-weight:700;margin-left:8px;">Mat: ${p.chapa}</span>` : ''}
+            ${p.modo === 'online' ? '<span style="font-size:11px;color:#1d4ed8;background:#dbeafe;padding:1px 6px;border-radius:4px;margin-left:6px;">🔗 online</span>' : ''}
+          </div>
+          <div style="flex-shrink:0;text-align:right;">${blocoAssinaturaParticipante(p)}</div>
+        </div>`).join('')}
     </div>
+
+    ${mostrarRodape && (acao.fotos_urls || []).length > 0 ? `
+    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px 18px;margin-bottom:16px;">
+      <p style="font-size:17px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">📷 Fotos (${acao.fotos_urls.length})</p>
+      <div style="display:grid;grid-template-columns:repeat(${Math.min(acao.fotos_urls.length, 3)},1fr);gap:8px;">
+        ${acao.fotos_urls.map(url => `
+          <img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block;border:1px solid #e2e8f0;" onerror="this.style.display='none'" />
+        `).join('')}
+      </div>
+    </div>` : ''}
+
     ${mostrarRodape ? `
-    <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
-      <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
-      <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
+    <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;">
+      <p style="font-size:13px;color:#64748b;margin:0;font-weight:700;">VérticeGP · Plataforma de Gestão Operacional</p>
+      <p style="font-size:12px;color:#94a3b8;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · Página ${pagina} de ${totalPaginas}</p>
     </div>` : ''}`
   }
 
@@ -461,7 +465,12 @@ export default function SesmtHistorico({ onVoltar }) {
     try {
       const tc = TIPOS_ACAO_SESMT[detalhe.tipo] || {}
       const participantes = detalhe.participantes || []
-      const opcoesCanvas = { largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff' }
+      // Escala 2.5 (não 4) — o PDF agora também renderiza as fotos anexadas,
+      // que pesam mais que texto/tabela pro jsPDF comprimir; testado
+      // isoladamente com fotos simuladas "ruidosas" (pior caso de compressão):
+      // 2,26 MB em vez de 4,76 MB na escala 4, sem perda visual perceptível —
+      // mesma escala já usada em RelatorioEvidencias.jsx.
+      const opcoesCanvas = { largura: 700, escala: 2.5, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff' }
       const montarHtml = conteudo => `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
 
       let canvases
