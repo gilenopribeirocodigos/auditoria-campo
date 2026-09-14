@@ -488,8 +488,15 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   )
 }
 
+// Quem vê tudo (todos os fiscais) vs só as próprias pendências — mesmo
+// padrão de segregação já usado em RegistrosOperacionais.jsx/ocorrencias.js.
+// Perfis fora dessa lista só enxergam NCs/Ocorrências no nome/matrícula deles,
+// pra não misturar a fila de todo mundo e facilitar identificar o que é seu.
+const PODE_VER_TODAS_NC = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO']
+
 export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ usuarioLogado, inicializarMes: false })
+  const podeVerTodas = PODE_VER_TODAS_NC.includes(usuarioLogado?.perfil)
   const [ncs,            setNcs]           = useState([])
   const [loading,         setLoading]       = useState(true)
   const [statusTab,       setStatusTab]     = useState('PENDENTE')
@@ -512,6 +519,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
       const { ini, fim } = filtros.getDatasQuery()
       if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
       if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
+      if (!podeVerTodas) q = q.eq('matricula', usuarioLogado?.matricula)
       const { data: ncsData, error } = await q
       if (error) throw error
 
@@ -559,12 +567,20 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
   }, [ncs, tipoFiltro, numeroASFiltro, filtros])
 
   // ─── Ocorrências ───────────────────────────────────────────────────────────
+  // Direcionada pra mim = matrícula bate (caso comum, veio da lista de
+  // fiscais) ou, na falta dela (almoxarifado digitou o nome offline), o nome
+  // bate exatamente — mesmo raciocínio de "é minha pendência ou não".
+  const direcionadaParaMim = oc => {
+    if (oc.matricula_fiscal_destino) return oc.matricula_fiscal_destino === usuarioLogado?.matricula
+    return (oc.direcionado_para || '').trim().toLowerCase() === (usuarioLogado?.nome || '').trim().toLowerCase()
+  }
+
   const carregarOcorrencias = async () => {
     setLoadingOc(true)
     try {
       const { ini, fim } = filtros.getDatasQuery()
       const data = await listarOcorrencias(statusTab === 'TODOS' ? 'TODOS' : statusTab, { ini, fim })
-      setOcorrencias(data)
+      setOcorrencias(podeVerTodas ? data : data.filter(direcionadaParaMim))
     } catch (e) {
       console.error('Erro ao carregar ocorrências:', e)
       setOcorrencias([])
@@ -578,7 +594,9 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
   // Badge de pendências — carregado 1x (independe da aba/status selecionado)
   // pra ficar visível assim que o fiscal abre a tela, sem precisar trocar de aba.
   const atualizarBadgeOc = () => {
-    listarOcorrencias('PENDENTE').then(d => setPendentesOcQtd(d.length)).catch(() => {})
+    listarOcorrencias('PENDENTE')
+      .then(d => setPendentesOcQtd((podeVerTodas ? d : d.filter(direcionadaParaMim)).length))
+      .catch(() => {})
   }
   useEffect(() => { atualizarBadgeOc() }, [])
 
@@ -718,7 +736,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
 
         {modulo === 'NC' ? (
           <>
-            {resumoPorFiscal.length > 0 && (() => {
+            {podeVerTodas && resumoPorFiscal.length > 0 && (() => {
               const cor = statusTab === 'PENDENTE'
                 ? { borda: '#fdba74', fundo: '#fff7ed', texto: '#9a3412', chipFundo: '#fef3c7', chipTexto: '#92400e', bolaFundo: '#f59e0b' }
                 : { borda: '#86efac', fundo: '#f0fdf4', texto: '#166534', chipFundo: '#dcfce7', chipTexto: '#15803d', bolaFundo: '#22c55e' }
@@ -775,7 +793,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
           </>
         ) : (
           <>
-            {resumoPorFiscalOc.length > 0 && (
+            {podeVerTodas && resumoPorFiscalOc.length > 0 && (
               <div style={{ background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
                 <div
                   onClick={() => setResumoAberto(a => !a)}
