@@ -66,10 +66,20 @@ export async function compartilharPDFNativo(canvas, nomeArquivo, opcoes = {}) {
 export async function compartilharPDFMultiplasPaginasNativo(canvases, nomeArquivo, { titulo = '', texto = '' } = {}) {
   if (!canvases.length) throw new Error('Nenhuma página pra gerar o PDF.')
   const paginas = canvases.map(limitarCanvasParaPDF)
+  // `compress: true` é o que realmente resolvia o travamento: sem ele, o
+  // jsPDF embute a imagem como pixels brutos (RGB sem compactação) dentro do
+  // PDF — uma tabela de só 5 participantes virava um PDF de ~11 MB de
+  // base64 (confirmado em teste isolado). Esse base64 gigante precisa
+  // atravessar a ponte nativa do Capacitor (Filesystem.writeFile), que é
+  // conhecida por travar/congelar em Android com payloads grandes — isso, e
+  // não a quantidade de participantes ou a rede, era a causa real do
+  // travamento. Com compress:true (deflate nos streams do PDF) uma imagem
+  // majoritariamente branca cai pra dezenas/centenas de KB.
   const doc = new jsPDF({
     unit:      'px',
     format:    [paginas[0].width, paginas[0].height],
     hotfixes:  ['px_scaling'],
+    compress:  true,
   })
   paginas.forEach((canvas, i) => {
     if (i > 0) doc.addPage([canvas.width, canvas.height], canvas.width >= canvas.height ? 'l' : 'p')
