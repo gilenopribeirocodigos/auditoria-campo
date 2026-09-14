@@ -83,16 +83,15 @@ export async function compartilharPDFMultiplasPaginasNativo(canvases, nomeArquiv
 // Renderiza uma string HTML (mesmo padrão usado nas telas de resultado/
 // relatório) fora da tela e devolve o canvas pronto — reaproveitado tanto
 // pra imagem quanto pra PDF, sem duplicar a montagem do HTML.
-// Os parâmetros (escala, espera extra, exigirNaturalWidth) existem porque
-// cada tela já tinha o próprio ajuste fino de timing pro html2canvas —
-// mantemos o comportamento exato de cada uma em vez de forçar um padrão único.
+// Os parâmetros (escala, espera extra) existem porque cada tela já tinha o
+// próprio ajuste fino de timing pro html2canvas — mantemos o comportamento
+// exato de cada uma em vez de forçar um padrão único.
 export async function renderizarHtmlParaCanvas(html, {
-  largura            = 520,
-  escala             = 5,
-  aguardarImagens    = false,
-  esperaExtraMs      = 0,
-  exigirNaturalWidth = false,
-  corFundo           = '#f0f4f8',
+  largura         = 520,
+  escala          = 5,
+  aguardarImagens = false,
+  esperaExtraMs   = 0,
+  corFundo        = '#f0f4f8',
 } = {}) {
   const html2canvas = (await import('html2canvas')).default
 
@@ -103,21 +102,65 @@ export async function renderizarHtmlParaCanvas(html, {
 
   // Timeout por imagem (8s) — sem isso, uma única assinatura que trave pra
   // baixar (rede fraca, muitos participantes assinando ao mesmo tempo) faz
-  // Promise.allSettled esperar pra sempre, já que nem onload nem onerror
-  // disparam nesse caso. Roda em paralelo pra todas as imagens, então o
+  // a espera nunca terminar. Roda em paralelo pra todas as imagens, então o
   // atraso total do pior caso é ~8s, não 8s por imagem.
+  //
+  // IMPORTANTE: não basta só ESPERAR a imagem carregar antes de chamar o
+  // html2canvas — ele faz o PRÓPRIO carregamento de rede internamente (pra
+  // poder desenhar no canvas), sem nenhum timeout embutido. Uma assinatura
+  // hospedada no Supabase Storage com rede lenta/instável travava o
+  // html2canvas nesse carregamento interno mesmo com a imagem já tendo
+  // disparado onload aqui fora — foi isso que continuou travando o "Gerar
+  // PDF" mesmo em cards pequenos (poucos participantes). A solução definitiva
+  // é buscar cada imagem remota nós mesmos (com timeout de verdade via
+  // AbortController) e trocar o src por um data: URI local ANTES de chamar o
+  // html2canvas — assim ele nunca precisa acessar a rede, só desenha o que já
+  // está em memória.
   const TIMEOUT_IMG_MS = 8000
-  if (aguardarImagens) {
-    const imgs = div.querySelectorAll('img')
-    await Promise.allSettled(Array.from(imgs).map(img =>
-      new Promise(res => {
-        const pronta = exigirNaturalWidth ? (img.complete && img.naturalWidth > 0) : img.complete
-        if (pronta) { res(); return }
-        const timer = setTimeout(res, TIMEOUT_IMG_MS)
-        img.onload  = () => { clearTimeout(timer); res() }
-        img.onerror = () => { clearTimeout(timer); res() }
+
+  async function converterParaDataUri(url, timeoutMs) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
+    try {
+      const resposta = await fetch(url, { signal: controller.signal })
+      if (!resposta.ok) throw new Error(`HTTP ${resposta.status}`)
+      const blob = await resposta.blob()
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload  = () => resolve(reader.result)
+        reader.onerror = () => reject(reader.error || new Error('Falha ao ler imagem'))
+        reader.readAsDataURL(blob)
       })
-    ))
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  if (aguardarImagens) {
+    const imgs = Array.from(div.querySelectorAll('img'))
+    await Promise.allSettled(imgs.map(async img => {
+      const src = img.getAttribute('src') || ''
+      if (!src || src.startsWith('data:')) return
+      try {
+        img.src = await converterParaDataUri(src, TIMEOUT_IMG_MS)
+        // Decode de um data: URI é local (sem rede) e normalmente instantâneo,
+        // mas ainda é assíncrono no browser — espera com um teto curto só por
+        // segurança.
+        if (!img.complete) {
+          await new Promise(res => {
+            const t = setTimeout(res, 1000)
+            img.onload  = () => { clearTimeout(t); res() }
+            img.onerror = () => { clearTimeout(t); res() }
+          })
+        }
+      } catch {
+        // Imagem indisponível (rede caiu, CORS, 404) — remove em vez de
+        // deixar o html2canvas tentar carregar do jeito antigo (que é
+        // exatamente o caminho que travava).
+        img.removeAttribute('src')
+        img.style.display = 'none'
+      }
+    }))
   }
   if (esperaExtraMs > 0) await new Promise(r => setTimeout(r, esperaExtraMs))
 

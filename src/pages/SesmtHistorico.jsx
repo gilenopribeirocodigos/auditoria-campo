@@ -310,7 +310,7 @@ export default function SesmtHistorico({ onVoltar }) {
         </div>
       </div>`
 
-    return renderizarHtmlParaCanvas(html, { largura: 520, escala: 6, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true })
+    return renderizarHtmlParaCanvas(html, { largura: 520, escala: 6, aguardarImagens: true, esperaExtraMs: 80 })
   }
 
   const compartilharWhatsAppDetalhe = async () => {
@@ -461,7 +461,7 @@ export default function SesmtHistorico({ onVoltar }) {
     try {
       const tc = TIPOS_ACAO_SESMT[detalhe.tipo] || {}
       const participantes = detalhe.participantes || []
-      const opcoesCanvas = { largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff' }
+      const opcoesCanvas = { largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff' }
       const montarHtml = conteudo => `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
 
       let canvases
