@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase, uploadBase64 } from '../lib/supabase.js'
-import { isAdmin } from '../lib/auth.js'
+import { isAdmin, temPermissao } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
@@ -490,6 +490,14 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
 
 export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ usuarioLogado, inicializarMes: false })
+  // Quem vê tudo (todos os fiscais) vs só as próprias pendências — diferente
+  // da segregação hierárquica usada em RegistrosOperacionais.jsx (onde
+  // supervisores enxergam a equipe toda): aqui é uma fila pessoal de
+  // tarefas, então por padrão só ADMIN vê tudo (temPermissao já libera
+  // ADMIN automaticamente) — qualquer outro usuário só recebe a visão
+  // ampla se o admin marcar a permissão 'ver_todas_pendencias_nc' pra ele
+  // em Gestão de Usuários; sem ela, vê e é notificado só do que é seu.
+  const podeVerTodas = temPermissao(usuarioLogado, 'ver_todas_pendencias_nc')
   const [ncs,            setNcs]           = useState([])
   const [loading,         setLoading]       = useState(true)
   const [statusTab,       setStatusTab]     = useState('PENDENTE')
@@ -512,6 +520,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
       const { ini, fim } = filtros.getDatasQuery()
       if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
       if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
+      if (!podeVerTodas) q = q.eq('matricula', usuarioLogado?.matricula)
       const { data: ncsData, error } = await q
       if (error) throw error
 
@@ -559,12 +568,20 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
   }, [ncs, tipoFiltro, numeroASFiltro, filtros])
 
   // ─── Ocorrências ───────────────────────────────────────────────────────────
+  // Direcionada pra mim = matrícula bate (caso comum, veio da lista de
+  // fiscais) ou, na falta dela (almoxarifado digitou o nome offline), o nome
+  // bate exatamente — mesmo raciocínio de "é minha pendência ou não".
+  const direcionadaParaMim = oc => {
+    if (oc.matricula_fiscal_destino) return oc.matricula_fiscal_destino === usuarioLogado?.matricula
+    return (oc.direcionado_para || '').trim().toLowerCase() === (usuarioLogado?.nome || '').trim().toLowerCase()
+  }
+
   const carregarOcorrencias = async () => {
     setLoadingOc(true)
     try {
       const { ini, fim } = filtros.getDatasQuery()
       const data = await listarOcorrencias(statusTab === 'TODOS' ? 'TODOS' : statusTab, { ini, fim })
-      setOcorrencias(data)
+      setOcorrencias(podeVerTodas ? data : data.filter(direcionadaParaMim))
     } catch (e) {
       console.error('Erro ao carregar ocorrências:', e)
       setOcorrencias([])
@@ -578,7 +595,9 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
   // Badge de pendências — carregado 1x (independe da aba/status selecionado)
   // pra ficar visível assim que o fiscal abre a tela, sem precisar trocar de aba.
   const atualizarBadgeOc = () => {
-    listarOcorrencias('PENDENTE').then(d => setPendentesOcQtd(d.length)).catch(() => {})
+    listarOcorrencias('PENDENTE')
+      .then(d => setPendentesOcQtd((podeVerTodas ? d : d.filter(direcionadaParaMim)).length))
+      .catch(() => {})
   }
   useEffect(() => { atualizarBadgeOc() }, [])
 
@@ -718,7 +737,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
 
         {modulo === 'NC' ? (
           <>
-            {resumoPorFiscal.length > 0 && (() => {
+            {podeVerTodas && resumoPorFiscal.length > 0 && (() => {
               const cor = statusTab === 'PENDENTE'
                 ? { borda: '#fdba74', fundo: '#fff7ed', texto: '#9a3412', chipFundo: '#fef3c7', chipTexto: '#92400e', bolaFundo: '#f59e0b' }
                 : { borda: '#86efac', fundo: '#f0fdf4', texto: '#166534', chipFundo: '#dcfce7', chipTexto: '#15803d', bolaFundo: '#22c55e' }
@@ -775,7 +794,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
           </>
         ) : (
           <>
-            {resumoPorFiscalOc.length > 0 && (
+            {podeVerTodas && resumoPorFiscalOc.length > 0 && (
               <div style={{ background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: '10px 14px', marginBottom: 14 }}>
                 <div
                   onClick={() => setResumoAberto(a => !a)}

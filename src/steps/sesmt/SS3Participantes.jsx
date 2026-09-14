@@ -423,14 +423,27 @@ function FormParticipanteOnline({ onAdicionar, onCancelar, participantesAtuais, 
   )
 }
 
+// Tenta GPS de alta precisão primeiro (rápido quando funciona); se o chip
+// não travar um sinal a tempo — muito comum assinando em ambiente fechado,
+// tipo sala de reunião — cai pra localização por rede (mais lenta pra
+// responder, mas bem mais confiável indoor) em vez de simplesmente desistir.
+// Sem esse fallback, a maioria dos presenciais de um DS/Treinamento em sala
+// fechada ficava sem endereço/distância de assinatura no Excel exportado.
+function obterPosicaoComFallback() {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) { reject(); return }
+    navigator.geolocation.getCurrentPosition(
+      resolve,
+      () => navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 12000, enableHighAccuracy: false }),
+      { timeout: 6000, enableHighAccuracy: true }
+    )
+  })
+}
+
 async function capturarLocalizacao() {
   let lat = null, lng = null, endereco_assinatura = null
   try {
-    const pos = await new Promise((res, rej) =>
-      navigator.geolocation
-        ? navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, enableHighAccuracy: true })
-        : rej()
-    )
+    const pos = await obterPosicaoComFallback()
     lat = pos.coords.latitude; lng = pos.coords.longitude
     try {
       const r = await fetch(

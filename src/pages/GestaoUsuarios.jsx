@@ -13,7 +13,7 @@ import { CarregandoHexagono, CampoSenha } from '../components/Shared.jsx'
 // Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
 import { obterPermissaoUsuario as obterPermissaoUsuarioPC, definirPermissaoUsuario as definirPermissaoUsuarioPC } from '../modules/prestacaoContas/lib/prestacaoContas.js'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT', 'TÉCNICO ALMOXARIFADO', 'ADMIN ALMOXARIFADO']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
@@ -24,6 +24,8 @@ const PERFIL_CORES = {
   'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
   'TÉCNICO SESMT':    { bg: '#fee2e2', color: '#991b1b' },
   'ADMIN SESMT':      { bg: '#ffe4e6', color: '#9f1239' },
+  'TÉCNICO ALMOXARIFADO': { bg: '#e0e7ff', color: '#3730a3' },
+  'ADMIN ALMOXARIFADO':   { bg: '#c7d2fe', color: '#312e81' },
 }
 
 const TODAS_PERMISSOES = [
@@ -35,6 +37,7 @@ const TODAS_PERMISSOES = [
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
   { id: 'acesso_historico_auditorias', label: '📁 Acesso a Histórico de Auditorias' },
   { id: 'acesso_registros_operacionais', label: '📝 Acesso a Registros Operacionais' },
+  { id: 'ver_todos_registros_operacionais', label: '👥 Registros Operacionais - ver registros de todos (senão, só os seus)' },
   { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
@@ -45,6 +48,7 @@ const TODAS_PERMISSOES = [
   { id: 'rotinas_dashboard',       label: '📊 Rotinas — acompanhamento geral' },
   { id: 'rotinas_ver_todas',     label: '👥 Rotinas — ver rotinas de todos' },
   { id: 'tratar_nc',        label: '🛠️ Tratamento de Não Conformidades' },
+  { id: 'ver_todas_pendencias_nc', label: '👥 Tratamento de Não Conformidades - ver pendências de todos (senão, só as suas)' },
   { id: 'fiscais_campo',    label: '📍 Fiscais em Campo'       },
   { id: 'fiscais_campo_bases', label: 'Fiscais em Campo - gerenciar bases operacionais (raio)' },
   { id: 'metas',            label: '🎯 Metas por Fiscal'       },

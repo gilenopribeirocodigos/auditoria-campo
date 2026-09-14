@@ -37,12 +37,25 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
 // Conformidades" na Home — soma auditorias_nao_conformes pendentes +
 // ocorrências pendentes (mesmo total que a tela mostra somando as duas
 // abas). Usa count:'exact', head:true pra não trazer as linhas, só o total.
-export async function contarPendenciasTratamentoNC() {
+//
+// `podeVerTodas` vem de temPermissao(usuarioLogado, 'ver_todas_pendencias_nc')
+// no chamador (App.jsx) — não importa lib/auth.js aqui pra evitar import
+// circular (auth.js já importa supabase.js). Mesma regra de
+// TratamentoNaoConformidades.jsx: ADMIN sempre tem essa permissão
+// automaticamente (ver temPermissao); os demais só contam o que é deles
+// (por matrícula), pra o badge bater com o que a pessoa realmente vai ver
+// ao entrar na tela.
+export async function contarPendenciasTratamentoNC(usuarioLogado, podeVerTodas) {
   if (!supabase) return 0
-  const [nc, oc] = await Promise.all([
-    supabase.from('auditorias_nao_conformes').select('*', { count: 'exact', head: true }).eq('status_tratamento', 'PENDENTE'),
-    supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE'),
-  ])
+
+  let ncQ = supabase.from('auditorias_nao_conformes').select('*', { count: 'exact', head: true }).eq('status_tratamento', 'PENDENTE')
+  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE')
+  if (!podeVerTodas) {
+    ncQ = ncQ.eq('matricula', usuarioLogado?.matricula)
+    ocQ = ocQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
+  }
+
+  const [nc, oc] = await Promise.all([ncQ, ocQ])
   return (nc.count || 0) + (oc.count || 0)
 }
 

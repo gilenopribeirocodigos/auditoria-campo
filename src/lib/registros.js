@@ -1,4 +1,5 @@
 import { supabase, uploadBase64 } from './supabase.js'
+import { temPermissao } from './auth.js'
 
 // ─── Salva registro no banco ──────────────────────────────────────────────────
 export async function salvarRegistroBD(payload) {
@@ -32,8 +33,9 @@ export async function listarRegistros(filtros = {}, usuarioLogado) {
     .select('*')
     .order('data_registro', { ascending: false })
     .order('hora_registro', { ascending: false })
-  const podeVerTodos = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO']
-    .includes(usuarioLogado?.perfil)
+  // ADMIN sempre pode (temPermissao já libera); os demais só se tiverem a
+  // permissão marcada em Gestão de Usuários — senão, só os próprios registros.
+  const podeVerTodos = temPermissao(usuarioLogado, 'ver_todos_registros_operacionais')
   if (!podeVerTodos) {
     q = q.eq('matricula_fiscal', usuarioLogado?.matricula)
   }
