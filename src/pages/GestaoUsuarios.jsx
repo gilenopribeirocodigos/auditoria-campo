@@ -13,7 +13,7 @@ import { CarregandoHexagono, CampoSenha } from '../components/Shared.jsx'
 // Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
 import { obterPermissaoUsuario as obterPermissaoUsuarioPC, definirPermissaoUsuario as definirPermissaoUsuarioPC } from '../modules/prestacaoContas/lib/prestacaoContas.js'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT', 'TÉCNICO ALMOXARIFADO', 'ADMIN ALMOXARIFADO']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
@@ -24,6 +24,8 @@ const PERFIL_CORES = {
   'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
   'TÉCNICO SESMT':    { bg: '#fee2e2', color: '#991b1b' },
   'ADMIN SESMT':      { bg: '#ffe4e6', color: '#9f1239' },
+  'TÉCNICO ALMOXARIFADO': { bg: '#e0e7ff', color: '#3730a3' },
+  'ADMIN ALMOXARIFADO':   { bg: '#c7d2fe', color: '#312e81' },
 }
 
 const TODAS_PERMISSOES = [
