@@ -5,7 +5,7 @@ import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarPart
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFMultiplasPaginasNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 // Mesmos tokens visuais/helpers de data do painel de filtros padrão do app
 // (Registros Operacionais) — reaproveitados aqui pra ficar com a cara igual,
 // sem puxar a parte de Regional/Supervisor/Prefixo (que depende de
@@ -345,10 +345,23 @@ export default function SesmtHistorico({ onVoltar }) {
     }
   }
 
-  const montarConteudoImpressaoDetalhe = (acao) => {
+  // `opcoes` permite montar o relatório em várias páginas (ver gerarPDFDetalhe
+  // abaixo) — sem isso, uma ação com dezenas/centenas de participantes vira
+  // uma tabela só, com uma imagem de assinatura por linha, que o html2canvas
+  // tem que rasterizar inteira de uma vez (canvas gigante, trava o WebView).
+  const montarConteudoImpressaoDetalhe = (acao, opcoes = {}) => {
     const tc = TIPOS_ACAO_SESMT[acao.tipo] || {}
-    const participantes = acao.participantes || []
+    const totalParticipantes = (acao.participantes || []).length
+    const {
+      participantesPagina = acao.participantes || [],
+      numeroInicial       = 1,
+      mostrarCabecalho     = true,
+      mostrarRodape        = true,
+      pagina               = 1,
+      totalPaginas         = 1,
+    } = opcoes
     return `
+    ${mostrarCabecalho ? `
     <div style="background:linear-gradient(135deg,#92400e,#d97706);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
       <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">Plataforma de Gestão Operacional</div>
       <div style="font-size:20px;font-weight:800;">${tc.emoji} ${tc.label}</div>
@@ -367,9 +380,14 @@ export default function SesmtHistorico({ onVoltar }) {
       <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">OBSERVAÇÃO</div>
       <div style="font-size:13px;color:#475569;line-height:1.7;">${acao.observacao}</div>
     </div>` : ''}
+    ` : `
+    <div style="background:#fef3c7;border:1px solid #fcd34d;border-radius:10px;padding:10px 14px;margin-bottom:14px;">
+      <p style="font-size:12px;font-weight:700;color:#92400e;margin:0;">${tc.emoji} ${tc.label} — continuação (página ${pagina} de ${totalPaginas})</p>
+    </div>
+    `}
     <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
       <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;">
-        PARTICIPANTES (${participantes.length})
+        PARTICIPANTES (${totalParticipantes})${totalPaginas > 1 ? ` — página ${pagina}/${totalPaginas}` : ''}
       </div>
       <table style="width:100%;border-collapse:collapse;">
         <tr style="background:#92400e;">
@@ -378,9 +396,9 @@ export default function SesmtHistorico({ onVoltar }) {
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Matrícula</th>
           <th style="padding:8px 10px;color:#fff;font-size:12px;">Assinatura / Status</th>
         </tr>
-        ${participantes.map((p, i) => `
+        ${participantesPagina.map((p, i) => `
           <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:8px 10px;font-size:13px;">${i + 1}</td>
+            <td style="padding:8px 10px;font-size:13px;">${i + numeroInicial}</td>
             <td style="padding:8px 10px;font-size:13px;font-weight:600;">
               ${p.nome}
               ${p.modo === 'online' ? '<span style="font-size:10px;color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;margin-left:4px;">🔗 online</span>' : ''}
@@ -395,10 +413,11 @@ export default function SesmtHistorico({ onVoltar }) {
           </tr>`).join('')}
       </table>
     </div>
+    ${mostrarRodape ? `
     <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
       <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
       <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
-    </div>`
+    </div>` : ''}`
   }
 
   // Web: abre popup com o relatório e chama print() nele.
@@ -424,6 +443,14 @@ export default function SesmtHistorico({ onVoltar }) {
     janela.onload = () => setTimeout(() => janela.print(), 600)
   }
 
+  // Quantos participantes por página do PDF nativo — sem isso, uma ação com
+  // dezenas/centenas de participantes (visto em produção: 113) vira um canvas
+  // só, gigante, com uma imagem de assinatura por linha — o html2canvas trava
+  // ou demora tanto que parece travado no WebView do Android. Em vez de um
+  // canvas gigante, monta várias páginas menores (mesmo padrão de
+  // compartilharPDFMultiplasPaginasNativo usado no Relatório de Evidências).
+  const PARTICIPANTES_POR_PAGINA_PDF = 30
+
   // App Android nativo: window.open()/window.print() não funcionam dentro do
   // WebView — monta um PDF de verdade a partir do mesmo relatório e
   // compartilha via folha nativa do Android.
@@ -433,11 +460,33 @@ export default function SesmtHistorico({ onVoltar }) {
     setGerandoPDF(true)
     try {
       const tc = TIPOS_ACAO_SESMT[detalhe.tipo] || {}
-      const conteudo = montarConteudoImpressaoDetalhe(detalhe)
-      const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
-      const canvas = await renderizarHtmlParaCanvas(html, { largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff' })
+      const participantes = detalhe.participantes || []
+      const opcoesCanvas = { largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff' }
+      const montarHtml = conteudo => `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+
+      let canvases
+      if (participantes.length <= PARTICIPANTES_POR_PAGINA_PDF) {
+        const canvas = await renderizarHtmlParaCanvas(montarHtml(montarConteudoImpressaoDetalhe(detalhe)), opcoesCanvas)
+        canvases = [canvas]
+      } else {
+        const totalPaginas = Math.ceil(participantes.length / PARTICIPANTES_POR_PAGINA_PDF)
+        canvases = []
+        for (let i = 0; i < totalPaginas; i++) {
+          const pagina = i + 1
+          const participantesPagina = participantes.slice(i * PARTICIPANTES_POR_PAGINA_PDF, (i + 1) * PARTICIPANTES_POR_PAGINA_PDF)
+          const conteudo = montarConteudoImpressaoDetalhe(detalhe, {
+            participantesPagina,
+            numeroInicial:   i * PARTICIPANTES_POR_PAGINA_PDF + 1,
+            mostrarCabecalho: pagina === 1,
+            mostrarRodape:    pagina === totalPaginas,
+            pagina, totalPaginas,
+          })
+          canvases.push(await renderizarHtmlParaCanvas(montarHtml(conteudo), opcoesCanvas))
+        }
+      }
+
       const nomeArq = `${tc.label || 'Acao_SESMT'}_${detalhe.data_registro}.pdf`.replace(/\s+/g, '_')
-      await compartilharPDFNativo(canvas, nomeArq, { titulo: tc.label })
+      await compartilharPDFMultiplasPaginasNativo(canvases, nomeArq, { titulo: tc.label })
     } catch (err) {
       console.error('Erro ao gerar PDF:', err)
       alert('Não foi possível gerar o PDF: ' + descreverErro(err))
@@ -449,6 +498,11 @@ export default function SesmtHistorico({ onVoltar }) {
   const abrirDetalhe = (a) => {
     setDetalhe(a)
     setTokenDetalhe(null)
+    // Reseta o estado de "gerando PDF" ao trocar de card — sem isso, uma
+    // geração ainda em andamento (ou travada) de uma ação anterior deixava
+    // o botão preso em "Gerando PDF..." mesmo depois de abrir outra ação
+    // sem nenhuma relação com aquele PDF.
+    setGerandoPDF(false)
     // Busca o token ANTES de sincronizar — sincronizarDetalhe decide se limpa
     // quem não assinou com base em tokenDetalheRef.current, que só existe
     // depois que o token é conhecido. Sincronizar antes disso (como era)

@@ -101,13 +101,21 @@ export async function renderizarHtmlParaCanvas(html, {
   div.innerHTML = html
   document.body.appendChild(div)
 
+  // Timeout por imagem (8s) — sem isso, uma única assinatura que trave pra
+  // baixar (rede fraca, muitos participantes assinando ao mesmo tempo) faz
+  // Promise.allSettled esperar pra sempre, já que nem onload nem onerror
+  // disparam nesse caso. Roda em paralelo pra todas as imagens, então o
+  // atraso total do pior caso é ~8s, não 8s por imagem.
+  const TIMEOUT_IMG_MS = 8000
   if (aguardarImagens) {
     const imgs = div.querySelectorAll('img')
     await Promise.allSettled(Array.from(imgs).map(img =>
       new Promise(res => {
         const pronta = exigirNaturalWidth ? (img.complete && img.naturalWidth > 0) : img.complete
-        if (pronta) res()
-        else { img.onload = res; img.onerror = res }
+        if (pronta) { res(); return }
+        const timer = setTimeout(res, TIMEOUT_IMG_MS)
+        img.onload  = () => { clearTimeout(timer); res() }
+        img.onerror = () => { clearTimeout(timer); res() }
       })
     ))
   }
