@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase, uploadBase64 } from '../lib/supabase.js'
-import { isAdmin } from '../lib/auth.js'
+import { isAdmin, temPermissao } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
@@ -488,16 +488,16 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   )
 }
 
-// Quem vê tudo (todos os fiscais) vs só as próprias pendências — diferente
-// da segregação hierárquica usada em RegistrosOperacionais.jsx (onde
-// supervisores enxergam a equipe toda): aqui é uma fila pessoal de tarefas,
-// então só o ADMIN vê tudo — supervisor de campo/operação também só vê e é
-// notificado do que está no nome/matrícula dele, igual qualquer fiscal.
-const PODE_VER_TODAS_NC = ['ADMIN']
-
 export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ usuarioLogado, inicializarMes: false })
-  const podeVerTodas = PODE_VER_TODAS_NC.includes(usuarioLogado?.perfil)
+  // Quem vê tudo (todos os fiscais) vs só as próprias pendências — diferente
+  // da segregação hierárquica usada em RegistrosOperacionais.jsx (onde
+  // supervisores enxergam a equipe toda): aqui é uma fila pessoal de
+  // tarefas, então por padrão só ADMIN vê tudo (temPermissao já libera
+  // ADMIN automaticamente) — qualquer outro usuário só recebe a visão
+  // ampla se o admin marcar a permissão 'ver_todas_pendencias_nc' pra ele
+  // em Gestão de Usuários; sem ela, vê e é notificado só do que é seu.
+  const podeVerTodas = temPermissao(usuarioLogado, 'ver_todas_pendencias_nc')
   const [ncs,            setNcs]           = useState([])
   const [loading,         setLoading]       = useState(true)
   const [statusTab,       setStatusTab]     = useState('PENDENTE')
