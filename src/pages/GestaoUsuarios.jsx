@@ -37,6 +37,7 @@ const TODAS_PERMISSOES = [
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
   { id: 'acesso_historico_auditorias', label: '📁 Acesso a Histórico de Auditorias' },
   { id: 'acesso_registros_operacionais', label: '📝 Acesso a Registros Operacionais' },
+  { id: 'ver_todos_registros_operacionais', label: '👥 Registros Operacionais - ver registros de todos (senão, só os seus)' },
   { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },

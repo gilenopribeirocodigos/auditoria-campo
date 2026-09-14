@@ -174,7 +174,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const intervalRef = useRef(null)
 
-  const isAdmin = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
+  // ADMIN sempre vê tudo (temPermissao já libera); os demais só com a
+  // permissão marcada em Gestão de Usuários, senão só os próprios registros.
+  const podeVerTodos = temPermissao(usuarioLogado, 'ver_todos_registros_operacionais')
 
   const buscar = async () => {
     setLoading(true)
@@ -381,7 +383,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             <div>
               <h1 style={{ fontSize: 20, fontWeight: 800 }}>📝 Registros Operacionais</h1>
               <p style={{ fontSize: 12, opacity: 0.75, marginTop: 3 }}>
-                {isAdmin ? 'Todos os registros' : `Seus registros — ${usuarioLogado?.nome}`}
+                {podeVerTodos ? 'Todos os registros' : `Seus registros — ${usuarioLogado?.nome}`}
                 {filtros.temSegregacao && (
                   <span style={{
                     marginLeft: 8, padding: '2px 8px', borderRadius: 10,

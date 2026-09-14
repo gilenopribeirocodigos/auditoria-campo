@@ -5,6 +5,7 @@
 // auditorias_nao_conformes ou registros_operacionais.
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase, uploadBase64 } from './supabase.js'
+import { temPermissao } from './auth.js'
 
 // Mesmo padrão de numeroAS.js/gerarNumeroAcaoSesmt() — implementação própria
 // pra manter o módulo isolado (ver convenção do projeto).
@@ -138,7 +139,10 @@ export async function tratarOcorrencia(id, { observacao, fotosUrls, assinaturaUr
 export async function listarOcorrenciasDoUsuario(usuarioLogado) {
   if (!supabase) return []
   let q = supabase.from('ocorrencias').select('*').order('criado_em', { ascending: false })
-  const podeVerTodas = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO'].includes(usuarioLogado?.perfil)
+  // Mesma permissão da tela onde essa lista aparece (Registros Operacionais)
+  // — ADMIN sempre vê tudo (temPermissao já libera), os demais só com a
+  // permissão marcada, senão só o que o próprio usuário abriu.
+  const podeVerTodas = temPermissao(usuarioLogado, 'ver_todos_registros_operacionais')
   if (!podeVerTodas) q = q.eq('matricula_aberto_por', usuarioLogado?.matricula)
   const { data, error } = await q
   if (error) throw error
