@@ -153,7 +153,7 @@ export default function App() {
   // Ocorrências pendentes, só pra quem tem a permissão de tratar.
   useEffect(() => {
     if (!usuario || !temPermissao(usuario, 'tratar_nc')) { setNcPendencias(0); return }
-    contarPendenciasTratamentoNC(usuario)
+    contarPendenciasTratamentoNC(usuario, temPermissao(usuario, 'ver_todas_pendencias_nc'))
       .then(setNcPendencias)
       .catch(() => setNcPendencias(0))
   }, [usuario, tela])
