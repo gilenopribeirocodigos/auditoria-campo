@@ -253,7 +253,7 @@ async function gerarPDFEvidenciasNativo(registros, titulo) {
   for (let i = 0; i < registros.length; i++) {
     const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">${montarSlideHtml(registros[i], i, registros.length)}</div>`
     const canvas = await renderizarHtmlParaCanvas(html, {
-      largura: 960, escala: 2.5, aguardarImagens: true, esperaExtraMs: 60, exigirNaturalWidth: true, corFundo: '#fff',
+      largura: 960, escala: 2.5, aguardarImagens: true, esperaExtraMs: 60, corFundo: '#fff',
     })
     canvases.push(canvas)
   }

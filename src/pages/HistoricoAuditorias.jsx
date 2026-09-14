@@ -173,7 +173,7 @@ async function gerarPDFAuditoria(a, formatData, versaoApp = '') {
   const conteudo = montarConteudoImpressaoAuditoria(a, formatData, versaoApp)
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
   const canvas = await renderizarHtmlParaCanvas(html, {
-    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff',
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
   })
   const nomeArq = `Auditoria_${a.prefixo}_OS${a.os}_${a.data_auditoria}.pdf`.replace(/\s+/g, '_')
   await compartilharPDFNativo(canvas, nomeArq, { titulo: `Auditoria ${a.prefixo}` })
