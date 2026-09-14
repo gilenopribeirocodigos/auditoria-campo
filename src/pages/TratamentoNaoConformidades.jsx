@@ -488,11 +488,12 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   )
 }
 
-// Quem vê tudo (todos os fiscais) vs só as próprias pendências — mesmo
-// padrão de segregação já usado em RegistrosOperacionais.jsx/ocorrencias.js.
-// Perfis fora dessa lista só enxergam NCs/Ocorrências no nome/matrícula deles,
-// pra não misturar a fila de todo mundo e facilitar identificar o que é seu.
-const PODE_VER_TODAS_NC = ['ADMIN', 'SUPERV. OPERAÇÃO', 'SUPERV. CAMPO']
+// Quem vê tudo (todos os fiscais) vs só as próprias pendências — diferente
+// da segregação hierárquica usada em RegistrosOperacionais.jsx (onde
+// supervisores enxergam a equipe toda): aqui é uma fila pessoal de tarefas,
+// então só o ADMIN vê tudo — supervisor de campo/operação também só vê e é
+// notificado do que está no nome/matrícula dele, igual qualquer fiscal.
+const PODE_VER_TODAS_NC = ['ADMIN']
 
 export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) {
   const filtros = useFiltrosOperacionais({ usuarioLogado, inicializarMes: false })
