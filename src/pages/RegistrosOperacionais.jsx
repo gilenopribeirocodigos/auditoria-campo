@@ -142,7 +142,7 @@ async function gerarPDFRegistro(r, assinaturasOnline = [], versaoApp = '') {
   const conteudo = montarConteudoImpressaoRegistro(r, assinaturasOnline, versaoApp)
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
   const canvas = await renderizarHtmlParaCanvas(html, {
-    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff',
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
   })
   const nomeArq = `Registro_${r.tipo}_${r.data_registro}.pdf`.replace(/\s+/g, '_')
   await compartilharPDFNativo(canvas, nomeArq, { titulo: tipoConfig?.label })

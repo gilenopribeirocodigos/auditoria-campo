@@ -198,7 +198,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
         </div>`
 
       return renderizarHtmlParaCanvas(html, {
-        largura: 520, escala: 6, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true,
+        largura: 520, escala: 6, aguardarImagens: true, esperaExtraMs: 80,
       })
   }
 
@@ -337,7 +337,7 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
       const conteudo = montarConteudoImpressao()
       const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
       const canvas = await renderizarHtmlParaCanvas(html, {
-        largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, exigirNaturalWidth: true, corFundo: '#fff',
+        largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
       })
       const nomeArq = `Registro_${form.tipo}_${form.data}.pdf`.replace(/\s+/g, '_')
       await compartilharPDFNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
