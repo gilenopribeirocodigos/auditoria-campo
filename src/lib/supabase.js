@@ -34,9 +34,16 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
 }
 
 // Conta pendências de tratamento pro badge do botão "Tratamento de Não
-// Conformidades" na Home — soma auditorias_nao_conformes pendentes +
-// ocorrências pendentes (mesmo total que a tela mostra somando as duas
-// abas). Usa count:'exact', head:true pra não trazer as linhas, só o total.
+// Conformidades" na Home — soma AS (auditorias) com NC pendente + ocorrências
+// pendentes (mesmo total que a tela mostra somando as duas abas).
+//
+// IMPORTANTE: não conta linha de auditorias_nao_conformes (cada NC é um
+// item), conta AS distintas (auditoria_id, ou numero_as pra NCs antigas sem
+// esse vínculo) — uma AS pode ter 2+ NCs, mas o fiscal trata todas de uma vez
+// só (ver GrupoNC/handleTratar em TratamentoNaoConformidades.jsx), então o
+// que conta como "1 pendência" pro fiscal é a AS, não a NC individual. Contar
+// por item inflava o badge (ex.: 64 quando só havia 38 AS realmente
+// pendentes). Mesmo critério do resumo "por fiscal" da tela de tratamento.
 //
 // `podeVerTodas` vem de temPermissao(usuarioLogado, 'ver_todas_pendencias_nc')
 // no chamador (App.jsx) — não importa lib/auth.js aqui pra evitar import
@@ -48,15 +55,18 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
 export async function contarPendenciasTratamentoNC(usuarioLogado, podeVerTodas) {
   if (!supabase) return 0
 
-  let ncQ = supabase.from('auditorias_nao_conformes').select('*', { count: 'exact', head: true }).eq('status_tratamento', 'PENDENTE')
-  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE')
-  if (!podeVerTodas) {
-    ncQ = ncQ.eq('matricula', usuarioLogado?.matricula)
-    ocQ = ocQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
-  }
+  const ncRows = await buscarTodasLinhas((from, to) => {
+    let q = supabase.from('auditorias_nao_conformes').select('auditoria_id, numero_as').eq('status_tratamento', 'PENDENTE').range(from, to)
+    if (!podeVerTodas) q = q.eq('matricula', usuarioLogado?.matricula)
+    return q
+  })
+  const gruposPendentes = new Set(ncRows.map(n => n.auditoria_id || n.numero_as)).size
 
-  const [nc, oc] = await Promise.all([ncQ, ocQ])
-  return (nc.count || 0) + (oc.count || 0)
+  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE')
+  if (!podeVerTodas) ocQ = ocQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
+  const { count } = await ocQ
+
+  return gruposPendentes + (count || 0)
 }
 
 // Upload de imagem base64 para o Storage
