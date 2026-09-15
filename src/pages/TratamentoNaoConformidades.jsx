@@ -623,8 +623,15 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
     atualizarBadgeOc()
   }
 
-  const totalPendentes = ncs.filter(n => n.status_tratamento === 'PENDENTE').length
-  const totalTratadas  = ncs.filter(n => n.status_tratamento === 'TRATADA').length
+  // Conta por AS (grupo), não por item de NC — uma AS pode ter 2+ NCs, mas o
+  // fiscal trata todas de uma vez só (ver GrupoNC acima), então o badge do
+  // cabeçalho tem que bater com o que ele realmente vai tratar/já tratou,
+  // não com a quantidade de itens (mesmo critério de `resumoPorFiscal`).
+  const contarGrupos = (lista, status) => new Set(
+    lista.filter(n => n.status_tratamento === status).map(n => n.auditoria_id || n.numero_as)
+  ).size
+  const totalPendentes = contarGrupos(ncs, 'PENDENTE')
+  const totalTratadas  = contarGrupos(ncs, 'TRATADA')
   const totalPendentesOc = ocorrencias.filter(o => o.status === 'PENDENTE').length
   const totalTratadasOc  = ocorrencias.filter(o => o.status === 'TRATADA').length
 
@@ -750,8 +757,11 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
                     onClick={() => setResumoAberto(a => !a)}
                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
                   >
-                    <p style={{ fontSize: 11, fontWeight: 800, color: cor.texto, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                    <p style={{ fontSize: 11, fontWeight: 800, color: cor.texto, textTransform: 'uppercase', letterSpacing: 0.4, display: 'flex', alignItems: 'center', gap: 8 }}>
                       📋 Por Fiscal ({resumoPorFiscal.length})
+                      <span style={{ background: cor.bolaFundo, color: '#fff', borderRadius: 8, padding: '2px 8px', fontSize: 11 }}>
+                        Total: {resumoPorFiscal.reduce((soma, r) => soma + r.qtd, 0)}
+                      </span>
                     </p>
                     <span style={{ fontSize: 13, color: cor.texto }}>{resumoAberto ? '▾' : '▸'}</span>
                   </div>
@@ -800,8 +810,11 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
                   onClick={() => setResumoAberto(a => !a)}
                   style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}
                 >
-                  <p style={{ fontSize: 11, fontWeight: 800, color: '#3730a3', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                  <p style={{ fontSize: 11, fontWeight: 800, color: '#3730a3', textTransform: 'uppercase', letterSpacing: 0.4, display: 'flex', alignItems: 'center', gap: 8 }}>
                     📋 Por Fiscal ({resumoPorFiscalOc.length})
+                    <span style={{ background: '#4f46e5', color: '#fff', borderRadius: 8, padding: '2px 8px', fontSize: 11 }}>
+                      Total: {resumoPorFiscalOc.reduce((soma, r) => soma + r.qtd, 0)}
+                    </span>
                   </p>
                   <span style={{ fontSize: 13, color: '#3730a3' }}>{resumoAberto ? '▾' : '▸'}</span>
                 </div>
