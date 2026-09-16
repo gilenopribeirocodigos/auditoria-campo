@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import * as XLSX from 'xlsx'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds, numeroAcaoSesmt } from '../lib/sesmt.js'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, atualizarFotosAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds, numeroAcaoSesmt, JANELA_FOTOS_MS, MAX_FOTOS_ACAO_SESMT, formatarTempoRestante } from '../lib/sesmt.js'
+import { uploadBase64 } from '../lib/supabase.js'
+import { adicionarWatermark } from '../steps/sesmt/SS2Evidencias.jsx'
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
@@ -38,7 +40,7 @@ function somarDias(dataISO, dias) {
   return d.toISOString().split('T')[0]
 }
 
-export default function SesmtHistorico({ onVoltar }) {
+export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   // Período no mesmo padrão do painel de filtros de Registros Operacionais
   // (Hoje / Mês / Período) — default "Mês" preserva o comportamento antigo
   // (mês atual).
@@ -95,6 +97,20 @@ export default function SesmtHistorico({ onVoltar }) {
   const [capturando, setCapturando] = useState(false)
   const [gerandoPDF, setGerandoPDF] = useState(false)
   const [exportando, setExportando] = useState(false)
+
+  // Janela pra completar fotos numa ação já salva, reabrindo-a pelo
+  // Histórico (mesma regra/constantes de SS4Resultado.jsx — ver
+  // JANELA_FOTOS_MS em lib/sesmt.js): só o mesmo fiscal (matrícula) que
+  // registrou a ação, e só enquanto o tempo não tiver acabado.
+  const [agoraFotos,     setAgoraFotos]     = useState(Date.now())
+  const [mostrarAddFoto, setMostrarAddFoto] = useState(false)
+  const [enviandoFoto,   setEnviandoFoto]   = useState(false)
+  // URLs incluídas pelo botão "Adicionar Fotos" nesta abertura do card — só
+  // essas podem ser excluídas (fotos originais da ação não têm exclusão
+  // rápida aqui). Reseta a cada abertura de card (ver abrirDetalhe).
+  const [fotosExtrasUrls, setFotosExtrasUrls] = useState([])
+  const cameraFotoRef  = useRef(null)
+  const galeriaFotoRef = useRef(null)
 
   const buscar = async () => {
     setLoading(true)
@@ -512,6 +528,8 @@ export default function SesmtHistorico({ onVoltar }) {
     // o botão preso em "Gerando PDF..." mesmo depois de abrir outra ação
     // sem nenhuma relação com aquele PDF.
     setGerandoPDF(false)
+    setMostrarAddFoto(false)
+    setFotosExtrasUrls([])
     // Busca o token ANTES de sincronizar — sincronizarDetalhe decide se limpa
     // quem não assinou com base em tokenDetalheRef.current, que só existe
     // depois que o token é conhecido. Sincronizar antes disso (como era)
@@ -536,6 +554,72 @@ export default function SesmtHistorico({ onVoltar }) {
     const id = setInterval(() => { sincronizarDetalhe(detalheRef.current) }, 8000)
     return () => clearInterval(id)
   }, [detalhe?.id])
+
+  // Relógio vivo do card de "adicionar fotos" — só roda com o detalhe
+  // aberto, pra não ficar contando à toa em segundo plano.
+  useEffect(() => {
+    if (!detalhe) return
+    const id = setInterval(() => setAgoraFotos(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [detalhe?.id])
+
+  const criadoEmFotosMs = detalhe?.criado_em ? new Date(detalhe.criado_em).getTime() : null
+  const restanteFotosMs = criadoEmFotosMs != null ? JANELA_FOTOS_MS - (agoraFotos - criadoEmFotosMs) : 0
+  const mesmoUsuarioFotos = !!usuarioLogado?.matricula && !!detalhe && usuarioLogado.matricula === detalhe.matricula_fiscal
+  // Encerrar (ou deixar expirar) o link de assinatura encerra junto a janela
+  // de fotos, mesmo que o tempo dela ainda não tenha acabado — sem link
+  // nenhum (tokenDetalhe null, todo mundo assinou presencial), vale só o tempo.
+  const linkBloqueiaFotos = !!tokenDetalhe && tokenExpiradoOuEncerrado(tokenDetalhe)
+  const janelaFotosAtiva = !!detalhe && mesmoUsuarioFotos && restanteFotosMs > 0 && !linkBloqueiaFotos
+
+  const adicionarFotosPosSalvarHistorico = async (files) => {
+    if (!detalhe) return
+    const fotosAtuais = detalhe.fotos_urls || []
+    const disponiveis = MAX_FOTOS_ACAO_SESMT - fotosAtuais.length
+    if (disponiveis <= 0) return
+    setEnviandoFoto(true)
+    try {
+      const selecionadas = Array.from(files || []).slice(0, disponiveis)
+      const novasUrls = []
+      for (const file of selecionadas) {
+        const base64 = await new Promise(res => {
+          const reader = new FileReader()
+          reader.onload = ev => res(ev.target.result)
+          reader.readAsDataURL(file)
+        })
+        const comMarca = await adicionarWatermark(base64, { fiscal: detalhe.fiscal, data: detalhe.data_registro, hora: detalhe.hora_registro, lat: detalhe.lat, lng: detalhe.lng })
+        const url = await uploadBase64(comMarca, `sesmt/${detalhe.id}/foto_extra_${Date.now()}.jpg`, 'fotos-auditoria')
+        novasUrls.push(url)
+      }
+      const fotosUrlsNovas = [...fotosAtuais, ...novasUrls]
+      const atualizada = await atualizarFotosAcaoSesmt(detalhe.id, fotosUrlsNovas)
+      setDetalhe(atualizada)
+      setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+      setFotosExtrasUrls(atuais => [...atuais, ...novasUrls])
+      setMostrarAddFoto(false)
+    } catch (e) {
+      alert('Erro ao adicionar foto: ' + (e.message || e))
+    } finally {
+      setEnviandoFoto(false)
+    }
+  }
+  const onCameraFotoHistorico  = async (e) => { await adicionarFotosPosSalvarHistorico(e.target.files); e.target.value = '' }
+  const onGaleriaFotoHistorico = async (e) => { await adicionarFotosPosSalvarHistorico(e.target.files); e.target.value = '' }
+
+  // Remove uma foto extra (incluída via "Adicionar Fotos" nesta abertura do
+  // card) — só faz sentido enquanto a janela ainda está ativa.
+  const removerFotoExtraHistorico = async (url) => {
+    if (!detalhe) return
+    const fotosUrlsNovas = (detalhe.fotos_urls || []).filter(u => u !== url)
+    try {
+      const atualizada = await atualizarFotosAcaoSesmt(detalhe.id, fotosUrlsNovas)
+      setDetalhe(atualizada)
+      setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+      setFotosExtrasUrls(atuais => atuais.filter(u => u !== url))
+    } catch (e) {
+      alert('Erro ao excluir foto: ' + (e.message || e))
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -792,6 +876,40 @@ export default function SesmtHistorico({ onVoltar }) {
                     )
                   })()}
 
+                  {janelaFotosAtiva && (detalhe.fotos_urls || []).length < MAX_FOTOS_ACAO_SESMT && (
+                    <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <span style={{ fontSize: 18, lineHeight: 1 }}>⏱️</span>
+                        <span style={{ color: '#92400e', fontWeight: 800, fontSize: 13 }}>Você pode adicionar mais fotos por {formatarTempoRestante(restanteFotosMs)}</span>
+                      </div>
+
+                      {!mostrarAddFoto ? (
+                        <button onClick={() => setMostrarAddFoto(true)} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 8 }}>
+                          ➕ Adicionar Fotos
+                        </button>
+                      ) : (
+                        <div style={{ marginBottom: 8 }}>
+                          <input ref={cameraFotoRef} type="file" accept="image/*" capture="environment" onChange={onCameraFotoHistorico} style={{ display: 'none' }} />
+                          <input ref={galeriaFotoRef} type="file" accept="image/*" multiple onChange={onGaleriaFotoHistorico} style={{ display: 'none' }} />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <button onClick={() => cameraFotoRef.current?.click()} disabled={enviandoFoto} style={{ padding: '12px 10px', borderRadius: 10, border: '2px dashed #7c3aed', background: '#f5f3ff', cursor: enviandoFoto ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: enviandoFoto ? 0.6 : 1 }}>
+                              <span style={{ fontSize: 20 }}>📷</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#5b21b6' }}>{enviandoFoto ? 'Enviando...' : 'Tirar foto'}</span>
+                            </button>
+                            <button onClick={() => galeriaFotoRef.current?.click()} disabled={enviandoFoto} style={{ padding: '12px 10px', borderRadius: 10, border: '2px dashed #7c3aed', background: '#f5f3ff', cursor: enviandoFoto ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: enviandoFoto ? 0.6 : 1 }}>
+                              <span style={{ fontSize: 20 }}>🖼️</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#5b21b6' }}>{enviandoFoto ? 'Enviando...' : 'Da galeria'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <p style={{ color: '#92400e', fontSize: 10, lineHeight: 1.5, margin: 0 }}>
+                        Só você ({detalhe.fiscal}) pode adicionar fotos, e só até o tempo acabar.
+                      </p>
+                    </div>
+                  )}
+
                   {detalhe.observacao && (
                     <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: '#92400e', marginBottom: 6 }}>OBSERVAÇÃO:</p>
@@ -845,9 +963,14 @@ export default function SesmtHistorico({ onVoltar }) {
                       <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📷 Fotos ({detalhe.fotos_urls.length})</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                         {detalhe.fotos_urls.map((url, i) => (
-                          <a key={i} href={url} target="_blank" rel="noreferrer">
-                            <img src={url} alt={`Foto ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block' }} />
-                          </a>
+                          <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '1' }}>
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={`Foto ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            </a>
+                            {janelaFotosAtiva && fotosExtrasUrls.includes(url) && (
+                              <button onClick={e => { e.preventDefault(); e.stopPropagation(); removerFotoExtraHistorico(url) }} style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(220,38,38,0.85)', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕</button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>

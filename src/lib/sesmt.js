@@ -306,6 +306,23 @@ export function numeroAcaoSesmt(acao) {
   return `SESMT-${data}-${hora}-${base}`
 }
 
+// Janela de tempo em que o mesmo fiscal (mesma matrícula) pode completar o
+// registro fotográfico de uma ação SESMT já salva — mesmo padrão (contagem
+// regressiva) do link de assinatura remota (criarTokenAssinaturaSesmt), mas
+// sem precisar de token/link próprio: usa o `criado_em` que a linha de
+// sesmt_acoes já ganha ao ser salva (timestamptz default now()) como início
+// da janela. Compartilhado entre SS4Resultado.jsx (tela de Resultado, logo
+// após salvar) e SesmtHistorico.jsx (reabrindo a ação pelo Histórico).
+export const JANELA_FOTOS_MS = 60 * 60 * 1000
+export const MAX_FOTOS_ACAO_SESMT = 5
+
+export function formatarTempoRestante(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const mm = String(Math.floor(total / 60)).padStart(2, '0')
+  const ss = String(total % 60).padStart(2, '0')
+  return `${mm}:${ss}`
+}
+
 // Faz upload das fotos e assinaturas presenciais, devolve o payload pronto
 // pra inserir em sesmt_acoes.
 export async function prepararPayloadSesmt(form) {
@@ -376,6 +393,21 @@ export async function atualizarParticipantesAcaoSesmt(id, participantes) {
   const { data, error } = await supabase
     .from('sesmt_acoes')
     .update({ participantes })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+// Atualiza só a lista de fotos de uma ação já salva — usado na janela de
+// tempo limitado (ver JANELA_FOTOS_MS em SS4Resultado.jsx) que permite ao
+// mesmo fiscal completar o registro fotográfico depois de "Salvar Ação".
+export async function atualizarFotosAcaoSesmt(id, fotos_urls) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .update({ fotos_urls })
     .eq('id', id)
     .select()
     .single()

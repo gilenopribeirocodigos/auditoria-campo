@@ -48,6 +48,13 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
   const [motivoOutro, setMotivoOutro] = useState(false)
   const [statusGps, setStatusGps] = useState(form.lat ? 'ok' : 'capturando') // capturando | ok | negado
   const [motivoErroGps, setMotivoErroGps] = useState('')
+  // Exige pelo menos 3 tentativas (a automática ao entrar na tela + 2 cliques
+  // em "Tentar de novo", ou 3 cliques se a automática já tiver sido
+  // descontada) antes de liberar seguir sem localização — só depois disso o
+  // "Continuar" vira "Continuar sem localização", deixando claro que foi uma
+  // escolha consciente, não um esquecimento.
+  const TENTATIVAS_MINIMAS_GPS = 3
+  const [tentativasGps, setTentativasGps] = useState(0)
 
   useEffect(() => {
     listarMotivosSesmt(form.tipo)
@@ -60,6 +67,7 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
     setStatusGps('capturando')
     setMotivoErroGps('')
     const gps = await capturarGPS()
+    setTentativasGps(t => t + 1)
     if (gps.erro) { setMotivoErroGps(gps.erro); setStatusGps('negado'); return }
     upd('lat', gps.lat)
     upd('lng', gps.lng)
@@ -82,7 +90,9 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
     }
   }
 
-  const podeProsseguir = form.tema.trim() && form.motivo.trim()
+  const gpsLiberado = statusGps === 'ok' || (statusGps === 'negado' && tentativasGps >= TENTATIVAS_MINIMAS_GPS)
+  const podeProsseguir = form.tema.trim() && form.motivo.trim() && gpsLiberado
+  const semLocalizacao = statusGps === 'negado' && tentativasGps >= TENTATIVAS_MINIMAS_GPS
 
   return (
     <div style={{ padding: '0 0 80px' }}>
@@ -99,13 +109,24 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
           <>📍 <strong>Local da ação:</strong> {form.endereco || `${form.lat?.toFixed(5)}, ${form.lng?.toFixed(5)}`}</>
         )}
         {statusGps === 'negado' && (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-            <span>⚠️ {
-              motivoErroGps === 'permissao' ? 'Permissão de localização negada — libere o acesso nas configurações do navegador/app.'
-                : motivoErroGps === 'tempo' ? 'O sinal de GPS demorou demais a responder (fraco ou indisponível aqui).'
-                : 'Não foi possível capturar a localização (GPS indisponível neste dispositivo).'
-            }</span>
-            <button onClick={capturarLocalizacaoAcao} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #0369a1', background: '#fff', color: '#0369a1', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Tentar de novo</button>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+              <span>⚠️ {
+                motivoErroGps === 'permissao' ? 'Permissão de localização negada — libere o acesso nas configurações do navegador/app.'
+                  : motivoErroGps === 'tempo' ? 'O sinal de GPS demorou demais a responder (fraco ou indisponível aqui).'
+                  : 'Não foi possível capturar a localização (GPS indisponível neste dispositivo).'
+              }</span>
+              <button onClick={capturarLocalizacaoAcao} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #0369a1', background: '#fff', color: '#0369a1', fontSize: 11, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>Tentar de novo</button>
+            </div>
+            {tentativasGps < TENTATIVAS_MINIMAS_GPS ? (
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: '#0369a1' }}>
+                Tentativa {tentativasGps} de {TENTATIVAS_MINIMAS_GPS} — tente "Tentar de novo" mais {TENTATIVAS_MINIMAS_GPS - tentativasGps} vez{TENTATIVAS_MINIMAS_GPS - tentativasGps > 1 ? 'es' : ''} antes de poder continuar sem localização.
+              </p>
+            ) : (
+              <p style={{ margin: '8px 0 0', fontSize: 11, color: '#92400e', fontWeight: 700 }}>
+                ⚠️ Não foi possível pegar a localização depois de {tentativasGps} tentativas — você já pode continuar sem ela.
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -160,9 +181,10 @@ export default function SS1Identificacao({ form, upd, next, prev }) {
 
       <button onClick={next} disabled={!podeProsseguir} style={{
         width: '100%', padding: 14, borderRadius: 12, border: 'none',
-        background: podeProsseguir ? '#1e3a5f' : '#e2e8f0', color: podeProsseguir ? '#fff' : '#94a3b8',
+        background: !podeProsseguir ? '#e2e8f0' : semLocalizacao ? '#b45309' : '#1e3a5f',
+        color: podeProsseguir ? '#fff' : '#94a3b8',
         fontSize: 15, fontWeight: 700, cursor: podeProsseguir ? 'pointer' : 'not-allowed', marginBottom: 10,
-      }}>Continuar →</button>
+      }}>{semLocalizacao ? '⚠️ Continuar sem localização →' : 'Continuar →'}</button>
       <button onClick={prev} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>← Voltar</button>
     </div>
   )
