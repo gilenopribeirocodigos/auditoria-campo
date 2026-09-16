@@ -23,7 +23,7 @@ export const TIPOS_ACAO_SESMT = {
   },
 }
 
-export const STEPS_SESMT = ['Tipo de Ação', 'Identificação', 'Evidências', 'Participantes', 'Resultado']
+export const STEPS_SESMT = ['Tipo de Ação', 'Identificação', 'Participantes', 'Evidências', 'Resultado']
 
 // Regionais do módulo SESMT — batem com sesmt_pessoas.regional (derivado do
 // CODSECAO na carga da lista de pessoas). Usado tanto no filtro de busca/
