@@ -383,6 +383,21 @@ export async function atualizarParticipantesAcaoSesmt(id, participantes) {
   return data
 }
 
+// Atualiza só a lista de fotos de uma ação já salva — usado na janela de
+// tempo limitado (ver JANELA_FOTOS_MS em SS4Resultado.jsx) que permite ao
+// mesmo fiscal completar o registro fotográfico depois de "Salvar Ação".
+export async function atualizarFotosAcaoSesmt(id, fotos_urls) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const { data, error } = await supabase
+    .from('sesmt_acoes')
+    .update({ fotos_urls })
+    .eq('id', id)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export async function salvarAcaoSesmt(payload) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const { data, error } = await supabase

@@ -4,7 +4,9 @@ import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
 const MAX_FOTOS = 5
 
 // ── Watermark: GPS + fiscal + data/hora (mesmo padrão de R5Evidencias.jsx) ────
-async function adicionarWatermark(base64, form) {
+// Exportada porque SS4Resultado.jsx reaproveita pra marcar as fotos incluídas
+// depois de "Salvar Ação" (ver JANELA_FOTOS_MS lá).
+export async function adicionarWatermark(base64, form) {
   return new Promise(resolve => {
     const img = new Image()
     img.onload = () => {

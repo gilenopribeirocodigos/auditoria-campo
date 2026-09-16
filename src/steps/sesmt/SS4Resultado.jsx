@@ -1,9 +1,28 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, prepararPayloadSesmt, listarAssinaturasSesmtColetadas, mesclarAssinaturasColetadas } from '../../lib/sesmt.js'
+import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, atualizarFotosAcaoSesmt, prepararPayloadSesmt, listarAssinaturasSesmtColetadas, mesclarAssinaturasColetadas } from '../../lib/sesmt.js'
+import { uploadBase64 } from '../../lib/supabase.js'
+import { adicionarWatermark } from './SS2Evidencias.jsx'
 import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
 
-export default function SS4Resultado({ form, onConcluir, prev }) {
+// Depois de "Salvar Ação", o mesmo fiscal ainda pode completar o registro
+// fotográfico por um tempo limitado — mesmo padrão (janela com contagem
+// regressiva) já usado no link de assinatura remota (criarTokenAssinaturaSesmt).
+// Aqui não precisa de token/link próprio: usa o `criado_em` que a própria
+// ação já ganha ao ser salva (timestamptz default now() na tabela) como
+// início da janela, e confere a matrícula de quem está logado contra a
+// matrícula do fiscal que salvou — só ele enxerga o botão de adicionar.
+const JANELA_FOTOS_MS = 60 * 60 * 1000
+const MAX_FOTOS_TOTAL = 5
+
+function formatarRestante(ms) {
+  const total = Math.max(0, Math.floor(ms / 1000))
+  const mm = String(Math.floor(total / 60)).padStart(2, '0')
+  const ss = String(total % 60).padStart(2, '0')
+  return `${mm}:${ss}`
+}
+
+export default function SS4Resultado({ form, usuarioLogado, onConcluir, prev }) {
   const [status,     setStatus]     = useState('idle') // idle | saving | saved | error
   const [erro,       setErro]       = useState('')
   const [acaoSalva,  setAcaoSalva]  = useState(null)
@@ -16,8 +35,62 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
   // assinaturas coletadas pelo QR mesmo depois de já ter salvo a ação.
   const [participantesAtuais, setParticipantesAtuais] = useState(form.participantes)
 
+  // Cópia local das fotos — começa com as do formulário e recebe as
+  // incluídas depois de salvar (ver janela de tempo abaixo).
+  const [fotosAtuais,   setFotosAtuais]   = useState(form.fotos)
+  const [agora,         setAgora]         = useState(Date.now())
+  const [mostrarAddFoto, setMostrarAddFoto] = useState(false)
+  const [enviandoFoto,  setEnviandoFoto]  = useState(false)
+  const cameraFotoRef  = useRef(null)
+  const galeriaFotoRef = useRef(null)
+
   const tipoConfig = TIPOS_ACAO_SESMT[form.tipo]
   const pendentesOnline = participantesAtuais.filter(p => p.modo === 'online' && !p.assinatura && !p.assinatura_url).length
+
+  // Relógio vivo só enquanto a janela pode estar valendo — sem isso o
+  // contador ficaria parado até a próxima re-renderização por outro motivo.
+  useEffect(() => {
+    if (status !== 'saved' || !acaoSalva) return
+    const id = setInterval(() => setAgora(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [status, acaoSalva])
+
+  const criadoEmMs  = acaoSalva?.criado_em ? new Date(acaoSalva.criado_em).getTime() : null
+  const restanteMs  = criadoEmMs != null ? JANELA_FOTOS_MS - (agora - criadoEmMs) : 0
+  const mesmoUsuario = !!usuarioLogado?.matricula && usuarioLogado.matricula === acaoSalva?.matricula_fiscal
+  const janelaFotosAtiva = status === 'saved' && mesmoUsuario && restanteMs > 0
+
+  const adicionarFotosPosSalvar = async (files) => {
+    const disponiveis = MAX_FOTOS_TOTAL - fotosAtuais.length
+    if (disponiveis <= 0 || !acaoSalva) return
+    setEnviandoFoto(true)
+    try {
+      const selecionadas = Array.from(files || []).slice(0, disponiveis)
+      const novasUrls = []
+      for (const file of selecionadas) {
+        const base64 = await new Promise(res => {
+          const reader = new FileReader()
+          reader.onload = ev => res(ev.target.result)
+          reader.readAsDataURL(file)
+        })
+        const comMarca = await adicionarWatermark(base64, form)
+        const url = await uploadBase64(comMarca, `sesmt/${acaoSalva.id}/foto_extra_${Date.now()}.jpg`, 'fotos-auditoria')
+        novasUrls.push(url)
+      }
+      const fotosUrlsAtuais = fotosAtuais.map(f => f.url)
+      const fotosUrlsNovas  = [...fotosUrlsAtuais, ...novasUrls]
+      const atualizada = await atualizarFotosAcaoSesmt(acaoSalva.id, fotosUrlsNovas)
+      setAcaoSalva(atualizada)
+      setFotosAtuais(fotosUrlsNovas.map(url => ({ url })))
+      setMostrarAddFoto(false)
+    } catch (e) {
+      alert('Erro ao adicionar foto: ' + (e.message || e))
+    } finally {
+      setEnviandoFoto(false)
+    }
+  }
+  const onCameraFoto  = async (e) => { await adicionarFotosPosSalvar(e.target.files); e.target.value = '' }
+  const onGaleriaFoto = async (e) => { await adicionarFotosPosSalvar(e.target.files); e.target.value = '' }
 
   const salvar = async () => {
     setStatus('saving')
@@ -119,11 +192,11 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
           </div>
         )}
 
-        {form.fotos?.length > 0 && (
+        {fotosAtuais?.length > 0 && (
           <div className="card" style={{ marginBottom: 14 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 10 }}>📷 FOTOS ({form.fotos.length})</p>
+            <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 10 }}>📷 FOTOS ({fotosAtuais.length})</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-              {form.fotos.map((f, i) => (
+              {fotosAtuais.map((f, i) => (
                 <img key={i} src={f.url} alt={`Foto ${i+1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block', border: '1px solid #e2e8f0' }} />
               ))}
             </div>
@@ -157,6 +230,40 @@ export default function SS4Resultado({ form, onConcluir, prev }) {
               <p style={{ color: '#15803d', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>✅ Ação salva com sucesso!</p>
               <p style={{ color: '#64748b', fontSize: 12 }}>Dados, fotos e assinaturas enviados ao banco.</p>
             </div>
+
+            {janelaFotosAtiva && fotosAtuais.length < MAX_FOTOS_TOTAL && (
+              <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 20, lineHeight: 1 }}>⏱️</span>
+                  <span style={{ color: '#92400e', fontWeight: 800, fontSize: 14 }}>Você pode adicionar mais fotos por {formatarRestante(restanteMs)}</span>
+                </div>
+
+                {!mostrarAddFoto ? (
+                  <button onClick={() => setMostrarAddFoto(true)} style={{ width: '100%', padding: 12, borderRadius: 10, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer', marginBottom: 8 }}>
+                    ➕ Adicionar Fotos
+                  </button>
+                ) : (
+                  <div style={{ marginBottom: 8 }}>
+                    <input ref={cameraFotoRef} type="file" accept="image/*" capture="environment" onChange={onCameraFoto} style={{ display: 'none' }} />
+                    <input ref={galeriaFotoRef} type="file" accept="image/*" multiple onChange={onGaleriaFoto} style={{ display: 'none' }} />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <button onClick={() => cameraFotoRef.current?.click()} disabled={enviandoFoto} style={{ padding: '14px 10px', borderRadius: 10, border: '2px dashed #7c3aed', background: '#f5f3ff', cursor: enviandoFoto ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: enviandoFoto ? 0.6 : 1 }}>
+                        <span style={{ fontSize: 22 }}>📷</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#5b21b6' }}>{enviandoFoto ? 'Enviando...' : 'Tirar foto'}</span>
+                      </button>
+                      <button onClick={() => galeriaFotoRef.current?.click()} disabled={enviandoFoto} style={{ padding: '14px 10px', borderRadius: 10, border: '2px dashed #7c3aed', background: '#f5f3ff', cursor: enviandoFoto ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: enviandoFoto ? 0.6 : 1 }}>
+                        <span style={{ fontSize: 22 }}>🖼️</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#5b21b6' }}>{enviandoFoto ? 'Enviando...' : 'Da galeria'}</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                <p style={{ color: '#92400e', fontSize: 11, lineHeight: 1.5, margin: 0 }}>
+                  Só você ({form.fiscal}) pode adicionar fotos, e só até o tempo acabar.
+                </p>
+              </div>
+            )}
 
             {(pendentesOnline > 0 || tokenOnline) && (
               <button onClick={() => setMostrarModal(true)} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#0f766e', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>

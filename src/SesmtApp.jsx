@@ -49,9 +49,9 @@ export default function SesmtApp({ usuarioLogado, onVoltar }) {
       <main className="app-content">
         {step === 0 && <SS0Tipo          {...stepProps} />}
         {step === 1 && <SS1Identificacao {...stepProps} />}
-        {step === 2 && <SS2Evidencias    {...stepProps} />}
-        {step === 3 && <SS3Participantes {...stepProps} />}
-        {step === 4 && <SS4Resultado form={form} onConcluir={reiniciar} prev={prev} />}
+        {step === 2 && <SS3Participantes {...stepProps} />}
+        {step === 3 && <SS2Evidencias    {...stepProps} />}
+        {step === 4 && <SS4Resultado form={form} usuarioLogado={usuarioLogado} onConcluir={reiniciar} prev={prev} />}
       </main>
     </div>
   )
