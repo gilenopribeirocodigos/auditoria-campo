@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 import * as XLSX from 'xlsx'
-import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds, numeroAcaoSesmt } from '../lib/sesmt.js'
+import { listarAcoesSesmt, listarAssinaturasSesmtColetadasPorAcao, atualizarParticipantesAcaoSesmt, atualizarFotosAcaoSesmt, mesclarAssinaturasColetadas, buscarTokenMaisRecenteSesmtPorAcao, tokenExpiradoOuEncerrado, removerParticipantesOnlineNaoAssinados, distanciaMetrosSesmt, buscarCpfsSesmtPorIds, numeroAcaoSesmt, JANELA_FOTOS_MS, MAX_FOTOS_ACAO_SESMT, formatarTempoRestante } from '../lib/sesmt.js'
+import { uploadBase64 } from '../lib/supabase.js'
+import { adicionarWatermark } from '../steps/sesmt/SS2Evidencias.jsx'
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
@@ -38,7 +40,7 @@ function somarDias(dataISO, dias) {
   return d.toISOString().split('T')[0]
 }
 
-export default function SesmtHistorico({ onVoltar }) {
+export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   // Período no mesmo padrão do painel de filtros de Registros Operacionais
   // (Hoje / Mês / Período) — default "Mês" preserva o comportamento antigo
   // (mês atual).
@@ -95,6 +97,16 @@ export default function SesmtHistorico({ onVoltar }) {
   const [capturando, setCapturando] = useState(false)
   const [gerandoPDF, setGerandoPDF] = useState(false)
   const [exportando, setExportando] = useState(false)
+
+  // Janela pra completar fotos numa ação já salva, reabrindo-a pelo
+  // Histórico (mesma regra/constantes de SS4Resultado.jsx — ver
+  // JANELA_FOTOS_MS em lib/sesmt.js): só o mesmo fiscal (matrícula) que
+  // registrou a ação, e só enquanto o tempo não tiver acabado.
+  const [agoraFotos,     setAgoraFotos]     = useState(Date.now())
+  const [mostrarAddFoto, setMostrarAddFoto] = useState(false)
+  const [enviandoFoto,   setEnviandoFoto]   = useState(false)
+  const cameraFotoRef  = useRef(null)
+  const galeriaFotoRef = useRef(null)
 
   const buscar = async () => {
     setLoading(true)
@@ -512,6 +524,7 @@ export default function SesmtHistorico({ onVoltar }) {
     // o botão preso em "Gerando PDF..." mesmo depois de abrir outra ação
     // sem nenhuma relação com aquele PDF.
     setGerandoPDF(false)
+    setMostrarAddFoto(false)
     // Busca o token ANTES de sincronizar — sincronizarDetalhe decide se limpa
     // quem não assinou com base em tokenDetalheRef.current, que só existe
     // depois que o token é conhecido. Sincronizar antes disso (como era)
@@ -536,6 +549,52 @@ export default function SesmtHistorico({ onVoltar }) {
     const id = setInterval(() => { sincronizarDetalhe(detalheRef.current) }, 8000)
     return () => clearInterval(id)
   }, [detalhe?.id])
+
+  // Relógio vivo do card de "adicionar fotos" — só roda com o detalhe
+  // aberto, pra não ficar contando à toa em segundo plano.
+  useEffect(() => {
+    if (!detalhe) return
+    const id = setInterval(() => setAgoraFotos(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [detalhe?.id])
+
+  const criadoEmFotosMs = detalhe?.criado_em ? new Date(detalhe.criado_em).getTime() : null
+  const restanteFotosMs = criadoEmFotosMs != null ? JANELA_FOTOS_MS - (agoraFotos - criadoEmFotosMs) : 0
+  const mesmoUsuarioFotos = !!usuarioLogado?.matricula && !!detalhe && usuarioLogado.matricula === detalhe.matricula_fiscal
+  const janelaFotosAtiva = !!detalhe && mesmoUsuarioFotos && restanteFotosMs > 0
+
+  const adicionarFotosPosSalvarHistorico = async (files) => {
+    if (!detalhe) return
+    const fotosAtuais = detalhe.fotos_urls || []
+    const disponiveis = MAX_FOTOS_ACAO_SESMT - fotosAtuais.length
+    if (disponiveis <= 0) return
+    setEnviandoFoto(true)
+    try {
+      const selecionadas = Array.from(files || []).slice(0, disponiveis)
+      const novasUrls = []
+      for (const file of selecionadas) {
+        const base64 = await new Promise(res => {
+          const reader = new FileReader()
+          reader.onload = ev => res(ev.target.result)
+          reader.readAsDataURL(file)
+        })
+        const comMarca = await adicionarWatermark(base64, { fiscal: detalhe.fiscal, data: detalhe.data_registro, hora: detalhe.hora_registro, lat: detalhe.lat, lng: detalhe.lng })
+        const url = await uploadBase64(comMarca, `sesmt/${detalhe.id}/foto_extra_${Date.now()}.jpg`, 'fotos-auditoria')
+        novasUrls.push(url)
+      }
+      const fotosUrlsNovas = [...fotosAtuais, ...novasUrls]
+      const atualizada = await atualizarFotosAcaoSesmt(detalhe.id, fotosUrlsNovas)
+      setDetalhe(atualizada)
+      setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+      setMostrarAddFoto(false)
+    } catch (e) {
+      alert('Erro ao adicionar foto: ' + (e.message || e))
+    } finally {
+      setEnviandoFoto(false)
+    }
+  }
+  const onCameraFotoHistorico  = async (e) => { await adicionarFotosPosSalvarHistorico(e.target.files); e.target.value = '' }
+  const onGaleriaFotoHistorico = async (e) => { await adicionarFotosPosSalvarHistorico(e.target.files); e.target.value = '' }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -791,6 +850,40 @@ export default function SesmtHistorico({ onVoltar }) {
                       </div>
                     )
                   })()}
+
+                  {janelaFotosAtiva && (detalhe.fotos_urls || []).length < MAX_FOTOS_ACAO_SESMT && (
+                    <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <span style={{ fontSize: 18, lineHeight: 1 }}>⏱️</span>
+                        <span style={{ color: '#92400e', fontWeight: 800, fontSize: 13 }}>Você pode adicionar mais fotos por {formatarTempoRestante(restanteFotosMs)}</span>
+                      </div>
+
+                      {!mostrarAddFoto ? (
+                        <button onClick={() => setMostrarAddFoto(true)} style={{ width: '100%', padding: 11, borderRadius: 10, border: 'none', background: '#7c3aed', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 8 }}>
+                          ➕ Adicionar Fotos
+                        </button>
+                      ) : (
+                        <div style={{ marginBottom: 8 }}>
+                          <input ref={cameraFotoRef} type="file" accept="image/*" capture="environment" onChange={onCameraFotoHistorico} style={{ display: 'none' }} />
+                          <input ref={galeriaFotoRef} type="file" accept="image/*" multiple onChange={onGaleriaFotoHistorico} style={{ display: 'none' }} />
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <button onClick={() => cameraFotoRef.current?.click()} disabled={enviandoFoto} style={{ padding: '12px 10px', borderRadius: 10, border: '2px dashed #7c3aed', background: '#f5f3ff', cursor: enviandoFoto ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: enviandoFoto ? 0.6 : 1 }}>
+                              <span style={{ fontSize: 20 }}>📷</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#5b21b6' }}>{enviandoFoto ? 'Enviando...' : 'Tirar foto'}</span>
+                            </button>
+                            <button onClick={() => galeriaFotoRef.current?.click()} disabled={enviandoFoto} style={{ padding: '12px 10px', borderRadius: 10, border: '2px dashed #7c3aed', background: '#f5f3ff', cursor: enviandoFoto ? 'default' : 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, opacity: enviandoFoto ? 0.6 : 1 }}>
+                              <span style={{ fontSize: 20 }}>🖼️</span>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#5b21b6' }}>{enviandoFoto ? 'Enviando...' : 'Da galeria'}</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      <p style={{ color: '#92400e', fontSize: 10, lineHeight: 1.5, margin: 0 }}>
+                        Só você ({detalhe.fiscal}) pode adicionar fotos, e só até o tempo acabar.
+                      </p>
+                    </div>
+                  )}
 
                   {detalhe.observacao && (
                     <div style={{ background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
