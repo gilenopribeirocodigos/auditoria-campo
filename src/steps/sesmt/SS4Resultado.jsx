@@ -1,26 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import { TIPOS_ACAO_SESMT } from '../../data/sesmt_config.js'
-import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, atualizarFotosAcaoSesmt, prepararPayloadSesmt, listarAssinaturasSesmtColetadas, mesclarAssinaturasColetadas } from '../../lib/sesmt.js'
+import { salvarAcaoSesmt, atualizarAcaoSesmt, atualizarParticipantesAcaoSesmt, atualizarFotosAcaoSesmt, prepararPayloadSesmt, listarAssinaturasSesmtColetadas, mesclarAssinaturasColetadas, JANELA_FOTOS_MS, MAX_FOTOS_ACAO_SESMT, formatarTempoRestante } from '../../lib/sesmt.js'
 import { uploadBase64 } from '../../lib/supabase.js'
 import { adicionarWatermark } from './SS2Evidencias.jsx'
 import ModalLinkAssinaturaSesmt from '../../components/ModalLinkAssinaturaSesmt.jsx'
-
-// Depois de "Salvar Ação", o mesmo fiscal ainda pode completar o registro
-// fotográfico por um tempo limitado — mesmo padrão (janela com contagem
-// regressiva) já usado no link de assinatura remota (criarTokenAssinaturaSesmt).
-// Aqui não precisa de token/link próprio: usa o `criado_em` que a própria
-// ação já ganha ao ser salva (timestamptz default now() na tabela) como
-// início da janela, e confere a matrícula de quem está logado contra a
-// matrícula do fiscal que salvou — só ele enxerga o botão de adicionar.
-const JANELA_FOTOS_MS = 60 * 60 * 1000
-const MAX_FOTOS_TOTAL = 5
-
-function formatarRestante(ms) {
-  const total = Math.max(0, Math.floor(ms / 1000))
-  const mm = String(Math.floor(total / 60)).padStart(2, '0')
-  const ss = String(total % 60).padStart(2, '0')
-  return `${mm}:${ss}`
-}
 
 export default function SS4Resultado({ form, usuarioLogado, onConcluir, prev }) {
   const [status,     setStatus]     = useState('idle') // idle | saving | saved | error
@@ -61,7 +44,7 @@ export default function SS4Resultado({ form, usuarioLogado, onConcluir, prev }) 
   const janelaFotosAtiva = status === 'saved' && mesmoUsuario && restanteMs > 0
 
   const adicionarFotosPosSalvar = async (files) => {
-    const disponiveis = MAX_FOTOS_TOTAL - fotosAtuais.length
+    const disponiveis = MAX_FOTOS_ACAO_SESMT - fotosAtuais.length
     if (disponiveis <= 0 || !acaoSalva) return
     setEnviandoFoto(true)
     try {
@@ -231,11 +214,11 @@ export default function SS4Resultado({ form, usuarioLogado, onConcluir, prev }) 
               <p style={{ color: '#64748b', fontSize: 12 }}>Dados, fotos e assinaturas enviados ao banco.</p>
             </div>
 
-            {janelaFotosAtiva && fotosAtuais.length < MAX_FOTOS_TOTAL && (
+            {janelaFotosAtiva && fotosAtuais.length < MAX_FOTOS_ACAO_SESMT && (
               <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '14px 16px', marginBottom: 14 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                   <span style={{ fontSize: 20, lineHeight: 1 }}>⏱️</span>
-                  <span style={{ color: '#92400e', fontWeight: 800, fontSize: 14 }}>Você pode adicionar mais fotos por {formatarRestante(restanteMs)}</span>
+                  <span style={{ color: '#92400e', fontWeight: 800, fontSize: 14 }}>Você pode adicionar mais fotos por {formatarTempoRestante(restanteMs)}</span>
                 </div>
 
                 {!mostrarAddFoto ? (
