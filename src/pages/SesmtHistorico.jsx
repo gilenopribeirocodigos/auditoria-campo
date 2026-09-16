@@ -105,6 +105,10 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   const [agoraFotos,     setAgoraFotos]     = useState(Date.now())
   const [mostrarAddFoto, setMostrarAddFoto] = useState(false)
   const [enviandoFoto,   setEnviandoFoto]   = useState(false)
+  // URLs incluídas pelo botão "Adicionar Fotos" nesta abertura do card — só
+  // essas podem ser excluídas (fotos originais da ação não têm exclusão
+  // rápida aqui). Reseta a cada abertura de card (ver abrirDetalhe).
+  const [fotosExtrasUrls, setFotosExtrasUrls] = useState([])
   const cameraFotoRef  = useRef(null)
   const galeriaFotoRef = useRef(null)
 
@@ -525,6 +529,7 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
     // sem nenhuma relação com aquele PDF.
     setGerandoPDF(false)
     setMostrarAddFoto(false)
+    setFotosExtrasUrls([])
     // Busca o token ANTES de sincronizar — sincronizarDetalhe decide se limpa
     // quem não assinou com base em tokenDetalheRef.current, que só existe
     // depois que o token é conhecido. Sincronizar antes disso (como era)
@@ -561,7 +566,11 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   const criadoEmFotosMs = detalhe?.criado_em ? new Date(detalhe.criado_em).getTime() : null
   const restanteFotosMs = criadoEmFotosMs != null ? JANELA_FOTOS_MS - (agoraFotos - criadoEmFotosMs) : 0
   const mesmoUsuarioFotos = !!usuarioLogado?.matricula && !!detalhe && usuarioLogado.matricula === detalhe.matricula_fiscal
-  const janelaFotosAtiva = !!detalhe && mesmoUsuarioFotos && restanteFotosMs > 0
+  // Encerrar (ou deixar expirar) o link de assinatura encerra junto a janela
+  // de fotos, mesmo que o tempo dela ainda não tenha acabado — sem link
+  // nenhum (tokenDetalhe null, todo mundo assinou presencial), vale só o tempo.
+  const linkBloqueiaFotos = !!tokenDetalhe && tokenExpiradoOuEncerrado(tokenDetalhe)
+  const janelaFotosAtiva = !!detalhe && mesmoUsuarioFotos && restanteFotosMs > 0 && !linkBloqueiaFotos
 
   const adicionarFotosPosSalvarHistorico = async (files) => {
     if (!detalhe) return
@@ -586,6 +595,7 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
       const atualizada = await atualizarFotosAcaoSesmt(detalhe.id, fotosUrlsNovas)
       setDetalhe(atualizada)
       setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+      setFotosExtrasUrls(atuais => [...atuais, ...novasUrls])
       setMostrarAddFoto(false)
     } catch (e) {
       alert('Erro ao adicionar foto: ' + (e.message || e))
@@ -595,6 +605,21 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   }
   const onCameraFotoHistorico  = async (e) => { await adicionarFotosPosSalvarHistorico(e.target.files); e.target.value = '' }
   const onGaleriaFotoHistorico = async (e) => { await adicionarFotosPosSalvarHistorico(e.target.files); e.target.value = '' }
+
+  // Remove uma foto extra (incluída via "Adicionar Fotos" nesta abertura do
+  // card) — só faz sentido enquanto a janela ainda está ativa.
+  const removerFotoExtraHistorico = async (url) => {
+    if (!detalhe) return
+    const fotosUrlsNovas = (detalhe.fotos_urls || []).filter(u => u !== url)
+    try {
+      const atualizada = await atualizarFotosAcaoSesmt(detalhe.id, fotosUrlsNovas)
+      setDetalhe(atualizada)
+      setAcoes(lista => lista.map(a => a.id === atualizada.id ? atualizada : a))
+      setFotosExtrasUrls(atuais => atuais.filter(u => u !== url))
+    } catch (e) {
+      alert('Erro ao excluir foto: ' + (e.message || e))
+    }
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -938,9 +963,14 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
                       <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📷 Fotos ({detalhe.fotos_urls.length})</p>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
                         {detalhe.fotos_urls.map((url, i) => (
-                          <a key={i} href={url} target="_blank" rel="noreferrer">
-                            <img src={url} alt={`Foto ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block' }} />
-                          </a>
+                          <div key={i} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '1' }}>
+                            <a href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={`Foto ${i + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                            </a>
+                            {janelaFotosAtiva && fotosExtrasUrls.includes(url) && (
+                              <button onClick={e => { e.preventDefault(); e.stopPropagation(); removerFotoExtraHistorico(url) }} style={{ position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: '50%', border: 'none', background: 'rgba(220,38,38,0.85)', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>✕</button>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
