@@ -14,7 +14,7 @@ import { CarregandoHexagono, SearchSelect } from '../components/Shared.jsx'
 import { listarMotivos as listarMotivosAuditoria } from '../lib/motivosAuditoria.js'
 import MotivosAuditoria from './MotivosAuditoria.jsx'
 
-const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL']
+const TIPOS_SERVICO     = ['CORTE', 'ANEXO', 'RELIGA', 'EMERGENCIAL', 'PERDAS']
 const RECORRENCIAS      = ['UNICA', 'DIARIA', 'SEMANAL']
 const RECORRENCIA_LABEL = { UNICA: 'Única', DIARIA: 'Diária', SEMANAL: 'Semanal' }
 

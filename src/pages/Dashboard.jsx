@@ -56,7 +56,7 @@ function hojeStr() {
   return new Date().toISOString().split('T')[0]
 }
 
-const TIPO_EMOJI = { CORTE: '✂️', ANEXO: '🔌', RELIGA: '⚡', EMERGENCIAL: '🚒' }
+const TIPO_EMOJI = { CORTE: '✂️', ANEXO: '🔌', RELIGA: '⚡', EMERGENCIAL: '🚒', PERDAS: '🕵️' }
 
 // ─── Componente principal ───────────────────────────────────────────────────
 export default function Dashboard({ usuarioLogado, onVoltar }) {
