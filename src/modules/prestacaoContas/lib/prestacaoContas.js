@@ -221,6 +221,10 @@ export async function adicionarItem(prestacaoId, item, ordem) {
       valor: item.valor || 0,
       valor_pago: item.valor_pago ?? item.valor ?? 0,
       observacao: item.observacao || null,
+      categoria_despesa: item.categoria_despesa || null,
+      colaborador_1: item.colaborador_1 || null,
+      colaborador_2: item.colaborador_2 || null,
+      alocacao: item.alocacao || null,
     })
     .select()
     .single()
@@ -242,6 +246,10 @@ export async function atualizarItem(itemId, item) {
       valor: item.valor || 0,
       valor_pago: item.valor_pago ?? item.valor ?? 0,
       observacao: item.observacao || null,
+      categoria_despesa: item.categoria_despesa || null,
+      colaborador_1: item.colaborador_1 || null,
+      colaborador_2: item.colaborador_2 || null,
+      alocacao: item.alocacao || null,
     })
     .eq('id', itemId)
   if (error) throw error

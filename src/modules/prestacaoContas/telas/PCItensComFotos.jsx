@@ -2,6 +2,8 @@
 // na análise de quem recebe (PCRecebidaDetalhe) quanto, agora, por quem
 // enviou (PrestacaoContasLista, aba "Minhas Prestações"), pra poder rever o
 // próprio comprovante depois de enviar sem precisar ser aprovador.
+import { labelCategoriaDespesa, formatarAlocacao } from '../lib/categorias.js'
+
 export default function PCItensComFotos({ itens }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -14,6 +16,11 @@ export default function PCItensComFotos({ itens }) {
           <p style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
             <strong>FORNECEDOR:</strong> {item.fornecedor || '—'} · {item.forma_pagamento || '—'} · {item.tipo_comprovante || '—'} · {item.data_emissao || 'sem data'}
           </p>
+          {item.categoria_despesa && (
+            <p style={{ fontSize: 11, color: '#2563eb', fontWeight: 700, marginBottom: 6 }}>
+              🏷️ {labelCategoriaDespesa(item.categoria_despesa)}{formatarAlocacao(item) !== '—' ? `: ${formatarAlocacao(item)}` : ''}
+            </p>
+          )}
           {item.observacao && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Obs.: {item.observacao}</p>}
           {(item.pc_fotos || []).length > 0 ? (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>

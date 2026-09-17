@@ -1,11 +1,77 @@
 import { useEffect, useRef, useState } from 'react'
-import { CATEGORIAS_SUGERIDAS, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
+import { supabase } from '../../../lib/supabase.js'
+import { CATEGORIAS_SUGERIDAS, CATEGORIAS_DESPESA, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
 import { listarClassificacoes, listarTiposComprovanteCadastrados, listarFormasPagamento } from '../lib/prestacaoContas.js'
 import PCSearchSelect from './PCSearchSelect.jsx'
 
 const ITEM_VAZIO = {
   classificacao: '', descricao: '', fornecedor: '', forma_pagamento: 'PIX',
   tipo_comprovante: 'RECIBO', data_emissao: '', valor: '', observacao: '',
+  categoria_despesa: '', colaborador_1: '', colaborador_2: '', alocacao: '',
+}
+
+// Campo com autocomplete buscando em estrutura_equipes (mesmo padrão de
+// CampoPrefixo/CampoColaboradorEnvolvido em AberturaOcorrencia.jsx) — online
+// sugere conforme digita, offline a busca simplesmente não retorna nada e o
+// campo continua aceitando digitação livre. Sempre em maiúscula.
+function CampoAutocompleteEstrutura({ coluna, value, onChange, placeholder }) {
+  const [sugestoes, setSugestoes] = useState([])
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const buscar = async v => {
+    if (!v || v.length < 2 || !supabase) { setSugestoes([]); setAberto(false); return }
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select(coluna).ilike(coluna, `%${v}%`).not(coluna, 'is', null).neq(coluna, '')
+        .order(coluna).limit(15)
+      const unicos = [...new Set((data || []).map(r => r[coluna]?.trim().toUpperCase()).filter(Boolean))]
+      setSugestoes(unicos)
+      setAberto(unicos.length > 0)
+    } catch { setSugestoes([]); setAberto(false) }
+  }
+
+  const handleChange = e => {
+    const v = e.target.value.toUpperCase()
+    onChange(v)
+    buscar(v)
+  }
+
+  const selecionar = s => { onChange(s); setSugestoes([]); setAberto(false) }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input className="form-input" value={value} onChange={handleChange}
+        onFocus={() => value && buscar(value)}
+        placeholder={placeholder} autoComplete="off" />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} type="button" onMouseDown={() => selecionar(s)}
+              style={{
+                display: 'block', width: '100%', padding: '9px 12px',
+                textAlign: 'left', background: 'none', border: 'none',
+                borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCancelar, salvando }) {
@@ -16,6 +82,8 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
         fornecedor: itemInicial.fornecedor || '', forma_pagamento: itemInicial.forma_pagamento || 'PIX',
         tipo_comprovante: itemInicial.tipo_comprovante || 'RECIBO', data_emissao: itemInicial.data_emissao || '',
         valor: itemInicial.valor ?? '', observacao: itemInicial.observacao || '',
+        categoria_despesa: itemInicial.categoria_despesa || '', colaborador_1: itemInicial.colaborador_1 || '',
+        colaborador_2: itemInicial.colaborador_2 || '', alocacao: itemInicial.alocacao || '',
       }
     : ITEM_VAZIO)
   // Cada foto é { id, foto_url } (já salva) ou { base64 } (nova, ainda não enviada).
@@ -65,8 +133,13 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
     })
   }
 
+  const alocacaoOk = item.categoria_despesa === 'COLABORADOR' ? item.colaborador_1.trim().length > 0
+    : item.categoria_despesa === 'ADMINISTRATIVA' ? true
+    : item.alocacao.trim().length > 0
+
   const valido = item.classificacao.trim() && item.descricao.trim() && item.fornecedor.trim()
     && item.data_emissao.trim() && Number(item.valor) > 0 && fotos.length > 0
+    && item.categoria_despesa && alocacaoOk
 
   const salvar = () => {
     const novasBase64 = fotos.filter(f => f.base64).map(f => f.base64)
@@ -90,6 +163,59 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
           placeholder="Buscar e escolher a classificação..."
         />
       </div>
+
+      <div className="form-group">
+        <label className="form-label">Categoria da Despesa *</label>
+        <PCSearchSelect
+          opcoes={CATEGORIAS_DESPESA} valor={item.categoria_despesa}
+          onSelecionar={v => upd('categoria_despesa', v)}
+          placeholder="Escolha para quem/o quê alocar..."
+        />
+      </div>
+
+      {item.categoria_despesa === 'COLABORADOR' && (
+        <>
+          <div className="form-group">
+            <label className="form-label">Colaborador 1 *</label>
+            <CampoAutocompleteEstrutura coluna="colaborador" value={item.colaborador_1}
+              onChange={v => upd('colaborador_1', v)} placeholder="Nome do colaborador..." />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Colaborador 2 (opcional)</label>
+            <CampoAutocompleteEstrutura coluna="colaborador" value={item.colaborador_2}
+              onChange={v => upd('colaborador_2', v)} placeholder="Nome do 2º colaborador, se houver..." />
+          </div>
+        </>
+      )}
+
+      {item.categoria_despesa === 'EQUIPE_PREFIXO' && (
+        <div className="form-group">
+          <label className="form-label">Prefixo da Equipe *</label>
+          <CampoAutocompleteEstrutura coluna="prefixo" value={item.alocacao}
+            onChange={v => upd('alocacao', v)} placeholder="Ex.: PI-THE-C002M" />
+        </div>
+      )}
+
+      {item.categoria_despesa === 'VIATURA' && (
+        <div className="form-group">
+          <label className="form-label">Placa da Viatura *</label>
+          <input className="form-input" value={item.alocacao} onChange={e => updMaiuscula('alocacao', e.target.value)} placeholder="Ex.: OUB23GI" />
+        </div>
+      )}
+
+      {item.categoria_despesa === 'BASE_OPERACIONAL' && (
+        <div className="form-group">
+          <label className="form-label">Base Operacional *</label>
+          <input className="form-input" value={item.alocacao} onChange={e => updMaiuscula('alocacao', e.target.value)} placeholder="Ex.: BASE MONTE CASTELO" />
+        </div>
+      )}
+
+      {item.categoria_despesa === 'TERCEIROS' && (
+        <div className="form-group">
+          <label className="form-label">Nome do Terceiro *</label>
+          <input className="form-input" value={item.alocacao} onChange={e => updMaiuscula('alocacao', e.target.value)} placeholder="Ex.: CONDOMÍNIO RESIDENCIAL X" />
+        </div>
+      )}
 
       <div className="form-group">
         <label className="form-label">Descrição *</label>
