@@ -450,20 +450,45 @@ export async function listarPrestacoesDoFechamento(fechamentoId) {
   }))
 }
 
-// ── Possível duplicidade (mesmo solicitante + mesmo valor + mesma data) ─────
+// ── Possível duplicidade (mesmo solicitante + mesmo valor + mesma data +
+// mesma alocação) ────────────────────────────────────────────────────────────
 // Usada tanto na revisão de envio (alerta pra quem envia) quanto na análise
 // (alerta pra quem recebe) — mesma regra, contextos diferentes.
-export async function buscarDuplicatasPotenciais(remetenteId, valor, dataEmissao, prestacaoIdAtual) {
+// Além de valor e data, agora também exige que a alocação bata (mesmo
+// colaborador, mesma equipe/prefixo, mesma viatura, mesma base ou mesmo
+// terceiro — ou, se ADMINISTRATIVA, só a categoria igual, já que não há um
+// identificador mais específico) — deixa a checagem mais próxima de
+// realmente detectar nota duplicada pra pagamento, e não só coincidência de
+// valor+data entre despesas diferentes. Itens antigos (lançados antes desta
+// categorização existir, sem categoria_despesa) continuam comparados só por
+// valor+data, pra não deixar de detectar duplicidade em dados legados.
+export async function buscarDuplicatasPotenciais(remetenteId, item, prestacaoIdAtual) {
   assertSupabase()
+  const { valor, data_emissao: dataEmissao, categoria_despesa: categoria, colaborador_1, colaborador_2, alocacao } = item
   if (!dataEmissao || !valor) return []
   const { data, error } = await supabase
     .from('pc_prestacoes')
-    .select('id, numero_pc, pc_itens(valor, data_emissao)')
+    .select('id, numero_pc, pc_itens(valor, data_emissao, categoria_despesa, colaborador_1, colaborador_2, alocacao)')
     .eq('remetente_id', remetenteId)
     .neq('id', prestacaoIdAtual)
   if (error) throw error
+
+  const colabsAtual = [colaborador_1, colaborador_2].filter(Boolean).map(c => c.trim().toUpperCase())
+  const alocacaoAtual = (alocacao || '').trim().toUpperCase()
+
+  const mesmaAlocacao = (i) => {
+    if (!categoria || !i.categoria_despesa) return true // dado legado — não dá pra comparar
+    if (categoria !== i.categoria_despesa) return false
+    if (categoria === 'COLABORADOR') {
+      const colabsItem = [i.colaborador_1, i.colaborador_2].filter(Boolean).map(c => c.trim().toUpperCase())
+      return colabsAtual.some(c => colabsItem.includes(c))
+    }
+    if (categoria === 'ADMINISTRATIVA') return true
+    return !!alocacaoAtual && alocacaoAtual === (i.alocacao || '').trim().toUpperCase()
+  }
+
   return (data || []).filter(p => (p.pc_itens || []).some(i => (
-    Number(i.valor) === Number(valor) && i.data_emissao === dataEmissao
+    Number(i.valor) === Number(valor) && i.data_emissao === dataEmissao && mesmaAlocacao(i)
   )))
 }
 

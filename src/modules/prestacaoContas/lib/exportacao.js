@@ -75,7 +75,7 @@ export function gerarExcelConsolidado(prestacoes) {
         'NOTA FISCAL': item.tipo_comprovante || '',
         'DATA DA EMISSÃO': formatarDataBr(item.data_emissao),
         'Valor': Number(item.valor || 0),
-        'CATEGORIA DA DESPESA': labelCategoriaDespesa(item.categoria_despesa),
+        'ALOCADO A': labelCategoriaDespesa(item.categoria_despesa),
         'ALOCAÇÃO': formatarAlocacao(item),
       })
     }

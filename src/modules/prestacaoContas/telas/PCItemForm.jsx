@@ -165,7 +165,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
       </div>
 
       <div className="form-group">
-        <label className="form-label">Categoria da Despesa *</label>
+        <label className="form-label">Alocado a *</label>
         <PCSearchSelect
           opcoes={CATEGORIAS_DESPESA} valor={item.categoria_despesa}
           onSelecionar={v => upd('categoria_despesa', v)}
