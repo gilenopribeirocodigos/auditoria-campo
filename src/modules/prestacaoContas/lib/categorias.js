@@ -39,7 +39,7 @@ export function labelCategoriaDespesa(categoria) {
 // Texto de alocação pra exibição/exportação — quem/o quê recebeu a despesa.
 export function formatarAlocacao(item) {
   if (item.categoria_despesa === 'COLABORADOR') {
-    return [item.colaborador_1, item.colaborador_2].filter(Boolean).join(' + ') || '—'
+    return [item.colaborador_1, item.colaborador_2].filter(Boolean).join(' | ') || '—'
   }
   if (item.categoria_despesa === 'ADMINISTRATIVA') return '—'
   return item.alocacao || '—'
