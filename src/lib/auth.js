@@ -23,6 +23,34 @@ export function getVersaoApp() {
   return APP_VERSION
 }
 
+// Monta o array de permissões (perfil + processos/regionais individuais) —
+// usado no login e em recarregarPermissoes() (releitura periódica, sem
+// precisar de logout/login toda vez que um admin mexe em "Permissões por
+// Perfil" em GestaoUsuarios.jsx). O PainelFiltros lê tudo de uma lista única
+// `permissoes`, então basta juntar.
+async function carregarPermissoesUsuario(usuario) {
+  const { data: perms } = await supabase
+    .from('perfis_permissoes')
+    .select('permissao')
+    .eq('perfil', usuario.perfil)
+
+  const { data: procsUsuario } = await supabase
+    .from('usuarios_processos')
+    .select('processo_chave')
+    .eq('usuario_id', usuario.id)
+
+  const { data: regionaisUsuario } = await supabase
+    .from('usuarios_regionais')
+    .select('regional_chave')
+    .eq('usuario_id', usuario.id)
+
+  return [
+    ...(perms            || []).map(p => p.permissao),
+    ...(procsUsuario     || []).map(p => p.processo_chave),
+    ...(regionaisUsuario || []).map(p => p.regional_chave),
+  ]
+}
+
 // ─── Login ────────────────────────────────────────────────────────────────────
 export async function fazerLogin(login, senha) {
   if (!supabase) throw new Error('Supabase não configurado.')
@@ -39,31 +67,7 @@ export async function fazerLogin(login, senha) {
   const usuario = data[0]
   if (usuario.senha !== senha) throw new Error('Senha incorreta.')
 
-  // Carrega permissões do perfil
-  const { data: perms } = await supabase
-    .from('perfis_permissoes')
-    .select('permissao')
-    .eq('perfil', usuario.perfil)
-
-  // Carrega processos atribuídos especificamente ao usuário (granularidade individual)
-  const { data: procsUsuario } = await supabase
-    .from('usuarios_processos')
-    .select('processo_chave')
-    .eq('usuario_id', usuario.id)
-
-  // Carrega regionais atribuídas especificamente ao usuário (granularidade individual)
-  const { data: regionaisUsuario } = await supabase
-    .from('usuarios_regionais')
-    .select('regional_chave')
-    .eq('usuario_id', usuario.id)
-
-  // União: permissões do perfil + processos/regionais do usuário
-  // O PainelFiltros lê tudo de uma lista única `permissoes`, então basta juntar.
-  const permissoes = [
-    ...(perms            || []).map(p => p.permissao),
-    ...(procsUsuario     || []).map(p => p.processo_chave),
-    ...(regionaisUsuario || []).map(p => p.regional_chave),
-  ]
+  const permissoes = await carregarPermissoesUsuario(usuario)
 
   const usuarioSessao = {
     id:          usuario.id,
@@ -151,6 +155,30 @@ export async function verificarSessao() {
   }
 
   return { valida: true, motivo: null }
+}
+
+// Rebusca as permissões do usuário logado (perfil + processos/regionais) e
+// atualiza a sessão local — assim um admin alterando "Permissões por Perfil"
+// (ou processos/regionais de alguém) passa a valer sem precisar pedir pra
+// pessoa deslogar e logar de novo. Chamado periodicamente e ao focar a
+// aba/app (ver App.jsx). Silencioso em qualquer erro — offline, por exemplo —
+// a sessão atual (já em localStorage) continua valendo normalmente; a
+// próxima chamada tenta de novo.
+export async function recarregarPermissoes() {
+  const atual = getUsuarioLogado()
+  if (!atual || !supabase) return null
+  try {
+    const permissoes = await carregarPermissoesUsuario(atual)
+    const permissoesAtuais = atual.permissoes || []
+    const mudou = permissoes.length !== permissoesAtuais.length ||
+      !permissoes.every(p => permissoesAtuais.includes(p))
+    if (!mudou) return atual
+    const atualizado = { ...atual, permissoes }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(atualizado))
+    return atualizado
+  } catch {
+    return null
+  }
 }
 
 // ─── Permissões ───────────────────────────────────────────────────────────────
