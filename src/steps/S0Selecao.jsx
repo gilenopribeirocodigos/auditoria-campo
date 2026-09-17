@@ -505,7 +505,7 @@ export default function S0Selecao({ form, upd, setForm, next, pautasHoje = [], p
       {form.tipoAuditoria && (
         <>
           <p className="section-title">Tipo de Serviço</p>
-          {/* ─── Grid 2x2 — acomoda os 4 tipos: Corte, Anexo, Religação, Emergencial ─── */}
+          {/* ─── Grid 2 colunas — acomoda os tipos: Corte, Anexo, Religação, Emergencial, Perdas ─── */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 18 }}>
             {Object.entries(CHECKLISTS).map(([key, val]) => (
               <button key={key}

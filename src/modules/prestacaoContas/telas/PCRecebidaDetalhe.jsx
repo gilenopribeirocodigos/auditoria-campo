@@ -13,14 +13,14 @@ export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar,
   const podeDecidir = prestacao.status === 'ENVIADO'
 
   // Alerta pra quem analisa: mesmo solicitante já tem outra prestação com o
-  // mesmo valor e a mesma data de emissão — vale olhar com mais cautela
-  // antes de aprovar (e rejeitar, se identificar erro).
+  // mesmo valor, a mesma data de emissão e a mesma alocação — vale olhar com
+  // mais cautela antes de aprovar (e rejeitar, se identificar erro).
   useEffect(() => {
     (async () => {
       const encontradas = []
       for (const item of itens) {
         try {
-          const achadas = await buscarDuplicatasPotenciais(prestacao.remetente_id, item.valor, item.data_emissao, prestacao.id)
+          const achadas = await buscarDuplicatasPotenciais(prestacao.remetente_id, item, prestacao.id)
           for (const p of achadas) if (!encontradas.some(e => e.id === p.id)) encontradas.push(p)
         } catch { /* se a checagem falhar, só não mostra o alerta */ }
       }
@@ -50,7 +50,7 @@ export default function PCRecebidaDetalhe({ prestacao, remetenteNome, onAprovar,
             ⚠️ Possível prestação de contas duplicada
           </p>
           <p style={{ fontSize: 12, color: '#92400e' }}>
-            {remetenteNome || 'Este solicitante'} já possui {duplicatas.length === 1 ? 'outra prestação de contas' : `outras ${duplicatas.length} prestações de contas`} com o mesmo valor e a mesma data de emissão
+            {remetenteNome || 'Este solicitante'} já possui {duplicatas.length === 1 ? 'outra prestação de contas' : `outras ${duplicatas.length} prestações de contas`} com o mesmo valor, a mesma data de emissão e a mesma alocação (colaborador/equipe/viatura/base/terceiro)
             {duplicatas.length === 1 ? ` (${duplicatas[0].numero_pc})` : `: ${duplicatas.map(d => d.numero_pc).join(', ')}`}.
             Revise com atenção antes de aprovar — se identificar erro, você pode rejeitar.
           </p>

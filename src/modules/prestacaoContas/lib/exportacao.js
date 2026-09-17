@@ -4,6 +4,7 @@
 // as fotos, em sequência por data/hora e renomeadas por item.
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
+import { labelCategoriaDespesa, formatarAlocacao } from './categorias.js'
 
 // Redimensiona (lado maior até maxLado) e recomprime como JPEG antes de
 // zipar — fotos de câmera de celular chegam com vários MB cada, o que deixa
@@ -65,15 +66,17 @@ export function gerarExcelConsolidado(prestacoes) {
     const itens = [...(p.pc_itens || [])].sort((a, b) => a.ordem - b.ordem)
     for (const item of itens) {
       linhas.push({
-        'Nº Prestação': p.numero_pc,
-        'Solicitante': p.remetente_nome || '',
+        'Nº PRESTAÇÃO': p.numero_pc,
+        'SOLICITANTE': p.remetente_nome || '',
+        'ALOCADO_A': labelCategoriaDespesa(item.categoria_despesa),
+        'NOME_ALOCADO': formatarAlocacao(item),
         'DESPESA - CLASSIFICAÇÃO': item.classificacao || '',
         'DESCRIÇAO': item.descricao || '',
         'FORNECEDOR': item.fornecedor || '',
         'FORMA DE PAGAMENTO': item.forma_pagamento || '',
         'NOTA FISCAL': item.tipo_comprovante || '',
         'DATA DA EMISSÃO': formatarDataBr(item.data_emissao),
-        'Valor': Number(item.valor || 0),
+        'VALOR': Number(item.valor || 0),
       })
     }
   }
@@ -81,7 +84,7 @@ export function gerarExcelConsolidado(prestacoes) {
 
   const ws = XLSX.utils.json_to_sheet(linhas)
   ws['!cols'] = [
-    { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 32 }, { wch: 26 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 },
+    { wch: 20 }, { wch: 24 }, { wch: 20 }, { wch: 26 }, { wch: 22 }, { wch: 32 }, { wch: 26 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 },
   ]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Prestações Aprovadas')

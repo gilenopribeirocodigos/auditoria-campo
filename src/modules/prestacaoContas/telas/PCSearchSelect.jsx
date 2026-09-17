@@ -76,11 +76,14 @@ export default function PCSearchSelect({ opcoes, valor, onSelecionar, placeholde
                 style={{
                   display: 'block', width: '100%', padding: '9px 12px',
                   background: sel ? '#eff6ff' : 'none', border: 'none', borderBottom: '1px solid #f8fafc',
-                  textAlign: 'left', cursor: 'pointer', fontSize: 12, color: '#1e293b', fontWeight: sel ? 700 : 500,
+                  textAlign: 'left', cursor: 'pointer',
                 }}
                 onMouseEnter={e => { if (!sel) e.currentTarget.style.background = '#f8fafc' }}
                 onMouseLeave={e => { if (!sel) e.currentTarget.style.background = 'none' }}
-              >{op.label}</button>
+              >
+                <span style={{ display: 'block', fontSize: 12, color: '#1e293b', fontWeight: sel ? 700 : 500 }}>{op.label}</span>
+                {op.sub && <span style={{ display: 'block', fontSize: 10.5, color: '#94a3b8', marginTop: 2, fontWeight: 400 }}>{op.sub}</span>}
+              </button>
             )
           })}
         </div>

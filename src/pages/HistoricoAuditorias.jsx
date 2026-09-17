@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { reabrirAuditoria } from '../lib/supabase.js'
-import { CHECKLISTS, getItemsNaoConformes } from '../data/checklists.js'
+import { CHECKLISTS, CAT_META, getItemsNaoConformes, getStatus, getChecklist, getItemsAtivos, getItemsParaCalculo, isItemConforme, isDisqualified } from '../data/checklists.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { numeroASDaAuditoria } from '../lib/numeroAS.js'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
@@ -39,100 +39,161 @@ function calcNcItems(auditoria) {
   })
 }
 
-// ─── conteúdo reaproveitável (impressão web + PDF nativo Android) ────────────
-function montarConteudoImpressaoAuditoria(a, formatData, versaoApp = '') {
-  const sc      = STATUS_COR[a.status] || { bg: '#f1f5f9', color: '#374151' }
+// Recalcula conformes/não-conformes por categoria a partir dos dados salvos —
+// mesma lógica de S6Resultado.jsx (catStats), só adaptando os nomes de campo
+// do form em edição (tipoServico/produtivo) pros da linha salva no banco
+// (tipo_servico/produtivo).
+function calcStatsAuditoria(a) {
+  const fa = { tipoServico: a?.tipo_servico, tipoAuditoria: a?.tipo_auditoria, produtivo: a?.produtivo, respostas: a?.respostas || {} }
+  const cl = getChecklist(fa.tipoServico, fa.tipoAuditoria, fa.produtivo)
+  const items = getItemsParaCalculo(getItemsAtivos(cl?.items || [], fa), fa.respostas)
+  const sim = items.filter(i => isItemConforme(i, items, fa.respostas)).length
+  const nao = items.length - sim
+  const catStats = ['COMPORTAMENTO', 'QUALIDADE', 'DESEMPENHO'].map(cat => {
+    const catItems = items.filter(i => i.cat === cat)
+    const catSim   = catItems.filter(i => isItemConforme(i, items, fa.respostas)).length
+    const pct      = catItems.length > 0 ? Math.round(catSim / catItems.length * 100) : 0
+    return { cat, total: catItems.length, sim: catSim, pct }
+  }).filter(c => c.total > 0)
+  return { items, sim, nao, catStats, eliminado: isDisqualified(fa) }
+}
+
+// ─── conteúdo reaproveitável (impressão web + PDF nativo Android + imagem
+// pro WhatsApp) — mesmo visual colorido/"bonito" de criarCanvasResumo em
+// S6Resultado.jsx (cabeçalho com a cor do status, grid de conformes/não
+// conformes/total, barras "Por Categoria"), sem marca de cliente/contrato —
+// mesmo padrão de rodapé já usado em SESMT/Registros Operacionais.
+function montarConteudoImpressaoAuditoria(a, formatData) {
+  const st      = getStatus(Number(a.nota) || 0)
   const ncItems = calcNcItems(a)
+  const { sim, nao, items, catStats, eliminado } = calcStatsAuditoria(a)
+  const msgEliminado = a.tipo_servico === 'CORTE' ? '🚫 EQUIPE NÃO EXECUTOU O CORTE' : '🚫 EQUIPE NÃO EXECUTOU A ATIVIDADE'
+  const labelTipoAuditoria = a.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : a.tipo_auditoria === 'POS_SERVICO' ? '✅ Pós Serviço' : '—'
+
+  const catColor = cat => ({
+    COMPORTAMENTO: { bg: '#dbeafe', color: '#1d4ed8' },
+    QUALIDADE:     { bg: '#dcfce7', color: '#15803d' },
+    DESEMPENHO:    { bg: '#fef3c7', color: '#92400e' },
+  }[cat] || { bg: '#f1f5f9', color: '#374151' })
+  const barCor = pct => pct >= 90 ? '#16a34a' : pct >= 70 ? '#d97706' : '#dc2626'
 
   const infoRow = (label, value) => value ? `
-    <tr>
-      <td style="padding:7px 10px;color:#64748b;font-size:13px;font-weight:600;white-space:nowrap;border-bottom:1px solid #f1f5f9;">${label}</td>
-      <td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${value}</td>
-    </tr>` : ''
+    <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
+      <span style="color:#64748b;font-weight:700;font-size:14px;min-width:110px;flex-shrink:0;">${label}</span>
+      <span style="color:#1e293b;font-weight:700;font-size:14px;text-align:right;flex:1;padding-left:10px;">${value}</span>
+    </div>` : ''
 
   return `
-  <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
-    <div style="font-size:11px;opacity:0.7;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px;">DPL Construções — Equatorial Energia</div>
-    <div style="font-size:20px;font-weight:800;margin-bottom:2px;">📁 Auditoria Operacional de Campo</div>
-    <div style="font-size:13px;opacity:0.8;">Contrato 1021/2024</div>
+  ${eliminado ? `<div style="background:#dc2626;color:#fff;padding:10px 16px;border-radius:10px;margin-bottom:14px;font-size:14px;font-weight:800;text-align:center;letter-spacing:0.3px;">${msgEliminado}</div>` : ''}
+
+  <div style="background:${st.bg};border:3px solid ${st.border};border-radius:18px;padding:22px;text-align:center;margin-bottom:16px;">
+    <div style="font-size:44px;margin-bottom:6px;">${st.icon}</div>
+    <div style="font-size:54px;font-weight:900;color:${st.color};line-height:1;">${Number(a.nota).toFixed(0)}</div>
+    <div style="font-size:13px;color:${st.color};font-weight:600;margin-bottom:4px;">pontos</div>
+    <div style="font-size:22px;font-weight:900;color:${st.color};margin-bottom:6px;">${st.label}</div>
+    <div style="font-size:14px;color:${st.color};font-weight:800;line-height:1.4;">${labelTipoAuditoria} — ${CHECKLISTS[a.tipo_servico]?.label || a.tipo_servico} — ${a.produtivo ? 'Produtivo' : 'Improdutivo'}</div>
   </div>
 
-  <div style="background:${sc.bg};border:2px solid ${sc.color}33;border-radius:14px;padding:20px;text-align:center;margin-bottom:16px;">
-    <div style="font-size:52px;font-weight:900;color:${sc.color};line-height:1;">${Number(a.nota).toFixed(0)}</div>
-    <div style="font-size:13px;color:${sc.color};font-weight:500;margin-bottom:4px;">pontos</div>
-    <div style="font-size:22px;font-weight:800;color:${sc.color};">${a.status}</div>
-    <div style="font-size:12px;color:${sc.color};opacity:0.85;margin-top:6px;">
-      ${a.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço'} —
-      ${a.tipo_servico} — ${a.produtivo ? 'Produtivo' : 'Improdutivo'}
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:16px;">
+    <div style="background:#dcfce7;border-radius:14px;padding:14px;text-align:center;">
+      <div style="font-size:28px;font-weight:900;color:#16a34a;">${sim}</div>
+      <div style="font-size:12px;color:#16a34a;font-weight:700;">Conformes</div>
+    </div>
+    <div style="background:#fee2e2;border-radius:14px;padding:14px;text-align:center;">
+      <div style="font-size:28px;font-weight:900;color:#dc2626;">${nao}</div>
+      <div style="font-size:12px;color:#dc2626;font-weight:700;">Não conf.</div>
+    </div>
+    <div style="background:#eff6ff;border-radius:14px;padding:14px;text-align:center;">
+      <div style="font-size:28px;font-weight:900;color:#2563eb;">${items.length}</div>
+      <div style="font-size:12px;color:#2563eb;font-weight:700;">Total itens</div>
     </div>
   </div>
 
-  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;overflow:hidden;">
-    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;">
-      <span style="font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.8px;">Dados da Auditoria</span>
-    </div>
-    <table style="width:100%;border-collapse:collapse;">
-      ${infoRow('No. AS',         a.numero_as)}
-      ${infoRow('Tipo Auditoria', a.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço')}
-      ${infoRow('Fiscal',         a.fiscal)}
-      ${infoRow('Matrícula',      a.matricula)}
-      ${infoRow('Equipe',         a.prefixo)}
-      ${infoRow('OS',             a.os)}
-      ${infoRow('UC',             a.uc)}
-      ${infoRow('Endereço',       a.endereco)}
-      ${infoRow('Data / Hora',    `${formatData(a.data_auditoria)} às ${a.hora_auditoria}`)}
-      ${a.lat ? infoRow('GPS', `${a.lat}, ${a.lng}`) : ''}
-      ${infoRow('Eletricista 1',  a.nome_eletricista)}
-      ${infoRow('Eletricista 2',  a.nome_eletricista2)}
-    </table>
+  ${catStats.length > 0 ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <p style="font-size:14px;font-weight:900;color:#1e293b;margin:0 0 12px 0;">Por Categoria</p>
+    ${catStats.map(c => {
+      const cc = catColor(c.cat)
+      return `
+      <div style="margin-bottom:10px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <span style="background:${cc.bg};color:${cc.color};padding:3px 10px;border-radius:8px;font-size:11px;font-weight:800;">${CAT_META[c.cat].label}</span>
+          <span style="font-size:13px;font-weight:800;color:#374151;">${c.sim}/${c.total} — ${c.pct}%</span>
+        </div>
+        <div style="background:#f1f5f9;border-radius:8px;height:12px;overflow:hidden;">
+          <div style="width:${c.pct}%;height:12px;background:${barCor(c.pct)};border-radius:8px;"></div>
+        </div>
+      </div>`
+    }).join('')}
+  </div>` : ''}
+
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <p style="font-size:14px;font-weight:900;color:#1e293b;margin:0 0 10px 0;">Dados da Auditoria</p>
+    ${infoRow('No. AS',         a.numero_as)}
+    ${infoRow('Tipo Auditoria', labelTipoAuditoria)}
+    ${a.motivo_auditoria ? infoRow('Motivo da Auditoria', a.motivo_auditoria) : ''}
+    ${infoRow('Fiscal',         a.fiscal)}
+    ${infoRow('Matrícula',      a.matricula)}
+    ${infoRow('Equipe',         a.prefixo)}
+    ${infoRow('OS',             a.os)}
+    ${infoRow('UC',             a.uc)}
+    ${infoRow('Endereço',       a.endereco)}
+    ${infoRow('Data / Hora',    `${formatData(a.data_auditoria)} às ${a.hora_auditoria}`)}
+    ${a.lat ? infoRow('GPS', `${a.lat}, ${a.lng}`) : ''}
+    ${infoRow('Eletricista 1',  a.nome_eletricista)}
+    ${infoRow('Eletricista 2',  a.nome_eletricista2)}
   </div>
 
   ${ncItems.length > 0 ? `
-  <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:14px;padding:16px;margin-bottom:16px;">
-    <p style="font-size:12px;font-weight:700;color:#b91c1c;margin:0 0 10px 0;">❌ Itens Não Conformes (${ncItems.length})</p>
+  <div style="background:#fff0f0;border:3px solid #dc2626;border-radius:16px;padding:18px;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <span style="font-size:20px;">❌</span>
+      <p style="font-size:15px;font-weight:900;color:#b91c1c;margin:0;">Itens Não Conformes (${ncItems.length})</p>
+    </div>
     ${ncItems.map((item, i) => `
-      <div style="font-size:12px;color:#991b1b;padding:6px 0;${i < ncItems.length - 1 ? 'border-bottom:1px solid #fecaca;' : ''}line-height:1.5;">
-        <strong>${i + 1}.</strong> ${item.p}
+      <div style="background:#fef2f2;border-left:5px solid #dc2626;border-radius:0 10px 10px 0;padding:10px 12px;margin-bottom:${i < ncItems.length - 1 ? '8px' : '0'};line-height:1.5;">
+        <span style="font-size:13px;font-weight:900;color:#991b1b;">${i + 1}. </span>
+        <span style="font-size:13px;font-weight:700;color:#991b1b;">${item.p}</span>
       </div>`).join('')}
   </div>` : ''}
 
   ${(a.feedback || a.observacoes) ? `
-  <div style="background:#fffbeb;border:1px solid #fcd34d;border-radius:14px;padding:16px;margin-bottom:16px;">
-    ${a.feedback ? `<p style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:4px;">FEEDBACK DO FISCAL:</p><p style="font-size:13px;color:#78350f;line-height:1.6;margin-bottom:${a.observacoes ? '12px' : '0'};">${a.feedback}</p>` : ''}
-    ${a.observacoes ? `<p style="font-size:11px;font-weight:700;color:#92400e;margin-bottom:4px;">OBSERVAÇÕES:</p><p style="font-size:13px;color:#78350f;line-height:1.6;margin:0;">${a.observacoes}</p>` : ''}
+  <div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:16px;padding:16px;margin-bottom:16px;">
+    ${a.feedback ? `<p style="font-size:12px;font-weight:900;color:#92400e;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:0.5px;">Feedback do Fiscal:</p><p style="font-size:14px;color:#1e293b;font-weight:600;line-height:1.6;margin:0 0 ${a.observacoes ? '12px' : '0'} 0;">${a.feedback}</p>` : ''}
+    ${a.observacoes ? `<p style="font-size:12px;font-weight:900;color:#92400e;margin:0 0 4px 0;text-transform:uppercase;letter-spacing:0.5px;">Observações:</p><p style="font-size:14px;color:#1e293b;font-weight:600;line-height:1.6;margin:0;">${a.observacoes}</p>` : ''}
   </div>` : ''}
 
   ${a.fotos_urls?.length > 0 ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
-    <p style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Registro Fotográfico (${a.fotos_urls.length})</p>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+    <p style="font-size:14px;font-weight:900;color:#1e293b;margin:0 0 10px 0;">📷 Registro Fotográfico (${a.fotos_urls.length})</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
       ${a.fotos_urls.map((url, i) => `<img src="${url}" alt="Foto ${i+1}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;border:1px solid #e2e8f0;display:block;" crossorigin="anonymous"/>`).join('')}
     </div>
   </div>` : ''}
 
   ${a.assinatura_url ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
-    <p style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">✍️ Assinatura — ${a.nome_eletricista || 'Eletricista 1'}</p>
+    <p style="font-size:13px;font-weight:900;color:#1e293b;margin:0 0 8px 0;">Assinatura — ${a.nome_eletricista || 'Eletricista 1'}</p>
     <img src="${a.assinatura_url}" alt="Assinatura 1" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;" crossorigin="anonymous"/>
     <p style="font-size:10px;color:#94a3b8;text-align:center;margin-top:8px;">Registrado em ${formatData(a.data_auditoria)} às ${a.hora_auditoria}</p>
   </div>` : ''}
 
   ${a.assinatura2_url ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
-    <p style="font-size:12px;font-weight:700;color:#374151;margin-bottom:10px;">✍️ Assinatura — ${a.nome_eletricista2 || 'Eletricista 2'}</p>
+    <p style="font-size:13px;font-weight:900;color:#1e293b;margin:0 0 8px 0;">Assinatura — ${a.nome_eletricista2 || 'Eletricista 2'}</p>
     <img src="${a.assinatura2_url}" alt="Assinatura 2" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;display:block;" crossorigin="anonymous"/>
     <p style="font-size:10px;color:#94a3b8;text-align:center;margin-top:8px;">Registrado em ${formatData(a.data_auditoria)} às ${a.hora_auditoria}</p>
   </div>` : ''}
 
-  <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
-    <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
+  <div style="border-top:2px solid #e2e8f0;padding-top:14px;text-align:center;margin-top:8px;">
+    <p style="font-size:13px;color:#64748b;margin:0;font-weight:700;">VérticeGP · Plataforma de Gestão Operacional</p>
+    <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
   </div>`
 }
 
 // Web: abre popup com a auditoria e chama print() nele — mantido igual.
-function imprimirAuditoria(a, formatData, versaoApp = '') {
-  const conteudo = montarConteudoImpressaoAuditoria(a, formatData, versaoApp)
+function imprimirAuditoria(a, formatData) {
+  const conteudo = montarConteudoImpressaoAuditoria(a, formatData)
   const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -169,8 +230,8 @@ function imprimirAuditoria(a, formatData, versaoApp = '') {
 // App Android nativo: window.open()/window.print() não funcionam dentro do
 // WebView — monta um PDF de verdade a partir do mesmo conteúdo e compartilha
 // via folha nativa do Android.
-async function gerarPDFAuditoria(a, formatData, versaoApp = '') {
-  const conteudo = montarConteudoImpressaoAuditoria(a, formatData, versaoApp)
+async function gerarPDFAuditoria(a, formatData) {
+  const conteudo = montarConteudoImpressaoAuditoria(a, formatData)
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
   const canvas = await renderizarHtmlParaCanvas(html, {
     largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
@@ -805,9 +866,9 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             </p>
 
             <button onClick={async () => {
-              if (!Capacitor.isNativePlatform()) { imprimirAuditoria(detalhe, formatData, versaoSistema); return }
+              if (!Capacitor.isNativePlatform()) { imprimirAuditoria(detalhe, formatData); return }
               setGerandoPDF(true)
-              try { await gerarPDFAuditoria(detalhe, formatData, versaoSistema) }
+              try { await gerarPDFAuditoria(detalhe, formatData) }
               catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
               finally { setGerandoPDF(false) }
             }} disabled={gerandoPDF} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', marginBottom: 10, background: gerandoPDF ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDF ? 'not-allowed' : 'pointer' }}>
@@ -817,88 +878,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             <button onClick={async () => {
               setCapturando(true)
               try {
-                const html2canvas = (await import('html2canvas')).default
-                const sc2 = STATUS_COR[detalhe.status] || { bg: '#f1f5f9', color: '#374151' }
-                const ncItems = calcNcItems(detalhe)
-
-                const infoRow = (label, value) => value ? `
-                  <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;">
-                    <span style="color:#94a3b8;font-weight:700;font-size:14px;min-width:110px;flex-shrink:0;">${label}</span>
-                    <span style="color:#1e293b;font-weight:700;font-size:14px;text-align:right;flex:1;padding-left:10px;">${value}</span>
-                  </div>` : ''
-
-                const html = `
-                  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">
-                    <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:18px 22px;border-radius:16px;margin-bottom:16px;">
-                      <div style="font-size:11px;opacity:0.7;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
-                      <div style="font-size:20px;font-weight:900;">📁 Auditoria Operacional de Campo</div>
-                      <div style="font-size:13px;opacity:0.85;margin-top:2px;">Contrato 1021/2024</div>
-                    </div>
-                    <div style="background:${sc2.bg};border:3px solid ${sc2.color}44;border-radius:18px;padding:20px;text-align:center;margin-bottom:16px;">
-                      <div style="font-size:52px;font-weight:900;color:${sc2.color};line-height:1;">${Number(detalhe.nota).toFixed(0)}</div>
-                      <div style="font-size:13px;color:${sc2.color};font-weight:600;margin-bottom:4px;">pontos</div>
-                      <div style="font-size:22px;font-weight:900;color:${sc2.color};">${detalhe.status}</div>
-                      <div style="font-size:13px;color:${sc2.color};opacity:0.85;margin-top:6px;font-weight:700;">
-                        ${detalhe.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Operacional' : '✅ Pós Serviço'} · ${detalhe.tipo_servico} · ${detalhe.produtivo ? 'Produtivo' : 'Improdutivo'}
-                      </div>
-                    </div>
-                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
-                      <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">Dados da Auditoria</p>
-                      ${infoRow('No. AS', detalhe.numero_as)}
-                      ${infoRow('Fiscal', detalhe.fiscal)}
-                      ${infoRow('Matrícula', detalhe.matricula)}
-                      ${infoRow('Equipe', detalhe.prefixo)}
-                      ${infoRow('OS', detalhe.os)}
-                      ${infoRow('UC', detalhe.uc)}
-                      ${infoRow('Endereço', detalhe.endereco)}
-                      ${infoRow('Data / Hora', formatData(detalhe.data_auditoria) + ' às ' + detalhe.hora_auditoria)}
-                      ${detalhe.lat ? infoRow('GPS', detalhe.lat + ', ' + detalhe.lng) : ''}
-                      ${infoRow('Eletricista 1', detalhe.nome_eletricista)}
-                      ${infoRow('Eletricista 2', detalhe.nome_eletricista2)}
-                    </div>
-                    ${ncItems.length > 0 ? `
-                    <div style="background:#fef2f2;border:2px solid #fecaca;border-radius:16px;padding:16px;margin-bottom:16px;">
-                      <p style="font-size:14px;font-weight:800;color:#b91c1c;margin:0 0 10px 0;">❌ Itens Não Conformes (${ncItems.length})</p>
-                      ${ncItems.map((item, i) => `<div style="font-size:13px;color:#991b1b;padding:6px 0;${i < ncItems.length - 1 ? 'border-bottom:1px solid #fecaca;' : ''}line-height:1.5;"><strong>${i+1}.</strong> ${item.p}</div>`).join('')}
-                    </div>` : ''}
-                    ${(detalhe.feedback || detalhe.observacoes) ? `
-                    <div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:16px;padding:16px;margin-bottom:16px;">
-                      ${detalhe.feedback ? `<p style="font-size:12px;font-weight:800;color:#92400e;margin:0 0 4px;">FEEDBACK DO FISCAL:</p><p style="font-size:14px;color:#78350f;line-height:1.6;margin:0 0 ${detalhe.observacoes ? '12px' : '0'};">${detalhe.feedback}</p>` : ''}
-                      ${detalhe.observacoes ? `<p style="font-size:12px;font-weight:800;color:#92400e;margin:0 0 4px;">OBSERVAÇÕES:</p><p style="font-size:14px;color:#78350f;line-height:1.6;margin:0;">${detalhe.observacoes}</p>` : ''}
-                    </div>` : ''}
-                    ${detalhe.fotos_urls?.length > 0 ? `
-                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
-                      <p style="font-size:14px;font-weight:800;color:#374151;margin:0 0 10px 0;">📷 Registro Fotográfico (${detalhe.fotos_urls.length})</p>
-                      <div style="display:grid;grid-template-columns:repeat(${Math.min(detalhe.fotos_urls.length, 3)},1fr);gap:8px;">
-                        ${detalhe.fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0;"/>`).join('')}
-                      </div>
-                    </div>` : ''}
-                    ${detalhe.assinatura_url ? `
-                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
-                      <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 8px;">✍️ Assinatura — ${detalhe.nome_eletricista || 'Eletricista 1'}</p>
-                      <img src="${detalhe.assinatura_url}" crossorigin="anonymous" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;"/>
-                    </div>` : ''}
-                    ${detalhe.assinatura2_url ? `
-                    <div style="background:#fff;border-radius:16px;border:1px solid #e2e8f0;padding:14px;margin-bottom:16px;">
-                      <p style="font-size:13px;font-weight:800;color:#374151;margin:0 0 8px;">✍️ Assinatura — ${detalhe.nome_eletricista2 || 'Eletricista 2'}</p>
-                      <img src="${detalhe.assinatura2_url}" crossorigin="anonymous" style="width:100%;border-radius:8px;border:1px solid #f1f5f9;background:#fafafa;"/>
-                    </div>` : ''}
-                    <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
-                      <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
-                      <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;font-weight:700;">v${versaoSistema}</span></p>
-                    </div>
-                  </div>`
-
-                const div = document.createElement('div')
-                div.style.cssText = 'position:fixed;left:-9999px;top:0;z-index:-1;'
-                div.innerHTML = html
-                document.body.appendChild(div)
-
-                const canvas = await html2canvas(div.firstElementChild, {
-                  scale: 8, useCORS: true, allowTaint: true,
-                  backgroundColor: '#f0f4f8', logging: false, windowWidth: 680,
+                const conteudo = montarConteudoImpressaoAuditoria(detalhe, formatData)
+                const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">${conteudo}</div>`
+                const canvas = await renderizarHtmlParaCanvas(html, {
+                  largura: 640, escala: 6, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#f0f4f8',
                 })
-                document.body.removeChild(div)
 
                 const nomeArq = `Auditoria_${detalhe.prefixo}_${detalhe.data_auditoria}.jpg`.replace(/\s+/g, '_')
                 if (Capacitor.isNativePlatform()) {

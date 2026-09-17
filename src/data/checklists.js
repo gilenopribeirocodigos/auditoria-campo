@@ -16,6 +16,12 @@
 //   EMERGENCIAL.POS_SERVICO.PRODUTIVO   — 11 perguntas (8 desclassificadores)
 //   EMERGENCIAL.POS_SERVICO.IMPRODUTIVO —  5 perguntas
 //
+// PERDAS (combate a fraude/furto de energia) usa o MESMO checklist para
+// PRODUTIVO e IMPRODUTIVO — sem desclassificador, sem item casado — e é o
+// único tipo de serviço em que TODO item permite "Não se aplica" (NSA):
+//   PERDAS.DESEMPENHO  (Produtivo e Improdutivo) — 20 perguntas
+//   PERDAS.POS_SERVICO (Produtivo e Improdutivo) — 10 perguntas
+//
 // Lógica condicional (só CORTE.DESEMPENHO.PRODUTIVO):
 //   Pergunta "Foi débito pago?" (campo form.debitoPago)
 //     - SIM  → mostra perguntas 10 e 11 → 13 itens no cálculo
@@ -326,6 +332,111 @@ export const CHECKLISTS = {
           { id: 3, cat: 'DESEMPENHO', p: 'Em caso de interrupção individual por defeito interno (responsabilidade do cliente) sem recomposição do fornecimento, a equipe orientou o cliente corretamente sobre a contratação de profissional particular para tratamento das pendências?' },
           { id: 4, cat: 'QUALIDADE',  p: 'Em caso de conclusão por Endereço não localizado, as informações não eram suficientes para localizar o cliente?' },
           { id: 5, cat: 'DESEMPENHO', p: 'Em caso de conclusão Normal, a equipe realizou o fluxo do "Procedimento 360º"? (Checar Medidor, Checar Beiral, Checar Conexões Poste, Corrigir Defeito e Acionar Disjuntor)' },
+        ],
+      },
+    },
+  },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PERDAS — equipes de combate a fraude/furto de energia ("gato").
+  // PRODUTIVO e IMPRODUTIVO usam o MESMO checklist (decisão do negócio) —
+  // diferente de CORTE/ANEXO/RELIGA/EMERGENCIAL, que têm listas distintas por
+  // status do serviço.
+  // Todo item permite "Não se aplica" (permiteNaoSeAplica: true) — pedido
+  // explícito do negócio: SIM/NÃO/NSA em toda pergunta, mesmo modelo de
+  // cálculo do EMERGENCIAL (SIM pontua, NÃO zera o item, NSA sai do cálculo).
+  // Nenhum item é desclassificador nem casado (marriedGroup) — não solicitado.
+  // ═══════════════════════════════════════════════════════════════════════════
+  PERDAS: {
+    label: 'Perdas',
+    emoji: '🕵️',
+    // ── 3 dimensões: tem nível de tipoAuditoria ──
+    porAuditoria: true,
+    DESEMPENHO: {
+      PRODUTIVO: {
+        label: 'Produtivo',
+        peso: 5.0,
+        items: [
+          { id: 1,  cat: 'COMPORTAMENTO', p: 'Veículo posicionado de forma correta conforme diretriz/POP?', permiteNaoSeAplica: true },
+          { id: 2,  cat: 'QUALIDADE',     p: 'A situação cadastral da UC foi bem interpretada pela equipe?', permiteNaoSeAplica: true },
+          { id: 3,  cat: 'COMPORTAMENTO', p: 'Como encontra-se a apresentação pessoal do colaborador (crachá, fardamento e higiene pessoal)?', permiteNaoSeAplica: true },
+          { id: 4,  cat: 'COMPORTAMENTO', p: 'O cliente foi abordado e informado sobre os motivos da inspeção?', permiteNaoSeAplica: true },
+          { id: 5,  cat: 'COMPORTAMENTO', p: 'As tarefas foram previamente planejadas e preenchida a APR?', permiteNaoSeAplica: true },
+          { id: 6,  cat: 'DESEMPENHO',    p: 'Os EPCs estão em bom estado de uso, de forma a não colocar a segurança dos colaboradores e/ou terceiros em risco?', permiteNaoSeAplica: true },
+          { id: 7,  cat: 'COMPORTAMENTO', p: 'A equipe utilizou EPCs e EPIs quando preciso?', permiteNaoSeAplica: true },
+          { id: 8,  cat: 'COMPORTAMENTO', p: 'A área de trabalho encontra-se devidamente isolada e sinalizada?', permiteNaoSeAplica: true },
+          { id: 9,  cat: 'QUALIDADE',     p: 'Foi reapertado os parafusos do borne do medidor e do disjuntor (desligado) no início da inspeção?', permiteNaoSeAplica: true },
+          { id: 10, cat: 'QUALIDADE',     p: 'Foi verificado possíveis avarias no medidor?', permiteNaoSeAplica: true },
+          { id: 11, cat: 'QUALIDADE',     p: 'Foi feito o teste no medidor com o fratelo corretamente?', permiteNaoSeAplica: true },
+          { id: 12, cat: 'QUALIDADE',     p: 'Foi inspecionado o ramal de entrada?', permiteNaoSeAplica: true },
+          { id: 13, cat: 'QUALIDADE',     p: 'Foi medido tensões, correntes e verificado a existência de inversão na ligação?', permiteNaoSeAplica: true },
+          { id: 14, cat: 'QUALIDADE',     p: 'As fases ficaram desencapadas somente o necessário no borne do medidor?', permiteNaoSeAplica: true },
+          { id: 15, cat: 'QUALIDADE',     p: 'O medidor ficou na posição correta (Externo) e bem fixado?', permiteNaoSeAplica: true },
+          { id: 16, cat: 'QUALIDADE',     p: 'A tampa do borne e da caixa foram seladas?', permiteNaoSeAplica: true },
+          { id: 17, cat: 'QUALIDADE',     p: 'Os formulários foram preenchidos corretamente em todos os pontos obrigatórios/levantamento de carga?', permiteNaoSeAplica: true },
+          { id: 18, cat: 'COMPORTAMENTO', p: 'No final da inspeção foi repassado de forma clara ao cliente o resultado da inspeção?', permiteNaoSeAplica: true },
+          { id: 19, cat: 'DESEMPENHO',    p: 'A viatura encontra-se em boas condições de trabalho (limpeza, pneus, abastecimento, farol, etc)?', permiteNaoSeAplica: true },
+          { id: 20, cat: 'COMPORTAMENTO', p: 'Equipe recolheu o lixo gerado na inspeção?', permiteNaoSeAplica: true },
+        ],
+      },
+      IMPRODUTIVO: {
+        label: 'Improdutivo',
+        peso: 5.0,
+        items: [
+          { id: 1,  cat: 'COMPORTAMENTO', p: 'Veículo posicionado de forma correta conforme diretriz/POP?', permiteNaoSeAplica: true },
+          { id: 2,  cat: 'QUALIDADE',     p: 'A situação cadastral da UC foi bem interpretada pela equipe?', permiteNaoSeAplica: true },
+          { id: 3,  cat: 'COMPORTAMENTO', p: 'Como encontra-se a apresentação pessoal do colaborador (crachá, fardamento e higiene pessoal)?', permiteNaoSeAplica: true },
+          { id: 4,  cat: 'COMPORTAMENTO', p: 'O cliente foi abordado e informado sobre os motivos da inspeção?', permiteNaoSeAplica: true },
+          { id: 5,  cat: 'COMPORTAMENTO', p: 'As tarefas foram previamente planejadas e preenchida a APR?', permiteNaoSeAplica: true },
+          { id: 6,  cat: 'DESEMPENHO',    p: 'Os EPCs estão em bom estado de uso, de forma a não colocar a segurança dos colaboradores e/ou terceiros em risco?', permiteNaoSeAplica: true },
+          { id: 7,  cat: 'COMPORTAMENTO', p: 'A equipe utilizou EPCs e EPIs quando preciso?', permiteNaoSeAplica: true },
+          { id: 8,  cat: 'COMPORTAMENTO', p: 'A área de trabalho encontra-se devidamente isolada e sinalizada?', permiteNaoSeAplica: true },
+          { id: 9,  cat: 'QUALIDADE',     p: 'Foi reapertado os parafusos do borne do medidor e do disjuntor (desligado) no início da inspeção?', permiteNaoSeAplica: true },
+          { id: 10, cat: 'QUALIDADE',     p: 'Foi verificado possíveis avarias no medidor?', permiteNaoSeAplica: true },
+          { id: 11, cat: 'QUALIDADE',     p: 'Foi feito o teste no medidor com o fratelo corretamente?', permiteNaoSeAplica: true },
+          { id: 12, cat: 'QUALIDADE',     p: 'Foi inspecionado o ramal de entrada?', permiteNaoSeAplica: true },
+          { id: 13, cat: 'QUALIDADE',     p: 'Foi medido tensões, correntes e verificado a existência de inversão na ligação?', permiteNaoSeAplica: true },
+          { id: 14, cat: 'QUALIDADE',     p: 'As fases ficaram desencapadas somente o necessário no borne do medidor?', permiteNaoSeAplica: true },
+          { id: 15, cat: 'QUALIDADE',     p: 'O medidor ficou na posição correta (Externo) e bem fixado?', permiteNaoSeAplica: true },
+          { id: 16, cat: 'QUALIDADE',     p: 'A tampa do borne e da caixa foram seladas?', permiteNaoSeAplica: true },
+          { id: 17, cat: 'QUALIDADE',     p: 'Os formulários foram preenchidos corretamente em todos os pontos obrigatórios/levantamento de carga?', permiteNaoSeAplica: true },
+          { id: 18, cat: 'COMPORTAMENTO', p: 'No final da inspeção foi repassado de forma clara ao cliente o resultado da inspeção?', permiteNaoSeAplica: true },
+          { id: 19, cat: 'DESEMPENHO',    p: 'A viatura encontra-se em boas condições de trabalho (limpeza, pneus, abastecimento, farol, etc)?', permiteNaoSeAplica: true },
+          { id: 20, cat: 'COMPORTAMENTO', p: 'Equipe recolheu o lixo gerado na inspeção?', permiteNaoSeAplica: true },
+        ],
+      },
+    },
+    POS_SERVICO: {
+      PRODUTIVO: {
+        label: 'Produtivo',
+        peso: 10.0,
+        items: [
+          { id: 1,  cat: 'COMPORTAMENTO', p: 'Como encontrava-se a apresentação pessoal do colaborador (crachá, fardamento e higiene pessoal)?', permiteNaoSeAplica: true },
+          { id: 2,  cat: 'COMPORTAMENTO', p: 'O cliente foi abordado e informado sobre os motivos da inspeção?', permiteNaoSeAplica: true },
+          { id: 3,  cat: 'COMPORTAMENTO', p: 'A equipe utilizou EPCs e EPIs quando preciso?', permiteNaoSeAplica: true },
+          { id: 4,  cat: 'COMPORTAMENTO', p: 'A área de trabalho encontra-se devidamente isolada e sinalizada?', permiteNaoSeAplica: true },
+          { id: 5,  cat: 'COMPORTAMENTO', p: 'No final da inspeção foi repassado de forma clara ao cliente o resultado da inspeção?', permiteNaoSeAplica: true },
+          { id: 6,  cat: 'QUALIDADE',     p: 'As fases ficaram desencapadas somente o necessário no borne do medidor?', permiteNaoSeAplica: true },
+          { id: 7,  cat: 'QUALIDADE',     p: 'O medidor ficou na posição correta (Externo) e bem fixado?', permiteNaoSeAplica: true },
+          { id: 8,  cat: 'QUALIDADE',     p: 'A tampa do borne e da caixa foram seladas?', permiteNaoSeAplica: true },
+          { id: 9,  cat: 'QUALIDADE',     p: 'Os formulários foram preenchidos corretamente em todos os pontos obrigatórios, na via do cliente?', permiteNaoSeAplica: true },
+          { id: 10, cat: 'QUALIDADE',     p: 'Se houve troca de ramal, a metragem especificada no TOI é a mesma em campo?', permiteNaoSeAplica: true },
+        ],
+      },
+      IMPRODUTIVO: {
+        label: 'Improdutivo',
+        peso: 10.0,
+        items: [
+          { id: 1,  cat: 'COMPORTAMENTO', p: 'Como encontrava-se a apresentação pessoal do colaborador (crachá, fardamento e higiene pessoal)?', permiteNaoSeAplica: true },
+          { id: 2,  cat: 'COMPORTAMENTO', p: 'O cliente foi abordado e informado sobre os motivos da inspeção?', permiteNaoSeAplica: true },
+          { id: 3,  cat: 'COMPORTAMENTO', p: 'A equipe utilizou EPCs e EPIs quando preciso?', permiteNaoSeAplica: true },
+          { id: 4,  cat: 'COMPORTAMENTO', p: 'A área de trabalho encontra-se devidamente isolada e sinalizada?', permiteNaoSeAplica: true },
+          { id: 5,  cat: 'COMPORTAMENTO', p: 'No final da inspeção foi repassado de forma clara ao cliente o resultado da inspeção?', permiteNaoSeAplica: true },
+          { id: 6,  cat: 'QUALIDADE',     p: 'As fases ficaram desencapadas somente o necessário no borne do medidor?', permiteNaoSeAplica: true },
+          { id: 7,  cat: 'QUALIDADE',     p: 'O medidor ficou na posição correta (Externo) e bem fixado?', permiteNaoSeAplica: true },
+          { id: 8,  cat: 'QUALIDADE',     p: 'A tampa do borne e da caixa foram seladas?', permiteNaoSeAplica: true },
+          { id: 9,  cat: 'QUALIDADE',     p: 'Os formulários foram preenchidos corretamente em todos os pontos obrigatórios, na via do cliente?', permiteNaoSeAplica: true },
+          { id: 10, cat: 'QUALIDADE',     p: 'Se houve troca de ramal, a metragem especificada no TOI é a mesma em campo?', permiteNaoSeAplica: true },
         ],
       },
     },

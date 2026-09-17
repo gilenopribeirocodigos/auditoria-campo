@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { useRegisterSW } from 'virtual:pwa-register/react'
 import { FORM_INICIAL } from './data/checklists.js'
-import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade, getVersaoApp } from './lib/auth.js'
+import { getUsuarioLogado, fazerLogout, isAdmin, temPermissao, verificarSessao, registrarAtividade, getVersaoApp, recarregarPermissoes } from './lib/auth.js'
 import { pautasHojeFiscal, pautasFuturasFiscal, concluirPauta, criarProximaRecorrencia } from './lib/pautas.js'
 import { buscarAuditoriasReabertas, contarPendenciasTratamentoNC } from './lib/supabase.js'
 import { iniciarRastreio, pararRastreio } from './lib/rastreio.js'
@@ -178,14 +178,36 @@ export default function App() {
         } else {
           setUsuario(null)
         }
+        return
       }
+      // Sessão continua válida — aproveita o mesmo intervalo pra reler as
+      // permissões (perfil + processos/regionais) do banco. Sem isso, um
+      // admin alterando "Permissões por Perfil" só valia pra quem desse
+      // logout/login de novo — ver App.jsx/lib/auth.js.
+      const atualizado = await recarregarPermissoes()
+      if (atualizado) setUsuario(atualizado)
     }, 25 * 60 * 1000)
+
+    // Mesma releitura de permissões, mas disparada ao focar a aba/app — cobre
+    // o caso comum de deixar o app minimizado/em segundo plano por um tempo
+    // (sem esperar até 25 min) e voltar a usar logo depois de o admin ter
+    // mudado alguma permissão.
+    const onFoco = async () => {
+      if (document.visibilityState !== 'visible') return
+      const atualizado = await recarregarPermissoes()
+      if (atualizado) setUsuario(atualizado)
+    }
+    document.addEventListener('visibilitychange', onFoco)
+    window.addEventListener('focus', onFoco)
+
     return () => {
       clearInterval(intervalo)
       window.removeEventListener('click',      onAtividade)
       window.removeEventListener('keydown',    onAtividade)
       window.removeEventListener('touchstart', onAtividade)
       window.removeEventListener('scroll',     onAtividade)
+      document.removeEventListener('visibilitychange', onFoco)
+      window.removeEventListener('focus', onFoco)
     }
   }, [usuario, tela])
 
