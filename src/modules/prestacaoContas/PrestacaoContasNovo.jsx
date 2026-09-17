@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CarregandoHexagono } from '../../components/Shared.jsx'
 import PCItemForm from './telas/PCItemForm.jsx'
 import PCRevisaoEnvio from './telas/PCRevisaoEnvio.jsx'
+import { labelCategoriaDespesa, formatarAlocacao } from './lib/categorias.js'
 import {
   criarRascunho, obterPrestacao, listarDestinatariosDisponiveis,
   adicionarItem, atualizarItem, anexarFoto, removerFoto, removerItem,
@@ -209,6 +210,11 @@ export default function PrestacaoContasNovo({ usuarioLogado, onVoltar, onHome, p
                       <p style={{ fontSize: 11, color: '#64748b' }}>
                         R$ {Number(item.valor).toFixed(2).replace('.', ',')} · {item.pc_fotos?.length > 0 ? '📷 com foto' : '⚠️ sem foto'}
                       </p>
+                      {item.categoria_despesa && (
+                        <p style={{ fontSize: 11, color: '#2563eb', fontWeight: 700, marginTop: 2 }}>
+                          🏷️ {labelCategoriaDespesa(item.categoria_despesa)}{formatarAlocacao(item) !== '—' ? `: ${formatarAlocacao(item)}` : ''}
+                        </p>
+                      )}
                     </button>
                     <button onClick={() => handleRemoverItem(item.id)} style={{ border: 'none', background: 'transparent', color: '#dc2626', fontSize: 16, cursor: 'pointer' }}>✕</button>
                   </div>

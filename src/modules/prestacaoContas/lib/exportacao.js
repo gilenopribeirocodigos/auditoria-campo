@@ -4,6 +4,7 @@
 // as fotos, em sequência por data/hora e renomeadas por item.
 import * as XLSX from 'xlsx'
 import JSZip from 'jszip'
+import { labelCategoriaDespesa, formatarAlocacao } from './categorias.js'
 
 // Redimensiona (lado maior até maxLado) e recomprime como JPEG antes de
 // zipar — fotos de câmera de celular chegam com vários MB cada, o que deixa
@@ -74,6 +75,8 @@ export function gerarExcelConsolidado(prestacoes) {
         'NOTA FISCAL': item.tipo_comprovante || '',
         'DATA DA EMISSÃO': formatarDataBr(item.data_emissao),
         'Valor': Number(item.valor || 0),
+        'CATEGORIA DA DESPESA': labelCategoriaDespesa(item.categoria_despesa),
+        'ALOCAÇÃO': formatarAlocacao(item),
       })
     }
   }
@@ -81,7 +84,7 @@ export function gerarExcelConsolidado(prestacoes) {
 
   const ws = XLSX.utils.json_to_sheet(linhas)
   ws['!cols'] = [
-    { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 32 }, { wch: 26 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 },
+    { wch: 20 }, { wch: 24 }, { wch: 22 }, { wch: 32 }, { wch: 26 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 12 }, { wch: 24 }, { wch: 26 },
   ]
   const wb = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(wb, ws, 'Prestações Aprovadas')

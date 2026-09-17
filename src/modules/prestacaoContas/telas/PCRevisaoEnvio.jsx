@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { buscarDuplicatasPotenciais } from '../lib/prestacaoContas.js'
+import { labelCategoriaDespesa, formatarAlocacao } from '../lib/categorias.js'
 import PCSearchSelect from './PCSearchSelect.jsx'
 
 export default function PCRevisaoEnvio({
@@ -60,6 +61,11 @@ export default function PCRevisaoEnvio({
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{item.classificacao} — {item.descricao}</p>
                   <p style={{ fontSize: 11, color: '#64748b' }}>{item.fornecedor || '—'} · {item.data_emissao || 'sem data'}</p>
+                  {item.categoria_despesa && (
+                    <p style={{ fontSize: 11, color: '#2563eb', fontWeight: 700, marginTop: 2 }}>
+                      🏷️ {labelCategoriaDespesa(item.categoria_despesa)}{formatarAlocacao(item) !== '—' ? `: ${formatarAlocacao(item)}` : ''}
+                    </p>
+                  )}
                 </div>
                 <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>R$ {Number(item.valor).toFixed(2).replace('.', ',')}</p>
               </div>
