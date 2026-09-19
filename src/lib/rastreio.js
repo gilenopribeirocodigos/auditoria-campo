@@ -37,8 +37,8 @@ import BackgroundGeolocation from '@transistorsoft/capacitor-background-geolocat
 // ════════════════════════════════════════════════════════════════════════════
 
 const INTERVALO_CAPTURA_FOREGROUND_MS = 8000   // GPS continua sendo consultado com frequência
-const INTERVALO_GRAVACAO_MOVIMENTO_MS = 30000  // no máximo 1 gravação a cada 30s em movimento
-const INTERVALO_GRAVACAO_PARADO_MS = 180000    // no máximo 1 gravação a cada 3min parado
+const INTERVALO_GRAVACAO_MOVIMENTO_MS = 60000  // no máximo 1 gravação por minuto em movimento
+const INTERVALO_GRAVACAO_PARADO_MS = 300000    // no máximo 1 gravação a cada 5min parado
 const DISTANCIA_MOVIMENTO_METROS = 25           // ignora oscilação normal do GPS
 const GEO_OPTS = { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
 const DB_NAME  = 'rastreio_fila'
@@ -50,6 +50,8 @@ let wakeLock           = null
 let rodando            = false
 let watchId            = null
 let capturaEmAndamento = false
+let envioEmAndamento   = false
+let drenagemEmAndamento = false
 let nativoIniciado     = false
 let ultimaPosicaoCapturada = null
 let ultimaPosicaoGravada   = null
@@ -178,41 +180,31 @@ async function removerDaFila(ids) {
 
 // ─── Drena a fila: tenta enviar tudo que está preso ─────────────────────────
 async function drenarFila() {
-  if (!navigator.onLine) return
-  const fila = await lerFila()
-  if (fila.length === 0) return
-
-  const payload = fila.map(({ id, ...resto }) => resto)
+  if (!navigator.onLine || drenagemEmAndamento) return
+  drenagemEmAndamento = true
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 20000)
   try {
-    const { error } = await supabase.from('localizacoes').insert(payload)
-    if (!error) {
-      await removerDaFila(fila.map(f => f.id))
-      console.log(`[rastreio] ${payload.length} posição(ões) da fila enviadas`)
-    }
+    // Nunca envia a fila inteira de uma vez. Lotes pequenos impedem picos de
+    // conexões, temporários e I/O quando vários aparelhos voltam à internet.
+    const fila = (await lerFila()).slice(0, 100)
+    if (fila.length === 0) return
+    const payload = fila.map(({ id, ...resto }) => resto)
+    const { error } = await supabase.from('localizacoes').insert(payload).abortSignal(controller.signal)
+    if (error) throw error
+    await removerDaFila(fila.map(f => f.id))
+    console.log(`[rastreio] ${payload.length} posição(ões) da fila enviadas`)
   } catch (e) {
-    console.warn('[rastreio] drenar falhou, mantém na fila:', e?.message)
-  }
-}
-
-// ─── Heartbeat: upsert da última posição por fiscal ─────────────────────────
-async function atualizarPresenca(usuario, coords) {
-  try {
-    await supabase.from('fiscais_presenca').upsert({
-      fiscal_login: usuario.login,
-      fiscal_nome:  usuario.nome,
-      lat:          coords.latitude,
-      lng:          coords.longitude,
-      precisao:     coords.accuracy,
-      ultimo_visto: new Date().toISOString(),
-    }, { onConflict: 'fiscal_login' })
-  } catch (e) {
-    console.warn('[rastreio] presença falhou:', e?.message)
+    if (!controller.signal.aborted) console.warn('[rastreio] drenar falhou, mantém na fila:', e?.message)
+  } finally {
+    clearTimeout(timeout)
+    drenagemEmAndamento = false
   }
 }
 
 // ─── Envia uma posição: captura frequente, gravação controlada ────────────
 // O GPS continua sendo consultado a cada 8s e pelo watchPosition, mas o banco
-// recebe no máximo 1 ponto a cada 30s em movimento ou a cada 3min parado.
+// recebe no máximo 1 ponto por minuto em movimento ou a cada 5min parado.
 // Isso também limita o upsert de fiscais_presenca ao mesmo ritmo.
 function distanciaMetros(a, b) {
   if (!a || !b) return Infinity
@@ -235,12 +227,13 @@ async function processarPosicao(usuario, coords) {
   const agoraMs = Date.now()
   const emMovimento = distanciaMetros(ultimaPosicaoGravada, ultimaPosicaoCapturada) >= DISTANCIA_MOVIMENTO_METROS
   const intervaloMinimo = emMovimento ? INTERVALO_GRAVACAO_MOVIMENTO_MS : INTERVALO_GRAVACAO_PARADO_MS
-  if (ultimoEnvioPosicaoMs && agoraMs - ultimoEnvioPosicaoMs < intervaloMinimo) return
+  if (envioEmAndamento || (ultimoEnvioPosicaoMs && agoraMs - ultimoEnvioPosicaoMs < intervaloMinimo)) return
 
-  // Reserva o intervalo antes das chamadas assíncronas: watchPosition e o
-  // timer podem entregar a mesma posição quase juntos e não devem duplicá-la.
+  // Reserva o intervalo antes da chamada assíncrona. A RPC grava trilha e
+  // presença na mesma transação, reduzindo duas conexões para uma.
   ultimoEnvioPosicaoMs = agoraMs
   ultimaPosicaoGravada = ultimaPosicaoCapturada
+  envioEmAndamento = true
 
   const registro = {
     fiscal_login: usuario.login,
@@ -251,20 +244,29 @@ async function processarPosicao(usuario, coords) {
     created_at:   new Date(agoraMs).toISOString(),
   }
 
-  atualizarPresenca(usuario, coords)
-
-  if (navigator.onLine) {
+  try {
+    if (!navigator.onLine) { await enfileirar(registro); return }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 20000)
     try {
-      const { error } = await supabase.from('localizacoes').insert(registro)
-      if (error) { await enfileirar(registro); return }
+      const { error } = await supabase.rpc('registrar_localizacao_fiscal', {
+        p_fiscal_login: registro.fiscal_login,
+        p_fiscal_nome: registro.fiscal_nome,
+        p_lat: registro.lat,
+        p_lng: registro.lng,
+        p_precisao: registro.precisao,
+        p_created_at: registro.created_at,
+      }).abortSignal(controller.signal)
+      if (error) throw error
       drenarFila()
-      return
     } catch {
       await enfileirar(registro)
-      return
+    } finally {
+      clearTimeout(timeout)
     }
+  } finally {
+    envioEmAndamento = false
   }
-  await enfileirar(registro)
 }
 
 // ─── Captura uma posição agora (modo web) ───────────────────────────────────
@@ -423,7 +425,7 @@ async function executarInicioNativo(usuario) {
     })
 
     // Com o fiscal parado, persiste exatamente UM ponto a cada heartbeat.
-    // O intervalo de 3 minutos mantém a linha do tempo sem duplicar a posição
+    // O intervalo de 5 minutos mantém a linha do tempo sem duplicar a posição
     // com insertLocation + getCurrentPosition no mesmo ciclo.
     BackgroundGeolocation.onHeartbeat(async (event) => {
       contadorHeartbeats++
@@ -474,8 +476,8 @@ async function executarInicioNativo(usuario) {
         // direto no bundle compilado do pacote.
         desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
         distanceFilter: 0,
-        locationUpdateInterval: 30000,
-        fastestLocationUpdateInterval: 30000,
+        locationUpdateInterval: 60000,
+        fastestLocationUpdateInterval: 60000,
       },
       app: {
         // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
@@ -494,7 +496,7 @@ async function executarInicioNativo(usuario) {
         // o evento "heartbeat" a cada heartbeatInterval segundos; no handler
         // (ver onHeartbeat abaixo) pedimos uma posição e mandamos persistir,
         // o que cai na mesma fila/HTTP do rastreio normal.
-        heartbeatInterval: 180,
+        heartbeatInterval: 300,
         preventSuspend: true,
         notification: {
           title: 'VérticeGP',
