@@ -11,6 +11,8 @@ import { CarregandoHexagono } from '../components/Shared.jsx'
 // Janela em que consideramos o fiscal "ativo agora" (verde) vs "ausente" (cinza)
 const ATIVO_MS    = 7 * 60 * 1000        // ate 7 min = ativo; Android em segundo plano pode atrasar alguns ciclos
 const PRESENCA_MS = 24 * 60 * 60 * 1000  // mantém visíveis fiscais vistos nas últimas 24h
+const ATUALIZACAO_MAPA_MS = 60 * 1000     // margem de segurança: no máximo 1 leitura por minuto
+const TIMEOUT_CONSULTA_MS = 20 * 1000     // não mantém conexão presa em banco saturado
 
 // Se o intervalo entre duas posições consecutivas passar disso, tratamos como
 // "sem sinal" (app fechado/sem internet) em vez de contar como fora da base —
@@ -63,6 +65,17 @@ function limitesDiaLocalUTC(dataISO) {
   const fim = new Date(`${dataISO}T23:59:59.999-03:00`).toISOString()
   return { ini, fim }
 }
+
+// Mantém no máximo ~60 mil pontos por consulta. Se o período amplo exigiria
+// amostragem pior que 10 minutos, exige um filtro mais específico em vez de
+// iniciar uma leitura capaz de saturar o banco.
+function intervaloAmostragemSegundos(ini, fim, qtdFiscais) {
+  const duracaoSegundos = Math.max(60, Math.ceil((new Date(fim) - new Date(ini)) / 1000))
+  const bruto = Math.ceil((duracaoSegundos * Math.max(qtdFiscais, 1)) / 60000)
+  const arredondado = Math.max(60, Math.ceil(bruto / 60) * 60)
+  return arredondado <= 600 ? arredondado : null
+}
+
 
 // Gera os horários de hora cheia (ex: 8h, 9h, 10h...) dentro do intervalo do
 // eixo de um gráfico de permanência, pra funcionar como régua tipo Gantt.
@@ -253,6 +266,8 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
   const podeGerenciarBases = isAdmin(usuarioLogado) || temPermissao(usuarioLogado, 'fiscais_campo_bases')
 
+  const historicoControllerRef = useRef(null)
+  const relatorioControllerRef = useRef(null)
   const [presencas,       setPresencas]       = useState([])   // fiscais_presenca (últimas 24h)
   const [loading,         setLoading]         = useState(true)
   const [aba,             setAba]             = useState('vivo')   // vivo | historico | bases | relatorio
@@ -416,7 +431,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     if (presencaEmAndamentoRef.current) return
     presencaEmAndamentoRef.current = true
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 30000)
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_CONSULTA_MS)
     try {
     const limite = new Date(Date.now() - PRESENCA_MS).toISOString()
     const { data, error } = await supabase
@@ -433,11 +448,12 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   const buscarRef = useRef(buscarPresencas)
   useEffect(() => { buscarRef.current = buscarPresencas })
 
-  // 2026-09-19: consulta a cada 30s, sem sobreposicao; tick visual continua em 1s.
+  // 2026-09-19: consulta a cada 60s, só com a página visível e sem sobreposição.
+  // O marcador continua atualizando o texto de tempo localmente a cada 1s.
   useEffect(() => {
     if (aba !== 'vivo') return
     buscarRef.current()
-    const interval = setInterval(() => { if (document.visibilityState === 'visible') buscarRef.current() }, 30000)
+    const interval = setInterval(() => { if (document.visibilityState === 'visible') buscarRef.current() }, ATUALIZACAO_MAPA_MS)
     const tick     = setInterval(() => setAgora(Date.now()), 1000)
     return () => { clearInterval(interval); clearInterval(tick) }
   }, [aba])
@@ -568,11 +584,32 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     }
 
     const logins = fiscaisDropdown.map(f => f.login)
-    const { data } = await supabase
-      .from('localizacoes').select('fiscal_login,fiscal_nome,lat,lng,created_at')
-      .in('fiscal_login', logins)
-      .gte('created_at', ini).lte('created_at', fim)
-      .order('created_at', { ascending: true })
+    const intervaloSegundos = intervaloAmostragemSegundos(ini, fim, logins.length)
+    if (!intervaloSegundos) {
+      setResumoHistorico({ total: 0, erro: 'Período muito amplo. Selecione menos fiscais ou um período menor.' })
+      return
+    }
+
+    historicoControllerRef.current?.abort()
+    const controller = new AbortController()
+    historicoControllerRef.current = controller
+    const timeout = setTimeout(() => controller.abort(), TIMEOUT_CONSULTA_MS)
+    const { data, error } = await supabase
+      .rpc('obter_localizacoes_otimizadas', {
+        p_logins: logins,
+        p_inicio: ini,
+        p_fim: fim,
+        p_intervalo_segundos: intervaloSegundos,
+        p_limite: 60000,
+      })
+      .abortSignal(controller.signal)
+    clearTimeout(timeout)
+    if (controller.signal.aborted) return
+    if (error) {
+      console.error('Falha ao carregar histórico otimizado:', error)
+      setResumoHistorico({ total: 0, erro: 'Não foi possível carregar o histórico. Reduza o período e tente novamente.' })
+      return
+    }
 
     if (!data || data.length === 0) {
       setResumoHistorico({ total: 0 })
@@ -762,33 +799,39 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
     const { ini: dIni, fim: dFim } = filtros.getDatasQuery()
     if (!dIni) { setRelatorioPermanencia([]); return }
 
+    relatorioControllerRef.current?.abort()
+    const controller = new AbortController()
+    relatorioControllerRef.current = controller
     setCarregandoRelatorio(true)
     try {
       const multiDia = dIni !== dFim
       const { ini } = limitesDiaLocalUTC(dIni)
       const { fim } = limitesDiaLocalUTC(dFim)
-      // [DPL] O Supabase/PostgREST limita a 1000 linhas por consulta por
-      // padrão — com o rastreio contínuo (a cada 8s em movimento) mais o
-      // heartbeat, um dia inteiro de vários fiscais passa disso fácil, e o
-      // relatório ficava sempre travado no mesmo horário (as mesmas 1000
-      // linhas mais antigas), não importava quantas vezes gerava de novo.
-      // Busca em páginas até não vir mais nada, sem alterar a query em si.
-      // Filtra no banco antes de paginar, evitando ler trajetos fora da selecao.
+      // Consulta uma amostra controlada no servidor. O intervalo cresce de 1 a
+      // 10 minutos conforme período e quantidade de fiscais, mantendo a carga
+      // previsível. Acima disso o usuário precisa refinar o filtro.
       const loginsPermitidos = fiscaisDropdown.map(f => f.login)
       if (loginsPermitidos.length === 0) { setRelatorioPermanencia([]); return }
-      const TAMANHO_PAGINA = 1000
-      const data = []
-      for (let pagina = 0; ; pagina++) {
-        const { data: parte, error } = await supabase
-          .from('localizacoes').select('fiscal_login,fiscal_nome,lat,lng,created_at')
-          .in('fiscal_login', loginsPermitidos)
-          .gte('created_at', ini).lte('created_at', fim)
-          .order('created_at', { ascending: true })
-          .range(pagina * TAMANHO_PAGINA, pagina * TAMANHO_PAGINA + TAMANHO_PAGINA - 1)
-        if (error) throw error
-        data.push(...(parte || []))
-        if (!parte || parte.length < TAMANHO_PAGINA) break
+      const intervaloSegundos = intervaloAmostragemSegundos(ini, fim, loginsPermitidos.length)
+      if (!intervaloSegundos) {
+        setRelatorioPermanencia([])
+        window.alert('Consulta muito ampla para o relatório de permanência. Selecione menos fiscais ou um período menor.')
+        return
       }
+
+      const timeout = setTimeout(() => controller.abort(), TIMEOUT_CONSULTA_MS)
+      const { data, error } = await supabase
+        .rpc('obter_localizacoes_otimizadas', {
+          p_logins: loginsPermitidos,
+          p_inicio: ini,
+          p_fim: fim,
+          p_intervalo_segundos: intervaloSegundos,
+          p_limite: 60000,
+        })
+        .abortSignal(controller.signal)
+      clearTimeout(timeout)
+      if (controller.signal.aborted) return
+      if (error) throw error
 
       // Agrupa por fiscal e, dentro de cada fiscal, por dia local (Fortaleza)
       // — necessário pra aplicar corretamente o padding de "sem dado" nas
@@ -843,7 +886,10 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
         setRelatorioPermanencia(linhas)
       }
     } finally {
-      setCarregandoRelatorio(false)
+      if (relatorioControllerRef.current === controller) {
+        relatorioControllerRef.current = null
+        setCarregandoRelatorio(false)
+      }
     }
   }
 
@@ -875,7 +921,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             <div>
               <h1 style={{ fontSize: 18, fontWeight: 800 }}>📍 Fiscais em Campo</h1>
               <p style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
-                {aba === 'vivo' && `${ativos.length} online · ${ausentes.length} offline/visto(s) nas últimas 24h — atualiza a cada 5s`}
+                {aba === 'vivo' && `${ativos.length} online · ${ausentes.length} offline/visto(s) nas últimas 24h — atualiza a cada 60s`}
                 {aba === 'historico' && 'Histórico de rota'}
                 {aba === 'bases' && `${bases.length} base(s) cadastrada(s)`}
                 {aba === 'relatorio' && 'Permanência dentro/fora da base'}
@@ -1027,7 +1073,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       {aba === 'historico' && resumoHistorico && resumoHistorico.total === 0 && (
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 10px', boxSizing: 'border-box' }}>
           <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', color: '#9a3412', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
-            📭 Nenhuma posição encontrada para os filtros e período selecionados.
+            📭 {resumoHistorico.erro || 'Nenhuma posição encontrada para os filtros e período selecionados.'}
           </div>
         </div>
       )}
@@ -1035,7 +1081,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       {aba === 'historico' && resumoHistorico && resumoHistorico.total > 0 && (
         <div style={{ maxWidth: 900, margin: '0 auto', width: '100%', padding: '0 16px 10px', boxSizing: 'border-box' }}>
           <div style={{ background: '#f0fdf4', border: '1px solid #86efac', color: '#166534', borderRadius: 10, padding: '8px 12px', fontSize: 12, fontWeight: 700 }}>
-            ✅ {resumoHistorico.total} posição(ões) registrada(s) {resumoHistorico.legendaDias ? `em ${resumoHistorico.legendaDias.length} dia(s)` : resumoHistorico.legendaFiscais ? `de ${resumoHistorico.legendaFiscais.length} fiscal(is)` : 'nesse período'}, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
+            ✅ {resumoHistorico.total} ponto(s) exibido(s) em amostra otimizada {resumoHistorico.legendaDias ? `em ${resumoHistorico.legendaDias.length} dia(s)` : resumoHistorico.legendaFiscais ? `de ${resumoHistorico.legendaFiscais.length} fiscal(is)` : 'nesse período'}, entre {resumoHistorico.inicio} e {resumoHistorico.fim} — confirma que a captura está gravando de verdade, mesmo sem deslocamento visível no mapa.
           </div>
           {/* [DPL] Legenda de cores — por DIA quando é 1 fiscal só em vários
               dias (comportamento antigo), ou por FISCAL quando o filtro do
