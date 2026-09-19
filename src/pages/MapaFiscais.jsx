@@ -411,24 +411,33 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
   }, [bases, aba])
 
   // ─── Busca presença (tabela fiscais_presenca, últimas 24h) ───
+  const presencaEmAndamentoRef = useRef(false)
   const buscarPresencas = async () => {
+    if (presencaEmAndamentoRef.current) return
+    presencaEmAndamentoRef.current = true
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    try {
     const limite = new Date(Date.now() - PRESENCA_MS).toISOString()
-    const { data } = await supabase
-      .from('fiscais_presenca').select('*')
+    const { data, error } = await supabase
+      .from('fiscais_presenca').select('fiscal_login,fiscal_nome,lat,lng,ultimo_visto')
+      .abortSignal(controller.signal)
       .gte('ultimo_visto', limite)
       .order('ultimo_visto', { ascending: false })
+    if (error) throw error
     setPresencas(data || [])
-    setLoading(false)
+    } catch (error) { console.error('Falha ao atualizar presencas:', error) }
+    finally { clearTimeout(timeout); presencaEmAndamentoRef.current = false; setLoading(false) }
   }
 
   const buscarRef = useRef(buscarPresencas)
   useEffect(() => { buscarRef.current = buscarPresencas })
 
-  // Polling a cada 5s + tick de 1s pra atualizar "há X min" sem refazer query
+  // 2026-09-19: consulta a cada 30s, sem sobreposicao; tick visual continua em 1s.
   useEffect(() => {
     if (aba !== 'vivo') return
     buscarRef.current()
-    const interval = setInterval(() => buscarRef.current(), 5000)
+    const interval = setInterval(() => { if (document.visibilityState === 'visible') buscarRef.current() }, 30000)
     const tick     = setInterval(() => setAgora(Date.now()), 1000)
     return () => { clearInterval(interval); clearInterval(tick) }
   }, [aba])
@@ -560,7 +569,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
 
     const logins = fiscaisDropdown.map(f => f.login)
     const { data } = await supabase
-      .from('localizacoes').select('*')
+      .from('localizacoes').select('fiscal_login,fiscal_nome,lat,lng,created_at')
       .in('fiscal_login', logins)
       .gte('created_at', ini).lte('created_at', fim)
       .order('created_at', { ascending: true })
@@ -764,11 +773,15 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
       // relatório ficava sempre travado no mesmo horário (as mesmas 1000
       // linhas mais antigas), não importava quantas vezes gerava de novo.
       // Busca em páginas até não vir mais nada, sem alterar a query em si.
+      // Filtra no banco antes de paginar, evitando ler trajetos fora da selecao.
+      const loginsPermitidos = fiscaisDropdown.map(f => f.login)
+      if (loginsPermitidos.length === 0) { setRelatorioPermanencia([]); return }
       const TAMANHO_PAGINA = 1000
       const data = []
       for (let pagina = 0; ; pagina++) {
         const { data: parte, error } = await supabase
-          .from('localizacoes').select('*')
+          .from('localizacoes').select('fiscal_login,fiscal_nome,lat,lng,created_at')
+          .in('fiscal_login', loginsPermitidos)
           .gte('created_at', ini).lte('created_at', fim)
           .order('created_at', { ascending: true })
           .range(pagina * TAMANHO_PAGINA, pagina * TAMANHO_PAGINA + TAMANHO_PAGINA - 1)
