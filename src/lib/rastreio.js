@@ -7,9 +7,10 @@ import BackgroundGeolocation from '@transistorsoft/capacitor-background-geolocat
 // ────────────────────────────────────────────────────────────────────────────
 // Dois modos, escolhidos automaticamente por Capacitor.isNativePlatform():
 //
-// • NAVEGADOR / PWA (web): captura periodicamente enquanto a aba está aberta
-//   e em primeiro plano. Eventos extras do GPS são deduplicados por tempo e
-//   distância antes da gravação, com fila offline em IndexedDB.
+// • NAVEGADOR / PWA (web): captura via navigator.geolocation a cada 8s, só
+//   enquanto a aba está aberta e em primeiro plano — grava direto por aqui
+//   (processarPosicao), com fila offline em IndexedDB. Mesmo comportamento
+//   de sempre, sem mudanças — é o único caminho possível sem app nativo.
 //
 // • APP ANDROID NATIVO (Capacitor): a partir da v5, usa o SDK PAGO da
 //   Transistor Software (@transistorsoft/capacitor-background-geolocation),
@@ -35,10 +36,10 @@ import BackgroundGeolocation from '@transistorsoft/capacitor-background-geolocat
 //    continua valendo: NÃO rastreia com tela apagada por horas.
 // ════════════════════════════════════════════════════════════════════════════
 
-const INTERVALO_FOREGROUND_MS = 60000   // ciclo de captura do modo web/PWA
-const INTERVALO_MINIMO_GRAVACAO_MS = 60000
-const DISTANCIA_MINIMA_GRAVACAO_M = 50
-const TAMANHO_LOTE_FILA = 100
+const INTERVALO_CAPTURA_FOREGROUND_MS = 8000   // GPS continua sendo consultado com frequência
+const INTERVALO_GRAVACAO_MOVIMENTO_MS = 60000  // no máximo 1 gravação por minuto em movimento
+const INTERVALO_GRAVACAO_PARADO_MS = 300000    // no máximo 1 gravação a cada 5min parado
+const DISTANCIA_MOVIMENTO_METROS = 25           // ignora oscilação normal do GPS
 const GEO_OPTS = { enableHighAccuracy: true, timeout: 7000, maximumAge: 3000 }
 const DB_NAME  = 'rastreio_fila'
 const STORE    = 'posicoes'
@@ -49,8 +50,12 @@ let wakeLock           = null
 let rodando            = false
 let watchId            = null
 let capturaEmAndamento = false
+let envioEmAndamento   = false
+let drenagemEmAndamento = false
 let nativoIniciado     = false
-let ultimaPosicaoGravada = null
+let ultimaPosicaoCapturada = null
+let ultimaPosicaoGravada   = null
+let ultimoEnvioPosicaoMs   = 0
 
 // Evita chamadas concorrentes de ready()/start() no SDK nativo — o SDK
 // rejeita com "Waiting for previous start action to complete" se uma
@@ -175,96 +180,93 @@ async function removerDaFila(ids) {
 
 // ─── Drena a fila: tenta enviar tudo que está preso ─────────────────────────
 async function drenarFila() {
-  if (!navigator.onLine) return
-  const fila = await lerFila()
-  if (fila.length === 0) return
-
-  const lote = fila.slice(0, TAMANHO_LOTE_FILA)
-  const payload = lote.map(({ id, ...resto }) => resto)
+  if (!navigator.onLine || drenagemEmAndamento) return
+  drenagemEmAndamento = true
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 20000)
   try {
-    const { error } = await supabase.from('localizacoes').insert(payload)
-    if (!error) {
-      await removerDaFila(lote.map(f => f.id))
-      console.log(`[rastreio] ${payload.length} posição(ões) da fila enviadas`)
-    }
+    // Nunca envia a fila inteira de uma vez. Lotes pequenos impedem picos de
+    // conexões, temporários e I/O quando vários aparelhos voltam à internet.
+    const fila = (await lerFila()).slice(0, 100)
+    if (fila.length === 0) return
+    const payload = fila.map(({ id, ...resto }) => resto)
+    const { error } = await supabase.from('localizacoes').insert(payload).abortSignal(controller.signal)
+    if (error) throw error
+    await removerDaFila(fila.map(f => f.id))
+    console.log(`[rastreio] ${payload.length} posição(ões) da fila enviadas`)
   } catch (e) {
-    console.warn('[rastreio] drenar falhou, mantém na fila:', e?.message)
+    if (!controller.signal.aborted) console.warn('[rastreio] drenar falhou, mantém na fila:', e?.message)
+  } finally {
+    clearTimeout(timeout)
+    drenagemEmAndamento = false
   }
 }
 
+// ─── Envia uma posição: captura frequente, gravação controlada ────────────
+// O GPS continua sendo consultado a cada 8s e pelo watchPosition, mas o banco
+// recebe no máximo 1 ponto por minuto em movimento ou a cada 5min parado.
+// Isso também limita o upsert de fiscais_presenca ao mesmo ritmo.
 function distanciaMetros(a, b) {
   if (!a || !b) return Infinity
-  const raio = 6371000
-  const rad = n => n * Math.PI / 180
+  const rad = graus => graus * Math.PI / 180
   const dLat = rad(b.latitude - a.latitude)
   const dLng = rad(b.longitude - a.longitude)
   const lat1 = rad(a.latitude)
   const lat2 = rad(b.latitude)
-  const h = Math.sin(dLat / 2) ** 2
-    + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
-  return 2 * raio * Math.asin(Math.sqrt(h))
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h))
 }
 
-function deveGravarPosicao(coords) {
-  const agora = Date.now()
-  if (!ultimaPosicaoGravada
-      || agora - ultimaPosicaoGravada.em >= INTERVALO_MINIMO_GRAVACAO_MS
-      || distanciaMetros(ultimaPosicaoGravada.coords, coords) >= DISTANCIA_MINIMA_GRAVACAO_M) {
-    ultimaPosicaoGravada = {
-      em: agora,
-      coords: { latitude: coords.latitude, longitude: coords.longitude },
-    }
-    return true
-  }
-  return false
-}
-
-// ─── Heartbeat: upsert da última posição por fiscal ─────────────────────────
-async function atualizarPresenca(usuario, coords) {
-  try {
-    await supabase.from('fiscais_presenca').upsert({
-      fiscal_login: usuario.login,
-      fiscal_nome:  usuario.nome,
-      lat:          coords.latitude,
-      lng:          coords.longitude,
-      precisao:     coords.accuracy,
-      ultimo_visto: new Date().toISOString(),
-    }, { onConflict: 'fiscal_login' })
-  } catch (e) {
-    console.warn('[rastreio] presença falhou:', e?.message)
-  }
-}
-
-// ─── Envia uma posição: tenta direto, se falhar enfileira ───────────────────
-// `coords` é sempre {latitude,longitude,accuracy} — tanto o navegador quanto
-// o plugin nativo entregam nesse formato achatado, então um único caminho
-// atende os dois (web normal e o fallback nativo abaixo).
 async function processarPosicao(usuario, coords) {
-  if (!deveGravarPosicao(coords)) return
+  ultimaPosicaoCapturada = {
+    latitude: coords.latitude,
+    longitude: coords.longitude,
+    accuracy: coords.accuracy,
+  }
+
+  const agoraMs = Date.now()
+  const emMovimento = distanciaMetros(ultimaPosicaoGravada, ultimaPosicaoCapturada) >= DISTANCIA_MOVIMENTO_METROS
+  const intervaloMinimo = emMovimento ? INTERVALO_GRAVACAO_MOVIMENTO_MS : INTERVALO_GRAVACAO_PARADO_MS
+  if (envioEmAndamento || (ultimoEnvioPosicaoMs && agoraMs - ultimoEnvioPosicaoMs < intervaloMinimo)) return
+
+  // Reserva o intervalo antes da chamada assíncrona. A RPC grava trilha e
+  // presença na mesma transação, reduzindo duas conexões para uma.
+  ultimoEnvioPosicaoMs = agoraMs
+  ultimaPosicaoGravada = ultimaPosicaoCapturada
+  envioEmAndamento = true
+
   const registro = {
     fiscal_login: usuario.login,
     fiscal_nome:  usuario.nome,
     lat:          coords.latitude,
     lng:          coords.longitude,
     precisao:     coords.accuracy,
-    created_at:   new Date().toISOString(),  // timestamp local — preserva ordem
+    created_at:   new Date(agoraMs).toISOString(),
   }
 
-  // Heartbeat em paralelo
-  atualizarPresenca(usuario, coords)
-
-  if (navigator.onLine) {
+  try {
+    if (!navigator.onLine) { await enfileirar(registro); return }
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 20000)
     try {
-      const { error } = await supabase.from('localizacoes').insert(registro)
-      if (error) { await enfileirar(registro); return }
-      drenarFila()  // aproveita pra esvaziar o que estava preso
-      return
+      const { error } = await supabase.rpc('registrar_localizacao_fiscal', {
+        p_fiscal_login: registro.fiscal_login,
+        p_fiscal_nome: registro.fiscal_nome,
+        p_lat: registro.lat,
+        p_lng: registro.lng,
+        p_precisao: registro.precisao,
+        p_created_at: registro.created_at,
+      }).abortSignal(controller.signal)
+      if (error) throw error
+      drenarFila()
     } catch {
       await enfileirar(registro)
-      return
+    } finally {
+      clearTimeout(timeout)
     }
+  } finally {
+    envioEmAndamento = false
   }
-  await enfileirar(registro)  // offline → direto pra fila
 }
 
 // ─── Captura uma posição agora (modo web) ───────────────────────────────────
@@ -422,56 +424,21 @@ async function executarInicioNativo(usuario) {
       salvarDiagPersistido()
     })
 
-    // O evento heartbeat dispara periodicamente (heartbeatInterval) mesmo
-    // com o fiscal parado — capturar uma posição aqui é o jeito oficial do
-    // SDK de cobrir os períodos parado, já que o rastreio normal
-    // (locationUpdateInterval) só captura de fato quando classificado como
-    // "em movimento".
-    //
-    // [DPL] Ordem invertida pra combater os "buracos" no Gantt (2ª versão
-    // — a 1ª, que só tentava o insertLocation como plano B depois do GPS
-    // falhar, ainda deixava buracos porque dependia do app continuar vivo
-    // até perceber a falha e reagir). Agora:
-    //  1) PRIMEIRO garantimos AGORA um ponto salvo, direto via
-    //     insertLocation com a posição que o próprio heartbeat já trouxe
-    //     (event.location) — não espera nada do GPS, é quase instantâneo,
-    //     então tem bem menos chance do HyperOS interromper no meio.
-    //  2) SÓ DEPOIS tentamos obter uma posição mais fresca para diagnóstico,
-    //     sem persistir uma segunda linha no mesmo heartbeat. O ponto do
-    //     passo 1 já garante a continuidade da linha do tempo.
-    const HEARTBEAT_TIMEOUT_SEG = 8
+    // Com o fiscal parado, persiste exatamente UM ponto a cada heartbeat.
+    // O intervalo de 5 minutos mantém a linha do tempo sem duplicar a posição
+    // com insertLocation + getCurrentPosition no mesmo ciclo.
     BackgroundGeolocation.onHeartbeat(async (event) => {
       contadorHeartbeats++
       salvarDiagPersistido()
 
-      if (event?.location) {
-        try {
-          // [DPL] event.location traz o horário ORIGINAL de quando essa
-          // posição foi capturada de verdade — se o fiscal está parado há
-          // vários heartbeats, esse horário pode ser bem antigo. Inserir
-          // sem corrigir isso grava vários registros repetidos no MESMO
-          // instante antigo, sem avançar a linha do tempo — não fecha o
-          // buraco de verdade (só amontoa pontos), e deixa o Gantt mais
-          // picotado ainda. Sobrescrevemos o timestamp pro momento ATUAL
-          // do heartbeat, mantendo as coordenadas (posição reaproveitada,
-          // horário sempre novo) — isso é o que realmente fecha o buraco
-          // no cálculo de permanência (que trabalha em cima de created_at).
-          const posicaoAgora = { ...event.location, timestamp: new Date().toISOString() }
-          await BackgroundGeolocation.insertLocation(posicaoAgora)
-        } catch (e) {
-          ultimoErroCaptura = `heartbeat (ponto garantido falhou): ${e?.message || JSON.stringify(e)}`
-          salvarDiagPersistido()
-        }
+      if (!event?.location) return
+      try {
+        const posicaoAgora = { ...event.location, timestamp: new Date().toISOString() }
+        await BackgroundGeolocation.insertLocation(posicaoAgora)
+      } catch (e) {
+        ultimoErroCaptura = `heartbeat: falha ao persistir ponto — ${e?.message || JSON.stringify(e)}`
+        salvarDiagPersistido()
       }
-
-      BackgroundGeolocation.getCurrentPosition({ samples: 1, persist: false, timeout: HEARTBEAT_TIMEOUT_SEG })
-        .catch(e => {
-          // Não é mais um problema grave — já garantimos um ponto acima.
-          // Só registra que a tentativa de posição mais fresca não deu certo.
-          contadorFallbackHeartbeat++
-          ultimoErroCaptura = `heartbeat: posição fresca não veio a tempo (usado só o ponto garantido) — ${e?.message || e?.error || JSON.stringify(e)}`
-          salvarDiagPersistido()
-        })
     })
 
     // Dispara pra QUALQUER localização capturada (contínua ou de heartbeat)
@@ -509,8 +476,8 @@ async function executarInicioNativo(usuario) {
         // direto no bundle compilado do pacote.
         desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
         distanceFilter: 0,
-        locationUpdateInterval: 30000,
-        fastestLocationUpdateInterval: 30000,
+        locationUpdateInterval: 60000,
+        fastestLocationUpdateInterval: 60000,
       },
       app: {
         // Continua rodando mesmo se o usuário "matar" o app nos recentes, e
@@ -529,7 +496,7 @@ async function executarInicioNativo(usuario) {
         // o evento "heartbeat" a cada heartbeatInterval segundos; no handler
         // (ver onHeartbeat abaixo) pedimos uma posição e mandamos persistir,
         // o que cai na mesma fila/HTTP do rastreio normal.
-        heartbeatInterval: 120,
+        heartbeatInterval: 300,
         preventSuspend: true,
         notification: {
           title: 'VérticeGP',
@@ -704,7 +671,7 @@ export function iniciarRastreio(usuario) {
   intervalId = setInterval(() => {
     capturarAgora()
     drenarFila()
-  }, INTERVALO_FOREGROUND_MS)
+  }, INTERVALO_CAPTURA_FOREGROUND_MS)
 
   window.addEventListener('focus', reativarRastreio)
   window.addEventListener('pageshow', reativarRastreio)
@@ -727,7 +694,9 @@ export function pararRastreio() {
   usuarioAtual = null
   rodando = false
   capturaEmAndamento = false
+  ultimaPosicaoCapturada = null
   ultimaPosicaoGravada = null
+  ultimoEnvioPosicaoMs = 0
   console.log('[rastreio] parado')
 }
 
