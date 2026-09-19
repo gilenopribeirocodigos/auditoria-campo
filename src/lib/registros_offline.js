@@ -6,7 +6,7 @@
 import { salvarRegistroBD, prepararPayload } from './registros.js'
 
 const DB_NAME  = 'auditoria-dpl'   // mesmo banco do offline.js
-const DB_VER   = 2                 // incrementa versão para criar novo store
+const DB_VER   = 3                 // alinhado ao mesmo banco compartilhado por offline.js
 const STORE    = 'fila_registros'  // store separado das auditorias
 
 // ── Abre o banco IndexedDB ────────────────────────────────────────────────────
