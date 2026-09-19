@@ -921,7 +921,7 @@ export default function MapaFiscais({ usuarioLogado, onVoltar }) {
             <div>
               <h1 style={{ fontSize: 18, fontWeight: 800 }}>📍 Fiscais em Campo</h1>
               <p style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>
-                {aba === 'vivo' && `${ativos.length} online · ${ausentes.length} offline/visto(s) nas últimas 24h — atualiza a cada 5s`}
+                {aba === 'vivo' && `${ativos.length} online · ${ausentes.length} offline/visto(s) nas últimas 24h — atualiza a cada 60s`}
                 {aba === 'historico' && 'Histórico de rota'}
                 {aba === 'bases' && `${bases.length} base(s) cadastrada(s)`}
                 {aba === 'relatorio' && 'Permanência dentro/fora da base'}
