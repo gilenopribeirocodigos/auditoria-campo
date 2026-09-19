@@ -2,7 +2,7 @@ import { uploadBase64, salvarAuditoriaBD, isDuplicidadeNumeroAS, buscarAuditoria
 import { sincronizarNCs } from './naoConformidades.js'
 
 const DB_NAME    = 'auditoria-dpl'
-const DB_VERSION = 2              // ← CORRIGIDO: era 1 (conflitava com registros_offline.js)
+const DB_VERSION = 3              // Compatível com a versão já criada no navegador
 const STORE      = 'fila_offline'
 
 function abrirDB() {
