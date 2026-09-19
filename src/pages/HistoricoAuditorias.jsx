@@ -270,6 +270,9 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const [capturando,    setCapturando]    = useState(false)
   const [gerandoPDF,    setGerandoPDF]    = useState(false)
   const intervalRef = useRef(null)
+  // 2026-09-19: impede buscas simultaneas e encerra espera apos 30s.
+  const buscaEmAndamentoRef = useRef(false)
+  const [erroBusca, setErroBusca] = useState('')
 
   // ─── Permissões do perfil ───
   // ADMIN sempre passa. Outros perfis controlados pela tabela perfis_permissoes
@@ -281,6 +284,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
   const formatData = d => d ? new Date(d + 'T00:00:00').toLocaleDateString('pt-BR') : '—'
 
   const buscar = async () => {
+    if (buscaEmAndamentoRef.current) return
+    buscaEmAndamentoRef.current = true
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 30000)
+    setErroBusca('')
     setLoading(true)
     try {
       const { ini, fim } = filtros.getDatasQuery()
@@ -342,7 +350,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       if (!podeVerTodos)     qOpcoesMotivo = qOpcoesMotivo.eq('matricula', usuarioLogado.matricula)
       if (prefixosFiltrados) qOpcoesMotivo = qOpcoesMotivo.in('prefixo', prefixosFiltrados)
 
-      const { data: motivosData, error: motivosError } = await qOpcoesMotivo
+      const { data: motivosData, error: motivosError } = await qOpcoesMotivo.abortSignal(controller.signal)
       if (motivosError) throw motivosError
       setOpcoesMotivoAuditoria(
         [...new Set((motivosData || []).map(r => r.motivo_auditoria).filter(Boolean))]
@@ -364,7 +372,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       if (ncStatusFiltro)             q = q.eq('nc_status', ncStatusFiltro)
       if (prefixosFiltrados)          q = q.in('prefixo', prefixosFiltrados)
 
-      const { data, error } = await q
+      const { data, error } = await q.abortSignal(controller.signal)
       if (error) throw error
 
       const auditoriasNormalizadas = (data || [])
@@ -378,8 +386,14 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
         parcial:   auditoriasNormalizadas.filter(a => a.status === 'ATENDE PARCIAL').length,
         naoAtende: auditoriasNormalizadas.filter(a => a.status === 'NÃO ATENDE').length,
       })
-    } catch (e) { console.error(e) }
-    finally { setLoading(false) }
+    } catch (e) {
+      console.error(e)
+      setErroBusca(controller.signal.aborted ? 'A busca demorou mais de 30 segundos. Tente novamente com um periodo menor.' : 'Nao foi possivel carregar as auditorias. Tente novamente.')
+    } finally {
+      clearTimeout(timeout)
+      buscaEmAndamentoRef.current = false
+      setLoading(false)
+    }
   }
 
   // Carrega na primeira renderização
@@ -389,11 +403,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Auto-refresh a cada 20s — usa ref pra sempre chamar a versão mais recente
+  // 2026-09-19: atualiza a cada 5 min apenas com a tela visivel, reduzindo consultas repetidas.
   const buscarRef = useRef(buscar)
   useEffect(() => { buscarRef.current = buscar })
   useEffect(() => {
-    intervalRef.current = setInterval(() => { buscarRef.current() }, 20000)
+    intervalRef.current = setInterval(() => { if (document.visibilityState === 'visible') buscarRef.current() }, 300000)
     return () => clearInterval(intervalRef.current)
   }, [])
 
@@ -675,7 +689,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
         {/* Ações */}
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-          <button onClick={buscar} style={{
+          <button onClick={buscar} disabled={loading} style={{
             height: FIELD_HEIGHT, padding: '0 22px',
             background: '#1e3a5f', color: '#fff', border: 'none', borderRadius: 10,
             fontSize: 14, fontWeight: 700, cursor: 'pointer',
@@ -698,6 +712,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
             <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
             <p>Carregando auditorias...</p>
           </div>
+        ) : erroBusca ? (
+          <div role="alert" style={{ padding: 24, color: '#b91c1c', background: '#fef2f2', borderRadius: 10 }}>{erroBusca}</div>
         ) : auditorias.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>📭</div>
