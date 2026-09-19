@@ -48,9 +48,17 @@ export async function listarRegistros(filtros = {}, usuarioLogado) {
   } else if (filtros.fiscal) {
     q = q.ilike('fiscal', `%${filtros.fiscal}%`)
   }
-  const { data, error } = await q
-  if (error) throw error
-  return data || []
+  // 2026-09-19: evita espera indefinida nas telas de registros e SESMT.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+  try {
+    const { data, error } = await q.abortSignal(controller.signal)
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error('A busca demorou mais de 30 segundos. Tente novamente com um periodo menor.')
+    throw error
+  } finally { clearTimeout(timeout) }
 }
 
 // ─── Faz upload de todas as mídias e retorna payload completo ─────────────────
