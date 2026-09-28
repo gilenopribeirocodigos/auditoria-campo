@@ -782,6 +782,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
       const idsJaRegistrados = new Set(frequenciasRegistradas.map(r => String(r.eletricista_id)))
       const pendentes = [], jaJustificados = [], naoLocalizados = []
+      // Duas linhas DISTINTAS do SIGA (porChave dedupe só evita repetir a
+      // mesma linha do SIGA) podem casar, via CPF ou nome aproximado, no
+      // MESMO eletricista da Estrutura (ex.: dois logins com grafia de nome
+      // levemente diferente). Sem isso, o mesmo eletricista_id/id_eletricista
+      // entra duas vezes no upsert em lote e o Postgres recusa com
+      // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+      const idsEletMatchUsados = new Set()
 
       for (const linha of porChave.values()) {
         // A matrícula do SIGA usa uma numeração própria, diferente da
@@ -798,6 +805,12 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           || todosEletricistasBase.find(e => matchNomes(limparEspacos(linha.nome_eletricista), limparEspacos(e.colaborador)))
 
         if (!eletMatch) { naoLocalizados.push({ ...linha, candidato: candidatoMaisParecido(linha.nome_eletricista, todosEletricistasBase) }); continue }
+
+        // Mesmo eletricista já casado por outra linha do SIGA (login
+        // duplicado/nome parecido) — ignora esta segunda ocorrência, senão
+        // ele entraria duas vezes no lote de justificativa.
+        if (idsEletMatchUsados.has(eletMatch.id)) continue
+        idsEletMatchUsados.add(eletMatch.id)
 
         if (idsJaRegistrados.has(String(eletMatch.id))) {
           const registro = frequenciasRegistradas.find(r => String(r.eletricista_id) === String(eletMatch.id))
