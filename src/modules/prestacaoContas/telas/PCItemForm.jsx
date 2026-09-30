@@ -117,11 +117,42 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
   const upd = (campo, valor) => setItem(f => ({ ...f, [campo]: valor }))
   const updMaiuscula = (campo, valor) => setItem(f => ({ ...f, [campo]: valor.toUpperCase() }))
 
-  const processarFotos = (files) => {
-    for (const file of files || []) {
+  // Redimensiona (lado maior até 1600px) e recomprime como JPEG antes de
+  // guardar em memória — sem isso, uma foto de câmera de celular moderna
+  // (10-30MB) ia direto pro estado como base64. Com 2-3 fotos assim, o
+  // Android matava o processo do app ao abrir a câmera pra próxima foto (o
+  // app "reiniciava" e voltava pra Home, perdendo o formulário todo). Mesmo
+  // princípio de comprimirImagem() em lib/exportacao.js, só que aplicado na
+  // captura em vez de na exportação.
+  function comprimirParaBase64(file, maxLado = 1600, qualidade = 0.82) {
+    return new Promise(resolve => {
       const reader = new FileReader()
-      reader.onload = ev => setFotos(f => [...f, { base64: ev.target.result }])
+      reader.onload = ev => {
+        const img = new Image()
+        img.onload = () => {
+          let { width, height } = img
+          if (width > maxLado || height > maxLado) {
+            const escala = maxLado / Math.max(width, height)
+            width = Math.round(width * escala)
+            height = Math.round(height * escala)
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+          resolve(canvas.toDataURL('image/jpeg', qualidade))
+        }
+        img.onerror = () => resolve(ev.target.result) // se falhar, usa a foto original
+        img.src = ev.target.result
+      }
       reader.readAsDataURL(file)
+    })
+  }
+
+  const processarFotos = async (files) => {
+    for (const file of files || []) {
+      const base64 = await comprimirParaBase64(file)
+      setFotos(f => [...f, { base64 }])
     }
   }
 
