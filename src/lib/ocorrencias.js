@@ -55,6 +55,7 @@ export async function prepararPayloadOcorrencia(form) {
     numero_ocorrencia:         form.numero_ocorrencia || gerarNumeroOcorrencia(),
     descricao:                 form.descricao,
     eletricista_equipe:        form.eletricista_equipe || null,
+    eletricista_equipe_2:      form.eletricista_equipe_2 || null,
     prefixo:                   form.prefixo || null,
     aberto_por:                form.aberto_por,
     matricula_aberto_por:      form.matricula_aberto_por || null,
@@ -79,10 +80,10 @@ export async function salvarOcorrenciaBD(payload) {
     .single()
 
   // Mantém o salvamento funcionando caso o deploy do app chegue antes da
-  // migração SQL que adiciona data_abertura/hora_abertura/endereco/lat/lng
-  // (mesmo padrão de salvarRegistroBD em lib/registros.js).
+  // migração SQL que adiciona data_abertura/hora_abertura/endereco/lat/lng/
+  // eletricista_equipe_2 (mesmo padrão de salvarRegistroBD em lib/registros.js).
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { data_abertura, hora_abertura, endereco, lat, lng, ...payloadCompat } = payload
+    const { data_abertura, hora_abertura, endereco, lat, lng, eletricista_equipe_2, ...payloadCompat } = payload
     ;({ data, error } = await supabase
       .from('ocorrencias')
       .insert(payloadCompat)
@@ -108,25 +109,36 @@ export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) 
 
 // ─── Confirma o tratamento de uma ocorrência ──────────────────────────────────
 // Exige evidência (mín. 1 foto) e assinatura do colaborador envolvido, mesmo
-// padrão do tratamento de Não Conformidade (auditorias_nao_conformes).
-export async function tratarOcorrencia(id, { observacao, fotosUrls, assinaturaUrl, assinaturaNome, usuarioLogado }) {
+// padrão do tratamento de Não Conformidade (auditorias_nao_conformes). Quando
+// a ocorrência tem um 2º colaborador (eletricista_equipe_2), exige também a
+// assinatura dele — mesmo padrão de temEletricista2/assinatura2 já usado no
+// tratamento de NC de auditoria.
+export async function tratarOcorrencia(id, {
+  observacao, fotosUrls, assinaturaUrl, assinaturaNome,
+  assinatura2Url, assinatura2Nome, usuarioLogado,
+}) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const payload = {
-    status:                     'TRATADA',
-    tratamento_observacao:      observacao.trim(),
-    tratamento_fotos_urls:      fotosUrls || [],
-    tratamento_assinatura_url:  assinaturaUrl || null,
-    tratamento_assinatura_nome: assinaturaNome || null,
-    tratado_por:                usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
-    tratado_em:                 new Date().toISOString(),
+    status:                      'TRATADA',
+    tratamento_observacao:       observacao.trim(),
+    tratamento_fotos_urls:       fotosUrls || [],
+    tratamento_assinatura_url:   assinaturaUrl || null,
+    tratamento_assinatura_nome:  assinaturaNome || null,
+    tratamento_assinatura2_url:  assinatura2Url || null,
+    tratamento_assinatura2_nome: assinatura2Nome || null,
+    tratado_por:                 usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
+    tratado_em:                  new Date().toISOString(),
   }
   let { error } = await supabase.from('ocorrencias').update(payload).eq('id', id).eq('status', 'PENDENTE')
 
   // Mantém o tratamento funcionando caso o deploy chegue antes da migração
-  // SQL que adiciona tratamento_fotos_urls/tratamento_assinatura_* (mesmo
-  // padrão de salvarOcorrenciaBD acima).
+  // SQL que adiciona tratamento_fotos_urls/tratamento_assinatura_*/
+  // tratamento_assinatura2_* (mesmo padrão de salvarOcorrenciaBD acima).
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { tratamento_fotos_urls, tratamento_assinatura_url, tratamento_assinatura_nome, ...payloadCompat } = payload
+    const {
+      tratamento_fotos_urls, tratamento_assinatura_url, tratamento_assinatura_nome,
+      tratamento_assinatura2_url, tratamento_assinatura2_nome, ...payloadCompat
+    } = payload
     ;({ error } = await supabase.from('ocorrencias').update(payloadCompat).eq('id', id).eq('status', 'PENDENTE'))
   }
 

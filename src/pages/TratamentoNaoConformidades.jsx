@@ -313,6 +313,9 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   const [fotos,             setFotos]           = useState([])
   const [nomeColaborador,  setNomeColaborador]  = useState(oc.eletricista_equipe || '')
   const [assinatura,        setAssinatura]      = useState(null)
+  const temColaborador2 = !!oc.eletricista_equipe_2
+  const [nomeColaborador2, setNomeColaborador2] = useState(oc.eletricista_equipe_2 || '')
+  const [assinatura2,       setAssinatura2]     = useState(null)
   const [salvando,          setSalvando]        = useState(false)
   const [erro,              setErro]            = useState('')
 
@@ -327,6 +330,7 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
 
   const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && !!assinatura
+    && (!temColaborador2 || !!assinatura2)
 
   const confirmarTratamento = async () => {
     if (!podeConfirmar) return
@@ -339,10 +343,16 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
         fotosUrls.push(url)
       }
       const assinaturaUrl = await uploadBase64(assinatura, `ocorrencias_tratamento/${oc.id}/assinatura_${Date.now()}.png`)
+      let assinatura2Url = null
+      if (temColaborador2 && assinatura2) {
+        assinatura2Url = await uploadBase64(assinatura2, `ocorrencias_tratamento/${oc.id}/assinatura2_${Date.now()}.png`)
+      }
 
       await tratarOcorrencia(oc.id, {
         observacao, fotosUrls, assinaturaUrl,
         assinaturaNome: nomeColaborador || null,
+        assinatura2Url,
+        assinatura2Nome: temColaborador2 ? (nomeColaborador2 || null) : null,
         usuarioLogado,
       })
       onTratado()
@@ -386,7 +396,9 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
       <div style={{ marginTop: 10, marginBottom: pendente ? 14 : 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
         <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
         {oc.eletricista_equipe && (
-          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>
+          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
+            👤 {[oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')}
+          </p>
         )}
         {(oc.data_abertura || oc.endereco) && (
           <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
@@ -408,8 +420,10 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
           {oc.tratamento_observacao && (
             <p style={{ marginTop: 4 }}><strong>Observação:</strong> {oc.tratamento_observacao}</p>
           )}
-          {oc.tratamento_assinatura_nome && (
-            <p style={{ marginTop: 4 }}><strong>Colaborador cientificado:</strong> {oc.tratamento_assinatura_nome}</p>
+          {(oc.tratamento_assinatura_nome || oc.tratamento_assinatura2_nome) && (
+            <p style={{ marginTop: 4 }}>
+              <strong>Colaborador(es) cientificado(s):</strong> {[oc.tratamento_assinatura_nome, oc.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}
+            </p>
           )}
           {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
@@ -467,13 +481,24 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
           </div>
 
           <PainelAssinatura
-            label="Colaborador envolvido"
+            label={temColaborador2 ? 'Colaborador 1 envolvido' : 'Colaborador envolvido'}
             nome={nomeColaborador}
             onNome={setNomeColaborador}
             assinatura={assinatura}
             onAssinatura={setAssinatura}
             obrigatorio={true}
           />
+
+          {temColaborador2 && (
+            <PainelAssinatura
+              label="Colaborador 2 envolvido"
+              nome={nomeColaborador2}
+              onNome={setNomeColaborador2}
+              assinatura={assinatura2}
+              onAssinatura={setAssinatura2}
+              obrigatorio={true}
+            />
+          )}
 
           {erro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erro}</div>}
 

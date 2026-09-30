@@ -171,8 +171,9 @@ function CampoPrefixo({ value, onChange }) {
 
 // Campo com autocomplete de colaborador — mesmo padrão de
 // AutocompleteEletricista em R3Participantes.jsx, buscando em
-// estrutura_equipes.colaborador.
-function CampoColaboradorEnvolvido({ value, onChange }) {
+// estrutura_equipes.colaborador. `label`/`placeholder` parametrizados pra
+// servir tanto o 1º colaborador (obrigatório) quanto o 2º (opcional).
+function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
   const [sugestoes, setSugestoes] = useState([])
   const [aberto,    setAberto]    = useState(false)
   const ref = useRef(null)
@@ -204,10 +205,10 @@ function CampoColaboradorEnvolvido({ value, onChange }) {
 
   return (
     <div ref={ref} className="form-group" style={{ position: 'relative' }}>
-      <label className="form-label">Colaborador(es) envolvido(s) *</label>
+      <label className="form-label">{label}</label>
       <input className="form-input" value={value} onChange={handleChange}
         onFocus={() => value && buscar(value)}
-        placeholder="Nome do(s) colaborador(es)" autoComplete="off" />
+        placeholder={placeholder} autoComplete="off" />
       {aberto && sugestoes.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
@@ -235,6 +236,7 @@ function CampoColaboradorEnvolvido({ value, onChange }) {
 export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, onVoltar }) {
   const [prefixo,            setPrefixo]            = useState('')
   const [colaboradorEnvolvido, setColaboradorEnvolvido] = useState('')
+  const [colaboradorEnvolvido2, setColaboradorEnvolvido2] = useState('')
   const [direcionadoPara,    setDirecionadoPara]    = useState('')
   const [matriculaDestino,   setMatriculaDestino]   = useState('')
   const [descricao,          setDescricao]          = useState('')
@@ -314,6 +316,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
     const form = {
       prefixo:                   prefixo.trim().toUpperCase(),
       eletricista_equipe:        colaboradorEnvolvido.trim(),
+      eletricista_equipe_2:      colaboradorEnvolvido2.trim() || null,
       direcionado_para:          direcionadoPara.trim(),
       matricula_fiscal_destino:  matriculaDestino,
       descricao:                 descricao.trim(),
@@ -348,7 +351,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   }
 
   const reiniciar = () => {
-    setPrefixo(''); setColaboradorEnvolvido(''); setDirecionadoPara(''); setMatriculaDestino('')
+    setPrefixo(''); setColaboradorEnvolvido(''); setColaboradorEnvolvido2(''); setDirecionadoPara(''); setMatriculaDestino('')
     setDescricao(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
     setData(new Date().toISOString().split('T')[0]); setHora(new Date().toTimeString().slice(0, 5))
     setEndereco(''); setLat(null); setLng(null); setGpsStatus('idle')
@@ -467,7 +470,11 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
               <CampoPrefixo value={prefixo} onChange={setPrefixo} />
 
-              <CampoColaboradorEnvolvido value={colaboradorEnvolvido} onChange={setColaboradorEnvolvido} />
+              <CampoColaboradorEnvolvido value={colaboradorEnvolvido} onChange={setColaboradorEnvolvido}
+                label="Colaborador 1 envolvido *" placeholder="Nome do colaborador" />
+
+              <CampoColaboradorEnvolvido value={colaboradorEnvolvido2} onChange={setColaboradorEnvolvido2}
+                label="Colaborador 2 envolvido (opcional)" placeholder="Nome do 2º colaborador, se houver" />
 
               <CampoFiscalDestino
                 nome={direcionadoPara} matricula={matriculaDestino}
