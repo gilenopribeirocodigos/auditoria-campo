@@ -4,10 +4,11 @@ import { Textarea, SearchSelect } from '../components/Shared.jsx'
 import { prepararPayloadOcorrencia, salvarOcorrenciaBD, listarFiscaisParaDirecionamento } from '../lib/ocorrencias.js'
 import { salvarOcorrenciaOffline } from '../lib/ocorrencias_offline.js'
 
-// Mesmo padrão de marca d'água usado em processarFotoEvidencia
-// (TratamentoNaoConformidades.jsx) / R5Evidencias.jsx — data/hora, prefixo
-// e quem abriu gravados na própria imagem.
-function processarFotoOcorrencia(file, prefixo, abertoPor) {
+// Marca d'água discreta — só a data/hora, pequena, no canto inferior direito.
+// A ocorrência nem sempre é aberta pelo almoxarifado e nem sempre tem
+// equipe/prefixo vinculado, então esse carimbo não presume quem abriu — esse
+// dado já fica gravado nos campos da própria ocorrência (aberto_por, prefixo).
+function processarFotoOcorrencia(file) {
   return new Promise(resolve => {
     const reader = new FileReader()
     reader.onloadend = () => {
@@ -19,30 +20,24 @@ function processarFotoOcorrencia(file, prefixo, abertoPor) {
         const ctx = canvas.getContext('2d')
         ctx.drawImage(img, 0, 0)
 
-        const agora = new Date()
-        const ts = agora.toLocaleString('pt-BR', {
+        const ts = new Date().toLocaleString('pt-BR', {
           day: '2-digit', month: '2-digit', year: 'numeric',
           hour: '2-digit', minute: '2-digit', second: '2-digit',
         })
-        const fontSize = Math.max(18, Math.round(img.width * 0.032))
-        const pad = 10
-        const lineH = fontSize + 8
-        const linhas = [ts, 'Ocorrência — Almoxarifado']
-        if (prefixo)   linhas.push(`Equipe: ${prefixo}`)
-        if (abertoPor) linhas.push(`Aberto por: ${abertoPor}`)
-        const boxH = linhas.length * lineH + pad * 2
-        const boxY = img.height - boxH - 10
+        const fontSize = 13
+        const pad = 6
+        ctx.font = `600 ${fontSize}px monospace`
+        const boxW = ctx.measureText(ts).width + pad * 2
+        const boxH = fontSize + pad * 1.6
+        const boxX = img.width - boxW - 8
+        const boxY = img.height - boxH - 8
 
-        ctx.fillStyle = 'rgba(0,0,0,0.65)'
-        ctx.fillRect(0, boxY, img.width, boxH + 10)
-        ctx.font = `bold ${fontSize}px monospace`
-        linhas.forEach((linha, i) => {
-          const y = boxY + pad + fontSize + i * lineH
-          ctx.fillStyle = 'rgba(0,0,0,0.8)'
-          ctx.fillText(linha, pad + 2, y + 2)
-          ctx.fillStyle = i === 0 ? '#ffffff' : '#a5b4fc'
-          ctx.fillText(linha, pad, y)
-        })
+        ctx.fillStyle = 'rgba(0,0,0,0.45)'
+        ctx.fillRect(boxX, boxY, boxW, boxH)
+        ctx.fillStyle = 'rgba(255,255,255,0.9)'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(ts, boxX + pad, boxY + boxH / 2)
+
         resolve(canvas.toDataURL('image/jpeg', 0.88))
       }
       img.src = reader.result
@@ -171,8 +166,9 @@ function CampoPrefixo({ value, onChange }) {
 
 // Campo com autocomplete de colaborador — mesmo padrão de
 // AutocompleteEletricista em R3Participantes.jsx, buscando em
-// estrutura_equipes.colaborador.
-function CampoColaboradorEnvolvido({ value, onChange }) {
+// estrutura_equipes.colaborador. `label`/`placeholder` parametrizados pra
+// servir tanto o 1º colaborador (obrigatório) quanto o 2º (opcional).
+function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
   const [sugestoes, setSugestoes] = useState([])
   const [aberto,    setAberto]    = useState(false)
   const ref = useRef(null)
@@ -204,10 +200,10 @@ function CampoColaboradorEnvolvido({ value, onChange }) {
 
   return (
     <div ref={ref} className="form-group" style={{ position: 'relative' }}>
-      <label className="form-label">Colaborador(es) envolvido(s) *</label>
+      <label className="form-label">{label}</label>
       <input className="form-input" value={value} onChange={handleChange}
         onFocus={() => value && buscar(value)}
-        placeholder="Nome do(s) colaborador(es)" autoComplete="off" />
+        placeholder={placeholder} autoComplete="off" />
       {aberto && sugestoes.length > 0 && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
@@ -235,6 +231,7 @@ function CampoColaboradorEnvolvido({ value, onChange }) {
 export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, onVoltar }) {
   const [prefixo,            setPrefixo]            = useState('')
   const [colaboradorEnvolvido, setColaboradorEnvolvido] = useState('')
+  const [colaboradorEnvolvido2, setColaboradorEnvolvido2] = useState('')
   const [direcionadoPara,    setDirecionadoPara]    = useState('')
   const [matriculaDestino,   setMatriculaDestino]   = useState('')
   const [descricao,          setDescricao]          = useState('')
@@ -301,7 +298,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   const addFoto = async e => {
     const file = e.target.files?.[0]
     if (!file) return
-    const url = await processarFotoOcorrencia(file, prefixo, usuarioLogado?.nome)
+    const url = await processarFotoOcorrencia(file)
     setFoto(url)
     e.target.value = ''
   }
@@ -314,6 +311,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
     const form = {
       prefixo:                   prefixo.trim().toUpperCase(),
       eletricista_equipe:        colaboradorEnvolvido.trim(),
+      eletricista_equipe_2:      colaboradorEnvolvido2.trim() || null,
       direcionado_para:          direcionadoPara.trim(),
       matricula_fiscal_destino:  matriculaDestino,
       descricao:                 descricao.trim(),
@@ -348,7 +346,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   }
 
   const reiniciar = () => {
-    setPrefixo(''); setColaboradorEnvolvido(''); setDirecionadoPara(''); setMatriculaDestino('')
+    setPrefixo(''); setColaboradorEnvolvido(''); setColaboradorEnvolvido2(''); setDirecionadoPara(''); setMatriculaDestino('')
     setDescricao(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
     setData(new Date().toISOString().split('T')[0]); setHora(new Date().toTimeString().slice(0, 5))
     setEndereco(''); setLat(null); setLng(null); setGpsStatus('idle')
@@ -467,7 +465,11 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
               <CampoPrefixo value={prefixo} onChange={setPrefixo} />
 
-              <CampoColaboradorEnvolvido value={colaboradorEnvolvido} onChange={setColaboradorEnvolvido} />
+              <CampoColaboradorEnvolvido value={colaboradorEnvolvido} onChange={setColaboradorEnvolvido}
+                label="Colaborador 1 envolvido *" placeholder="Nome do colaborador" />
+
+              <CampoColaboradorEnvolvido value={colaboradorEnvolvido2} onChange={setColaboradorEnvolvido2}
+                label="Colaborador 2 envolvido (opcional)" placeholder="Nome do 2º colaborador, se houver" />
 
               <CampoFiscalDestino
                 nome={direcionadoPara} matricula={matriculaDestino}

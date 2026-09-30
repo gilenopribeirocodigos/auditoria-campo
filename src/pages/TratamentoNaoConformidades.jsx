@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { supabase, uploadBase64 } from '../lib/supabase.js'
 import { isAdmin, temPermissao } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
-import { listarOcorrencias, tratarOcorrencia, numeroOcorrencia } from '../lib/ocorrencias.js'
+import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia } from '../lib/ocorrencias.js'
 
 const TIPO_LABEL = { DESEMPENHO: '📊 Desempenho Operacional', POS_SERVICO: '✅ Pós Serviço' }
 
@@ -306,15 +306,115 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
 // ─── Card de uma Ocorrência: descrição + 1 tratamento com evidência ─────────
 // Mesmo padrão de exigência do tratamento de Não Conformidade: observação +
 // mín. 1 foto + assinatura do colaborador envolvido.
-function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
+// Campo com autocomplete buscando em estrutura_equipes — mesmo padrão usado
+// em AberturaOcorrencia.jsx/PCItemForm.jsx (online sugere conforme digita,
+// offline a busca não retorna nada e o campo aceita digitação livre).
+function CampoAutocompleteEstrutura({ coluna, value, onChange, placeholder }) {
+  const [sugestoes, setSugestoes] = useState([])
+  const [aberto,    setAberto]    = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const buscar = async v => {
+    if (!v || v.length < 2) { setSugestoes([]); setAberto(false); return }
+    try {
+      const { data } = await supabase.from('estrutura_equipes')
+        .select(coluna).ilike(coluna, `%${v}%`).not(coluna, 'is', null).neq(coluna, '')
+        .order(coluna).limit(15)
+      const unicos = [...new Set((data || []).map(r => r[coluna]?.trim().toUpperCase()).filter(Boolean))]
+      setSugestoes(unicos)
+      setAberto(unicos.length > 0)
+    } catch { setSugestoes([]); setAberto(false) }
+  }
+
+  const handleChange = e => {
+    const v = e.target.value.toUpperCase()
+    onChange(v)
+    buscar(v)
+  }
+
+  const selecionar = s => { onChange(s); setSugestoes([]); setAberto(false) }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input className="form-input" value={value} onChange={handleChange}
+        onFocus={() => value && buscar(value)}
+        placeholder={placeholder} autoComplete="off" />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 200,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} type="button" onMouseDown={() => selecionar(s)}
+              style={{
+                display: 'block', width: '100%', padding: '9px 12px',
+                textAlign: 'left', background: 'none', border: 'none',
+                borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >{s}</button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
   const pendente = oc.status === 'PENDENTE'
   const [aberto,           setAberto]           = useState(false)
   const [observacao,       setObservacao]       = useState('')
   const [fotos,             setFotos]           = useState([])
   const [nomeColaborador,  setNomeColaborador]  = useState(oc.eletricista_equipe || '')
   const [assinatura,        setAssinatura]      = useState(null)
+  const temColaborador2 = !!oc.eletricista_equipe_2
+  const [nomeColaborador2, setNomeColaborador2] = useState(oc.eletricista_equipe_2 || '')
+  const [assinatura2,       setAssinatura2]     = useState(null)
   const [salvando,          setSalvando]        = useState(false)
   const [erro,              setErro]            = useState('')
+
+  // Corrigir prefixo/colaborador(es)/descrição digitados errado na abertura
+  // — só enquanto pendente, e só quem abriu ou ADMIN (mesma regra de
+  // visibilidade de botões sensíveis usada no resto do app).
+  const podeEditar = pendente && (oc.matricula_aberto_por === usuarioLogado?.matricula || isAdmin(usuarioLogado))
+  const [editando,       setEditando]       = useState(false)
+  const [editPrefixo,    setEditPrefixo]    = useState(oc.prefixo || '')
+  const [editColab1,     setEditColab1]     = useState(oc.eletricista_equipe || '')
+  const [editColab2,     setEditColab2]     = useState(oc.eletricista_equipe_2 || '')
+  const [editDescricao,  setEditDescricao]  = useState(oc.descricao || '')
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+  const [erroEdicao,     setErroEdicao]     = useState('')
+
+  const podeSalvarEdicao = editColab1.trim().length > 0 && editDescricao.trim().length > 0
+
+  const salvarEdicao = async () => {
+    if (!podeSalvarEdicao) return
+    setSalvandoEdicao(true)
+    setErroEdicao('')
+    try {
+      await editarOcorrencia(oc.id, {
+        prefixo:              editPrefixo.trim().toUpperCase() || null,
+        eletricista_equipe:   editColab1.trim(),
+        eletricista_equipe_2: editColab2.trim() || null,
+        descricao:            editDescricao.trim(),
+      })
+      setEditando(false)
+      onEditado?.()
+    } catch (e) {
+      setErroEdicao(e.message || 'Erro ao salvar a correção.')
+    } finally {
+      setSalvandoEdicao(false)
+    }
+  }
 
   const addFoto = async e => {
     const files = Array.from(e.target.files)
@@ -327,6 +427,7 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
   const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
 
   const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && !!assinatura
+    && (!temColaborador2 || !!assinatura2)
 
   const confirmarTratamento = async () => {
     if (!podeConfirmar) return
@@ -339,10 +440,16 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
         fotosUrls.push(url)
       }
       const assinaturaUrl = await uploadBase64(assinatura, `ocorrencias_tratamento/${oc.id}/assinatura_${Date.now()}.png`)
+      let assinatura2Url = null
+      if (temColaborador2 && assinatura2) {
+        assinatura2Url = await uploadBase64(assinatura2, `ocorrencias_tratamento/${oc.id}/assinatura2_${Date.now()}.png`)
+      }
 
       await tratarOcorrencia(oc.id, {
         observacao, fotosUrls, assinaturaUrl,
         assinaturaNome: nomeColaborador || null,
+        assinatura2Url,
+        assinatura2Nome: temColaborador2 ? (nomeColaborador2 || null) : null,
         usuarioLogado,
       })
       onTratado()
@@ -384,21 +491,70 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
       {aberto && <div onClick={e => e.stopPropagation()}>
 
       <div style={{ marginTop: 10, marginBottom: pendente ? 14 : 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
-        <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
-        {oc.eletricista_equipe && (
-          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>
-        )}
-        {(oc.data_abertura || oc.endereco) && (
-          <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
-            {oc.data_abertura && `📅 ${new Date(oc.data_abertura + 'T00:00:00').toLocaleDateString('pt-BR')}${oc.hora_abertura ? ` às ${oc.hora_abertura}` : ''}`}
-            {oc.data_abertura && oc.endereco && ' · '}
-            {oc.endereco && `📍 ${oc.endereco}`}
-          </p>
-        )}
-        {oc.foto_url && (
-          <a href={oc.foto_url} target="_blank" rel="noreferrer">
-            <img src={oc.foto_url} alt="Evidência" style={{ marginTop: 8, width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid #c7d2fe', display: 'block' }} />
-          </a>
+        {editando ? (
+          <div>
+            <p style={{ fontSize: 11, fontWeight: 800, color: '#3730a3', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+              ✎ Corrigindo dados da abertura
+            </p>
+            <div className="form-group">
+              <label className="form-label">Prefixo / Equipe</label>
+              <CampoAutocompleteEstrutura coluna="prefixo" value={editPrefixo} onChange={setEditPrefixo} placeholder="Ex: PI-THE-C001M" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Colaborador 1 envolvido *</label>
+              <CampoAutocompleteEstrutura coluna="colaborador" value={editColab1} onChange={setEditColab1} placeholder="Nome do colaborador" />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Colaborador 2 envolvido (opcional)</label>
+              <CampoAutocompleteEstrutura coluna="colaborador" value={editColab2} onChange={setEditColab2} placeholder="Nome do 2º colaborador, se houver" />
+            </div>
+            <Textarea label="Descrição da ocorrência *" value={editDescricao} onChange={setEditDescricao} rows={3} />
+            {erroEdicao && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erroEdicao}</div>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={salvarEdicao} disabled={!podeSalvarEdicao || salvandoEdicao}
+                style={{
+                  flex: 1, padding: 10, borderRadius: 8, border: 'none',
+                  background: (!podeSalvarEdicao || salvandoEdicao) ? '#e2e8f0' : '#4338ca',
+                  color: (!podeSalvarEdicao || salvandoEdicao) ? '#94a3b8' : '#fff',
+                  fontSize: 13, fontWeight: 700, cursor: (!podeSalvarEdicao || salvandoEdicao) ? 'not-allowed' : 'pointer',
+                }}>
+                {salvandoEdicao ? '⏳ Salvando...' : '✓ Salvar correção'}
+              </button>
+              <button onClick={() => { setEditando(false); setErroEdicao('') }} disabled={salvandoEdicao}
+                style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #c7d2fe', background: '#fff', color: '#374151', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Cancelar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+              <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
+              {podeEditar && (
+                <button onClick={() => setEditando(true)} style={{
+                  flexShrink: 0, border: 'none', background: 'none', color: '#4338ca',
+                  fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '2px 4px',
+                }}>✎ Editar</button>
+              )}
+            </div>
+            {oc.eletricista_equipe && (
+              <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
+                👤 {[oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')}
+              </p>
+            )}
+            {(oc.data_abertura || oc.endereco) && (
+              <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
+                {oc.data_abertura && `📅 ${new Date(oc.data_abertura + 'T00:00:00').toLocaleDateString('pt-BR')}${oc.hora_abertura ? ` às ${oc.hora_abertura}` : ''}`}
+                {oc.data_abertura && oc.endereco && ' · '}
+                {oc.endereco && `📍 ${oc.endereco}`}
+              </p>
+            )}
+            {oc.foto_url && (
+              <a href={oc.foto_url} target="_blank" rel="noreferrer">
+                <img src={oc.foto_url} alt="Evidência" style={{ marginTop: 8, width: 90, height: 90, objectFit: 'cover', borderRadius: 8, border: '1px solid #c7d2fe', display: 'block' }} />
+              </a>
+            )}
+          </>
         )}
       </div>
 
@@ -408,8 +564,10 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
           {oc.tratamento_observacao && (
             <p style={{ marginTop: 4 }}><strong>Observação:</strong> {oc.tratamento_observacao}</p>
           )}
-          {oc.tratamento_assinatura_nome && (
-            <p style={{ marginTop: 4 }}><strong>Colaborador cientificado:</strong> {oc.tratamento_assinatura_nome}</p>
+          {(oc.tratamento_assinatura_nome || oc.tratamento_assinatura2_nome) && (
+            <p style={{ marginTop: 4 }}>
+              <strong>Colaborador(es) cientificado(s):</strong> {[oc.tratamento_assinatura_nome, oc.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}
+            </p>
           )}
           {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
@@ -467,13 +625,24 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado }) {
           </div>
 
           <PainelAssinatura
-            label="Colaborador envolvido"
+            label={temColaborador2 ? 'Colaborador 1 envolvido' : 'Colaborador envolvido'}
             nome={nomeColaborador}
             onNome={setNomeColaborador}
             assinatura={assinatura}
             onAssinatura={setAssinatura}
             obrigatorio={true}
           />
+
+          {temColaborador2 && (
+            <PainelAssinatura
+              label="Colaborador 2 envolvido"
+              nome={nomeColaborador2}
+              onNome={setNomeColaborador2}
+              assinatura={assinatura2}
+              onAssinatura={setAssinatura2}
+              obrigatorio={true}
+            />
+          )}
 
           {erro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erro}</div>}
 
@@ -849,7 +1018,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {ocorrenciasFiltradas.map(oc => (
-                  <CardOcorrencia key={oc.id} oc={oc} usuarioLogado={usuarioLogado} onTratado={onOcorrenciaTratada} />
+                  <CardOcorrencia key={oc.id} oc={oc} usuarioLogado={usuarioLogado} onTratado={onOcorrenciaTratada} onEditado={onOcorrenciaTratada} />
                 ))}
               </div>
             )}
