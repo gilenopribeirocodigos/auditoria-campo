@@ -107,6 +107,32 @@ export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) 
   return data || []
 }
 
+// ─── Corrige os dados de abertura (prefixo/colaborador(es)/descrição) ──────
+// Só faz sentido enquanto a ocorrência ainda está PENDENTE — depois de
+// tratada, os dados de abertura já foram usados na assinatura/tratamento e
+// não devem mais mudar (o .eq('status','PENDENTE') é o cinto de segurança
+// no banco; quem pode chamar isso é decidido na tela — quem abriu ou ADMIN).
+export async function editarOcorrencia(id, { prefixo, eletricista_equipe, eletricista_equipe_2, descricao }) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const payload = {
+    prefixo:              prefixo || null,
+    eletricista_equipe:   eletricista_equipe || null,
+    eletricista_equipe_2: eletricista_equipe_2 || null,
+    descricao,
+  }
+  let { error } = await supabase.from('ocorrencias').update(payload).eq('id', id).eq('status', 'PENDENTE')
+
+  // Mesmo padrão de compatibilidade das demais funções deste arquivo — evita
+  // quebrar se o deploy chegar antes da migração que adiciona
+  // eletricista_equipe_2.
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const { eletricista_equipe_2, ...payloadCompat } = payload
+    ;({ error } = await supabase.from('ocorrencias').update(payloadCompat).eq('id', id).eq('status', 'PENDENTE'))
+  }
+
+  if (error) throw error
+}
+
 // ─── Confirma o tratamento de uma ocorrência ──────────────────────────────────
 // Exige evidência (mín. 1 foto) e assinatura do colaborador envolvido, mesmo
 // padrão do tratamento de Não Conformidade (auditorias_nao_conformes). Quando
