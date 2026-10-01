@@ -183,15 +183,21 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   ${!pendente ? `
   <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
     <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">✅ TRATAMENTO</div>
-    <div style="font-size:13px;color:#15803d;line-height:1.7;margin-bottom:6px;">${oc.tratamento_observacao || ''}</div>
-    ${assinantes.length > 0 ? `
-    <div style="font-size:12px;color:#166534;margin-bottom:4px;">Colaborador(es) cientificado(s):</div>
-    ${assinantes.map(a => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid #bbf7d0;">
+    <div style="font-size:13px;color:#15803d;line-height:1.7;">${oc.tratamento_observacao || ''}</div>
+  </div>` : ''}
+  ${!pendente && assinantes.length > 0 ? `
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">✍️ COLABORADOR(ES) CIENTIFICADO(S)</div>
+    ${assinantes.map((a, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;${i > 0 ? 'border-top:1px solid #bbf7d0;' : ''}">
         <span style="font-size:13px;font-weight:700;color:#15803d;">${a.nome || '—'}</span>
         ${a.url ? `<img src="${a.url}" crossorigin="anonymous" style="height:44px;max-width:120px;object-fit:contain;background:#fff;border-radius:6px;border:1px solid #bbf7d0;"/>` : ''}
-      </div>`).join('')}` : ''}
-    <div style="font-size:11px;color:#166534;opacity:0.8;margin-top:4px;">Tratada por ${oc.tratado_por || '—'} em ${formatDataHora(oc.tratado_em)}</div>
+      </div>`).join('')}
+  </div>` : ''}
+  ${!pendente ? `
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">👤 TRATADA POR</div>
+    ${[['Matrícula', oc.tratado_por], ['Nome', oc.tratado_por_nome], ['Data / Hora', formatDataHora(oc.tratado_em)]].filter(([, v]) => v).map(([l, v]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span style="color:#94a3b8;">${l}</span><span style="color:#1e293b;font-weight:600;">${v}</span></div>`).join('')}
   </div>` : ''}
   ${oc.foto_url ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
@@ -1132,23 +1138,37 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   {!pendente && (
                     <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 6 }}>✅ TRATAMENTO:</p>
-                      {oc.tratamento_observacao && <p style={{ fontSize: 13, color: '#15803d', lineHeight: 1.6, marginBottom: 4 }}>{oc.tratamento_observacao}</p>}
-                      {assinantes.length > 0 && (
-                        <div style={{ marginBottom: 4 }}>
-                          <p style={{ fontSize: 12, color: '#166534', marginBottom: 4 }}>Colaborador(es) cientificado(s):</p>
-                          {assinantes.map((a, i) => (
-                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid #bbf7d0' }}>
-                              <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>{a.nome || '—'}</span>
-                              {a.url && (
-                                <img src={a.url} alt="assinatura" style={{ height: 40, maxWidth: 100, objectFit: 'contain', background: '#fff', borderRadius: 6, border: '1px solid #bbf7d0' }} />
-                              )}
-                            </div>
-                          ))}
+                      <p style={{ fontSize: 13, color: '#15803d', lineHeight: 1.6 }}>{oc.tratamento_observacao}</p>
+                    </div>
+                  )}
+
+                  {!pendente && assinantes.length > 0 && (
+                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✍️ COLABORADOR(ES) CIENTIFICADO(S):</p>
+                      {assinantes.map((a, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: i > 0 ? '1px solid #bbf7d0' : 'none' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>{a.nome || '—'}</span>
+                          {a.url && (
+                            <img src={a.url} alt="assinatura" style={{ height: 40, maxWidth: 100, objectFit: 'contain', background: '#fff', borderRadius: 6, border: '1px solid #bbf7d0' }} />
+                          )}
                         </div>
-                      )}
-                      <p style={{ fontSize: 11, color: '#166534', opacity: 0.8, marginTop: 4 }}>
-                        Tratada por {oc.tratado_por || '—'} em {oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : '—'}
-                      </p>
+                      ))}
+                    </div>
+                  )}
+
+                  {!pendente && (
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>👤 TRATADA POR:</p>
+                      {[
+                        ['Matrícula',    oc.tratado_por],
+                        ['Nome',         oc.tratado_por_nome],
+                        ['Data / Hora',  oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : null],
+                      ].filter(([, v]) => v).map(([l, v]) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
+                          <span style={{ color: '#94a3b8' }}>{l}</span>
+                          <span style={{ color: '#1e293b', fontWeight: 600 }}>{v}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
 
