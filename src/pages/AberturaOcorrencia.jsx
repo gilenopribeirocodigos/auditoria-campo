@@ -179,14 +179,28 @@ function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
     return () => document.removeEventListener('mousedown', fn)
   }, [])
 
+  // Busca em 2 fontes: eletricistas de campo (estrutura_equipes) e usuários
+  // do sistema (ADMIN, supervisores etc.) — o colaborador envolvido numa
+  // ocorrência pode precisar ser chamado de qualquer um dos dois grupos.
+  // Resultado combinado, sem duplicar nome repetido nas duas fontes.
   const buscar = async v => {
     if (!v || v.length < 2) { setSugestoes([]); setAberto(false); return }
     try {
-      const { data } = await supabase.from('estrutura_equipes')
-        .select('colaborador').ilike('colaborador', `%${v}%`).order('colaborador').limit(15)
-      const unicos = [...new Set((data || []).map(r => r.colaborador?.trim()).filter(Boolean))]
-      setSugestoes(unicos)
-      setAberto(unicos.length > 0)
+      const [eq, us] = await Promise.all([
+        supabase.from('estrutura_equipes').select('colaborador').ilike('colaborador', `%${v}%`).order('colaborador').limit(10),
+        supabase.from('usuarios').select('nome').eq('status', 'ATIVO').ilike('nome', `%${v}%`).order('nome').limit(10),
+      ])
+      const deEquipe    = (eq.data || []).map(r => r.colaborador?.trim()).filter(Boolean).map(nome => ({ nome, origem: 'equipe' }))
+      const deUsuarios  = (us.data || []).map(r => r.nome?.trim()).filter(Boolean).map(nome => ({ nome, origem: 'usuario' }))
+      const vistos = new Set()
+      const combinadas = [...deEquipe, ...deUsuarios].filter(s => {
+        const chave = s.nome.toUpperCase()
+        if (vistos.has(chave)) return false
+        vistos.add(chave)
+        return true
+      })
+      setSugestoes(combinadas)
+      setAberto(combinadas.length > 0)
     } catch { setSugestoes([]); setAberto(false) }
   }
 
@@ -196,7 +210,7 @@ function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
     buscar(v)
   }
 
-  const selecionar = s => { onChange(s); setSugestoes([]); setAberto(false) }
+  const selecionar = s => { onChange(s.nome); setSugestoes([]); setAberto(false) }
 
   return (
     <div ref={ref} className="form-group" style={{ position: 'relative' }}>
@@ -220,7 +234,12 @@ function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
               }}
               onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
               onMouseLeave={e => e.currentTarget.style.background = 'none'}
-            >{s}</button>
+            >
+              {s.nome}
+              {s.origem === 'usuario' && (
+                <span style={{ fontSize: 10, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>· usuário do sistema</span>
+              )}
+            </button>
           ))}
         </div>
       )}
