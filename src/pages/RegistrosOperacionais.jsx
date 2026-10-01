@@ -433,10 +433,50 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           }}>🔍 Buscar</button>
         </div>
 
+        {/* Resumo por tipo — grade de tiles (Total + Pendentes quando houver)
+            do período filtrado. Ocorrências é o único tipo com pendente/
+            tratada hoje, então é o único que mostra a faixa de pendentes;
+            os demais tipos de Registro (Alinhamento, Diálogo de Segurança,
+            Treinamento, Feedback, Reunião, Disciplinar) são avulsos, sem
+            status, então mostram só o total. Grade de 3 colunas (em vez de
+            cards largos) pra caber até 7 tipos sem rolar a tela pro lado. */}
+        {!loading && (registros.length > 0 || ocorrencias.length > 0) && (() => {
+          const porTipo = {}
+          for (const r of registros) porTipo[r.tipo] = (porTipo[r.tipo] || 0) + 1
+          const tiles = Object.entries(TIPOS_REGISTRO)
+            .filter(([tipo]) => porTipo[tipo] > 0)
+            .map(([tipo, cfg]) => ({ tipo, emoji: cfg.emoji, label: cfg.label, color: cfg.color, border: cfg.border, total: porTipo[tipo] }))
+          if (ocorrencias.length > 0) {
+            tiles.unshift({
+              tipo: 'OCORRENCIA', emoji: '📦', label: 'Ocorrências', color: '#4338ca', border: '#c7d2fe',
+              total: ocorrencias.length, pendentes: ocorrencias.filter(o => o.status === 'PENDENTE').length,
+            })
+          }
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8, marginBottom: 20 }}>
+              {tiles.map(t => (
+                <div key={t.tipo} style={{ background: '#fff', border: `1.5px solid ${t.border || '#e2e8f0'}`, borderRadius: 12, padding: '10px 10px 9px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
+                    <span style={{ fontSize: 13 }}>{t.emoji}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: t.color, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{t.total}</div>
+                  <div style={{ fontSize: 9.5, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 }}>total</div>
+                  {t.pendentes > 0 && (
+                    <span style={{ display: 'inline-block', marginTop: 6, background: '#fef3c7', color: '#92400e', fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                      {t.pendentes} pendente{t.pendentes > 1 ? 's' : ''}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+        })()}
+
         {ocorrencias.length > 0 && (
           <div style={{ marginBottom: 20 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#4338ca', marginBottom: 10 }}>
-              📦 Ocorrências ({ocorrencias.length})
+              📦 Ocorrências
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ocorrencias.map(oc => {
