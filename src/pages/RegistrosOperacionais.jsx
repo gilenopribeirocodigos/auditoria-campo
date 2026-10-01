@@ -456,9 +456,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(104px, 1fr))', gap: 8, marginBottom: 20 }}>
               {tiles.map(t => (
                 <div key={t.tipo} style={{ background: '#fff', border: `1.5px solid ${t.border || '#e2e8f0'}`, borderRadius: 12, padding: '10px 10px 9px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 6 }}>
-                    <span style={{ fontSize: 13 }}>{t.emoji}</span>
-                    <span style={{ fontSize: 10.5, fontWeight: 800, color: t.color, lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.label}</span>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 5, marginBottom: 6 }}>
+                    <span style={{ fontSize: 13, flexShrink: 0, lineHeight: 1.25 }}>{t.emoji}</span>
+                    <span style={{ fontSize: 10.5, fontWeight: 800, color: t.color, lineHeight: 1.25, minWidth: 0, flex: 1 }}>{t.label}</span>
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>{t.total}</div>
                   <div style={{ fontSize: 9.5, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 1 }}>total</div>
