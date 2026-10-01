@@ -156,7 +156,10 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   const pendente = oc.status === 'PENDENTE'
   const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
   const colaboradores  = [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
-  const cientificados  = [oc.tratamento_assinatura_nome, oc.tratamento_assinatura2_nome].filter(Boolean).join(' e ')
+  const assinantes = [
+    { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
+    { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
+  ].filter(a => a.nome || a.url)
 
   return `
   <div style="background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
@@ -181,7 +184,13 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
     <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">✅ TRATAMENTO</div>
     <div style="font-size:13px;color:#15803d;line-height:1.7;margin-bottom:6px;">${oc.tratamento_observacao || ''}</div>
-    ${cientificados ? `<div style="font-size:12px;color:#166534;">Colaborador(es) cientificado(s): <strong>${cientificados}</strong></div>` : ''}
+    ${assinantes.length > 0 ? `
+    <div style="font-size:12px;color:#166534;margin-bottom:4px;">Colaborador(es) cientificado(s):</div>
+    ${assinantes.map(a => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid #bbf7d0;">
+        <span style="font-size:13px;font-weight:700;color:#15803d;">${a.nome || '—'}</span>
+        ${a.url ? `<img src="${a.url}" crossorigin="anonymous" style="height:44px;max-width:120px;object-fit:contain;background:#fff;border-radius:6px;border:1px solid #bbf7d0;"/>` : ''}
+      </div>`).join('')}` : ''}
     <div style="font-size:11px;color:#166534;opacity:0.8;margin-top:4px;">Tratada por ${oc.tratado_por || '—'} em ${formatDataHora(oc.tratado_em)}</div>
   </div>` : ''}
   ${oc.foto_url ? `
@@ -1076,7 +1085,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               const oc = detalheOc
               const pendente = oc.status === 'PENDENTE'
               const colaboradores = [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
-              const cientificados = [oc.tratamento_assinatura_nome, oc.tratamento_assinatura2_nome].filter(Boolean).join(' e ')
+              const assinantes = [
+                { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
+                { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
+              ].filter(a => a.nome || a.url)
               return (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -1121,7 +1133,19 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 6 }}>✅ TRATAMENTO:</p>
                       {oc.tratamento_observacao && <p style={{ fontSize: 13, color: '#15803d', lineHeight: 1.6, marginBottom: 4 }}>{oc.tratamento_observacao}</p>}
-                      {cientificados && <p style={{ fontSize: 12, color: '#166534' }}>Colaborador(es) cientificado(s): <strong>{cientificados}</strong></p>}
+                      {assinantes.length > 0 && (
+                        <div style={{ marginBottom: 4 }}>
+                          <p style={{ fontSize: 12, color: '#166534', marginBottom: 4 }}>Colaborador(es) cientificado(s):</p>
+                          {assinantes.map((a, i) => (
+                            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: '1px solid #bbf7d0' }}>
+                              <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>{a.nome || '—'}</span>
+                              {a.url && (
+                                <img src={a.url} alt="assinatura" style={{ height: 40, maxWidth: 100, objectFit: 'contain', background: '#fff', borderRadius: 6, border: '1px solid #bbf7d0' }} />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
                       <p style={{ fontSize: 11, color: '#166534', opacity: 0.8, marginTop: 4 }}>
                         Tratada por {oc.tratado_por || '—'} em {oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : '—'}
                       </p>
