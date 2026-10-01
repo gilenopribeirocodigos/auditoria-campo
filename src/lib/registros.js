@@ -41,7 +41,15 @@ export async function listarRegistros(filtros = {}, usuarioLogado) {
   }
   if (filtros.dataIni) q = q.gte('data_registro', filtros.dataIni)
   if (filtros.dataFim) q = q.lte('data_registro', filtros.dataFim)
-  if (filtros.tipo)    q = q.eq('tipo', filtros.tipo)
+  // filtros.tipo aceita string única (RelatorioEvidencias.jsx, single-select)
+  // ou array (RegistrosOperacionais.jsx, multi-select) — compatível com os dois.
+  if (filtros.tipo) {
+    if (Array.isArray(filtros.tipo)) {
+      if (filtros.tipo.length > 0) q = q.in('tipo', filtros.tipo)
+    } else {
+      q = q.eq('tipo', filtros.tipo)
+    }
+  }
   if (filtros.fiscais && filtros.fiscais.length > 0) {
     // Múltiplos fiscais selecionados
     q = q.in('fiscal', filtros.fiscais)
