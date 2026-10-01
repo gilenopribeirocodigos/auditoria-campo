@@ -12,7 +12,7 @@ import {
   useFiltrosOperacionais,
   PainelFiltros,
   MultiSelect,
-  FIELD_HEIGHT, LABEL_STYLE, INPUT_STYLE,
+  FIELD_HEIGHT, LABEL_STYLE,
 } from '../components/PainelFiltros.jsx'
 
 const TIPO_MEDIDA_LABEL = {
@@ -156,7 +156,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [mostrarMotivos, setMostrarMotivos] = useState(false)
 
   // ─── Filtros EXTRAS desta tela ───
-  const [tipo,       setTipo]       = useState('')   // single select
+  const [tiposSel,   setTiposSel]   = useState([])   // multi select — [] = Todos
   const [fiscaisSel, setFiscaisSel] = useState([])   // multi select
 
   const [registros,     setRegistros]     = useState([])
@@ -193,10 +193,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       // ─── Ocorrências abertas pelo usuário (ou todas, se privilegiado) ───
       // Aparecem junto com os registros normais nesta tela pra fins de
       // busca/acompanhamento — status PENDENTE/TRATADA acompanha o que foi
-      // feito em Tratamento de Não Conformidades. Respeita o filtro Tipo:
-      // some se um tipo diferente de "Todos"/"Abertura de Ocorrência" for
-      // selecionado (mesmo comportamento de um tipo de registro comum).
-      if (tipo !== '' && tipo !== 'OCORRENCIA') {
+      // feito em Tratamento de Não Conformidades. Respeita o filtro Tipo
+      // (agora multi-select): some se houver tipos selecionados e nenhum
+      // deles for "Abertura de Ocorrência".
+      const tiposRegistroSel = tiposSel.filter(t => t !== 'OCORRENCIA')
+      const mostrarOcorrencias = tiposSel.length === 0 || tiposSel.includes('OCORRENCIA')
+      if (!mostrarOcorrencias) {
         setOcorrencias([])
       } else {
         try {
@@ -256,10 +258,13 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       }
 
       // ─── 2) Chama listarRegistros com filtros básicos (data + tipo + fiscais) ───
-      let data = await listarRegistros({
+      // Só "Abertura de Ocorrência" selecionada (sem nenhum tipo de Registro
+      // junto) → não busca registros_operacionais, a tabela é outra.
+      const somenteOcorrenciaSelecionada = tiposSel.length > 0 && tiposRegistroSel.length === 0
+      let data = somenteOcorrenciaSelecionada ? [] : await listarRegistros({
         dataIni: ini,
         dataFim: fim,
-        tipo:    tipo,
+        tipo:    tiposRegistroSel,
         fiscais: fiscaisSel,
       }, usuarioLogado)
 
@@ -343,17 +348,13 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     <>
       <div>
         <label style={LABEL_STYLE}>Tipo</label>
-        <select value={tipo} onChange={e => setTipo(e.target.value)} style={{
-          ...INPUT_STYLE, cursor: 'pointer', appearance: 'none',
-          backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' viewBox=\'0 0 10 6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E")',
-          backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32,
-        }}>
-          <option value="">Todos</option>
-          {Object.entries(TIPOS_REGISTRO).map(([k, t]) => (
-            <option key={k} value={k}>{t.emoji} {t.label}</option>
-          ))}
-          <option value="OCORRENCIA">📦 Abertura de Ocorrência</option>
-        </select>
+        <MultiSelect
+          opcoes={[...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA']}
+          selecionados={tiposSel}
+          onChange={setTiposSel}
+          placeholder="Todos"
+          formatOption={k => k === 'OCORRENCIA' ? '📦 Abertura de Ocorrência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
+        />
       </div>
       <div>
         <label style={LABEL_STYLE}>Fiscal / Usuário</label>
