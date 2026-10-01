@@ -153,17 +153,19 @@ export async function tratarOcorrencia(id, {
     tratamento_assinatura2_url:  assinatura2Url || null,
     tratamento_assinatura2_nome: assinatura2Nome || null,
     tratado_por:                 usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
-    tratado_em:                  new Date().toISOString(),
+    tratado_por_nome:             usuarioLogado?.nome || null,
+    tratado_em:                   new Date().toISOString(),
   }
   let { error } = await supabase.from('ocorrencias').update(payload).eq('id', id).eq('status', 'PENDENTE')
 
   // Mantém o tratamento funcionando caso o deploy chegue antes da migração
   // SQL que adiciona tratamento_fotos_urls/tratamento_assinatura_*/
-  // tratamento_assinatura2_* (mesmo padrão de salvarOcorrenciaBD acima).
+  // tratamento_assinatura2_*/tratado_por_nome (mesmo padrão de
+  // salvarOcorrenciaBD acima).
   if (error && /column .* does not exist/i.test(error.message || '')) {
     const {
       tratamento_fotos_urls, tratamento_assinatura_url, tratamento_assinatura_nome,
-      tratamento_assinatura2_url, tratamento_assinatura2_nome, ...payloadCompat
+      tratamento_assinatura2_url, tratamento_assinatura2_nome, tratado_por_nome, ...payloadCompat
     } = payload
     ;({ error } = await supabase.from('ocorrencias').update(payloadCompat).eq('id', id).eq('status', 'PENDENTE'))
   }

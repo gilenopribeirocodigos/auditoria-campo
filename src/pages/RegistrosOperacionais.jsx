@@ -148,6 +148,104 @@ async function gerarPDFRegistro(r, assinaturasOnline = [], versaoApp = '') {
   await compartilharPDFNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
 }
 
+// ─── Conteúdo reaproveitável (impressão + PDF + imagem WhatsApp) de uma
+// Ocorrência — mesmo padrão de montarConteudoImpressaoRegistro, mas inclui
+// também os dados do TRATAMENTO (observação, colaborador(es) cientificado(s)
+// e as fotos do tratamento), não só os dados da abertura.
+function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
+  const pendente = oc.status === 'PENDENTE'
+  const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+  const colaboradores  = [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
+  const assinantes = [
+    { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
+    { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
+  ].filter(a => a.nome || a.url)
+
+  return `
+  <div style="background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
+    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
+    <div style="font-size:20px;font-weight:800;">📦 Abertura de Ocorrência</div>
+    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(oc)} · Contrato 1021/2024</div>
+  </div>
+  <div style="text-align:center;margin-bottom:16px;">
+    <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? '#e0e7ff' : '#dcfce7'};color:${pendente ? '#3730a3' : '#15803d'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+  </div>
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
+    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados da Ocorrência</div>
+    <table style="width:100%;border-collapse:collapse;">
+      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', oc.direcionado_para], ['Local', oc.endereco]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+    </table>
+  </div>
+  <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;">DESCRIÇÃO DA OCORRÊNCIA</div>
+    <div style="font-size:13px;color:#3730a3;line-height:1.7;">${oc.descricao || ''}</div>
+  </div>
+  ${!pendente ? `
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">✅ TRATAMENTO</div>
+    <div style="font-size:13px;color:#15803d;line-height:1.7;">${oc.tratamento_observacao || ''}</div>
+  </div>` : ''}
+  ${!pendente && assinantes.length > 0 ? `
+  <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">✍️ COLABORADOR(ES) CIENTIFICADO(S)</div>
+    ${assinantes.map((a, i) => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;${i > 0 ? 'border-top:1px solid #bbf7d0;' : ''}">
+        <span style="font-size:13px;font-weight:700;color:#15803d;">${a.nome || '—'}</span>
+        ${a.url ? `<img src="${a.url}" crossorigin="anonymous" style="height:44px;max-width:120px;object-fit:contain;background:#fff;border-radius:6px;border:1px solid #bbf7d0;"/>` : ''}
+      </div>`).join('')}
+  </div>` : ''}
+  ${!pendente ? `
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">👤 TRATADA POR</div>
+    ${[['Matrícula', oc.tratado_por], ['Nome', oc.tratado_por_nome], ['Data / Hora', formatDataHora(oc.tratado_em)]].filter(([, v]) => v).map(([l, v]) => `<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px;"><span style="color:#94a3b8;">${l}</span><span style="color:#1e293b;font-weight:600;">${v}</span></div>`).join('')}
+  </div>` : ''}
+  ${oc.foto_url ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Foto da Ocorrência</div>
+    <img src="${oc.foto_url}" crossorigin="anonymous" style="width:100%;max-width:300px;border-radius:8px;display:block;"/>
+  </div>` : ''}
+  ${Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Fotos do Tratamento (${oc.tratamento_fotos_urls.length})</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+      ${oc.tratamento_fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;display:block;"/>`).join('')}
+    </div>
+  </div>` : ''}
+  <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
+    <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
+  </div>`
+}
+
+function imprimirOcorrenciaDoc(oc, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp)
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+  <title>Abertura de Ocorrência</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
+  @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
+  ${conteudo}
+  <div class="no-print" style="text-align:center;margin-top:24px;">
+    <button onclick="window.print()" style="padding:12px 32px;background:#4338ca;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
+  </div>
+  </body></html>`
+
+  const janela = window.open('', '_blank', 'width=700,height=900')
+  if (!janela) { alert('Permita pop-ups.'); return }
+  janela.document.write(html)
+  janela.document.close()
+  janela.onload = () => setTimeout(() => janela.print(), 600)
+}
+
+async function gerarPDFOcorrenciaDoc(oc, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp)
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+  const canvas = await renderizarHtmlParaCanvas(html, {
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
+  })
+  const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.pdf`.replace(/\s+/g, '_')
+  await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
+}
+
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
   // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
   // Passa `usuarioLogado` pra ativar segregação por estrutura.
@@ -162,8 +260,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [ocorrencias,   setOcorrencias]   = useState([])
-  const [ocAberta,      setOcAberta]      = useState(null) // id da ocorrência expandida na lista
   const [detalhe,       setDetalhe]       = useState(null)
+  const [detalheOc,     setDetalheOc]     = useState(null) // ocorrência aberta no modal de PDF/Zap
+  const [capturandoOc,  setCapturandoOc]  = useState(false)
+  const [gerandoPDFOc,  setGerandoPDFOc]  = useState(false)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
   const [tokensAtivos,  setTokensAtivos]  = useState({})
@@ -173,6 +273,38 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [gerandoPDF,    setGerandoPDF]    = useState(false)
   const [versaoSistema, setVersaoSistema] = useState(getVersaoApp())
   const intervalRef = useRef(null)
+
+  // Mesmo padrão do WhatsApp dos Registros comuns (html2canvas + share nativo
+  // Android / Web Share API / download), reaproveitando o mesmo conteúdo
+  // usado no PDF (montarConteudoImpressaoOcorrencia) — inclui abertura +
+  // tratamento (observação, cientificados e fotos do tratamento).
+  const compartilharOcorrenciaWhatsApp = async (oc) => {
+    setCapturandoOc(true)
+    try {
+      const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoSistema)
+      const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">${conteudo}</div>`
+      const canvas = await renderizarHtmlParaCanvas(html, { largura: 640, escala: 6, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#f0f4f8' })
+      const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.png`.replace(/\s+/g, '_')
+      if (Capacitor.isNativePlatform()) {
+        await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
+      } else if (navigator.share && navigator.canShare) {
+        canvas.toBlob(async blob => {
+          const file = new File([blob], nomeArq, { type: 'image/png' })
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Abertura de Ocorrência' })
+          } else {
+            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+          }
+        }, 'image/png')
+      } else {
+        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+      }
+    } catch (err) {
+      console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
+    } finally {
+      setCapturandoOc(false)
+    }
+  }
 
   // ADMIN sempre vê tudo (temPermissao já libera); os demais só com a
   // permissão marcada em Gestão de Usuários, senão só os próprios registros.
@@ -482,9 +614,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {ocorrencias.map(oc => {
                 const pendente = oc.status === 'PENDENTE'
-                const abertaAgora = ocAberta === oc.id
                 return (
-                  <div key={oc.id} onClick={() => setOcAberta(a => a === oc.id ? null : oc.id)}
+                  <div key={oc.id} onClick={() => setDetalheOc(oc)}
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
@@ -505,21 +636,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                           <span>📨 {oc.direcionado_para}</span>
                         </div>
                       </div>
-                      <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>{abertaAgora ? '▲' : '▼'}</span>
+                      <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
                     </div>
-                    {abertaAgora && (
-                      <div style={{ marginTop: 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
-                        <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 6px', fontFamily: 'monospace' }}>{numeroOcorrencia(oc)}</p>
-                        <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
-                        {oc.eletricista_equipe && <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>👤 {oc.eletricista_equipe}</p>}
-                        {!pendente && (
-                          <p style={{ fontSize: 11, color: '#15803d', margin: '6px 0 0' }}>
-                            ✅ Tratada por {oc.tratado_por || '—'} em {oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : '—'}
-                            {oc.tratamento_observacao && ` — ${oc.tratamento_observacao}`}
-                          </p>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )
               })}
@@ -955,6 +1073,146 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   </button>
 
                   <button onClick={() => setDetalhe(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Fechar
+                  </button>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Modal detalhe — Ocorrência (PDF/WhatsApp, mesmo padrão dos Registros) */}
+      {detalheOc && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
+          onClick={e => { if (e.target === e.currentTarget) setDetalheOc(null) }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '24px 20px 40px' }}>
+            {(() => {
+              const oc = detalheOc
+              const pendente = oc.status === 'PENDENTE'
+              const colaboradores = [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
+              const assinantes = [
+                { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
+                { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
+              ].filter(a => a.nome || a.url)
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 17, fontWeight: 800 }}>📦 Abertura de Ocorrência</h3>
+                    <button onClick={() => setDetalheOc(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+                  </div>
+
+                  <div style={{ background: '#e0e7ff', border: '2px solid #c7d2fe', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
+                    <div style={{ fontSize: 40, marginBottom: 6 }}>📦</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#4338ca' }}>Abertura de Ocorrência</div>
+                    <div style={{ fontSize: 13, color: '#4338ca', opacity: 0.85, marginTop: 4 }}>{numeroOcorrencia(oc)}</div>
+                    <div style={{ marginTop: 8 }}>
+                      <span style={{
+                        padding: '3px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        background: pendente ? '#fff' : '#15803d', color: pendente ? '#3730a3' : '#fff',
+                      }}>{pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                    {[
+                      ['Aberto por',        oc.aberto_por],
+                      ['Data / Hora',       new Date(oc.criado_em).toLocaleString('pt-BR')],
+                      ['Prefixo / Equipe',  oc.prefixo],
+                      ['Colaborador(es)',   colaboradores],
+                      ['Direcionado para',  oc.direcionado_para],
+                      ['Local',             oc.endereco],
+                    ].filter(([, v]) => v).map(([l, v]) => (
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                        <span style={{ color: '#94a3b8', fontWeight: 500 }}>{l}</span>
+                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>DESCRIÇÃO DA OCORRÊNCIA:</p>
+                    <p style={{ fontSize: 13, color: '#3730a3', lineHeight: 1.6 }}>{oc.descricao}</p>
+                  </div>
+
+                  {!pendente && (
+                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 6 }}>✅ TRATAMENTO:</p>
+                      <p style={{ fontSize: 13, color: '#15803d', lineHeight: 1.6 }}>{oc.tratamento_observacao}</p>
+                    </div>
+                  )}
+
+                  {!pendente && assinantes.length > 0 && (
+                    <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✍️ COLABORADOR(ES) CIENTIFICADO(S):</p>
+                      {assinantes.map((a, i) => (
+                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: i > 0 ? '1px solid #bbf7d0' : 'none' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>{a.nome || '—'}</span>
+                          {a.url && (
+                            <img src={a.url} alt="assinatura" style={{ height: 40, maxWidth: 100, objectFit: 'contain', background: '#fff', borderRadius: 6, border: '1px solid #bbf7d0' }} />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!pendente && (
+                    <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>👤 TRATADA POR:</p>
+                      {[
+                        ['Matrícula',    oc.tratado_por],
+                        ['Nome',         oc.tratado_por_nome],
+                        ['Data / Hora',  oc.tratado_em ? new Date(oc.tratado_em).toLocaleString('pt-BR') : null],
+                      ].filter(([, v]) => v).map(([l, v]) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', fontSize: 13 }}>
+                          <span style={{ color: '#94a3b8' }}>{l}</span>
+                          <span style={{ color: '#1e293b', fontWeight: 600 }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {oc.foto_url && (
+                    <div style={{ marginBottom: 14 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📷 Foto da Ocorrência</p>
+                      <a href={oc.foto_url} target="_blank" rel="noreferrer">
+                        <img src={oc.foto_url} alt="Foto da ocorrência" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                      </a>
+                    </div>
+                  )}
+
+                  {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
+                    <div style={{ marginBottom: 14 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📷 Fotos do Tratamento ({oc.tratamento_fotos_urls.length})</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
+                        {oc.tratamento_fotos_urls.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noreferrer">
+                            <img src={url} alt={`Foto do tratamento ${i + 1}`} style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
+                    v{versaoSistema}
+                  </p>
+
+                  <button onClick={async () => {
+                    if (!Capacitor.isNativePlatform()) { imprimirOcorrenciaDoc(oc, versaoSistema); return }
+                    setGerandoPDFOc(true)
+                    try { await gerarPDFOcorrenciaDoc(oc, versaoSistema) }
+                    catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
+                    finally { setGerandoPDFOc(false) }
+                  }} disabled={gerandoPDFOc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: gerandoPDFOc ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDFOc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {gerandoPDFOc ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
+                  </button>
+
+                  <button onClick={() => compartilharOcorrenciaWhatsApp(oc)} disabled={capturandoOc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: capturandoOc ? '#64748b' : '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: capturandoOc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {capturandoOc ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
+                  </button>
+
+                  <button onClick={() => setDetalheOc(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Fechar
                   </button>
                 </>
