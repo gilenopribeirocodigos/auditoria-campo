@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { FORM_REGISTRO_INICIAL, STEPS_REGISTRO, TIPOS_REGISTRO } from './data/registros_config.js'
+import { temPermissao } from './lib/auth.js'
 import R0TipoRegistro  from './steps/R0TipoRegistro.jsx'
 import R1Modalidade    from './steps/R1Modalidade.jsx'
 import R2Identificacao from './steps/R2Identificacao.jsx'
@@ -8,13 +9,16 @@ import R4Conteudo      from './steps/R4Conteudo.jsx'
 import R5Evidencias    from './steps/R5Evidencias.jsx'
 import R6ResultadoReg  from './steps/R6ResultadoReg.jsx'
 import AberturaOcorrencia from './pages/AberturaOcorrencia.jsx'
+import EscolhaAberturaOcorrencia from './pages/EscolhaAberturaOcorrencia.jsx'
+import ImportarOcorrenciasLote from './pages/ImportarOcorrenciasLote.jsx'
 
 export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   const [step, setStep] = useState(0)
   // Abertura de Ocorrência não segue o wizard padrão (sem modalidade/
-  // participantes/checklist) — é uma tela à parte, aberta a partir do
-  // card extra em R0TipoRegistro.
-  const [mostrarOcorrencia, setMostrarOcorrencia] = useState(false)
+  // participantes/checklist) — é um fluxo à parte, aberto a partir do card
+  // extra em R0TipoRegistro: primeiro uma telinha de escolha (manual x lote),
+  // depois o formulário manual de sempre ou a importação em lote.
+  const [modoOcorrencia, setModoOcorrencia] = useState(null) // null | 'escolha' | 'manual' | 'lote'
   const [form, setForm] = useState(() => ({
     ...FORM_REGISTRO_INICIAL(),
     fiscal:           usuarioLogado?.nome      || '',
@@ -34,13 +38,34 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   const tipoConfig = TIPOS_REGISTRO[form.tipo]
   const stepProps  = { form, upd, setForm, next, prev }
 
-  if (mostrarOcorrencia) {
+  if (modoOcorrencia === 'escolha') {
+    return (
+      <EscolhaAberturaOcorrencia
+        usuarioLogado={usuarioLogado}
+        onHome={onVoltar}
+        onManual={() => setModoOcorrencia('manual')}
+        onLote={() => setModoOcorrencia('lote')}
+      />
+    )
+  }
+
+  if (modoOcorrencia === 'manual') {
     return (
       <AberturaOcorrencia
         usuarioLogado={usuarioLogado}
         isOnline={isOnline}
         onHome={onVoltar}
-        onVoltar={() => setMostrarOcorrencia(false)}
+        onVoltar={() => setModoOcorrencia('escolha')}
+      />
+    )
+  }
+
+  if (modoOcorrencia === 'lote') {
+    return (
+      <ImportarOcorrenciasLote
+        usuarioLogado={usuarioLogado}
+        onHome={onVoltar}
+        onVoltar={() => setModoOcorrencia('escolha')}
       />
     )
   }
@@ -79,7 +104,16 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
       </header>
       {/* Conteúdo */}
       <main className="app-content">
-        {step === 0 && <R0TipoRegistro  {...stepProps} onAbrirOcorrencia={() => setMostrarOcorrencia(true)} />}
+        {step === 0 && (
+          <R0TipoRegistro
+            {...stepProps}
+            onAbrirOcorrencia={() => setModoOcorrencia(
+              // Quem não tem a permissão de lote nem vê a telinha de escolha
+              // — vai direto pro manual, igual já era antes dessa feature.
+              temPermissao(usuarioLogado, 'importar_ocorrencias_lote') ? 'escolha' : 'manual'
+            )}
+          />
+        )}
         {step === 1 && <R1Modalidade    {...stepProps} />}
         {step === 2 && <R2Identificacao {...stepProps} />}
         {step === 3 && <R3Participantes {...stepProps} />}
