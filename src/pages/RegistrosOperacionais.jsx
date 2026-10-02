@@ -7,7 +7,32 @@ import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { MARCADOR_ERRO_CONCLUSAO } from '../lib/importacaoOcorrencias.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
+
+// Destaca em vermelho a linha "POSSÍVEL ERRO DE CONCLUSÃO DO SERVIÇO" que a
+// importação em lote (lib/importacaoOcorrencias.js) grava dentro da
+// descrição — pro supervisor bater o olho e perceber na hora.
+function destacarDescricaoHtml(texto) {
+  return (texto || '')
+    .split('\n')
+    .map(linha => linha.includes(MARCADOR_ERRO_CONCLUSAO)
+      ? `<strong style="color:#dc2626;">${linha}</strong>`
+      : linha)
+    .join('<br/>')
+}
+
+// Mesmo destaque, em JSX (pro modal dentro do app) — monta elementos React
+// em vez de HTML cru, pra não precisar de dangerouslySetInnerHTML aqui.
+function DescricaoDestacada({ texto }) {
+  const linhas = (texto || '').split('\n')
+  return linhas.map((linha, i) => (
+    <span key={i}>
+      {linha.includes(MARCADOR_ERRO_CONCLUSAO) ? <strong style={{ color: '#dc2626' }}>{linha}</strong> : linha}
+      {i < linhas.length - 1 && <br />}
+    </span>
+  ))
+}
 import {
   useFiltrosOperacionais,
   PainelFiltros,
@@ -178,7 +203,7 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   </div>
   <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
     <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;">DESCRIÇÃO DA OCORRÊNCIA</div>
-    <div style="font-size:13px;color:#3730a3;line-height:1.7;">${oc.descricao || ''}</div>
+    <div style="font-size:13px;color:#3730a3;line-height:1.7;">${destacarDescricaoHtml(oc.descricao)}</div>
   </div>
   ${!pendente ? `
   <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
@@ -1132,7 +1157,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
                   <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>DESCRIÇÃO DA OCORRÊNCIA:</p>
-                    <p style={{ fontSize: 13, color: '#3730a3', lineHeight: 1.6 }}>{oc.descricao}</p>
+                    <p style={{ fontSize: 13, color: '#3730a3', lineHeight: 1.6 }}><DescricaoDestacada texto={oc.descricao} /></p>
                   </div>
 
                   {!pendente && (
