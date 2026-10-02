@@ -99,7 +99,8 @@ export default function App() {
   const [msgSync,             setMsgSync]             = useState('')
   const [pendentesReg,        setPendentesReg]        = useState(0)
   const [pendentesOc,         setPendentesOc]         = useState(0)
-  const [ncPendencias,        setNcPendencias]        = useState(0) // badge: NCs + Ocorrências pendentes de tratamento
+  const [ncPendencias,        setNcPendencias]        = useState(0) // badge laranja: NCs de auditoria pendentes de tratamento
+  const [ocPendencias,        setOcPendencias]        = useState(0) // badge azul claro: Ocorrências pendentes de tratamento
 
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
     // [DPL] Checa por atualização periodicamente (não só na primeira carga)
@@ -149,13 +150,14 @@ export default function App() {
       .catch(() => { setPcAcessoBotao(null); setPcPendencias(0) })
   }, [usuario, tela])
 
-  // Badge do botão "Tratamento de Não Conformidades" — soma NCs +
-  // Ocorrências pendentes, só pra quem tem a permissão de tratar.
+  // Badges do botão "Tratamento de Não Conformidades" — NCs de auditoria e
+  // Ocorrências pendentes mostrados separados (cores diferentes), só pra
+  // quem tem a permissão de tratar.
   useEffect(() => {
-    if (!usuario || !temPermissao(usuario, 'tratar_nc')) { setNcPendencias(0); return }
+    if (!usuario || !temPermissao(usuario, 'tratar_nc')) { setNcPendencias(0); setOcPendencias(0); return }
     contarPendenciasTratamentoNC(usuario, temPermissao(usuario, 'ver_todas_pendencias_nc'))
-      .then(setNcPendencias)
-      .catch(() => setNcPendencias(0))
+      .then(({ ncPendentes, ocPendentes }) => { setNcPendencias(ncPendentes); setOcPendencias(ocPendentes) })
+      .catch(() => { setNcPendencias(0); setOcPendencias(0) })
   }, [usuario, tela])
 
   useEffect(() => {
@@ -696,12 +698,23 @@ export default function App() {
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>
               🛠️ Tratamento de Não Conformidades
-              {ncPendencias > 0 && (
-                <span style={{
-                  position: 'absolute', top: -7, right: -7, background: '#f59e0b', color: '#fff',
-                  borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
-                }}>{ncPendencias}</span>
+              {(ncPendencias > 0 || ocPendencias > 0) && (
+                <span style={{ position: 'absolute', top: -7, right: -7, display: 'flex', gap: 4 }}>
+                  {ocPendencias > 0 && (
+                    <span title="Pendentes — Abertura de Ocorrência" style={{
+                      background: '#38bdf8', color: '#fff',
+                      borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
+                    }}>{ocPendencias}</span>
+                  )}
+                  {ncPendencias > 0 && (
+                    <span title="Pendentes — Não Conformidade de Auditoria" style={{
+                      background: '#f59e0b', color: '#fff',
+                      borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
+                    }}>{ncPendencias}</span>
+                  )}
+                </span>
               )}
             </button>
           )}
