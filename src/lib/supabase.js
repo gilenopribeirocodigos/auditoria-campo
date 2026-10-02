@@ -33,9 +33,10 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
   return todas
 }
 
-// Conta pendências de tratamento pro badge do botão "Tratamento de Não
-// Conformidades" na Home — soma AS (auditorias) com NC pendente + ocorrências
-// pendentes (mesmo total que a tela mostra somando as duas abas).
+// Conta pendências de tratamento pro botão "Tratamento de Não
+// Conformidades" na Home — devolve os dois totais SEPARADOS (NCs de
+// auditoria x Ocorrências), pra exibir dois badges distintos (cada origem
+// com sua cor) em vez de um único número somado.
 //
 // IMPORTANTE: não conta linha de auditorias_nao_conformes (cada NC é um
 // item), conta AS distintas (auditoria_id, ou numero_as pra NCs antigas sem
@@ -50,23 +51,23 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
 // circular (auth.js já importa supabase.js). Mesma regra de
 // TratamentoNaoConformidades.jsx: ADMIN sempre tem essa permissão
 // automaticamente (ver temPermissao); os demais só contam o que é deles
-// (por matrícula), pra o badge bater com o que a pessoa realmente vai ver
-// ao entrar na tela.
+// (por matrícula), pra os badges baterem com o que a pessoa realmente vai
+// ver ao entrar na tela.
 export async function contarPendenciasTratamentoNC(usuarioLogado, podeVerTodas) {
-  if (!supabase) return 0
+  if (!supabase) return { ncPendentes: 0, ocPendentes: 0 }
 
   const ncRows = await buscarTodasLinhas((from, to) => {
     let q = supabase.from('auditorias_nao_conformes').select('auditoria_id, numero_as').eq('status_tratamento', 'PENDENTE').range(from, to)
     if (!podeVerTodas) q = q.eq('matricula', usuarioLogado?.matricula)
     return q
   })
-  const gruposPendentes = new Set(ncRows.map(n => n.auditoria_id || n.numero_as)).size
+  const ncPendentes = new Set(ncRows.map(n => n.auditoria_id || n.numero_as)).size
 
   let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE')
   if (!podeVerTodas) ocQ = ocQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
   const { count } = await ocQ
 
-  return gruposPendentes + (count || 0)
+  return { ncPendentes, ocPendentes: count || 0 }
 }
 
 // Upload de imagem base64 para o Storage
