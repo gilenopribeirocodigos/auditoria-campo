@@ -195,6 +195,8 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
           'DATA': formatData(a.data_registro),
           'HORA': a.hora_registro || '',
           'ENDEREÇO REUNIÃO': a.endereco || '',
+          'USUARIO': a.fiscal || '',
+          'MATRICULA_USUARIO': a.matricula_fiscal || '',
         }
         if (participantes.length === 0) {
           linhas.push({ ...base, 'NOME': '', 'MATRICULA': '', 'CPF': '', 'ASSINATURA': '', 'ENDEREÇO ASSINATURA': '', 'DISTANCIA ASSINATURA': '', 'MODALIDADE': '' })
