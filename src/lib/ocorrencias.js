@@ -54,6 +54,7 @@ export async function prepararPayloadOcorrencia(form) {
   return {
     numero_ocorrencia:         form.numero_ocorrencia || gerarNumeroOcorrencia(),
     descricao:                 form.descricao,
+    motivo:                    form.motivo || null,
     eletricista_equipe:        form.eletricista_equipe || null,
     eletricista_equipe_2:      form.eletricista_equipe_2 || null,
     prefixo:                   form.prefixo || null,
@@ -83,7 +84,7 @@ export async function salvarOcorrenciaBD(payload) {
   // migração SQL que adiciona data_abertura/hora_abertura/endereco/lat/lng/
   // eletricista_equipe_2 (mesmo padrão de salvarRegistroBD em lib/registros.js).
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { data_abertura, hora_abertura, endereco, lat, lng, eletricista_equipe_2, ...payloadCompat } = payload
+    const { data_abertura, hora_abertura, endereco, lat, lng, eletricista_equipe_2, motivo, ...payloadCompat } = payload
     ;({ data, error } = await supabase
       .from('ocorrencias')
       .insert(payloadCompat)
