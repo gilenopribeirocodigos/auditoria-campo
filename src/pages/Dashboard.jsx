@@ -294,11 +294,11 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
       {/* Header */}
-      <div style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: 'linear-gradient(135deg, #2563eb, #7c3aed)', padding: 'calc(18px + env(safe-area-inset-top)) 20px 18px', color: '#fff' }}>
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
-            padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
+            padding: '10px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
           <div>
             <h1 style={{ fontSize: 20, fontWeight: 800 }}>📊 Dashboard — Ranking Operacional</h1>
