@@ -170,6 +170,7 @@ function payloadOcorrenciaDaLinha(linha, usuarioLogado) {
   return {
     numero_ocorrencia:        gerarNumeroOcorrencia(),
     descricao:                linha.descricao,
+    motivo:                   linha.motivo || null,
     eletricista_equipe:       linha.eletricistaEquipe  || null,
     eletricista_equipe_2:     linha.eletricistaEquipe2 || null,
     prefixo:                  linha.prefixo || null,
@@ -188,7 +189,7 @@ export async function confirmarLinhasResolvidas(linhasResolvidas, usuarioLogado)
 
   let { data, error } = await supabase.from('ocorrencias').insert(payloads).select()
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const compat = payloads.map(({ eletricista_equipe_2, ...resto }) => resto)
+    const compat = payloads.map(({ eletricista_equipe_2, motivo, ...resto }) => resto)
     ;({ data, error } = await supabase.from('ocorrencias').insert(compat).select())
   }
   if (error) throw error
@@ -209,6 +210,7 @@ export async function salvarPendenciasImportacao(linhasPendentes, usuarioLogado)
     data_conclusao:           l.dataConclusaoFormatada || null,
     tipo_conclusao:           l.tipoConclusao || null,
     descricao:                l.descricao || null,
+    motivo:                   l.motivo || null,
     colaborador_1:            l.eletricistaEquipe || null,
     colaborador_2:            l.eletricistaEquipe2 || null,
     direcionado_para:         l.direcionadoPara || null,
@@ -245,6 +247,7 @@ export async function corrigirEAbrirPendencia(pendencia, ajustes, usuarioLogado)
   if (!supabase) throw new Error('Supabase não configurado.')
   const linha = {
     descricao:              pendencia.descricao,
+    motivo:                 pendencia.motivo,
     prefixo:                pendencia.prefixo,
     eletricistaEquipe:      ajustes.eletricistaEquipe  ?? pendencia.colaborador_1,
     eletricistaEquipe2:     ajustes.eletricistaEquipe2 ?? pendencia.colaborador_2,
@@ -255,7 +258,7 @@ export async function corrigirEAbrirPendencia(pendencia, ajustes, usuarioLogado)
 
   let { error } = await supabase.from('ocorrencias').insert(payload)
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { eletricista_equipe_2, ...compat } = payload
+    const { eletricista_equipe_2, motivo, ...compat } = payload
     ;({ error } = await supabase.from('ocorrencias').insert(compat))
   }
   if (error) throw error

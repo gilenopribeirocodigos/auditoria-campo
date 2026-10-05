@@ -83,10 +83,10 @@ export default function DiagnosticoRastreio({ onVoltar }) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      <div style={{ background: 'linear-gradient(135deg, #059669, #065f46)', padding: '14px 20px', color: '#fff' }}>
+      <div style={{ background: 'linear-gradient(135deg, #059669, #065f46)', padding: 'calc(14px + env(safe-area-inset-top)) 20px 14px', color: '#fff' }}>
         <button onClick={onVoltar} style={{
           background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.35)', color: '#fff',
-          padding: '6px 14px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
+          padding: '10px 16px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 10,
         }}>← Voltar para Home</button>
         <div style={{ fontSize: 19, fontWeight: 800 }}>📡 Diagnóstico de Rastreio</div>
         <div style={{ fontSize: 12.5, opacity: 0.85, marginTop: 2 }}>

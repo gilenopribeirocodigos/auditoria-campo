@@ -10,11 +10,26 @@ import { useEffect, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { SearchSelect } from '../components/Shared.jsx'
 import { listarFiscaisParaDirecionamento } from '../lib/ocorrencias.js'
+import { listarMotivosPorTipo } from '../lib/motivosRegistros.js'
 import {
   extrairLinhasPlanilha, resolverLinhasImportacao,
   confirmarLinhasResolvidas, salvarPendenciasImportacao,
   listarPendenciasImportacao, excluirPendenciaImportacao, corrigirEAbrirPendencia,
 } from '../lib/importacaoOcorrencias.js'
+
+// Modelo de planilha gerado no próprio navegador — mesmo padrão de
+// baixarModeloExcel() em SesmtCargaPessoas.jsx. Cabeçalho igual ao esperado
+// por extrairLinhasPlanilha() + uma linha de exemplo (DATAC CONCLUSAO no
+// formato americano do TOA, igual o usuário vai receber de lá).
+function baixarModeloExcel() {
+  const cabecalho = ['PREFIXO', 'UC', 'OS', 'REGISTRO_EXEC', 'DATAC CONCLUSAO', 'TIPO_CONCLUSAO']
+  const exemplo = ['PI-THE-C016M', '2000155158', '2026.00-9.00/56858.00', 'Acionar disjuntor do cliente', '9/30/2026 15:03', 'FALHA DE CONEXÃO']
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, exemplo])
+  ws['!cols'] = cabecalho.map(c => ({ wch: Math.max(c.length + 2, 16) }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Ocorrências')
+  XLSX.writeFile(wb, 'modelo_importacao_ocorrencias.xlsx')
+}
 
 function parseCsvTexto(texto) {
   const linhas = texto.replace(/\r/g, '').split('\n').filter(l => l.trim())
@@ -175,6 +190,13 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
   const [carregandoPendencias, setCarregandoPendencias] = useState(false)
   const [resultadoConfirmacao, setResultadoConfirmacao] = useState(null)
 
+  // Motivo (opcional) aplicado a TODAS as ocorrências desta importação —
+  // mesmo cadastro usado na abertura manual (tipo_registro = 'OCORRENCIA'
+  // em motivos_registros_operacionais). A planilha do TOA não traz motivo
+  // por linha, por isso é um único campo pro lote inteiro, não por linha.
+  const [motivos, setMotivos] = useState([])
+  const [motivoLote, setMotivoLote] = useState('')
+
   const carregarPendencias = () => {
     setCarregandoPendencias(true)
     listarPendenciasImportacao()
@@ -183,7 +205,10 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
       .finally(() => setCarregandoPendencias(false))
   }
 
-  useEffect(() => { carregarPendencias() }, [])
+  useEffect(() => {
+    carregarPendencias()
+    listarMotivosPorTipo('OCORRENCIA').then(lista => setMotivos(lista.map(m => m.motivo))).catch(() => setMotivos([]))
+  }, [])
 
   const onFile = e => {
     const file = e.target.files[0]
@@ -228,8 +253,10 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
   const confirmar = async () => {
     setProcessando(true); setErro('')
     try {
-      const criadas = await confirmarLinhasResolvidas(prontas, usuarioLogado)
-      await salvarPendenciasImportacao(revisar, usuarioLogado)
+      const prontasComMotivo = prontas.map(l => ({ ...l, motivo: motivoLote || null }))
+      const revisarComMotivo = revisar.map(l => ({ ...l, motivo: motivoLote || null }))
+      const criadas = await confirmarLinhasResolvidas(prontasComMotivo, usuarioLogado)
+      await salvarPendenciasImportacao(revisarComMotivo, usuarioLogado)
       setResultadoConfirmacao({ criadas: criadas.length, pendentes: revisar.length })
       setLinhasResolvidas([])
       carregarPendencias()
@@ -278,20 +305,34 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
 
           {tela === 'upload' && (
             <>
-              <label style={{
-                display: 'block', border: '2px dashed #a5b4fc', borderRadius: 14, background: '#eef2ff',
-                padding: '28px 16px', textAlign: 'center', cursor: 'pointer', marginBottom: 16,
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <label style={{
+                  flex: 1, display: 'block', border: '1.5px solid #e2e8f0', borderRadius: 10, background: '#fff',
+                  padding: '10px 14px', textAlign: 'center', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: '#1e293b',
+                }}>
+                  📄 Escolher arquivo
+                  <input type="file" accept=".csv,.xlsx,.xls" onChange={onFile} disabled={processando} style={{ display: 'none' }} />
+                </label>
+                <button onClick={baixarModeloExcel} style={{
+                  flex: 1, border: '1.5px solid #c7d2fe', borderRadius: 10, background: '#eef2ff', color: '#4338ca',
+                  padding: '10px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                }}>📥 Baixar modelo (.xlsx)</button>
+              </div>
+
+              <div style={{
+                border: '2px dashed #a5b4fc', borderRadius: 14, background: '#eef2ff',
+                padding: '28px 16px', textAlign: 'center', marginBottom: 16,
               }}>
                 <div style={{ fontSize: 30, marginBottom: 8 }}>📄</div>
                 <div style={{ fontSize: 13.5, fontWeight: 700, color: '#4338ca' }}>
-                  {processando ? 'Lendo planilha...' : nomeArquivo || 'Toque pra selecionar a planilha'}
+                  {processando ? 'Lendo planilha...' : nomeArquivo || 'Nenhuma planilha selecionada'}
                 </div>
                 <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 4 }}>.xlsx ou .csv — mesmas colunas do TOA</div>
-                <input type="file" accept=".csv,.xlsx,.xls" onChange={onFile} disabled={processando} style={{ display: 'none' }} />
-              </label>
+              </div>
               <p style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6 }}>
                 Colunas esperadas: <strong>PREFIXO</strong>, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO.
-                Cada PREFIXO é casado com a Estrutura Online (supervisor de campo + colaboradores).
+                Cada PREFIXO é casado com a Estrutura Online (supervisor de campo + colaboradores). Baixe o modelo
+                acima se tiver dúvida de como preencher — pode até usá-lo como ponto de partida.
               </p>
             </>
           )}
@@ -315,6 +356,15 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
 
               {linhasResolvidas.map((linha, i) => <CardLinha key={i} linha={linha} numero={i + 1} />)}
 
+              {motivos.length > 0 && (
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ fontSize: 11, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 4 }}>
+                    Motivo (opcional) — aplicado a todas as ocorrências desta importação
+                  </label>
+                  <SearchSelect opcoes={motivos} valor={motivoLote} onSelecionar={setMotivoLote} placeholder="Buscar e escolher o motivo..." />
+                </div>
+              )}
+
               {revisar.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 12px', marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: '#92400e' }}>
                   ℹ️ As {prontas.length} prontas são abertas agora. {revisar.length === 1 ? 'A 1 pendente não é perdida' : `As ${revisar.length} pendentes não são perdidas`} — fica{revisar.length === 1 ? '' : 'm'} guardada{revisar.length === 1 ? '' : 's'} pra você corrigir ou excluir quando quiser, sem travar as outras.
@@ -331,7 +381,7 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                     ? `📦 Abrir ${prontas.length} Ocorrência${prontas.length === 1 ? '' : 's'} Pronta${prontas.length === 1 ? '' : 's'} (${revisar.length} fica${revisar.length === 1 ? '' : 'm'} pendente${revisar.length === 1 ? '' : 's'})`
                     : `📦 Abrir ${prontas.length} Ocorrência${prontas.length === 1 ? '' : 's'}`}
               </button>
-              <button onClick={() => { setTela('upload'); setLinhasResolvidas([]); setNomeArquivo('') }} style={{
+              <button onClick={() => { setTela('upload'); setLinhasResolvidas([]); setNomeArquivo(''); setMotivoLote('') }} style={{
                 width: '100%', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff',
                 color: '#1e293b', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 8,
               }}>← Voltar e trocar o arquivo</button>
@@ -365,7 +415,7 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                 <CardPendencia key={p.id} pendencia={p} usuarioLogado={usuarioLogado} onMudou={carregarPendencias} />
               ))}
 
-              <button onClick={() => { setResultadoConfirmacao(null); setTela('upload') }} style={{
+              <button onClick={() => { setResultadoConfirmacao(null); setTela('upload'); setMotivoLote('') }} style={{
                 width: '100%', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff',
                 color: '#1e293b', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginTop: 10,
               }}>📥 Importar outra planilha</button>

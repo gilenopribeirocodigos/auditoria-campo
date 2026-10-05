@@ -824,11 +824,11 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
-      <div style={{ background: '#c2410c', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: '#c2410c', padding: 'calc(18px + env(safe-area-inset-top)) 20px 18px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
-            padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
+            padding: '10px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <div>
@@ -869,7 +869,11 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             📦 Ocorrências
             {pendentesOcQtd > 0 && (
               <span style={{
-                position: 'absolute', top: -6, right: -6, background: '#dc2626', color: '#fff',
+                // Azul claro (não vermelho) — mesma cor já usada na Home pro
+                // badge de Ocorrência pendente, pra diferenciar visualmente
+                // de Não Conformidade (laranja/vermelho) e não se misturar
+                // com o roxo/índigo da própria aba quando ativa.
+                position: 'absolute', top: -6, right: -6, background: '#38bdf8', color: '#fff',
                 borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 18, height: 18, padding: '0 4px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
               }}>{pendentesOcQtd}</span>

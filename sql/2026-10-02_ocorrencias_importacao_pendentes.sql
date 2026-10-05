@@ -1,4 +1,6 @@
 -- Aplicar em ambos schemas: dev e public via Codex
+-- (ver também sql/2026-10-05_ocorrencias_motivo.sql, que acrescenta a
+-- coluna motivo nesta tabela depois que ela já existir)
 --
 -- Suporte à importação em lote de "Abertura de Ocorrência" a partir de
 -- planilha (TOA). Linhas que não conseguem resolver o supervisor de campo

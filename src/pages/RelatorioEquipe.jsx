@@ -190,12 +190,12 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
       {/* Header */}
       <div className="no-print" style={{
         background: '#c2410c',
-        padding: '18px 20px', color: '#fff',
+        padding: 'calc(18px + env(safe-area-inset-top)) 20px 18px', color: '#fff',
       }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff',
-            padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
+            padding: '10px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14,
           }}>← Voltar para Home</button>
           <h1 style={{ fontSize: 20, fontWeight: 800 }}>🚗 Relatório por Equipe</h1>
           <p style={{ fontSize: 12, opacity: 0.8, marginTop: 3 }}>

@@ -1067,11 +1067,11 @@ export default function RotinasAdministrativas({ usuarioLogado, onVoltar }) {
 
   return (
     <div style={{ minHeight: '100vh', background: '#eef3f8' }}>
-      <div style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)', color: '#fff', padding: '22px 20px' }}>
+      <div style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%)', color: '#fff', padding: 'calc(22px + env(safe-area-inset-top)) 20px 22px' }}>
         <div style={{ maxWidth: 1040, margin: '0 auto' }}>
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.18)', color: '#fff', border: 'none', borderRadius: 9,
-            padding: '8px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 16,
+            padding: '11px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', marginBottom: 16,
           }}>← Voltar para Home</button>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
             <div>

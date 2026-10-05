@@ -198,7 +198,7 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
     <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados da Ocorrência</div>
     <table style="width:100%;border-collapse:collapse;">
-      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', oc.direcionado_para], ['Local', oc.endereco]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', oc.direcionado_para], ['Motivo', oc.motivo], ['Local', oc.endereco]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
     </table>
   </div>
   <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
@@ -532,9 +532,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
-      <div style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', padding: '18px 20px', color: '#fff' }}>
+      <div style={{ background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', padding: 'calc(18px + env(safe-area-inset-top)) 20px 18px', color: '#fff' }}>
         <div style={{ maxWidth: 900, margin: '0 auto' }}>
-          <button onClick={onVoltar} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '7px 14px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>
+          <button onClick={onVoltar} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', padding: '10px 16px', borderRadius: 8, fontSize: 13, cursor: 'pointer', marginBottom: 14 }}>
             ← Voltar para Home
           </button>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
@@ -659,6 +659,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                           {oc.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {oc.prefixo}</span></>)}
                           <span style={{ margin: '0 8px' }}>·</span>
                           <span>📨 {oc.direcionado_para}</span>
+                          {oc.motivo && (<><span style={{ margin: '0 8px' }}>·</span><span>🏷️ {oc.motivo}</span></>)}
                         </div>
                       </div>
                       <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
@@ -1146,6 +1147,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       ['Prefixo / Equipe',  oc.prefixo],
                       ['Colaborador(es)',   colaboradores],
                       ['Direcionado para',  oc.direcionado_para],
+                      ['Motivo',            oc.motivo],
                       ['Local',             oc.endereco],
                     ].filter(([, v]) => v).map(([l, v]) => (
                       <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
