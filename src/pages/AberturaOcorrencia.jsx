@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.js'
 import { Textarea, SearchSelect } from '../components/Shared.jsx'
 import { prepararPayloadOcorrencia, salvarOcorrenciaBD, listarFiscaisParaDirecionamento } from '../lib/ocorrencias.js'
 import { salvarOcorrenciaOffline } from '../lib/ocorrencias_offline.js'
+import { listarMotivosPorTipo } from '../lib/motivosRegistros.js'
 
 // Marca d'água discreta — só a data/hora, pequena, no canto inferior direito.
 // A ocorrência nem sempre é aberta pelo almoxarifado e nem sempre tem
@@ -254,6 +255,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   const [direcionadoPara,    setDirecionadoPara]    = useState('')
   const [matriculaDestino,   setMatriculaDestino]   = useState('')
   const [descricao,          setDescricao]          = useState('')
+  const [motivo,              setMotivo]            = useState('')
   const [foto,                setFoto]              = useState(null)
   const [status,              setStatus]            = useState('idle') // idle | saving | saved | error
   const [erro,                setErro]              = useState('')
@@ -274,6 +276,20 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   const [geocodando,  setGeocodando] = useState(false)
 
   const online = isOnline !== undefined ? isOnline : navigator.onLine
+
+  // Motivos cadastrados pra "Abertura de Ocorrência" (mesmo cadastro/tela de
+  // Registros Operacionais, tipo_registro = 'OCORRENCIA' — ver
+  // MotivosRegistrosOperacionais.jsx). Só fica obrigatório quando existe
+  // pelo menos um cadastrado — mesma regra de R4Conteudo.jsx — assim a tela
+  // continua funcionando antes do admin cadastrar motivos pra Ocorrência.
+  const [motivos, setMotivos] = useState([])
+  const [carregandoMotivos, setCarregandoMotivos] = useState(true)
+  useEffect(() => {
+    listarMotivosPorTipo('OCORRENCIA')
+      .then(lista => setMotivos(lista.map(m => m.motivo)))
+      .catch(() => setMotivos([]))
+      .finally(() => setCarregandoMotivos(false))
+  }, [])
 
   const obterGPS = () => {
     if (!navigator.geolocation) { setGpsStatus('erro'); return }
@@ -312,7 +328,8 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
   useEffect(() => { obterGPS() }, [])
 
-  const podeEnviar = colaboradorEnvolvido.trim() && direcionadoPara.trim() && descricao.trim().length > 0 && !!foto
+  const podeEnviar = colaboradorEnvolvido.trim() && direcionadoPara.trim() && descricao.trim().length > 0 && !!foto &&
+    !carregandoMotivos && (motivos.length === 0 || !!motivo)
 
   const addFoto = async e => {
     const file = e.target.files?.[0]
@@ -334,6 +351,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
       direcionado_para:          direcionadoPara.trim(),
       matricula_fiscal_destino:  matriculaDestino,
       descricao:                 descricao.trim(),
+      motivo:                    motivo || null,
       foto,
       aberto_por:                usuarioLogado?.nome || '',
       matricula_aberto_por:      usuarioLogado?.matricula || '',
@@ -366,7 +384,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
   const reiniciar = () => {
     setPrefixo(''); setColaboradorEnvolvido(''); setColaboradorEnvolvido2(''); setDirecionadoPara(''); setMatriculaDestino('')
-    setDescricao(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
+    setDescricao(''); setMotivo(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
     setData(new Date().toISOString().split('T')[0]); setHora(new Date().toTimeString().slice(0, 5))
     setEndereco(''); setLat(null); setLng(null); setGpsStatus('idle')
     obterGPS()
@@ -494,6 +512,20 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                 nome={direcionadoPara} matricula={matriculaDestino}
                 onNome={setDirecionadoPara} onMatricula={setMatriculaDestino}
               />
+
+              <div className="form-group">
+                <label className="form-label">Motivo{motivos.length > 0 ? ' *' : ' (opcional)'}</label>
+                <SearchSelect
+                  opcoes={motivos} valor={motivo}
+                  onSelecionar={setMotivo}
+                  placeholder={carregandoMotivos ? 'Carregando motivos...' : 'Buscar e escolher o motivo...'}
+                />
+                {!carregandoMotivos && motivos.length === 0 && (
+                  <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                    Nenhum motivo cadastrado ainda para Abertura de Ocorrência (⚙️ Motivos, em Registros Operacionais).
+                  </p>
+                )}
+              </div>
 
               <Textarea label="Descrição da ocorrência *" value={descricao} onChange={setDescricao}
                 placeholder="Descreva o que aconteceu (ex: devolução de medidor antigo não realizada)..." rows={4} />
