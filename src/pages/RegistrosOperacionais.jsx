@@ -83,9 +83,9 @@ function montarConteudoImpressaoRegistro(r, assinaturasOnline = [], versaoApp = 
 
   return `
   <div style="background:linear-gradient(135deg,#1e3a5f,#1d4ed8);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
-    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
+    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VérticeGP</div>
     <div style="font-size:20px;font-weight:800;">${tipoConfig?.emoji} ${tipoConfig?.label}</div>
-    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${modConfig?.label} · Contrato 1021/2024</div>
+    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${modConfig?.label}</div>
   </div>
   ${r.tipo === 'DISCIPLINAR' && r.tipo_medida ? `<div style="background:${tipoConfig?.bg};border:2px solid ${tipoConfig?.color};border-radius:12px;padding:12px 16px;margin-bottom:16px;text-align:center;"><span style="font-size:16px;font-weight:800;color:${tipoConfig?.color};">${TIPO_MEDIDA_LABEL[r.tipo_medida]||r.tipo_medida}</span></div>` : ''}
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
@@ -145,7 +145,7 @@ function montarConteudoImpressaoRegistro(r, assinaturasOnline = [], versaoApp = 
     </div>
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
-    <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+    <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
     <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR',{dateStyle:'long'})} · <span style="color:#dc2626;">v${versaoApp}</span></p>
   </div>`
 }
@@ -200,9 +200,9 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
 
   return `
   <div style="background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
-    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">DPL Construções — Equatorial Energia</div>
+    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VérticeGP</div>
     <div style="font-size:20px;font-weight:800;">📦 Abertura de Ocorrência</div>
-    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(oc)} · Contrato 1021/2024</div>
+    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(oc)}</div>
   </div>
   <div style="text-align:center;margin-bottom:16px;">
     <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? '#e0e7ff' : '#dcfce7'};color:${pendente ? '#3730a3' : '#15803d'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
@@ -259,7 +259,7 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
     </div>
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
-    <p style="font-size:11px;color:#94a3b8;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+    <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
     <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
   </div>`
 }
@@ -1088,7 +1088,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             </div>
                           </div>` : ''}
                           <div style="border-top:2px solid #e2e8f0;padding-top:12px;text-align:center;">
-                            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">DPL Construções — Contrato Equatorial Energia 1021/2024</p>
+                            <p style="font-size:13px;color:#94a3b8;margin:0;font-weight:700;">VérticeGP · Plataforma de Gestão Operacional</p>
                             <p style="font-size:12px;color:#cbd5e1;margin:4px 0 0 0;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;font-weight:700;">v${versaoSistema}</span></p>
                           </div>
                         </div>`

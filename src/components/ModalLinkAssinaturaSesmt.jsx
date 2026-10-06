@@ -129,7 +129,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
   const compartilharWhatsApp = () => {
     const expiracaoTexto = minutos < 60 ? `${minutos} minutos` : minutos === 60 ? '1 hora' : `${minutos / 60} horas`
     const texto = encodeURIComponent(
-      `🦺 *${label}*\nDPL Construções — Equatorial Energia\n\n` +
+      `🦺 *${label}*\n\n` +
       `Clique no link abaixo para assinar:\n${link}\n\n` +
       `⏰ Link válido por ${expiracaoTexto}`
     )
@@ -175,7 +175,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
       </style>
       <div class="folha">
         <h1>🦺 ${label}</h1>
-        <p class="sub">Assinatura de participação — DPL Construções / Equatorial Energia</p>
+        <p class="sub">Assinatura de participação</p>
         <img src="${qrSrc}" alt="QR Code" />
         <div class="instrucoes">
           <b>Como assinar:</b><br/>
@@ -233,7 +233,7 @@ export default function ModalLinkAssinaturaSesmt({ acaoId, tipoLabel, modo = 'ON
 
     ctx.fillStyle = '#64748b'
     ctx.font = '400 16px -apple-system, Segoe UI, sans-serif'
-    ctx.fillText('Assinatura de participação — DPL Construções / Equatorial Energia', LARG / 2, 92)
+    ctx.fillText('Assinatura de participação', LARG / 2, 92)
 
     const qrImg = await new Promise((resolve, reject) => {
       const img = new Image()

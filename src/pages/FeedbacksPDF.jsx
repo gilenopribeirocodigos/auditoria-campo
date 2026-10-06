@@ -189,9 +189,8 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
               <div>
                 <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 4 }}>
-                  💬 Relatório de Feedbacks — DPL Construções
+                  💬 Relatório de Feedbacks
                 </h2>
-                <p style={{ fontSize: 12, opacity: 0.8 }}>Contrato Equatorial Energia 1021/2024</p>
                 <p style={{ fontSize: 13, marginTop: 8, fontWeight: 600 }}>
                   Período: {formatPeriodo()}
                 </p>
@@ -326,7 +325,7 @@ export default function FeedbacksPDF({ usuarioLogado, onVoltar }) {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             fontSize: 11, color: '#94a3b8', flexWrap: 'wrap', gap: 8,
           }}>
-            <span>DPL Construções — Contrato Equatorial Energia 1021/2024</span>
+            <span>VérticeGP · Plataforma de Gestão Operacional</span>
             <span>Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</span>
           </div>
         </div>

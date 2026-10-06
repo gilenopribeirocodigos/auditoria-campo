@@ -19,9 +19,9 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['icon-192.png', 'icon-512.png'],
       manifest: {
-        name: 'Auditoria de Campo — DPL',
-        short_name: 'Auditoria DPL',
-        description: 'Sistema de auditoria operacional de campo — DPL Construções',
+        name: 'VérticeGP — Plataforma de Gestão Operacional',
+        short_name: 'VérticeGP',
+        description: 'Sistema de auditoria e gestão operacional de campo',
         theme_color: '#1e3a5f',
         background_color: '#f0f4f8',
         display: 'standalone',

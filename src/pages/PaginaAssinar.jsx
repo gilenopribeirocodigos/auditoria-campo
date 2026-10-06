@@ -339,7 +339,7 @@ export default function PaginaAssinar({ tokenUUID }) {
           </div>
         )}
         <div style={{ marginTop: 16, background: '#f1f5f9', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#64748b' }}>
-          DPL Construções — Contrato Equatorial Energia 1021/2024
+          VérticeGP · Plataforma de Gestão Operacional
         </div>
       </div>
     </div>
@@ -349,7 +349,7 @@ export default function PaginaAssinar({ tokenUUID }) {
     <div style={styles.tela}>
       {/* Header */}
       <div style={{ background: 'linear-gradient(135deg, #1e3a5f, #1d4ed8)', color: '#fff', padding: '16px 20px', borderRadius: '0 0 20px 20px', marginBottom: 20 }}>
-        <p style={{ fontSize: 11, opacity: 0.7, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>DPL Construções — Equatorial Energia</p>
+        <p style={{ fontSize: 11, opacity: 0.7, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>VérticeGP</p>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <span style={{ fontSize: 24 }}>{tipoConfig?.emoji || '📝'}</span>
