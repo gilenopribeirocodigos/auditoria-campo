@@ -20,11 +20,12 @@ import {
 // Modelo de planilha gerado no próprio navegador — mesmo padrão de
 // baixarModeloExcel() em SesmtCargaPessoas.jsx. Cabeçalho igual ao esperado
 // por extrairLinhasPlanilha() + uma linha de exemplo (DATAC CONCLUSAO no
-// formato americano do TOA, igual o usuário vai receber de lá). MOTIVO não
-// vem do TOA — é a coluna opcional que o usuário pode preencher por linha.
+// formato americano do TOA, igual o usuário vai receber de lá). MOTIVO e
+// OBSERVACAO não vêm do TOA — são colunas opcionais que o usuário pode
+// preencher por linha.
 function baixarModeloExcel() {
-  const cabecalho = ['PREFIXO', 'UC', 'OS', 'REGISTRO_EXEC', 'DATAC CONCLUSAO', 'TIPO_CONCLUSAO', 'MOTIVO']
-  const exemplo = ['PI-THE-C016M', '2000155158', '2026.00-9.00/56858.00', 'Acionar disjuntor do cliente', '9/30/2026 15:03', 'FALHA DE CONEXÃO', 'DEVOLUÇÃO DE MATERIAL NÃO REALIZADA']
+  const cabecalho = ['PREFIXO', 'UC', 'OS', 'REGISTRO_EXEC', 'DATAC CONCLUSAO', 'TIPO_CONCLUSAO', 'MOTIVO', 'OBSERVACAO']
+  const exemplo = ['PI-THE-C016M', '2000155158', '2026.00-9.00/56858.00', 'Acionar disjuntor do cliente', '9/30/2026 15:03', 'FALHA DE CONEXÃO', 'DEVOLUÇÃO DE MATERIAL NÃO REALIZADA', 'NÃO FECHAR NOTA DE SERVIÇO COMO "SERVIÇO PREVENTIVO NÃO PROGRAMADO"']
   const ws = XLSX.utils.aoa_to_sheet([cabecalho, exemplo])
   ws['!cols'] = cabecalho.map(c => ({ wch: Math.max(c.length + 2, 16) }))
   const wb = XLSX.utils.book_new()
@@ -334,8 +335,8 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                 <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 4 }}>.xlsx ou .csv — mesmas colunas do TOA</div>
               </div>
               <p style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6 }}>
-                Colunas esperadas: <strong>PREFIXO</strong>, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO
-                e MOTIVO (opcional, não vem do TOA — só se você acrescentar).
+                Colunas esperadas: <strong>PREFIXO</strong>, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO,
+                MOTIVO e OBSERVACAO (as duas últimas opcionais, não vêm do TOA — só se você acrescentar).
                 Cada PREFIXO é casado com a Estrutura Online (supervisor de campo + colaboradores). Baixe o modelo
                 acima se tiver dúvida de como preencher — pode até usá-lo como ponto de partida.
               </p>

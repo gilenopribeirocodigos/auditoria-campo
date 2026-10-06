@@ -1,6 +1,7 @@
 // ── lib/importacaoOcorrencias.js ────────────────────────────────────────────
 // Importação em lote de "Abertura de Ocorrência" a partir da planilha do TOA
-// (colunas PREFIXO, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO).
+// (colunas PREFIXO, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO +
+// MOTIVO e OBSERVACAO, opcionais, que o usuário pode acrescentar à parte).
 // Cada PREFIXO é casado com estrutura_equipes (supervisor de campo + até 2
 // colaboradores) e a matrícula do supervisor é casada com usuarios — mesmo
 // padrão de pega(aliases)/normChave de SesmtCargaPessoas.jsx. Linha que não
@@ -11,6 +12,7 @@ import { supabase } from './supabase.js'
 import { gerarNumeroOcorrencia } from './ocorrencias.js'
 
 export const MARCADOR_ERRO_CONCLUSAO = 'POSSÍVEL ERRO DE CONCLUSÃO DO SERVIÇO'
+export const MARCADOR_OBSERVACAO     = 'OBSERVAÇÃO'
 
 const normChave = s => String(s || '')
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -27,6 +29,10 @@ const ALIAS_TIPO_CONCLUSAO = ['tipo conclusao', 'tipo de conclusao']
 // ImportarOcorrenciasLote.jsx). Quando presente na linha, tem prioridade
 // sobre o motivo único escolhido pra importação inteira (ver tela).
 const ALIAS_MOTIVO = ['motivo']
+// OBSERVACAO também não vem do TOA — texto livre opcional pra orientar quem
+// vai tratar (ex.: "não fechar nota de serviço como preventivo não
+// programado"). Entra destacado na descrição (ver MARCADOR_OBSERVACAO).
+const ALIAS_OBSERVACAO = ['observacao', 'obs']
 
 // ─── Lê as linhas da planilha (objetos XLSX.utils.sheet_to_json) e normaliza
 // pros nomes de campo usados no resto deste módulo ─────────────────────────
@@ -46,6 +52,7 @@ export function extrairLinhasPlanilha(objetos) {
         dataConclusaoRaw: pega(ALIAS_DATA_CONCLUSAO),
         tipoConclusao:    pega(ALIAS_TIPO_CONCLUSAO),
         motivo:           pega(ALIAS_MOTIVO).toUpperCase(),
+        observacao:       pega(ALIAS_OBSERVACAO),
       }
     })
     .filter(l => l.prefixo || l.uc || l.os)
@@ -66,19 +73,27 @@ export function corrigirDataConclusao(raw) {
   return hora ? `${data} às ${hora.padStart(2, '0')}:${min}` : data
 }
 
-// ─── Monta a descrição da Ocorrência a partir dos dados da planilha. O
-// TIPO_CONCLUSAO vira uma linha com o marcador MARCADOR_ERRO_CONCLUSAO — os
-// lugares que exibem a descrição (card/modal/PDF) destacam essa linha em
-// vermelho procurando por esse marcador (ver destacarLinhasDescricao).
+// ─── Monta a descrição da Ocorrência a partir dos dados da planilha.
+// OBSERVACAO (se houver) entra logo no topo, destacada com o marcador
+// MARCADOR_OBSERVACAO; TIPO_CONCLUSAO vira uma linha com o marcador
+// MARCADOR_ERRO_CONCLUSAO — os lugares que exibem a descrição (card/modal/
+// PDF) destacam essas linhas (ver destacarDescricaoHtml/DescricaoDestacada
+// em RegistrosOperacionais.jsx).
 export function montarDescricaoImportada(linha) {
-  const linhas = [
-    'IMPORTADO DE PLANILHA (TOA)',
+  const linhas = ['IMPORTADO EM LOTE VIA PLANILHA']
+  if (linha.observacao) {
+    linhas.push('')
+    linhas.push(`📝 ${MARCADOR_OBSERVACAO}: ${linha.observacao}`)
+  }
+  linhas.push(
     '',
-    linha.uc           ? `UC: ${linha.uc}` : null,
-    linha.os           ? `OS: ${linha.os}` : null,
-    linha.registroExec ? `Registro de Execução: ${linha.registroExec}` : null,
-    linha.dataConclusaoFormatada ? `Data de Conclusão: ${linha.dataConclusaoFormatada}` : null,
-  ].filter(v => v !== null)
+    ...[
+      linha.uc           ? `UC: ${linha.uc}` : null,
+      linha.os           ? `OS: ${linha.os}` : null,
+      linha.registroExec ? `Registro de Execução: ${linha.registroExec}` : null,
+      linha.dataConclusaoFormatada ? `Data de Conclusão: ${linha.dataConclusaoFormatada}` : null,
+    ].filter(v => v !== null)
+  )
   if (linha.tipoConclusao) {
     linhas.push('')
     linhas.push(`⚠️ ${MARCADOR_ERRO_CONCLUSAO}: ${linha.tipoConclusao}`)
