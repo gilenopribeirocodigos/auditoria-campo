@@ -285,8 +285,7 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
                     ? `${prefixosFiltrados.length} equipes selecionadas`
                     : prefixosFiltrados[0]}
                 </h2>
-                <p style={{ fontSize: 12, opacity: 0.8 }}>Relatório de Fiscalizações — DPL Construções</p>
-                <p style={{ fontSize: 12, opacity: 0.75, marginTop: 2 }}>Contrato Equatorial Energia 1021/2024</p>
+                <p style={{ fontSize: 12, opacity: 0.8 }}>Relatório de Fiscalizações</p>
                 <p style={{ fontSize: 13, fontWeight: 600, marginTop: 8 }}>Período: {formatPeriodo()}</p>
                 {filtros.selRegional.length > 0 && (
                   <p style={{ fontSize: 12, opacity: 0.9, marginTop: 2 }}>
@@ -566,7 +565,7 @@ export default function RelatorioEquipe({ usuarioLogado, onVoltar }) {
             display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             fontSize: 11, color: '#94a3b8', flexWrap: 'wrap', gap: 8,
           }}>
-            <span>DPL Construções — Contrato Equatorial Energia 1021/2024</span>
+            <span>VérticeGP · Plataforma de Gestão Operacional</span>
             <span>Gerado em {new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</span>
           </div>
         </div>

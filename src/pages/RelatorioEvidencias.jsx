@@ -162,7 +162,7 @@ function montarSlideHtml(r, idx, total) {
           display:flex;justify-content:space-between;align-items:center;
           flex-shrink:0;
         ">
-          <span style="font-size:10px;color:#94a3b8;">DPL Construções — Equatorial Energia · Contrato 1021/2024</span>
+          <span style="font-size:10px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</span>
           <span style="font-size:10px;color:#94a3b8;">Registro ${idx + 1} de ${total}</span>
         </div>
       </div>`
@@ -207,7 +207,7 @@ function gerarHTMLApresentacao(registros, titulo) {
   <div class="capa">
     <div style="font-size:48px;margin-bottom:12px;">📊</div>
     <h1 style="font-size:28px;font-weight:900;margin-bottom:8px;">${titulo}</h1>
-    <p style="font-size:14px;opacity:0.75;margin-bottom:4px;">DPL Construções — Equatorial Energia · Contrato 1021/2024</p>
+    <p style="font-size:14px;opacity:0.75;margin-bottom:4px;">VérticeGP · Plataforma de Gestão Operacional</p>
     <p style="font-size:13px;opacity:0.6;">${registros.length} registro(s) · Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })}</p>
 
     <!-- Resumo por tipo -->
