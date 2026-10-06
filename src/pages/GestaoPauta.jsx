@@ -692,7 +692,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       `▪️ ${p.prefixo} | Fiscal: ${p.fiscal_login} | Data: ${p.data_prevista}${p.os ? ` | OS: ${p.os}` : ''}${p.uc ? ` | UC: ${p.uc}` : ''}${p.motivo_auditoria ? ` | Motivo: ${p.motivo_auditoria}` : ''}`
     ).join('\n')
     const msg = encodeURIComponent(
-      `🚨 *PAUTAS DE FISCALIZAÇÃO VENCIDAS — DPL CONSTRUÇÕES*\n\n${linhas}\n\nFavor regularizar!`
+      `🚨 *PAUTAS DE FISCALIZAÇÃO VENCIDAS*\n\n${linhas}\n\nFavor regularizar!`
     )
     window.open(`https://wa.me/?text=${msg}`, '_blank')
   }

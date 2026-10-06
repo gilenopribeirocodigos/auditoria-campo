@@ -524,8 +524,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
 
       const { ini, fim } = filtros.getDatasQuery()
       const resumo = [
-        ['RELATÓRIO DE AUDITORIAS — DPL CONSTRUÇÕES'],
-        ['Contrato Equatorial Energia 1021/2024'],
+        ['RELATÓRIO DE AUDITORIAS'],
         [''],
         ['Período', `${formatData(ini)} a ${formatData(fim)}`],
         ['Gerado em', new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })],
@@ -554,7 +553,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
       wsResumo['!cols'] = [{ wch: 28 }, { wch: 40 }]
       XLSX.utils.book_append_sheet(wb, wsResumo, 'Resumo')
 
-      XLSX.writeFile(wb, `Auditorias_DPL_${ini}_${fim}.xlsx`)
+      XLSX.writeFile(wb, `Auditorias_${ini}_${fim}.xlsx`)
     } catch (e) {
       console.error('Erro ao exportar:', e)
       alert('Erro ao gerar Excel. Tente novamente.')

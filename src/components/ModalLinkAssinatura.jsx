@@ -81,7 +81,7 @@ export default function ModalLinkAssinatura({ registroId, tipoLabel, onFechar })
       ? `${minutos} minutos`
       : minutos === 60 ? '1 hora' : `${minutos / 60} horas`
     const texto = encodeURIComponent(
-      `📋 *${label}*\nDPL Construções — Equatorial Energia\n\n` +
+      `📋 *${label}*\n\n` +
       `Clique no link abaixo para assinar:\n${link}\n\n` +
       `⏰ Link válido por ${expiracaoTexto}`
     )
