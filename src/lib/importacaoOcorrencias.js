@@ -22,6 +22,11 @@ const ALIAS_OS            = ['os']
 const ALIAS_REGISTRO_EXEC = ['registro exec', 'registro execucao']
 const ALIAS_DATA_CONCLUSAO = ['datac conclusao', 'data conclusao', 'data de conclusao']
 const ALIAS_TIPO_CONCLUSAO = ['tipo conclusao', 'tipo de conclusao']
+// MOTIVO não vem do TOA — é opcional, só existe se o próprio usuário
+// acrescentar essa coluna na planilha (ex.: a partir do modelo baixado em
+// ImportarOcorrenciasLote.jsx). Quando presente na linha, tem prioridade
+// sobre o motivo único escolhido pra importação inteira (ver tela).
+const ALIAS_MOTIVO = ['motivo']
 
 // ─── Lê as linhas da planilha (objetos XLSX.utils.sheet_to_json) e normaliza
 // pros nomes de campo usados no resto deste módulo ─────────────────────────
@@ -40,6 +45,7 @@ export function extrairLinhasPlanilha(objetos) {
         registroExec:     pega(ALIAS_REGISTRO_EXEC),
         dataConclusaoRaw: pega(ALIAS_DATA_CONCLUSAO),
         tipoConclusao:    pega(ALIAS_TIPO_CONCLUSAO),
+        motivo:           pega(ALIAS_MOTIVO).toUpperCase(),
       }
     })
     .filter(l => l.prefixo || l.uc || l.os)
