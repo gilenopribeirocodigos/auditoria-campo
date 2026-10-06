@@ -377,10 +377,15 @@ function CampoAutocompleteEstrutura({ coluna, value, onChange, placeholder }) {
 // isso, vira um parágrafo ilegível. parseDescricaoImportada() separa os
 // campos de volta; quando não reconhece o formato (descrição digitada à
 // mão), devolve null e aqui cai no texto simples, só com quebra de linha.
-function DescricaoOcorrencia({ texto }) {
+function DescricaoOcorrencia({ texto, comEspacoParaEditar }) {
   const dados = parseDescricaoImportada(texto)
   if (!dados) {
-    return <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap' }}>{texto}</p>
+    return (
+      <p style={{
+        fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap',
+        paddingRight: comEspacoParaEditar ? 56 : 0,
+      }}>{texto}</p>
+    )
   }
   const linhasDados = [
     ['UC', dados.uc],
@@ -391,7 +396,10 @@ function DescricaoOcorrencia({ texto }) {
 
   return (
     <div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>
+      <div style={{
+        fontSize: 10, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.4,
+        marginBottom: 10, paddingRight: comEspacoParaEditar ? 56 : 0,
+      }}>
         📥 Importado em lote via planilha
       </div>
 
@@ -608,14 +616,19 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
           </div>
         ) : (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <div style={{ flex: 1, minWidth: 0 }}><DescricaoOcorrencia texto={oc.descricao} /></div>
+            <div style={{ position: 'relative' }}>
+              {/* "✎ Editar" flutua no canto em vez de dividir a linha com
+                  DescricaoOcorrencia num flex row — um sibling flex ali
+                  espremia a LARGURA INTEIRA do bloco (Observação/UC-OS/Erro),
+                  não só a linha do botão, deixando tudo recuado à direita. */}
               {podeEditar && (
                 <button onClick={() => setEditando(true)} style={{
-                  flexShrink: 0, border: 'none', background: 'none', color: '#4338ca',
+                  position: 'absolute', top: 0, right: 0,
+                  border: 'none', background: 'none', color: '#4338ca',
                   fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: '2px 4px',
                 }}>✎ Editar</button>
               )}
+              <DescricaoOcorrencia texto={oc.descricao} comEspacoParaEditar={podeEditar} />
             </div>
             {oc.eletricista_equipe && (
               <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
