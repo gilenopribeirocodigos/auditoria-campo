@@ -5,6 +5,8 @@ import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from 
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
 import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia } from '../lib/ocorrencias.js'
+import { parseDescricaoImportada } from '../lib/importacaoOcorrencias.js'
+import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 
 const TIPO_LABEL = { DESEMPENHO: '📊 Desempenho Operacional', POS_SERVICO: '✅ Pós Serviço' }
 
@@ -369,6 +371,64 @@ function CampoAutocompleteEstrutura({ coluna, value, onChange, placeholder }) {
   )
 }
 
+// Descrição de uma Ocorrência importada em lote (lib/importacaoOcorrencias.js)
+// vem como um texto corrido com vários campos juntos (Observação, UC, OS,
+// Registro de Execução, Data de Conclusão, possível erro de conclusão) — sem
+// isso, vira um parágrafo ilegível. parseDescricaoImportada() separa os
+// campos de volta; quando não reconhece o formato (descrição digitada à
+// mão), devolve null e aqui cai no texto simples, só com quebra de linha.
+function DescricaoOcorrencia({ texto }) {
+  const dados = parseDescricaoImportada(texto)
+  if (!dados) {
+    return <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600, whiteSpace: 'pre-wrap' }}>{texto}</p>
+  }
+  const linhasDados = [
+    ['UC', dados.uc],
+    ['OS', dados.os],
+    ['Registro de Execução', dados.registroExec],
+    ['Data de Conclusão', dados.dataConclusao],
+  ].filter(([, v]) => v)
+
+  return (
+    <div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: '#6366f1', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>
+        📥 Importado em lote via planilha
+      </div>
+
+      {dados.observacao && (
+        <div style={{ background: '#dbeafe', border: '2px solid #3b82f6', borderRadius: 8, padding: '11px 13px', marginBottom: 10, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 19, flexShrink: 0, marginTop: 1 }}>📝</span>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>Observação</div>
+            <div style={{ fontSize: 13.5, fontWeight: 700, color: '#1e3a8a', lineHeight: 1.5 }}>{dados.observacao}</div>
+          </div>
+        </div>
+      )}
+
+      {linhasDados.length > 0 && (
+        <div style={{ background: '#fff', border: '1px solid #e0e7ff', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>
+          {linhasDados.map(([l, v]) => (
+            <div key={l} style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0' }}>
+              <span style={{ color: '#94a3b8', minWidth: 118, flexShrink: 0 }}>{l}</span>
+              <span style={{ color: '#1e293b', fontWeight: 600, wordBreak: 'break-word' }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {dados.erroConclusao && (
+        <div style={{ background: '#fef2f2', border: '1.5px solid #fca5a5', borderRadius: 8, padding: '8px 10px', display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 15, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+          <div>
+            <div style={{ fontSize: 9, fontWeight: 800, color: '#b91c1c', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2, opacity: 0.75 }}>Possível erro de conclusão do serviço</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#b91c1c', lineHeight: 1.5 }}>{dados.erroConclusao}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
   const pendente = oc.status === 'PENDENTE'
   const [aberto,           setAberto]           = useState(false)
@@ -466,19 +526,20 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
-            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{numeroOcorrencia(oc)}</span>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
             <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
               background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
             }}>
               {pendente ? '🟣 pendente' : '🟢 tratada'}
             </span>
           </div>
-          <p style={{ fontSize: 11, color: '#64748b' }}>
-            Encaminhada para: <strong>{oc.direcionado_para}</strong> · aberta por {oc.aberto_por} · {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-          </p>
+          <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{numeroOcorrencia(oc)}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <p style={{ fontSize: 11.5, color: '#64748b' }}>📨 Encaminhada para <strong style={{ color: '#1e293b' }}>{oc.direcionado_para}</strong></p>
+            <p style={{ fontSize: 11.5, color: '#64748b' }}>🧑 Aberta por <strong style={{ color: '#1e293b' }}>{oc.aberto_por}</strong> · {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</p>
+          </div>
           {!aberto && (
             <p style={{ fontSize: 12, color: '#334155', marginTop: 6 }}>
               {oc.descricao.length > 90 ? oc.descricao.slice(0, 90) + '...' : oc.descricao} — toque para {pendente ? 'tratar' : 'ver detalhes'}
@@ -489,6 +550,25 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
       </div>
 
       {aberto && <div onClick={e => e.stopPropagation()}>
+
+      {oc.motivo && !editando && (() => {
+        const tema = temaMotivoOcorrencia(oc.motivo)
+        return (
+          <div style={{
+            marginTop: 10, background: '#fff', border: '1px solid #e2e8f0', borderLeft: `4px solid ${tema.color}`,
+            borderRadius: 10, padding: '9px 12px 9px 11px', display: 'flex', alignItems: 'center', gap: 11,
+          }}>
+            <div style={{
+              width: 36, height: 36, borderRadius: 10, background: tema.bg, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 17,
+            }}>{tema.emoji}</div>
+            <div>
+              <p style={{ fontSize: 9.5, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 1px' }}>Motivo</p>
+              <p style={{ fontSize: 13.5, fontWeight: 800, color: tema.color, margin: 0 }}>{oc.motivo}</p>
+            </div>
+          </div>
+        )
+      })()}
 
       <div style={{ marginTop: 10, marginBottom: pendente ? 14 : 10, background: '#eef2ff', borderLeft: '3px solid #4338ca', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
         {editando ? (
@@ -529,7 +609,7 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
         ) : (
           <>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-              <p style={{ fontSize: 12, color: '#3730a3', margin: 0, fontWeight: 600 }}>{oc.descricao}</p>
+              <div style={{ flex: 1, minWidth: 0 }}><DescricaoOcorrencia texto={oc.descricao} /></div>
               {podeEditar && (
                 <button onClick={() => setEditando(true)} style={{
                   flexShrink: 0, border: 'none', background: 'none', color: '#4338ca',
