@@ -101,6 +101,33 @@ export function montarDescricaoImportada(linha) {
   return linhas.join('\n')
 }
 
+// ─── Desfaz montarDescricaoImportada() — separa de volta nos campos
+// originais pra quem exibe a descrição poder montar um card organizado em
+// blocos (Observação destacada, UC/OS/Registro/Data em tabelinha, erro de
+// conclusão destacado) em vez de um parágrafo corrido. Devolve null quando
+// o texto não começa com o cabeçalho esperado (descrição digitada à mão,
+// sem passar pela importação) — quem chama deve exibir o texto puro nesse
+// caso (ver CardOcorrencia em TratamentoNaoConformidades.jsx).
+export function parseDescricaoImportada(texto) {
+  const linhas = String(texto || '').split('\n').map(l => l.trim()).filter(l => l !== '')
+  if (linhas[0] !== 'IMPORTADO EM LOTE VIA PLANILHA') return null
+
+  const resultado = { observacao: null, uc: null, os: null, registroExec: null, dataConclusao: null, erroConclusao: null }
+  const prefixoObs  = `📝 ${MARCADOR_OBSERVACAO}:`
+  const prefixoErro = `⚠️ ${MARCADOR_ERRO_CONCLUSAO}:`
+  const apos = (linha, prefixo) => linha.slice(prefixo.length).trim()
+
+  for (const linha of linhas.slice(1)) {
+    if (linha.startsWith(prefixoObs))                        resultado.observacao   = apos(linha, prefixoObs)
+    else if (linha.startsWith(prefixoErro))                   resultado.erroConclusao = apos(linha, prefixoErro)
+    else if (linha.startsWith('UC:'))                         resultado.uc            = apos(linha, 'UC:')
+    else if (linha.startsWith('OS:'))                         resultado.os            = apos(linha, 'OS:')
+    else if (linha.startsWith('Registro de Execução:'))       resultado.registroExec  = apos(linha, 'Registro de Execução:')
+    else if (linha.startsWith('Data de Conclusão:'))          resultado.dataConclusao = apos(linha, 'Data de Conclusão:')
+  }
+  return resultado
+}
+
 function montarResultadoBase(linha) {
   const dataConclusaoFormatada = corrigirDataConclusao(linha.dataConclusaoRaw)
   const comData = { ...linha, dataConclusaoFormatada }
