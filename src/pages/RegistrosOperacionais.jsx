@@ -7,19 +7,27 @@ import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
-import { MARCADOR_ERRO_CONCLUSAO } from '../lib/importacaoOcorrencias.js'
+import { MARCADOR_ERRO_CONCLUSAO, MARCADOR_OBSERVACAO } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
 
-// Destaca em vermelho a linha "POSSÍVEL ERRO DE CONCLUSÃO DO SERVIÇO" que a
-// importação em lote (lib/importacaoOcorrencias.js) grava dentro da
-// descrição — pro supervisor bater o olho e perceber na hora.
+// Cor de destaque de cada marcador que a importação em lote
+// (lib/importacaoOcorrencias.js) grava dentro da descrição — pro supervisor
+// bater o olho e perceber na hora, sem precisar ler o texto todo.
+function corDoMarcador(linha) {
+  if (linha.includes(MARCADOR_ERRO_CONCLUSAO)) return '#dc2626'
+  if (linha.includes(MARCADOR_OBSERVACAO))     return '#1d4ed8'
+  return null
+}
+
+// Destaque em HTML cru (pro PDF/Zap, montado fora do React).
 function destacarDescricaoHtml(texto) {
   return (texto || '')
     .split('\n')
-    .map(linha => linha.includes(MARCADOR_ERRO_CONCLUSAO)
-      ? `<strong style="color:#dc2626;">${linha}</strong>`
-      : linha)
+    .map(linha => {
+      const cor = corDoMarcador(linha)
+      return cor ? `<strong style="color:${cor};">${linha}</strong>` : linha
+    })
     .join('<br/>')
 }
 
@@ -27,12 +35,15 @@ function destacarDescricaoHtml(texto) {
 // em vez de HTML cru, pra não precisar de dangerouslySetInnerHTML aqui.
 function DescricaoDestacada({ texto }) {
   const linhas = (texto || '').split('\n')
-  return linhas.map((linha, i) => (
-    <span key={i}>
-      {linha.includes(MARCADOR_ERRO_CONCLUSAO) ? <strong style={{ color: '#dc2626' }}>{linha}</strong> : linha}
-      {i < linhas.length - 1 && <br />}
-    </span>
-  ))
+  return linhas.map((linha, i) => {
+    const cor = corDoMarcador(linha)
+    return (
+      <span key={i}>
+        {cor ? <strong style={{ color: cor }}>{linha}</strong> : linha}
+        {i < linhas.length - 1 && <br />}
+      </span>
+    )
+  })
 }
 import {
   useFiltrosOperacionais,
