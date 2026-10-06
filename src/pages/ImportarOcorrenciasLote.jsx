@@ -20,10 +20,11 @@ import {
 // Modelo de planilha gerado no próprio navegador — mesmo padrão de
 // baixarModeloExcel() em SesmtCargaPessoas.jsx. Cabeçalho igual ao esperado
 // por extrairLinhasPlanilha() + uma linha de exemplo (DATAC CONCLUSAO no
-// formato americano do TOA, igual o usuário vai receber de lá).
+// formato americano do TOA, igual o usuário vai receber de lá). MOTIVO não
+// vem do TOA — é a coluna opcional que o usuário pode preencher por linha.
 function baixarModeloExcel() {
-  const cabecalho = ['PREFIXO', 'UC', 'OS', 'REGISTRO_EXEC', 'DATAC CONCLUSAO', 'TIPO_CONCLUSAO']
-  const exemplo = ['PI-THE-C016M', '2000155158', '2026.00-9.00/56858.00', 'Acionar disjuntor do cliente', '9/30/2026 15:03', 'FALHA DE CONEXÃO']
+  const cabecalho = ['PREFIXO', 'UC', 'OS', 'REGISTRO_EXEC', 'DATAC CONCLUSAO', 'TIPO_CONCLUSAO', 'MOTIVO']
+  const exemplo = ['PI-THE-C016M', '2000155158', '2026.00-9.00/56858.00', 'Acionar disjuntor do cliente', '9/30/2026 15:03', 'FALHA DE CONEXÃO', 'DEVOLUÇÃO DE MATERIAL NÃO REALIZADA']
   const ws = XLSX.utils.aoa_to_sheet([cabecalho, exemplo])
   ws['!cols'] = cabecalho.map(c => ({ wch: Math.max(c.length + 2, 16) }))
   const wb = XLSX.utils.book_new()
@@ -54,6 +55,7 @@ function CardLinha({ linha, numero }) {
           <div><span style={{ color: '#94a3b8' }}>Direcionar para </span><strong>{linha.direcionadoPara}</strong></div>
           {linha.eletricistaEquipe  && <div><span style={{ color: '#94a3b8' }}>Colaborador 1 </span><strong>{linha.eletricistaEquipe}</strong></div>}
           {linha.eletricistaEquipe2 && <div><span style={{ color: '#94a3b8' }}>Colaborador 2 </span><strong>{linha.eletricistaEquipe2}</strong></div>}
+          {linha.motivo && <div><span style={{ color: '#94a3b8' }}>🏷️ Motivo </span><strong>{linha.motivo}</strong></div>}
         </div>
         <div style={{ background: '#f8fafc', borderRadius: 10, padding: '8px 10px', fontSize: 11.5, whiteSpace: 'pre-wrap', color: '#374151' }}>
           {linha.descricao}
@@ -253,8 +255,10 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
   const confirmar = async () => {
     setProcessando(true); setErro('')
     try {
-      const prontasComMotivo = prontas.map(l => ({ ...l, motivo: motivoLote || null }))
-      const revisarComMotivo = revisar.map(l => ({ ...l, motivo: motivoLote || null }))
+      // Motivo da própria linha (coluna MOTIVO na planilha) tem prioridade;
+      // sem ela, cai pro motivo único escolhido pra importação inteira.
+      const prontasComMotivo = prontas.map(l => ({ ...l, motivo: l.motivo || motivoLote || null }))
+      const revisarComMotivo = revisar.map(l => ({ ...l, motivo: l.motivo || motivoLote || null }))
       const criadas = await confirmarLinhasResolvidas(prontasComMotivo, usuarioLogado)
       await salvarPendenciasImportacao(revisarComMotivo, usuarioLogado)
       setResultadoConfirmacao({ criadas: criadas.length, pendentes: revisar.length })
@@ -330,7 +334,8 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                 <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 4 }}>.xlsx ou .csv — mesmas colunas do TOA</div>
               </div>
               <p style={{ fontSize: 11.5, color: '#94a3b8', lineHeight: 1.6 }}>
-                Colunas esperadas: <strong>PREFIXO</strong>, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO.
+                Colunas esperadas: <strong>PREFIXO</strong>, UC, OS, REGISTRO_EXEC, DATAC CONCLUSAO, TIPO_CONCLUSAO
+                e MOTIVO (opcional, não vem do TOA — só se você acrescentar).
                 Cada PREFIXO é casado com a Estrutura Online (supervisor de campo + colaboradores). Baixe o modelo
                 acima se tiver dúvida de como preencher — pode até usá-lo como ponto de partida.
               </p>

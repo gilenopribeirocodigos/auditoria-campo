@@ -8,6 +8,7 @@ import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from 
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
 import { MARCADOR_ERRO_CONCLUSAO } from '../lib/importacaoOcorrencias.js'
+import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
 
 // Destaca em vermelho a linha "POSSÍVEL ERRO DE CONCLUSÃO DO SERVIÇO" que a
@@ -198,9 +199,19 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
     <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados da Ocorrência</div>
     <table style="width:100%;border-collapse:collapse;">
-      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', oc.direcionado_para], ['Motivo', oc.motivo], ['Local', oc.endereco]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', oc.direcionado_para], ['Local', oc.endereco]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
     </table>
   </div>
+  ${oc.motivo ? (() => {
+    const tema = temaMotivoOcorrencia(oc.motivo)
+    return `<div style="background:${tema.bg};border:1.5px solid ${tema.border};border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:24px;">${tema.emoji}</div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:${tema.color};text-transform:uppercase;letter-spacing:0.5px;">Motivo</div>
+        <div style="font-size:15px;font-weight:800;color:${tema.color};">${oc.motivo}</div>
+      </div>
+    </div>`
+  })() : ''}
   <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
     <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;">DESCRIÇÃO DA OCORRÊNCIA</div>
     <div style="font-size:13px;color:#3730a3;line-height:1.7;">${destacarDescricaoHtml(oc.descricao)}</div>
@@ -659,7 +670,15 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                           {oc.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {oc.prefixo}</span></>)}
                           <span style={{ margin: '0 8px' }}>·</span>
                           <span>📨 {oc.direcionado_para}</span>
-                          {oc.motivo && (<><span style={{ margin: '0 8px' }}>·</span><span>🏷️ {oc.motivo}</span></>)}
+                          {oc.motivo && (() => {
+                            const tema = temaMotivoOcorrencia(oc.motivo)
+                            return (
+                              <>
+                                <span style={{ margin: '0 8px' }}>·</span>
+                                <span style={{ color: tema.color, fontWeight: 700 }}>{tema.emoji} {oc.motivo}</span>
+                              </>
+                            )
+                          })()}
                         </div>
                       </div>
                       <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
@@ -1147,7 +1166,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       ['Prefixo / Equipe',  oc.prefixo],
                       ['Colaborador(es)',   colaboradores],
                       ['Direcionado para',  oc.direcionado_para],
-                      ['Motivo',            oc.motivo],
                       ['Local',             oc.endereco],
                     ].filter(([, v]) => v).map(([l, v]) => (
                       <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
@@ -1156,6 +1174,19 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       </div>
                     ))}
                   </div>
+
+                  {oc.motivo && (() => {
+                    const tema = temaMotivoOcorrencia(oc.motivo)
+                    return (
+                      <div style={{ background: tema.bg, border: `1.5px solid ${tema.border}`, borderRadius: 12, padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 24 }}>{tema.emoji}</span>
+                        <div>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: tema.color, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Motivo</p>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: tema.color }}>{oc.motivo}</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
                     <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>DESCRIÇÃO DA OCORRÊNCIA:</p>
