@@ -1,6 +1,47 @@
 import { supabase, uploadBase64 } from './supabase.js'
 import { temPermissao } from './auth.js'
 
+// Mesmo padrão de gerarNumeroAcaoSesmt()/gerarNumeroOcorrencia() — número
+// único de rastreabilidade do Registro Operacional (padronização com
+// numero_acao do SESMT, pra aparecer igual na view vw_historico_acoes_sesmt).
+export function gerarNumeroRegistro() {
+  const agora = new Date()
+  const partes = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Fortaleza',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }).formatToParts(agora)
+  const valor = tipo => partes.find(p => p.type === tipo)?.value || '00'
+  const data = `${valor('year')}${valor('month')}${valor('day')}`
+  const hora = `${valor('hour')}${valor('minute')}${valor('second')}`
+  const sufixo = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, 'X')
+  return `REG-${data}-${hora}-${sufixo}`
+}
+
+// Mesma lógica de calcularRegionalPredominanteSesmt() em lib/sesmt.js, só
+// que casando pela matrícula do participante contra estrutura_equipes (os
+// participantes de Registro Operacional não têm pessoa_id/vínculo com
+// sesmt_pessoas) — participante sem matrícula, ou matrícula sem match na
+// Estrutura, simplesmente não entra na contagem. Sem nenhum participante
+// identificável, devolve null (registro fica sem regional, igual uma ação
+// SESMT sem nenhum pessoa_id reconhecido).
+export async function calcularRegionalPredominanteRegistro(participantes) {
+  if (!supabase) return null
+  const matriculas = [...new Set((participantes || []).map(p => p.matricula?.trim()).filter(Boolean))]
+  if (matriculas.length === 0) return null
+  const TAMANHO_LOTE = 200
+  const contagem = {}
+  for (let i = 0; i < matriculas.length; i += TAMANHO_LOTE) {
+    const lote = matriculas.slice(i, i + TAMANHO_LOTE)
+    const { data, error } = await supabase.from('estrutura_equipes').select('matricula, regional').in('matricula', lote)
+    if (!error && data) data.forEach(p => { if (p.regional) contagem[p.regional] = (contagem[p.regional] || 0) + 1 })
+  }
+  const entradas = Object.entries(contagem)
+  if (entradas.length === 0) return null
+  entradas.sort((a, b) => b[1] - a[1])
+  return entradas[0][0]
+}
+
 // ─── Salva registro no banco ──────────────────────────────────────────────────
 export async function salvarRegistroBD(payload) {
   if (!supabase) throw new Error('Supabase não configurado.')
@@ -11,9 +52,10 @@ export async function salvarRegistroBD(payload) {
     .single()
 
   // Mantem o salvamento funcionando caso o deploy do app chegue antes da
-  // migracao SQL que adiciona a coluna "motivo".
+  // migracao SQL que adiciona a coluna "motivo" ou numero_registro/status/
+  // regional (padronização com sesmt_acoes — ver vw_historico_acoes_sesmt).
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { motivo, ...payloadCompat } = payload
+    const { motivo, numero_registro, status, regional, ...payloadCompat } = payload
     ;({ data, error } = await supabase
       .from('registros_operacionais')
       .insert(payloadCompat)
@@ -118,7 +160,12 @@ export async function prepararPayload(form) {
     )
   }
 
+  const regional = await calcularRegionalPredominanteRegistro(form.participantes)
+
   return {
+    numero_registro:    form.numero_registro || gerarNumeroRegistro(),
+    status:             'CONCLUIDA',
+    regional,
     tipo:               form.tipo,
     modalidade:         form.modalidade,
     tipo_medida:        form.tipo_medida || null,
