@@ -53,8 +53,18 @@ function CardLinha({ linha, numero }) {
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: 12, marginBottom: 8 }}>
           <div><span style={{ color: '#94a3b8' }}>Direcionar para </span><strong>{linha.direcionadoPara}</strong></div>
-          {linha.eletricistaEquipe  && <div><span style={{ color: '#94a3b8' }}>Colaborador 1 </span><strong>{linha.eletricistaEquipe}</strong></div>}
-          {linha.eletricistaEquipe2 && <div><span style={{ color: '#94a3b8' }}>Colaborador 2 </span><strong>{linha.eletricistaEquipe2}</strong></div>}
+          {linha.colaboradoresEquipe?.length > 2 ? (
+            <div>
+              <span style={{ color: '#94a3b8' }}>👥 Equipe </span>
+              <strong>{linha.colaboradoresEquipe.length} colaboradores</strong>
+              <span style={{ color: '#94a3b8' }}> — cada um terá sua vaga de assinatura no tratamento</span>
+            </div>
+          ) : (
+            <>
+              {linha.eletricistaEquipe  && <div><span style={{ color: '#94a3b8' }}>Colaborador 1 </span><strong>{linha.eletricistaEquipe}</strong></div>}
+              {linha.eletricistaEquipe2 && <div><span style={{ color: '#94a3b8' }}>Colaborador 2 </span><strong>{linha.eletricistaEquipe2}</strong></div>}
+            </>
+          )}
           {linha.motivo && <div><span style={{ color: '#94a3b8' }}>🏷️ Motivo </span><strong>{linha.motivo}</strong></div>}
         </div>
         <div style={{ background: '#f8fafc', borderRadius: 10, padding: '8px 10px', fontSize: 11.5, whiteSpace: 'pre-wrap', color: '#374151' }}>

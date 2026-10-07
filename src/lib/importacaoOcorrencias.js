@@ -187,14 +187,24 @@ export async function resolverLinhasImportacao(linhas) {
       return { ...base, pendente: true, motivoPendencia: `Prefixo "${prefixo}" não encontrado na Estrutura Online` }
     }
 
-    const colaboradores   = [...new Set(rows.map(r => r.colaborador?.trim()).filter(Boolean))]
-    const eletricistaEquipe  = colaboradores[0] || ''
-    const eletricistaEquipe2 = colaboradores[1] || ''
+    // Equipe completa do prefixo (pode ter mais de 2 colaboradores) — vira
+    // 1 linha por pessoa em ocorrencias_colaboradores (ver
+    // confirmarLinhasResolvidas) pra tela de tratamento liberar uma vaga de
+    // assinatura por colaborador real, não só 2 fixas. eletricistaEquipe/
+    // eletricistaEquipe2 seguem existindo só como resumo (1º e 2º da lista)
+    // pros lugares que ainda leem essas colunas direto (card fechado, PDF).
+    const colaboradoresEquipe = rows.reduce((acc, r) => {
+      const nome = r.colaborador?.trim()
+      if (nome && !acc.some(c => c.nome === nome)) acc.push({ nome, matricula: r.matricula || null })
+      return acc
+    }, [])
+    const eletricistaEquipe  = colaboradoresEquipe[0]?.nome || ''
+    const eletricistaEquipe2 = colaboradoresEquipe[1]?.nome || ''
     const matriculaSuperv = rows.find(r => r.matricula_superv_campo)?.matricula_superv_campo
 
     if (!matriculaSuperv) {
       return {
-        ...base, pendente: true, eletricistaEquipe, eletricistaEquipe2,
+        ...base, pendente: true, eletricistaEquipe, eletricistaEquipe2, colaboradoresEquipe,
         motivoPendencia: `Prefixo "${prefixo}" sem matrícula de supervisor de campo cadastrada na Estrutura`,
       }
     }
@@ -202,13 +212,13 @@ export async function resolverLinhasImportacao(linhas) {
     const supervisor = usuariosPorMatricula[matriculaSuperv]
     if (!supervisor) {
       return {
-        ...base, pendente: true, eletricistaEquipe, eletricistaEquipe2,
+        ...base, pendente: true, eletricistaEquipe, eletricistaEquipe2, colaboradoresEquipe,
         motivoPendencia: `Matrícula do supervisor (${matriculaSuperv}) não encontrada ativa em usuários`,
       }
     }
 
     return {
-      ...base, pendente: false, eletricistaEquipe, eletricistaEquipe2,
+      ...base, pendente: false, eletricistaEquipe, eletricistaEquipe2, colaboradoresEquipe,
       direcionadoPara: supervisor.nome, matriculaFiscalDestino: supervisor.matricula,
     }
   })
@@ -241,6 +251,24 @@ export async function confirmarLinhasResolvidas(linhasResolvidas, usuarioLogado)
     ;({ data, error } = await supabase.from('ocorrencias').insert(compat).select())
   }
   if (error) throw error
+
+  // Grava a equipe completa de cada ocorrência criada (ocorrencias_colaboradores)
+  // — casa pelo numero_ocorrencia (único por linha) em vez de confiar na
+  // ordem de retorno do insert em lote. Silencioso se a tabela ainda não
+  // existir no banco (migração não aplicada) — não trava a importação.
+  const porNumero = new Map((data || []).map(r => [r.numero_ocorrencia, r]))
+  const linhasColaboradores = linhasResolvidas.flatMap((l, i) => {
+    const ocRow = porNumero.get(payloads[i].numero_ocorrencia)
+    if (!ocRow) return []
+    return (l.colaboradoresEquipe || []).map((c, j) => ({
+      ocorrencia_id: ocRow.id, ordem: j + 1, nome: c.nome, matricula: c.matricula || null,
+    }))
+  })
+  if (linhasColaboradores.length > 0) {
+    const { error: erroColab } = await supabase.from('ocorrencias_colaboradores').insert(linhasColaboradores)
+    if (erroColab && !/relation .* does not exist/i.test(erroColab.message || '')) throw erroColab
+  }
+
   return data || []
 }
 
