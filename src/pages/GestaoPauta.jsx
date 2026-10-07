@@ -413,6 +413,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
   const [salvando,     setSalvando]     = useState(false)
   const [erro,         setErro]         = useState('')
   const [statusTab,    setStatusTab]    = useState('TODOS')
+  const [verSoSemPrazo, setVerSoSemPrazo] = useState(false)
   const [csvModal,     setCsvModal]     = useState(false)
   const [csvTexto,     setCsvTexto]     = useState('')
   const [csvStatus,    setCsvStatus]    = useState('')
@@ -669,7 +670,7 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     return Number.isFinite(ts) ? ts : 0
   }
 
-  const pautasExibidas = pautasFiltradasPainel
+  const pautasExibidasNormais = pautasFiltradasPainel
     .filter(p => {
       const s = calcStatus(p)
       if (statusTab === 'TODOS')   return true
@@ -684,6 +685,39 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
     CONCLUIDA: pautasFiltradasPainel.filter(p => p.status === 'CONCLUIDA').length,
     CANCELADA: pautasFiltradasPainel.filter(p => p.status === 'CANCELADA').length,
   }
+
+  // ─── Recorrências sem data de término ────────────────────────────────────
+  // Uma recorrência Diária/Semanal ainda ativa, sem limite de execuções nem
+  // data fim, gera a próxima pauta pra sempre — sem avisar ninguém. Olha só
+  // as pautas RAIZ (recorrencia_origem_id null): é lá que a configuração
+  // real mora — pautas filhas geradas por criarProximaRecorrencia() não
+  // recebem esses campos no payload, então não dá pra confiar neles ali.
+  // Usa a lista completa de pautas (não a filtrada por período/regional),
+  // já que o objetivo é justamente achar o que ficou escondido fora do
+  // filtro corrente.
+  const semPrazo = useMemo(() => {
+    const raizes = pautas.filter(p =>
+      !p.recorrencia_origem_id &&
+      p.recorrencia !== 'UNICA' &&
+      p.recorrencia_ativa !== false &&
+      !p.recorrencia_max_execucoes &&
+      !p.recorrencia_fim_data
+    )
+    const raizesPorId = new Map(raizes.map(r => [r.id, r]))
+    const maisRecentePorOrigem = new Map()
+    for (const p of pautas) {
+      const origem = p.recorrencia_origem_id || p.id
+      if (!raizesPorId.has(origem)) continue
+      const atual = maisRecentePorOrigem.get(origem)
+      if (!atual || dataGeracaoPautaMs(p) > dataGeracaoPautaMs(atual)) maisRecentePorOrigem.set(origem, p)
+    }
+    return {
+      raizesPorId,
+      pautasRecentes: [...maisRecentePorOrigem.values()].sort((a, b) => dataGeracaoPautaMs(b) - dataGeracaoPautaMs(a)),
+    }
+  }, [pautas])
+
+  const pautasExibidas = verSoSemPrazo ? semPrazo.pautasRecentes : pautasExibidasNormais
 
   const whatsappVencidas = () => {
     const vencidas = pautasFiltradasPainel.filter(p => calcStatus(p) === 'VENCIDA')
@@ -1062,6 +1096,15 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   <div style={{ fontSize: 9, opacity: 0.8 }}>{s}</div>
                 </div>
               ))}
+              {semPrazo.raizesPorId.size > 0 && (
+                <button onClick={() => setVerSoSemPrazo(v => !v)} style={{
+                  background: '#fff', border: `2px solid ${verSoSemPrazo ? '#b91c1c' : '#fecaca'}`, borderRadius: 10,
+                  padding: '6px 10px', textAlign: 'center', minWidth: 60, cursor: 'pointer',
+                }}>
+                  <div style={{ fontSize: 16, fontWeight: 800, color: '#b91c1c' }}>{semPrazo.raizesPorId.size}</div>
+                  <div style={{ fontSize: 8.5, fontWeight: 700, color: '#b91c1c' }}>♾️ SEM PRAZO</div>
+                </button>
+              )}
             </div>
           </div>
           {podeCadastrarMotivos && (
@@ -1076,6 +1119,24 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
       </div>
 
       <div style={{ maxWidth: 900, margin: '0 auto', padding: '16px 16px 80px' }}>
+
+        {semPrazo.raizesPorId.size > 0 && (
+          <div onClick={() => setVerSoSemPrazo(v => !v)} style={{
+            display: 'flex', alignItems: 'center', gap: 10, background: '#fef2f2', border: '1.5px solid #fca5a5',
+            borderRadius: 12, padding: '11px 13px', marginBottom: 16, cursor: 'pointer',
+          }}>
+            <span style={{ fontSize: 22, flexShrink: 0 }}>⚠️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c' }}>
+                {semPrazo.raizesPorId.size} recorrência{semPrazo.raizesPorId.size === 1 ? '' : 's'} sem data de término
+              </div>
+              <div style={{ fontSize: 11.5, color: '#991b1b', marginTop: 2, lineHeight: 1.4 }}>
+                {verSoSemPrazo ? 'Mostrando só essas. Toque pra voltar à lista normal.' : 'Vão continuar gerando a próxima automaticamente pra sempre. Toque pra revisar.'}
+              </div>
+            </div>
+            <span style={{ fontSize: 16, color: '#b91c1c', fontWeight: 800, flexShrink: 0 }}>{verSoSemPrazo ? '✕' : '›'}</span>
+          </div>
+        )}
 
         <PainelFiltros
           filtros={filtros}
@@ -1154,6 +1215,9 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         {p.nc_status === 'PENDENTE' && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#fef3c7', color: '#c2410c' }}>🟠 NC Pendente</span>}
                         {p.nc_status === 'TRATADA'  && <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: '#dcfce7', color: '#15803d' }}>🟢 NC Tratada</span>}
                         <span style={{ fontSize: 10, background: '#f1f5f9', color: '#64748b', padding: '2px 8px', borderRadius: 20 }}>🔁 {RECORRENCIA_LABEL[p.recorrencia]}</span>
+                        {semPrazo.raizesPorId.has(p.recorrencia_origem_id || p.id) && (
+                          <span style={{ fontSize: 10, fontWeight: 800, background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}>♾️ Sem data de término</span>
+                        )}
                       </div>
                       {p.numero_as && (
                         <div style={{ fontSize: 12, color: '#475569', fontWeight: 600, lineHeight: 1.6, marginBottom: 2 }}>
@@ -1172,6 +1236,15 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                         <span style={{ margin: '0 8px' }}>·</span>
                         <span>🔧 {p.tipo_servico} — {p.tipo_auditoria === 'DESEMPENHO' ? 'Desempenho' : 'Pós Serviço'}</span>
                       </div>
+                      {semPrazo.raizesPorId.has(p.recorrencia_origem_id || p.id) && (() => {
+                        const raiz = semPrazo.raizesPorId.get(p.recorrencia_origem_id || p.id)
+                        const execucoes = raiz.recorrencia_execucoes_geradas || 1
+                        return (
+                          <div style={{ fontSize: 11.5, color: '#b91c1c', lineHeight: 1.5, marginTop: 4 }}>
+                            Gerada automaticamente há {execucoes} execuç{execucoes === 1 ? 'ão' : 'ões'}, desde {raiz.data_prevista} — sem limite nem data fim configurados
+                          </div>
+                        )
+                      })()}
                       {(p.os || p.uc) && (
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6, marginTop: 2 }}>
                           {p.os && <span>📄 OS: <strong>{p.os}</strong></span>}
@@ -1374,6 +1447,16 @@ export default function GestaoPauta({ usuarioLogado, onVoltar }) {
                   Deixe os dois em branco pra repetir sem limite — dá pra usar "🛑 Parar Recorrência" na pauta a
                   qualquer momento pra interromper. Se preencher os dois, para no que vier primeiro.
                 </p>
+                {!formData.recorrencia_max_execucoes && !formData.recorrencia_fim_data && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', background: '#fffbeb', border: '1.5px solid #fde68a', borderRadius: 10, padding: '10px 12px', marginTop: 8 }}>
+                    <span style={{ fontSize: 16 }}>⚠️</span>
+                    <span style={{ fontSize: 11.5, color: '#92400e', lineHeight: 1.5 }}>
+                      <strong>Sem limite nem data fim, essa recorrência roda pra sempre</strong> — toda vez que a
+                      pauta atual for concluída, a próxima é criada automaticamente, sem parar sozinha. Você
+                      pode interromper quando quiser pelo botão "🛑 Parar Recorrência" na lista.
+                    </span>
+                  </div>
+                )}
               </div>
             )}
 
