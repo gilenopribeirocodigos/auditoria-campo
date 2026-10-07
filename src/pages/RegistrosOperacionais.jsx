@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
-import { listarOcorrenciasDoUsuario, numeroOcorrencia } from '../lib/ocorrencias.js'
+import { listarOcorrenciasDoUsuario, numeroOcorrencia, listarColaboradoresOcorrencia } from '../lib/ocorrencias.js'
 import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
@@ -189,14 +189,28 @@ async function gerarPDFRegistro(r, assinaturasOnline = [], versaoApp = '') {
 // Ocorrência — mesmo padrão de montarConteudoImpressaoRegistro, mas inclui
 // também os dados do TRATAMENTO (observação, colaborador(es) cientificado(s)
 // e as fotos do tratamento), não só os dados da abertura.
-function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
+// `colaboradoresOc` (opcional): lista completa de ocorrencias_colaboradores
+// já carregada (ver listarColaboradoresOcorrencia) — quando presente e não
+// vazia, mostra TODOS os que assinaram (equipe dinâmica, ver
+// TratamentoNaoConformidades.jsx), não só os 2 primeiros das colunas
+// tratamento_assinatura_*/tratamento_assinatura2_* (usadas como
+// fallback pra ocorrências antigas, sem linhas na tabela nova).
+function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc = null) {
   const pendente = oc.status === 'PENDENTE'
   const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
-  const colaboradores  = [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
-  const assinantes = [
-    { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
-    { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
-  ].filter(a => a.nome || a.url)
+  const modoEquipe = Array.isArray(colaboradoresOc) && colaboradoresOc.length > 0
+  const colaboradores = modoEquipe
+    ? `${colaboradoresOc.length} colaborador${colaboradoresOc.length === 1 ? '' : 'es'} da equipe`
+    : [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
+  const assinantes = modoEquipe
+    ? colaboradoresOc.filter(c => c.assinatura_url).map(c => ({ nome: c.nome, url: c.assinatura_url }))
+    : [
+        { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
+        { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
+      ].filter(a => a.nome || a.url)
+  const tituloAssinantes = modoEquipe
+    ? `✍️ COLABORADOR(ES) CIENTIFICADO(S) (${assinantes.length} de ${colaboradoresOc.length})`
+    : '✍️ COLABORADOR(ES) CIENTIFICADO(S)'
 
   return `
   <div style="background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
@@ -234,7 +248,7 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   </div>` : ''}
   ${!pendente && assinantes.length > 0 ? `
   <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">✍️ COLABORADOR(ES) CIENTIFICADO(S)</div>
+    <div style="font-size:12px;font-weight:700;color:#15803d;margin-bottom:8px;">${tituloAssinantes}</div>
     ${assinantes.map((a, i) => `
       <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;${i > 0 ? 'border-top:1px solid #bbf7d0;' : ''}">
         <span style="font-size:13px;font-weight:700;color:#15803d;">${a.nome || '—'}</span>
@@ -264,8 +278,8 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '') {
   </div>`
 }
 
-function imprimirOcorrenciaDoc(oc, versaoApp = '') {
-  const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp)
+function imprimirOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
+  const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp, colaboradoresOc)
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
   <title>Abertura de Ocorrência</title>
   <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
@@ -283,8 +297,8 @@ function imprimirOcorrenciaDoc(oc, versaoApp = '') {
   janela.onload = () => setTimeout(() => janela.print(), 600)
 }
 
-async function gerarPDFOcorrenciaDoc(oc, versaoApp = '') {
-  const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp)
+async function gerarPDFOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
+  const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp, colaboradoresOc)
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
   const canvas = await renderizarHtmlParaCanvas(html, {
     largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
@@ -309,6 +323,16 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [ocorrencias,   setOcorrencias]   = useState([])
   const [detalhe,       setDetalhe]       = useState(null)
   const [detalheOc,     setDetalheOc]     = useState(null) // ocorrência aberta no modal de PDF/Zap
+  // Equipe completa (ocorrencias_colaboradores) da Ocorrência aberta no
+  // modal — null = ainda não buscou/sem ocorrência aberta; [] = buscou e
+  // não achou (ocorrência antiga, sem linhas na tabela nova) — mesmo padrão
+  // de fallback do CardOcorrencia em TratamentoNaoConformidades.jsx.
+  const [colaboradoresOc, setColaboradoresOc] = useState(null)
+  useEffect(() => {
+    if (!detalheOc) { setColaboradoresOc(null); return }
+    setColaboradoresOc(null)
+    listarColaboradoresOcorrencia(detalheOc.id).then(setColaboradoresOc).catch(() => setColaboradoresOc([]))
+  }, [detalheOc])
   const [capturandoOc,  setCapturandoOc]  = useState(false)
   const [gerandoPDFOc,  setGerandoPDFOc]  = useState(false)
   const [assinOnline,   setAssinOnline]   = useState([])
@@ -328,7 +352,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const compartilharOcorrenciaWhatsApp = async (oc) => {
     setCapturandoOc(true)
     try {
-      const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoSistema)
+      const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoSistema, colaboradoresOc)
       const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">${conteudo}</div>`
       const canvas = await renderizarHtmlParaCanvas(html, { largura: 640, escala: 6, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#f0f4f8' })
       const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.png`.replace(/\s+/g, '_')
@@ -1146,11 +1170,16 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             {(() => {
               const oc = detalheOc
               const pendente = oc.status === 'PENDENTE'
-              const colaboradores = [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
-              const assinantes = [
-                { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
-                { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
-              ].filter(a => a.nome || a.url)
+              const modoEquipeOc = Array.isArray(colaboradoresOc) && colaboradoresOc.length > 0
+              const colaboradores = modoEquipeOc
+                ? `${colaboradoresOc.length} colaborador${colaboradoresOc.length === 1 ? '' : 'es'} da equipe`
+                : [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
+              const assinantes = modoEquipeOc
+                ? colaboradoresOc.filter(c => c.assinatura_url).map(c => ({ nome: c.nome, url: c.assinatura_url }))
+                : [
+                    { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
+                    { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
+                  ].filter(a => a.nome || a.url)
               return (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -1213,7 +1242,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
                   {!pendente && assinantes.length > 0 && (
                     <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-                      <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>✍️ COLABORADOR(ES) CIENTIFICADO(S):</p>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#15803d', marginBottom: 8 }}>
+                        ✍️ COLABORADOR(ES) CIENTIFICADO(S){modoEquipeOc ? ` (${assinantes.length} de ${colaboradoresOc.length})` : ':'}
+                      </p>
                       {assinantes.map((a, i) => (
                         <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 0', borderTop: i > 0 ? '1px solid #bbf7d0' : 'none' }}>
                           <span style={{ fontSize: 13, fontWeight: 700, color: '#15803d' }}>{a.nome || '—'}</span>
@@ -1268,9 +1299,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   </p>
 
                   <button onClick={async () => {
-                    if (!Capacitor.isNativePlatform()) { imprimirOcorrenciaDoc(oc, versaoSistema); return }
+                    if (!Capacitor.isNativePlatform()) { imprimirOcorrenciaDoc(oc, versaoSistema, colaboradoresOc); return }
                     setGerandoPDFOc(true)
-                    try { await gerarPDFOcorrenciaDoc(oc, versaoSistema) }
+                    try { await gerarPDFOcorrenciaDoc(oc, versaoSistema, colaboradoresOc) }
                     catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
                     finally { setGerandoPDFOc(false) }
                   }} disabled={gerandoPDFOc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: gerandoPDFOc ? '#64748b' : '#1e3a5f', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDFOc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
