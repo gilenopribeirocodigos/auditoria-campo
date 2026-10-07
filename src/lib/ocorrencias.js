@@ -71,6 +71,46 @@ export async function prepararPayloadOcorrencia(form) {
   }
 }
 
+// ─── Lista os colaboradores vinculados a uma Ocorrência — tabela nova
+// (ocorrencias_colaboradores), 1 linha por pessoa, suporta qualquer tamanho
+// de equipe. Ocorrência criada antes desta migração (ou antes dela ser
+// aplicada no banco) simplesmente não tem linhas aqui — devolve [] e quem
+// chama cai de volta no padrão antigo (eletricista_equipe/_2 fixos).
+export async function listarColaboradoresOcorrencia(ocorrenciaId) {
+  if (!supabase || !ocorrenciaId) return []
+  const { data, error } = await supabase
+    .from('ocorrencias_colaboradores')
+    .select('*')
+    .eq('ocorrencia_id', ocorrenciaId)
+    .order('ordem')
+  if (error) {
+    if (/relation .* does not exist/i.test(error.message || '')) return []
+    throw error
+  }
+  return data || []
+}
+
+// ─── Grava a equipe completa de uma Ocorrência recém-criada (1 linha por
+// colaborador) — aceita string simples ou { nome, matricula }. Silenciosa
+// se a migração ainda não foi aplicada no banco (mesmo padrão de
+// compatibilidade usado no resto deste arquivo), pra não travar a criação
+// da ocorrência por causa de uma tabela auxiliar que ainda não existe.
+export async function salvarColaboradoresOcorrencia(ocorrenciaId, colaboradores) {
+  if (!supabase || !ocorrenciaId) return
+  const linhas = (colaboradores || [])
+    .map(c => (typeof c === 'string' ? { nome: c, matricula: null } : c))
+    .filter(c => c?.nome?.trim())
+    .map((c, i) => ({
+      ocorrencia_id: ocorrenciaId,
+      ordem:         i + 1,
+      nome:          c.nome.trim(),
+      matricula:     c.matricula || null,
+    }))
+  if (linhas.length === 0) return
+  const { error } = await supabase.from('ocorrencias_colaboradores').insert(linhas)
+  if (error && !/relation .* does not exist/i.test(error.message || '')) throw error
+}
+
 // ─── Salva a ocorrência no banco ──────────────────────────────────────────────
 export async function salvarOcorrenciaBD(payload) {
   if (!supabase) throw new Error('Supabase não configurado.')
@@ -93,6 +133,10 @@ export async function salvarOcorrenciaBD(payload) {
   }
 
   if (error) throw error
+  await salvarColaboradoresOcorrencia(data.id, [
+    { nome: payload.eletricista_equipe, matricula: null },
+    { nome: payload.eletricista_equipe_2, matricula: null },
+  ])
   return data
 }
 
@@ -140,9 +184,17 @@ export async function editarOcorrencia(id, { prefixo, eletricista_equipe, eletri
 // a ocorrência tem um 2º colaborador (eletricista_equipe_2), exige também a
 // assinatura dele — mesmo padrão de temEletricista2/assinatura2 já usado no
 // tratamento de NC de auditoria.
+// `colaboradoresAssinados` (opcional): [{ id, assinaturaUrl }] — ids de
+// ocorrencias_colaboradores que de fato assinaram nessa rodada, quando a
+// ocorrência tem equipe dinâmica (ver listarColaboradoresOcorrencia). Quem
+// não assinou simplesmente não entra aqui e não fica registrado como
+// cientificado. `assinaturaUrl/Nome` e `assinatura2Url/Nome` continuam
+// sendo gravados (1º e 2º que assinaram) só como resumo/compatibilidade
+// pros lugares que ainda leem direto dessas colunas (PDF, WhatsApp,
+// exportação) — a lista completa mora em ocorrencias_colaboradores.
 export async function tratarOcorrencia(id, {
   observacao, fotosUrls, assinaturaUrl, assinaturaNome,
-  assinatura2Url, assinatura2Nome, usuarioLogado,
+  assinatura2Url, assinatura2Nome, colaboradoresAssinados, usuarioLogado,
 }) {
   if (!supabase) throw new Error('Supabase não configurado.')
   const payload = {
@@ -172,6 +224,15 @@ export async function tratarOcorrencia(id, {
   }
 
   if (error) throw error
+
+  if (Array.isArray(colaboradoresAssinados) && colaboradoresAssinados.length > 0) {
+    const assinadoEm = new Date().toISOString()
+    await Promise.all(colaboradoresAssinados.map(c =>
+      supabase.from('ocorrencias_colaboradores')
+        .update({ assinatura_url: c.assinaturaUrl, assinado_em: assinadoEm })
+        .eq('id', c.id)
+    ))
+  }
 }
 
 // ─── Lista ocorrências abertas pelo usuário logado (ou todas, se privilegiado)

@@ -4,7 +4,7 @@ import { isAdmin, temPermissao } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
-import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia } from '../lib/ocorrencias.js'
+import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia, listarColaboradoresOcorrencia } from '../lib/ocorrencias.js'
 import { parseDescricaoImportada } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 
@@ -450,6 +450,24 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
   const [salvando,          setSalvando]        = useState(false)
   const [erro,              setErro]            = useState('')
 
+  // Equipe completa da Ocorrência (ocorrencias_colaboradores) — carregada só
+  // quando o card abre. null = ainda não buscou; [] = buscou e não achou
+  // nada (ocorrência antiga, de antes dessa migração) — nesse caso cai pro
+  // comportamento antigo de 2 vagas fixas (nomeColaborador/nomeColaborador2
+  // acima). Com linhas, a tela abre 1 vaga de assinatura por pessoa.
+  const [colaboradoresEquipe, setColaboradoresEquipe] = useState(null)
+  const [assinaturasEquipe,   setAssinaturasEquipe]   = useState({})
+  const [nomesEquipe,         setNomesEquipe]         = useState({})
+  useEffect(() => {
+    if (aberto && colaboradoresEquipe === null) {
+      listarColaboradoresOcorrencia(oc.id).then(setColaboradoresEquipe).catch(() => setColaboradoresEquipe([]))
+    }
+  }, [aberto])
+  const equipeCarregada  = colaboradoresEquipe !== null
+  const modoEquipe       = equipeCarregada && colaboradoresEquipe.length > 0
+  const assinadosCount   = modoEquipe ? colaboradoresEquipe.filter(c => assinaturasEquipe[c.id]).length : 0
+  const minimoAssinaturas = modoEquipe ? Math.min(2, colaboradoresEquipe.length) : 0
+
   // Corrigir prefixo/colaborador(es)/descrição digitados errado na abertura
   // — só enquanto pendente, e só quem abriu ou ADMIN (mesma regra de
   // visibilidade de botões sensíveis usada no resto do app).
@@ -494,8 +512,11 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
   }
   const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
 
-  const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && !!assinatura
-    && (!temColaborador2 || !!assinatura2)
+  const podeConfirmar = observacao.trim().length > 0 && fotos.length > 0 && (
+    modoEquipe
+      ? assinadosCount >= minimoAssinaturas
+      : (!!assinatura && (!temColaborador2 || !!assinatura2))
+  )
 
   const confirmarTratamento = async () => {
     if (!podeConfirmar) return
@@ -507,19 +528,39 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
         const url = await uploadBase64(fotos[i], `ocorrencias_tratamento/${oc.id}/foto_${Date.now()}_${i + 1}.jpg`)
         fotosUrls.push(url)
       }
-      const assinaturaUrl = await uploadBase64(assinatura, `ocorrencias_tratamento/${oc.id}/assinatura_${Date.now()}.png`)
-      let assinatura2Url = null
-      if (temColaborador2 && assinatura2) {
-        assinatura2Url = await uploadBase64(assinatura2, `ocorrencias_tratamento/${oc.id}/assinatura2_${Date.now()}.png`)
-      }
 
-      await tratarOcorrencia(oc.id, {
-        observacao, fotosUrls, assinaturaUrl,
-        assinaturaNome: nomeColaborador || null,
-        assinatura2Url,
-        assinatura2Nome: temColaborador2 ? (nomeColaborador2 || null) : null,
-        usuarioLogado,
-      })
+      if (modoEquipe) {
+        // Só sobe quem de fato assinou nessa rodada — quem ficou de fora
+        // não entra no registro do tratamento.
+        const assinaram = colaboradoresEquipe.filter(c => assinaturasEquipe[c.id])
+        const colaboradoresAssinados = []
+        for (const c of assinaram) {
+          const url = await uploadBase64(assinaturasEquipe[c.id], `ocorrencias_tratamento/${oc.id}/assinatura_${c.id}_${Date.now()}.png`)
+          colaboradoresAssinados.push({ id: c.id, assinaturaUrl: url, nome: nomesEquipe[c.id] ?? c.nome })
+        }
+        await tratarOcorrencia(oc.id, {
+          observacao, fotosUrls,
+          assinaturaUrl:   colaboradoresAssinados[0]?.assinaturaUrl || null,
+          assinaturaNome:  colaboradoresAssinados[0]?.nome || null,
+          assinatura2Url:  colaboradoresAssinados[1]?.assinaturaUrl || null,
+          assinatura2Nome: colaboradoresAssinados[1]?.nome || null,
+          colaboradoresAssinados,
+          usuarioLogado,
+        })
+      } else {
+        const assinaturaUrl = await uploadBase64(assinatura, `ocorrencias_tratamento/${oc.id}/assinatura_${Date.now()}.png`)
+        let assinatura2Url = null
+        if (temColaborador2 && assinatura2) {
+          assinatura2Url = await uploadBase64(assinatura2, `ocorrencias_tratamento/${oc.id}/assinatura2_${Date.now()}.png`)
+        }
+        await tratarOcorrencia(oc.id, {
+          observacao, fotosUrls, assinaturaUrl,
+          assinaturaNome: nomeColaborador || null,
+          assinatura2Url,
+          assinatura2Nome: temColaborador2 ? (nomeColaborador2 || null) : null,
+          usuarioLogado,
+        })
+      }
       onTratado()
     } catch (e) {
       setErro(e.message || 'Erro ao salvar tratamento.')
@@ -630,7 +671,12 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
               )}
               <DescricaoOcorrencia texto={oc.descricao} comEspacoParaEditar={podeEditar} />
             </div>
-            {oc.eletricista_equipe && (
+            {modoEquipe ? (
+              <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
+                👥 {colaboradoresEquipe.length} colaborador{colaboradoresEquipe.length === 1 ? '' : 'es'} da equipe
+                {colaboradoresEquipe.length <= 2 ? `: ${colaboradoresEquipe.map(c => c.nome).join(' e ')}` : ''}
+              </p>
+            ) : oc.eletricista_equipe && (
               <p style={{ fontSize: 11, color: '#4338ca', margin: '6px 0 0' }}>
                 👤 {[oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')}
               </p>
@@ -657,7 +703,14 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
           {oc.tratamento_observacao && (
             <p style={{ marginTop: 4 }}><strong>Observação:</strong> {oc.tratamento_observacao}</p>
           )}
-          {(oc.tratamento_assinatura_nome || oc.tratamento_assinatura2_nome) && (
+          {modoEquipe && colaboradoresEquipe.some(c => c.assinatura_url) ? (
+            <p style={{ marginTop: 4 }}>
+              <strong>
+                Colaboradores cientificados ({colaboradoresEquipe.filter(c => c.assinatura_url).length} de {colaboradoresEquipe.length}):
+              </strong>{' '}
+              {colaboradoresEquipe.filter(c => c.assinatura_url).map(c => c.nome).join(', ')}
+            </p>
+          ) : (oc.tratamento_assinatura_nome || oc.tratamento_assinatura2_nome) && (
             <p style={{ marginTop: 4 }}>
               <strong>Colaborador(es) cientificado(s):</strong> {[oc.tratamento_assinatura_nome, oc.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}
             </p>
@@ -717,24 +770,59 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
             )}
           </div>
 
-          <PainelAssinatura
-            label={temColaborador2 ? 'Colaborador 1 envolvido' : 'Colaborador envolvido'}
-            nome={nomeColaborador}
-            onNome={setNomeColaborador}
-            assinatura={assinatura}
-            onAssinatura={setAssinatura}
-            obrigatorio={true}
-          />
+          {!equipeCarregada ? (
+            <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', padding: 14 }}>Carregando equipe...</p>
+          ) : modoEquipe ? (
+            <>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10, background: '#fff',
+                border: '1.5px solid #e2e8f0', borderRadius: 10, padding: '9px 12px', marginBottom: 12,
+              }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{assinadosCount}/{colaboradoresEquipe.length}</span>
+                <div style={{ flex: 1, height: 6, borderRadius: 10, background: '#e2e8f0', overflow: 'hidden' }}>
+                  <div style={{ height: '100%', background: '#15803d', width: `${Math.min(100, (assinadosCount / colaboradoresEquipe.length) * 100)}%` }} />
+                </div>
+                <span style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>mín. {minimoAssinaturas} pra liberar</span>
+              </div>
+              {colaboradoresEquipe.map((c, i) => (
+                <PainelAssinatura
+                  key={c.id}
+                  label={`Colaborador ${i + 1}`}
+                  nome={nomesEquipe[c.id] ?? c.nome}
+                  onNome={v => setNomesEquipe(prev => ({ ...prev, [c.id]: v }))}
+                  assinatura={assinaturasEquipe[c.id] || null}
+                  onAssinatura={v => setAssinaturasEquipe(prev => ({ ...prev, [c.id]: v }))}
+                  obrigatorio={false}
+                />
+              ))}
+              <p style={{ fontSize: 11, color: '#94a3b8', marginTop: -4, marginBottom: 14 }}>
+                Libera com {minimoAssinaturas} assinatura{minimoAssinaturas === 1 ? '' : 's'} — os demais continuam
+                opcionais, podem assinar a qualquer momento antes de confirmar. Quem não assinar nessa rodada não
+                entra no registro do tratamento.
+              </p>
+            </>
+          ) : (
+            <>
+              <PainelAssinatura
+                label={temColaborador2 ? 'Colaborador 1 envolvido' : 'Colaborador envolvido'}
+                nome={nomeColaborador}
+                onNome={setNomeColaborador}
+                assinatura={assinatura}
+                onAssinatura={setAssinatura}
+                obrigatorio={true}
+              />
 
-          {temColaborador2 && (
-            <PainelAssinatura
-              label="Colaborador 2 envolvido"
-              nome={nomeColaborador2}
-              onNome={setNomeColaborador2}
-              assinatura={assinatura2}
-              onAssinatura={setAssinatura2}
-              obrigatorio={true}
-            />
+              {temColaborador2 && (
+                <PainelAssinatura
+                  label="Colaborador 2 envolvido"
+                  nome={nomeColaborador2}
+                  onNome={setNomeColaborador2}
+                  assinatura={assinatura2}
+                  onAssinatura={setAssinatura2}
+                  obrigatorio={true}
+                />
+              )}
+            </>
           )}
 
           {erro && <div className="alert alert-danger" style={{ marginBottom: 10 }}>❌ {erro}</div>}
