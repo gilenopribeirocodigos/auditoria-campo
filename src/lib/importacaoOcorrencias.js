@@ -134,11 +134,48 @@ function montarResultadoBase(linha) {
   return { ...comData, descricao: montarDescricaoImportada(comData) }
 }
 
+// ─── UC + OS como chave de duplicidade — só considera chave quando os DOIS
+// vierem preenchidos (um UC sem OS, ou vice-versa, não é comparável). Chave
+// normalizada (maiúsculo/trim) pra não deixar passar diferença de caixa ou
+// espaço sobrando na planilha.
+function chaveUcOs(uc, os) {
+  const u = String(uc || '').trim().toUpperCase()
+  const o = String(os || '').trim().toUpperCase()
+  if (!u || !o) return null
+  return `${u}|||${o}`
+}
+
+// ─── Busca, em lotes de 200 UCs (mesmo padrão de buscarCpfsSesmtPorIds),
+// quais pares UC+OS já têm Ocorrência aberta — devolve um Set de chaves
+// prontas pra checar com chaveUcOs(). Silenciosa se a coluna uc/os ainda
+// não existir no banco (migração não aplicada) — nesse caso não bloqueia
+// nenhuma linha, já que não dá pra comparar.
+async function buscarChavesUcOsExistentes(ucs) {
+  if (!supabase || ucs.length === 0) return new Set()
+  const TAMANHO_LOTE = 200
+  const chaves = new Set()
+  for (let i = 0; i < ucs.length; i += TAMANHO_LOTE) {
+    const lote = ucs.slice(i, i + TAMANHO_LOTE)
+    const { data, error } = await supabase.from('ocorrencias').select('uc, os').in('uc', lote)
+    if (error) {
+      if (/column .* does not exist/i.test(error.message || '')) return new Set()
+      throw error
+    }
+    ;(data || []).forEach(r => { const k = chaveUcOs(r.uc, r.os); if (k) chaves.add(k) })
+  }
+  return chaves
+}
+
 // ─── Casa cada linha com estrutura_equipes (supervisor + colaboradores) e
 // usuarios (nome/matrícula do supervisor). Linha sem PREFIXO reconhecido na
 // Estrutura, ou cujo supervisor não tem matrícula válida/ativa, volta com
-// `pendente: true` + `motivoPendencia` — não impede as demais linhas.
+// `pendente: true` + `motivoPendencia` — não impede as demais linhas. Linha
+// cujo UC+OS já tem Ocorrência aberta volta com `duplicada: true` em vez
+// de `pendente` — não precisa de correção nenhuma, só não é reaberta.
 export async function resolverLinhasImportacao(linhas) {
+  const ucsUnicos = [...new Set(linhas.map(l => String(l.uc || '').trim().toUpperCase()).filter(Boolean))]
+  const chavesExistentes = await buscarChavesUcOsExistentes(ucsUnicos)
+
   const prefixosUnicos = [...new Set(linhas.map(l => l.prefixo).filter(Boolean))]
 
   let porPrefixo = {}
@@ -176,6 +213,15 @@ export async function resolverLinhasImportacao(linhas) {
 
   return linhas.map(linhaOriginal => {
     const base = montarResultadoBase(linhaOriginal)
+
+    const chave = chaveUcOs(base.uc, base.os)
+    if (chave && chavesExistentes.has(chave)) {
+      return {
+        ...base, pendente: false, duplicada: true,
+        motivoPendencia: `Já existe uma Ocorrência aberta pra UC ${base.uc} + OS ${base.os} — não foi reaberta pra evitar duplicidade`,
+      }
+    }
+
     const prefixo = base.prefixo
 
     if (!prefixo) {
@@ -229,6 +275,8 @@ function payloadOcorrenciaDaLinha(linha, usuarioLogado) {
     numero_ocorrencia:        gerarNumeroOcorrencia(),
     descricao:                linha.descricao,
     motivo:                   linha.motivo || null,
+    uc:                       linha.uc || null,
+    os:                       linha.os || null,
     eletricista_equipe:       linha.eletricistaEquipe  || null,
     eletricista_equipe_2:     linha.eletricistaEquipe2 || null,
     prefixo:                  linha.prefixo || null,
@@ -247,7 +295,7 @@ export async function confirmarLinhasResolvidas(linhasResolvidas, usuarioLogado)
 
   let { data, error } = await supabase.from('ocorrencias').insert(payloads).select()
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const compat = payloads.map(({ eletricista_equipe_2, motivo, ...resto }) => resto)
+    const compat = payloads.map(({ eletricista_equipe_2, motivo, uc, os, ...resto }) => resto)
     ;({ data, error } = await supabase.from('ocorrencias').insert(compat).select())
   }
   if (error) throw error
@@ -324,6 +372,8 @@ export async function corrigirEAbrirPendencia(pendencia, ajustes, usuarioLogado)
   const linha = {
     descricao:              pendencia.descricao,
     motivo:                 pendencia.motivo,
+    uc:                     pendencia.uc,
+    os:                     pendencia.os,
     prefixo:                pendencia.prefixo,
     eletricistaEquipe:      ajustes.eletricistaEquipe  ?? pendencia.colaborador_1,
     eletricistaEquipe2:     ajustes.eletricistaEquipe2 ?? pendencia.colaborador_2,
@@ -334,7 +384,7 @@ export async function corrigirEAbrirPendencia(pendencia, ajustes, usuarioLogado)
 
   let { error } = await supabase.from('ocorrencias').insert(payload)
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { eletricista_equipe_2, motivo, ...compat } = payload
+    const { eletricista_equipe_2, motivo, uc, os, ...compat } = payload
     ;({ error } = await supabase.from('ocorrencias').insert(compat))
   }
   if (error) throw error
