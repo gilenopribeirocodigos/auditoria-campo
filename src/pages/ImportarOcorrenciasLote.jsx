@@ -381,7 +381,7 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
 
               {duplicadas.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: 10, padding: '10px 12px', marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>
-                  🔁 {duplicadas.length} linha{duplicadas.length === 1 ? '' : 's'} com UC+OS que já tem Ocorrência aberta — não {duplicadas.length === 1 ? 'foi reaberta' : 'foram reabertas'}, só {duplicadas.length === 1 ? 'fica' : 'ficam'} listada{duplicadas.length === 1 ? '' : 's'} acima pra você conferir.
+                  🔁 {duplicadas.length} linha{duplicadas.length === 1 ? '' : 's'} com UC+OS+Data de Conclusão que já tem Ocorrência aberta — não {duplicadas.length === 1 ? 'foi reaberta' : 'foram reabertas'}, só {duplicadas.length === 1 ? 'fica' : 'ficam'} listada{duplicadas.length === 1 ? '' : 's'} acima pra você conferir.
                 </div>
               )}
 
