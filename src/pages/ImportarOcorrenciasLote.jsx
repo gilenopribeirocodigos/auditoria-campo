@@ -44,6 +44,17 @@ function parseCsvTexto(texto) {
 }
 
 function CardLinha({ linha, numero }) {
+  if (linha.duplicada) {
+    return (
+      <div style={{ background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: 12, padding: '12px 14px', marginBottom: 10, opacity: 0.85 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+          <span style={{ fontSize: 14.5, fontWeight: 800, color: '#475569' }}>{linha.prefixo || `Linha ${numero}`}</span>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 9px', borderRadius: 20, background: '#e2e8f0', color: '#475569', whiteSpace: 'nowrap' }}>🔁 já existe</span>
+        </div>
+        <div style={{ fontSize: 12, color: '#64748b', fontWeight: 600 }}>{linha.motivoPendencia}</div>
+      </div>
+    )
+  }
   if (!linha.pendente) {
     return (
       <div style={{ background: '#fff', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: '12px 14px', marginBottom: 10 }}>
@@ -249,14 +260,17 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
     reader.readAsArrayBuffer(file)
   }
 
-  const prontas   = linhasResolvidas.filter(l => !l.pendente)
-  const revisar   = linhasResolvidas.filter(l => l.pendente)
+  const duplicadas = linhasResolvidas.filter(l => l.duplicada)
+  const prontas     = linhasResolvidas.filter(l => !l.pendente && !l.duplicada)
+  const revisar     = linhasResolvidas.filter(l => l.pendente && !l.duplicada)
 
   const confirmar = async () => {
     setProcessando(true); setErro('')
     try {
       // Motivo (se houver) já vem por linha, da coluna MOTIVO da planilha —
-      // ver extrairLinhasPlanilha() em lib/importacaoOcorrencias.js.
+      // ver extrairLinhasPlanilha() em lib/importacaoOcorrencias.js. Linhas
+      // duplicadas (UC+OS já tem Ocorrência aberta) não são salvas em lugar
+      // nenhum — só aparecem na tela de revisão informando que já existem.
       const criadas = await confirmarLinhasResolvidas(prontas, usuarioLogado)
       await salvarPendenciasImportacao(revisar, usuarioLogado)
       setResultadoConfirmacao({ criadas: criadas.length, pendentes: revisar.length })
@@ -351,6 +365,12 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                   <div style={{ fontSize: 18, fontWeight: 800, color: '#d97706' }}>{revisar.length}</div>
                   <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>p/ revisar</div>
                 </div>
+                {duplicadas.length > 0 && (
+                  <div style={{ flex: 1, minWidth: 90, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#475569' }}>{duplicadas.length}</div>
+                    <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>já existem</div>
+                  </div>
+                )}
                 <div style={{ flex: 1, minWidth: 90, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 10, padding: '8px 10px', textAlign: 'center' }}>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>{linhasResolvidas.length}</div>
                   <div style={{ fontSize: 10, color: '#64748b', textTransform: 'uppercase' }}>total linhas</div>
@@ -358,6 +378,12 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
               </div>
 
               {linhasResolvidas.map((linha, i) => <CardLinha key={i} linha={linha} numero={i + 1} />)}
+
+              {duplicadas.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f8fafc', border: '1.5px solid #cbd5e1', borderRadius: 10, padding: '10px 12px', marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: '#475569' }}>
+                  🔁 {duplicadas.length} linha{duplicadas.length === 1 ? '' : 's'} com UC+OS+Data de Conclusão que já tem Ocorrência aberta — não {duplicadas.length === 1 ? 'foi reaberta' : 'foram reabertas'}, só {duplicadas.length === 1 ? 'fica' : 'ficam'} listada{duplicadas.length === 1 ? '' : 's'} acima pra você conferir.
+                </div>
+              )}
 
               {revisar.length > 0 && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '10px 12px', marginBottom: 10, fontSize: 12.5, fontWeight: 700, color: '#92400e' }}>
