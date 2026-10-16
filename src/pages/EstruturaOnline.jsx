@@ -199,7 +199,19 @@ function prioridadeSituacao(info) {
   return 2
 }
 
-function ordenarPorSituacao(linhas, motivos, ordenacao = null) {
+// ─── Critérios de ordenação além do principal (ordenacao) — ex.: "depois
+// ordenar por REGIONAL, depois por COLABORADOR". Usado como desempate antes
+// de cair no desempate padrão (nome do colaborador).
+function compararComExtras(a, b, extras) {
+  for (const e of extras || []) {
+    if (!e?.coluna) continue
+    const r = compararValores(a[e.coluna], b[e.coluna])
+    if (r !== 0) return e.direcao === 'desc' ? -r : r
+  }
+  return 0
+}
+
+function ordenarPorSituacao(linhas, motivos, ordenacao = null, extras = []) {
   return [...(linhas || [])].sort((a, b) => {
     const ia = infoSituacao(a.descr_situacao, motivos)
     const ib = infoSituacao(b.descr_situacao, motivos)
@@ -215,19 +227,22 @@ function ordenarPorSituacao(linhas, motivos, ordenacao = null) {
       const resultado = compararValores(a[ordenacao.coluna], b[ordenacao.coluna])
       if (resultado !== 0) return ordenacao.direcao === 'desc' ? -resultado : resultado
     }
+    const extraResultado = compararComExtras(a, b, extras)
+    if (extraResultado !== 0) return extraResultado
     return String(a.colaborador || '').localeCompare(String(b.colaborador || ''))
   })
 }
 
-function ordenarLinhas(linhas, motivos, ordenacao, manterOrdemInsercao) {
+function ordenarLinhas(linhas, motivos, ordenacao, manterOrdemInsercao, extras = []) {
   if (manterOrdemInsercao) {
     if (!ordenacao?.coluna) return [...(linhas || [])]
     return [...(linhas || [])].sort((a, b) => {
       const resultado = compararValores(a[ordenacao.coluna], b[ordenacao.coluna])
-      return ordenacao.direcao === 'desc' ? -resultado : resultado
+      if (resultado !== 0) return ordenacao.direcao === 'desc' ? -resultado : resultado
+      return compararComExtras(a, b, extras)
     })
   }
-  return ordenarPorSituacao(linhas, motivos, ordenacao)
+  return ordenarPorSituacao(linhas, motivos, ordenacao, extras)
 }
 
 function resumirSituacoes(linhas, motivos) {
@@ -526,6 +541,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [confirmacao, setConfirmacao] = useState('')
   const [relatorioImportacao, setRelatorioImportacao] = useState(null)
   const [filtrosColuna, setFiltrosColuna] = useState({})
+  const [buscaGlobal, setBuscaGlobal] = useState('')
+  const [colunasCongeladas, setColunasCongeladas] = useState(false)
+  const [selecionados, setSelecionados] = useState(() => new Set())
+  const [historico, setHistorico] = useState([])
+  const [ordenacaoSecundaria, setOrdenacaoSecundaria] = useState([])
 
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
   const podeVisualizar = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_visualizar') || temPermissao(usuarioLogado, 'importar_equipes')
@@ -537,13 +557,19 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const abaAtual = planilhas.find(p => p.id === abaAtiva)
   const estaEditando = editando === abaAtiva
 
-  useEffect(() => { setFiltrosColuna({}) }, [abaAtiva])
+  useEffect(() => {
+    setFiltrosColuna({})
+    setBuscaGlobal('')
+    setSelecionados(new Set())
+    setHistorico([])
+    setOrdenacaoSecundaria([])
+  }, [abaAtiva])
 
   const atualizarFiltroColuna = (coluna, valor) => {
     setFiltrosColuna(prev => ({ ...prev, [coluna]: valor }))
   }
 
-  const temFiltroAtivo = Object.values(filtrosColuna).some(v => norm(v))
+  const temFiltroAtivo = Object.values(filtrosColuna).some(v => norm(v)) || norm(buscaGlobal)
 
   const linhasTotal = useMemo(() => {
     return planilhas.flatMap(p => (linhasPorAba[p.id] || [])
@@ -555,11 +581,33 @@ export default function EstruturaOnline({ usuarioLogado }) {
     return linhasTotal.filter(l => situacaoPermitida(l.descr_situacao) && norm(l.matricula) && norm(l.colaborador))
   }, [linhasTotal])
 
+  // Duplicada = mesma matrícula aparece em mais de 1 linha importável (ativa)
+  // no Total — guarda também o nome e em qual(is) aba(s) ela aparece, pra
+  // dar uma mensagem que já diz onde ir corrigir, em vez de só o número da
+  // matrícula (ver mensagemMatriculaDuplicada).
   const matriculasDuplicadas = useMemo(() => {
-    const contagem = {}
-    linhasTotalImportaveis.forEach(l => { contagem[l.matricula] = (contagem[l.matricula] || 0) + 1 })
-    return Object.entries(contagem).filter(([, qtd]) => qtd > 1).map(([matricula]) => matricula)
+    const porMatricula = {}
+    linhasTotalImportaveis.forEach(l => {
+      const m = l.matricula
+      if (!porMatricula[m]) porMatricula[m] = { matricula: m, colaborador: l.colaborador, abas: [] }
+      porMatricula[m].abas.push(l.origem_aba || 'aba sem nome')
+    })
+    return Object.values(porMatricula)
+      .filter(d => d.abas.length > 1)
+      .map(d => ({ ...d, abasUnicas: [...new Set(d.abas)] }))
   }, [linhasTotalImportaveis])
+
+  const mensagemMatriculaDuplicada = d => d.abasUnicas.length > 1
+    ? `Matrícula ${d.matricula} (${d.colaborador}) está tanto na estrutura ${d.abasUnicas.slice(0, -1).join(', ')} quanto na ${d.abasUnicas[d.abasUnicas.length - 1]} — registro duplicado. Deve ficar em apenas uma das estruturas.`
+    : `Matrícula ${d.matricula} (${d.colaborador}) aparece ${d.abas.length}x dentro da própria aba ${d.abasUnicas[0]} — remova a linha repetida.`
+
+  // Set só com os números de matrícula duplicados — usado pra destacar a
+  // linha direto na grade (TabelaEstrutura), além da mensagem detalhada
+  // abaixo da tabela.
+  const matriculasDuplicadasSet = useMemo(
+    () => new Set(matriculasDuplicadas.map(d => d.matricula)),
+    [matriculasDuplicadas]
+  )
 
   const carregar = async () => {
     setLoading(true)
@@ -683,9 +731,27 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const iniciarEdicao = (id) => {
     setEditando(id)
     setSnapshotEdicao(assinaturaLinhas(linhasPorAba[id] || []))
+    setHistorico([])
+    setSelecionados(new Set())
+  }
+
+  // Desfazer (↩): guarda até 20 passos do estado da aba ANTES de cada
+  // mudança (edição de célula, colar do Excel, adicionar/remover linha,
+  // aplicar em massa) — botão visível, sem depender de atalho de teclado
+  // (Ctrl+Z) pra não exigir decorar nada.
+  const registrarHistorico = () => {
+    setHistorico(prev => [...prev, linhasPorAba[abaAtiva] || []].slice(-20))
+  }
+
+  const desfazer = () => {
+    if (historico.length === 0) return
+    const ultimo = historico[historico.length - 1]
+    setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: ultimo }))
+    setHistorico(prev => prev.slice(0, -1))
   }
 
   const atualizarCelula = (linhaId, coluna, valor) => {
+    registrarHistorico()
     setLinhasPorAba(prev => ({
       ...prev,
       [abaAtiva]: (prev[abaAtiva] || []).map(l => (
@@ -701,6 +767,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
     const texto = evento.clipboardData?.getData('text/plain') || ''
     if (!texto.includes('\t') && !texto.includes('\n')) return
     evento.preventDefault()
+    registrarHistorico()
 
     const linhasTexto = texto.replace(/\r/g, '').split('\n').filter(l => l.length > 0)
     const colInicio = COLUNAS_ESPERADAS.indexOf(colunaInicial)
@@ -724,14 +791,54 @@ export default function EstruturaOnline({ usuarioLogado }) {
   }
 
   const adicionarLinha = () => {
+    registrarHistorico()
     setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [...(prev[abaAtiva] || []), novaLinha()] }))
   }
 
   const removerLinha = (linhaId) => {
+    registrarHistorico()
     setLinhasPorAba(prev => ({
       ...prev,
       [abaAtiva]: (prev[abaAtiva] || []).filter(l => l._tmpId !== linhaId),
     }))
+    setSelecionados(prev => {
+      if (!prev.has(linhaId)) return prev
+      const novo = new Set(prev)
+      novo.delete(linhaId)
+      return novo
+    })
+  }
+
+  const alternarSelecao = (linhaId) => {
+    setSelecionados(prev => {
+      const novo = new Set(prev)
+      if (novo.has(linhaId)) novo.delete(linhaId); else novo.add(linhaId)
+      return novo
+    })
+  }
+
+  const alternarSelecaoTodos = (linhasVisiveis) => {
+    const ids = linhasVisiveis.map(l => l._tmpId)
+    setSelecionados(prev => {
+      const todosJaSelecionados = ids.length > 0 && ids.every(id => prev.has(id))
+      return todosJaSelecionados ? new Set() : new Set(ids)
+    })
+  }
+
+  // Edição em massa: aplica o mesmo valor de DESCR_SITUACAO ou
+  // PROCESSO_EQUIPE a todas as linhas marcadas de uma vez — as duas únicas
+  // colunas com lista fechada (Padrões), pra evitar digitar errado em
+  // massa num campo livre.
+  const aplicarEmMassa = (coluna, valor) => {
+    if (selecionados.size === 0 || !valor) return
+    registrarHistorico()
+    setLinhasPorAba(prev => ({
+      ...prev,
+      [abaAtiva]: (prev[abaAtiva] || []).map(l =>
+        selecionados.has(l._tmpId) ? aplicarSituacaoAutomatica({ ...l, [coluna]: normalizarValorCelula(coluna, valor) }) : l
+      ),
+    }))
+    setMsg(`"${valor}" aplicado em ${coluna === 'descr_situacao' ? 'DESCR_SITUACAO' : 'PROCESSO_EQUIPE'} de ${selecionados.size} linha(s). Confira e clique em Salvar.`)
   }
 
   const limparTabelaAtual = () => {
@@ -908,7 +1015,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
       return
     }
     if (matriculasDuplicadas.length > 0) {
-      setErro(`Existem matriculas duplicadas no Total: ${matriculasDuplicadas.join(', ')}`)
+      setErro(`Existem matrículas duplicadas no Total — corrija antes de importar: ${matriculasDuplicadas.map(mensagemMatriculaDuplicada).join(' | ')}`)
       return
     }
     setSalvando(true)
@@ -943,12 +1050,22 @@ export default function EstruturaOnline({ usuarioLogado }) {
   }
 
   const linhasOrdenadas = abaAtiva === 'TOTAL'
-    ? ordenarPorSituacao(linhasTotal, motivos, ordenacao)
-    : ordenarLinhas(linhasAtuais, motivos, ordenacao, estaEditando)
+    ? ordenarPorSituacao(linhasTotal, motivos, ordenacao, ordenacaoSecundaria)
+    : ordenarLinhas(linhasAtuais, motivos, ordenacao, estaEditando, ordenacaoSecundaria)
 
-  const linhasRender = estaEditando
-    ? linhasOrdenadas
-    : linhasOrdenadas.filter(l => COLUNAS_ESPERADAS.every(c => valorContemFiltro(l[c], filtrosColuna[c])))
+  // Filtro por coluna funciona tanto em leitura quanto editando — edição de
+  // célula (atualizarCelula) e colar do Excel (colarExcel) já resolvem a
+  // linha pelo _tmpId (não pela posição na lista renderizada), então
+  // filtrar não quebra edição de 1 célula/linha de cada vez. O único cuidado
+  // é colar um BLOCO de várias linhas do Excel com filtro ativo — aí o
+  // aviso abaixo (pertoDoFiltro) avisa pra limpar o filtro antes.
+  // Busca global (buscaGlobal) é OR entre colunas; os filtros por coluna
+  // (filtrosColuna) são AND entre si — os dois juntam com AND (precisa
+  // bater nos filtros por coluna E conter a busca global em algum lugar).
+  const linhasRender = linhasOrdenadas.filter(l =>
+    COLUNAS_ESPERADAS.every(c => valorContemFiltro(l[c], filtrosColuna[c])) &&
+    (!norm(buscaGlobal) || COLUNAS_ESPERADAS.some(c => valorContemFiltro(l[c], buscaGlobal)))
+  )
 
   const opcoesMotivosAtuais = motivos.map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   const opcoesProcessosAtuais = processosEquipe.map(p => normalizarProcesso(p.descricao)).filter(Boolean)
@@ -1056,9 +1173,18 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {planilhas.length > 0 && <button onClick={() => setTabelaAmpliada(true)} style={botao('#0f172a')}>Tela cheia</button>}
             {abaAtiva !== 'TOTAL' && podeEditar && abaAtual && <button onClick={renomearAba} style={botao('#64748b')}>Renomear</button>}
             {podeConfigurarMotivos && <button onClick={() => setMostrarMotivos(m => !m)} style={botao(mostrarMotivos ? '#334155' : '#7c3aed')}>{mostrarMotivos ? 'Fechar padroes' : 'Padroes'}</button>}
-            {temFiltroAtivo && <button onClick={() => setFiltrosColuna({})} style={botao('#b91c1c')}>Limpar filtros</button>}
+            {temFiltroAtivo && <button onClick={() => { setFiltrosColuna({}); setBuscaGlobal('') }} style={botao('#b91c1c')}>Limpar filtros</button>}
+            {planilhas.length > 0 && <button onClick={() => setColunasCongeladas(v => !v)} style={botao(colunasCongeladas ? '#0f766e' : '#64748b')}>{colunasCongeladas ? '📌 Descongelar colunas' : '📌 Congelar matrícula/colaborador'}</button>}
+            {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && historico.length > 0 && <button onClick={desfazer} style={botao('#9333ea')}>↩ Desfazer</button>}
           </div>
         </div>
+
+        <BuscaESortSecundario
+          buscaGlobal={buscaGlobal}
+          onBuscaGlobal={setBuscaGlobal}
+          ordenacaoSecundaria={ordenacaoSecundaria}
+          onOrdenacaoSecundaria={setOrdenacaoSecundaria}
+        />
 
         {existeLinhaInvalida && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
@@ -1066,13 +1192,23 @@ export default function EstruturaOnline({ usuarioLogado }) {
           </div>
         )}
 
-        {temFiltroAtivo && !estaEditando && (
+        {temFiltroAtivo && (
           <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
             Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
           </p>
         )}
 
+        {temFiltroAtivo && estaEditando && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: '#92400e' }}>
+            ⚠️ Editando com filtro ativo: editar uma célula de cada vez funciona normal. Só evite colar um BLOCO de várias linhas do Excel agora — limpe o filtro antes, senão as linhas coladas podem cair em posições erradas.
+          </div>
+        )}
+
         <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
+
+        {estaEditando && abaAtiva !== 'TOTAL' && (
+          <BarraSelecaoMassa selecionados={selecionados} motivos={motivos} processosEquipe={processosEquipe} onAplicar={aplicarEmMassa} />
+        )}
 
         {planilhas.length === 0 ? (
           <div style={{ background: '#f8fafc', borderRadius: 12, padding: 24, textAlign: 'center', color: '#64748b', fontWeight: 800 }}>
@@ -1096,6 +1232,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
             onOrdenar={alternarOrdenacao}
             filtros={filtrosColuna}
             onFiltrar={atualizarFiltroColuna}
+            duplicadas={matriculasDuplicadasSet}
+            colunasCongeladas={colunasCongeladas}
+            selecionados={selecionados}
+            onToggleSelecao={alternarSelecao}
+            onToggleSelecaoTodos={alternarSelecaoTodos}
           />
         )}
       </div>
@@ -1119,21 +1260,37 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && <button onClick={limparTabelaAtual} style={botao('#b91c1c')}>Limpar tabela</button>}
                 <button onClick={autoAjustarColunas} style={botao('#0369a1')}>Ajustar colunas</button>
                 <button onClick={exportarExcel} style={botao('#16a34a')}>Exportar Excel</button>
-                {temFiltroAtivo && <button onClick={() => setFiltrosColuna({})} style={botao('#b91c1c')}>Limpar filtros</button>}
+                {temFiltroAtivo && <button onClick={() => { setFiltrosColuna({}); setBuscaGlobal('') }} style={botao('#b91c1c')}>Limpar filtros</button>}
+                <button onClick={() => setColunasCongeladas(v => !v)} style={botao(colunasCongeladas ? '#0f766e' : '#64748b')}>{colunasCongeladas ? '📌 Descongelar colunas' : '📌 Congelar matrícula/colaborador'}</button>
+                {abaAtiva !== 'TOTAL' && podeEditar && estaEditando && historico.length > 0 && <button onClick={desfazer} style={botao('#9333ea')}>↩ Desfazer</button>}
                 <button onClick={() => setTabelaAmpliada(false)} style={botao('#334155')}>Fechar</button>
               </div>
             </div>
+            <BuscaESortSecundario
+              buscaGlobal={buscaGlobal}
+              onBuscaGlobal={setBuscaGlobal}
+              ordenacaoSecundaria={ordenacaoSecundaria}
+              onOrdenacaoSecundaria={setOrdenacaoSecundaria}
+            />
             {existeLinhaInvalida && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
                 🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
               </div>
             )}
-            {temFiltroAtivo && !estaEditando && (
+            {temFiltroAtivo && (
               <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
                 Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
               </p>
             )}
+            {temFiltroAtivo && estaEditando && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: '#92400e' }}>
+                ⚠️ Editando com filtro ativo: editar uma célula de cada vez funciona normal. Só evite colar um BLOCO de várias linhas do Excel agora — limpe o filtro antes, senão as linhas coladas podem cair em posições erradas.
+              </div>
+            )}
             <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
+            {estaEditando && abaAtiva !== 'TOTAL' && (
+              <BarraSelecaoMassa selecionados={selecionados} motivos={motivos} processosEquipe={processosEquipe} onAplicar={aplicarEmMassa} />
+            )}
             <TabelaEstrutura
               linhas={linhasRender}
               motivos={motivos}
@@ -1152,6 +1309,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
               onOrdenar={alternarOrdenacao}
               filtros={filtrosColuna}
               onFiltrar={atualizarFiltroColuna}
+              duplicadas={matriculasDuplicadasSet}
+              colunasCongeladas={colunasCongeladas}
+              selecionados={selecionados}
+              onToggleSelecao={alternarSelecao}
+              onToggleSelecaoTodos={alternarSelecaoTodos}
             />
           </div>
         </div>
@@ -1287,7 +1449,18 @@ export default function EstruturaOnline({ usuarioLogado }) {
             <p style={{ fontSize: 12, color: '#1e40af', marginTop: 4 }}>
               Total: {linhasTotal.length} linha(s). Importaveis: {linhasTotalImportaveis.length}. Fora da carga: {linhasTotal.length - linhasTotalImportaveis.length}.
             </p>
-            {matriculasDuplicadas.length > 0 && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 4, fontWeight: 800 }}>Duplicadas: {matriculasDuplicadas.join(', ')}</p>}
+            {matriculasDuplicadas.length > 0 && (
+              <div style={{ marginTop: 6, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px' }}>
+                <p style={{ fontSize: 11, fontWeight: 900, color: '#991b1b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+                  ⚠️ {matriculasDuplicadas.length} matrícula{matriculasDuplicadas.length === 1 ? '' : 's'} duplicada{matriculasDuplicadas.length === 1 ? '' : 's'} — corrija antes de importar
+                </p>
+                {matriculasDuplicadas.map(d => (
+                  <p key={d.matricula} style={{ fontSize: 12, color: '#991b1b', fontWeight: 600, margin: '2px 0', lineHeight: 1.5 }}>
+                    {mensagemMatriculaDuplicada(d)}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
           <div style={{ minWidth: 260 }}>
             <input value={confirmacao} onChange={e => setConfirmacao(e.target.value)} placeholder="Digite CONFIRMAR CARGA" style={{ ...inputStyle, marginBottom: 8 }} />
@@ -1333,20 +1506,140 @@ function ResumoSituacoes({ linhas, motivos }) {
   )
 }
 
-function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, processoRapido, editando, onChange, onPaste, onRemove, total, altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar, filtros = {}, onFiltrar }) {
+// Colunas que ficam fixas (position: sticky) quando colunasCongeladas está
+// ligado — matrícula/colaborador são as que identificam "quem é" a linha,
+// o par que some quando você rola a tabela pra direita pra ver
+// superv_campo/coordenador etc. Não precisam ser as primeiras colunas: um
+// sticky left funciona mesmo com colunas não-fixas (regional/polo/base...)
+// passando por baixo ao rolar — ver offsetColunaFixa.
+const COLUNAS_FIXAS = ['matricula', 'colaborador']
+
+function offsetColunaFixa(coluna, largura) {
+  if (coluna === 'matricula') return 0
+  if (coluna === 'colaborador') return largura('matricula')
+  return null
+}
+
+// ─── Busca global (1 caixa só, qualquer coluna) + ordenação secundária (até
+// 2 colunas extras de desempate, escolhidas em dropdown — sem precisar
+// clicar em cabeçalho com Shift ou decorar atalho nenhum).
+function BuscaESortSecundario({ buscaGlobal, onBuscaGlobal, ordenacaoSecundaria, onOrdenacaoSecundaria }) {
+  const slots = ordenacaoSecundaria.length === 2 ? ordenacaoSecundaria : [{ coluna: '', direcao: 'asc' }, { coluna: '', direcao: 'asc' }]
+  const atualizarSlot = (i, patch) => {
+    const nova = [...slots]
+    nova[i] = { ...nova[i], ...patch }
+    onOrdenacaoSecundaria(nova)
+  }
+  return (
+    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+      <input
+        value={buscaGlobal}
+        onChange={e => onBuscaGlobal(e.target.value)}
+        placeholder="🔍 Buscar em qualquer coluna..."
+        style={{ ...inputStyle, flex: '1 1 220px', minWidth: 180, padding: '8px 10px', fontSize: 12 }}
+      />
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, fontWeight: 800, color: '#334155' }}>Ordenar também por:</span>
+        {[0, 1].map(i => (
+          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+            <select
+              value={slots[i].coluna}
+              onChange={e => atualizarSlot(i, { coluna: e.target.value })}
+              style={{ ...filtroInputStyle, width: 150, padding: '5px 6px' }}
+            >
+              <option value="">— nenhuma —</option>
+              {COLUNAS_ESPERADAS.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {slots[i].coluna && (
+              <button
+                type="button"
+                onClick={() => atualizarSlot(i, { direcao: slots[i].direcao === 'asc' ? 'desc' : 'asc' })}
+                style={{ ...botao('#64748b'), padding: '5px 8px', fontSize: 10 }}
+              >{slots[i].direcao === 'asc' ? 'A-Z' : 'Z-A'}</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── Edição em massa: aparece só quando tem linha selecionada (checkbox na
+// 1ª coluna da grade, modo edição). Escopo limitado a DESCR_SITUACAO e
+// PROCESSO_EQUIPE — as 2 únicas colunas com lista fechada de valores
+// (Padrões), pra evitar digitar algo errado em várias linhas de uma vez.
+function BarraSelecaoMassa({ selecionados, motivos, processosEquipe, onAplicar }) {
+  const [situacaoEscolhida, setSituacaoEscolhida] = useState('')
+  const [processoEscolhido, setProcessoEscolhido] = useState('')
+  if (!selecionados || selecionados.size === 0) return null
+  return (
+    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
+      <span style={{ fontSize: 12, fontWeight: 900, color: '#1e3a8a' }}>{selecionados.size} linha(s) selecionada(s):</span>
+      <select value={situacaoEscolhida} onChange={e => setSituacaoEscolhida(e.target.value)} style={{ ...filtroInputStyle, width: 170, padding: '6px 8px' }}>
+        <option value="">DESCR_SITUACAO...</option>
+        {(motivos || []).map(m => <option key={m.descricao} value={normalizarSituacao(m.descricao)}>{m.descricao}</option>)}
+      </select>
+      <button
+        type="button" disabled={!situacaoEscolhida}
+        onClick={() => { onAplicar('descr_situacao', situacaoEscolhida); setSituacaoEscolhida('') }}
+        style={botao(situacaoEscolhida ? '#1e40af' : '#cbd5e1')}
+      >Aplicar situação</button>
+      <select value={processoEscolhido} onChange={e => setProcessoEscolhido(e.target.value)} style={{ ...filtroInputStyle, width: 170, padding: '6px 8px' }}>
+        <option value="">PROCESSO_EQUIPE...</option>
+        {(processosEquipe || []).map(p => <option key={p.descricao} value={normalizarProcesso(p.descricao)}>{p.descricao}</option>)}
+      </select>
+      <button
+        type="button" disabled={!processoEscolhido}
+        onClick={() => { onAplicar('processo_equipe', processoEscolhido); setProcessoEscolhido('') }}
+        style={botao(processoEscolhido ? '#1e40af' : '#cbd5e1')}
+      >Aplicar processo</button>
+    </div>
+  )
+}
+
+function TabelaEstrutura({
+  linhas, motivos, processosEquipe, motivoRapido, processoRapido, editando, onChange, onPaste, onRemove, total,
+  altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar, filtros = {}, onFiltrar,
+  duplicadas, colunasCongeladas, selecionados, onToggleSelecao, onToggleSelecaoTodos,
+}) {
   const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   const opcoesProcessos = (processosEquipe || []).map(p => normalizarProcesso(p.descricao)).filter(Boolean)
   const largura = coluna => largurasColunas[coluna] || larguraPadraoColuna(coluna)
+  const mostrarSelecao = editando && !!onToggleSelecao
+  const todosVisiveisSelecionados = mostrarSelecao && linhas.length > 0 && linhas.every(l => selecionados?.has(l._tmpId))
+
+  // Navegação por teclado: seta cima/baixo (e Enter/Shift+Enter) move o
+  // foco pra mesma coluna na linha de cima/baixo — Tab já navega sozinho
+  // (ordem natural do DOM), não precisa de código pra isso.
+  const navegar = (evento, rowIndex, coluna) => {
+    let alvoRow = null
+    if (evento.key === 'ArrowDown' || (evento.key === 'Enter' && !evento.shiftKey)) alvoRow = rowIndex + 1
+    else if (evento.key === 'ArrowUp' || (evento.key === 'Enter' && evento.shiftKey)) alvoRow = rowIndex - 1
+    if (alvoRow === null) return
+    const tabela = evento.currentTarget.closest('table')
+    const alvo = tabela?.querySelector(`[data-nav="${alvoRow}:${coluna}"]`)
+    if (!alvo) return
+    evento.preventDefault()
+    alvo.focus()
+    if (alvo instanceof HTMLInputElement) alvo.select()
+  }
+
   return (
     <div style={{ overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12, maxHeight: altura }}>
       <table style={{ width: 'max-content', minWidth: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', background: '#fff' }}>
         <colgroup>
+          {mostrarSelecao && <col style={{ width: 32 }} />}
           {total && <col style={{ width: 140 }} />}
           {COLUNAS_ESPERADAS.map(c => <col key={c} style={{ width: largura(c) }} />)}
           {editando && <col style={{ width: 110 }} />}
         </colgroup>
         <thead>
           <tr>
+            {mostrarSelecao && (
+              <th style={{ ...filtroThStyle, position: 'sticky', top: 0, zIndex: 3, textAlign: 'center' }}>
+                <input type="checkbox" checked={todosVisiveisSelecionados} onChange={() => onToggleSelecaoTodos(linhas)} title="Selecionar/desmarcar todas as linhas visíveis" />
+              </th>
+            )}
             {total && <Th width={140}>aba</Th>}
             {COLUNAS_ESPERADAS.map(c => (
               <Th
@@ -1355,41 +1648,60 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
                 onResize={onResizeColuna ? w => onResizeColuna(c, w) : undefined}
                 onSort={onOrdenar ? () => onOrdenar(c) : undefined}
                 sortDirection={ordenacao?.coluna === c ? ordenacao.direcao : ''}
+                stickyLeft={colunasCongeladas && COLUNAS_FIXAS.includes(c) ? offsetColunaFixa(c, largura) : null}
               >
                 {c}
               </Th>
             ))}
             {editando && <Th width={110}>acao</Th>}
           </tr>
-          {!editando && onFiltrar && (
+          {onFiltrar && (
             <tr>
+              {mostrarSelecao && <th style={filtroThStyle} />}
               {total && <th style={filtroThStyle} />}
-              {COLUNAS_ESPERADAS.map(c => (
-                <th key={c} style={filtroThStyle}>
-                  <input
-                    value={filtros[c] || ''}
-                    onChange={e => onFiltrar(c, e.target.value)}
-                    placeholder="Filtrar..."
-                    style={filtroInputStyle}
-                  />
-                </th>
-              ))}
+              {COLUNAS_ESPERADAS.map(c => {
+                const fixo = colunasCongeladas && COLUNAS_FIXAS.includes(c)
+                return (
+                  <th
+                    key={c}
+                    style={{
+                      ...filtroThStyle,
+                      ...(fixo ? { position: 'sticky', left: offsetColunaFixa(c, largura), zIndex: 2 } : {}),
+                    }}
+                  >
+                    <input
+                      value={filtros[c] || ''}
+                      onChange={e => onFiltrar(c, e.target.value)}
+                      placeholder="Filtrar..."
+                      style={filtroInputStyle}
+                    />
+                  </th>
+                )
+              })}
+              {editando && <th style={filtroThStyle} />}
             </tr>
           )}
         </thead>
         <tbody>
-          {linhas.map((linha) => {
+          {linhas.map((linha, rowIndex) => {
             const info = infoSituacao(linha.descr_situacao, motivos)
             const situacaoValor = normalizarSituacao(linha.descr_situacao)
             const processoValor = normalizarProcesso(linha.processo_equipe)
             const situacaoInvalida = situacaoValor && !opcoesMotivos.includes(situacaoValor)
             const processoInvalido = processoValor && !opcoesProcessos.includes(processoValor)
             const linhaInvalida = situacaoInvalida || processoInvalido
+            const ehDuplicada = !linhaInvalida && norm(linha.matricula) && duplicadas?.has(linha.matricula)
+            const bgLinha = linhaInvalida ? '#fef2f2' : ehDuplicada ? '#fffbeb' : (situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa')
             return (
               <tr
                 key={linha._tmpId || `${linha.origem_aba}_${linha.matricula}_${linha.prefixo}`}
-                style={{ background: linhaInvalida ? '#fef2f2' : (situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa') }}
+                style={{ background: bgLinha }}
               >
+                {mostrarSelecao && (
+                  <Td style={{ textAlign: 'center' }}>
+                    <input type="checkbox" checked={!!selecionados?.has(linha._tmpId)} onChange={() => onToggleSelecao(linha._tmpId)} />
+                  </Td>
+                )}
                 {total && <Td><span style={{ fontWeight: 800, color: '#0f766e' }}>{linha.origem_aba}</span></Td>}
                 {COLUNAS_ESPERADAS.map(c => {
                   const ehSituacao = c === 'descr_situacao'
@@ -1400,19 +1712,26 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
                   const celulaInvalida = (ehSituacao && situacaoInvalida) || (ehProcesso && processoInvalido)
                   const bg = celulaInvalida ? '#fecaca' : (ehSituacao ? info.cor_fundo : undefined)
                   const color = celulaInvalida ? '#7f1d1d' : (ehSituacao ? info.cor_texto : '#0f172a')
+                  const fixo = colunasCongeladas && COLUNAS_FIXAS.includes(c)
+                  const ehMatricula = c === 'matricula'
                   return (
                     <Td
                       key={c}
-                      style={{ background: bg }}
-                      title={celulaInvalida ? `"${linha[c]}" nao esta cadastrado em Padroes. Corrija ou cadastre em Padroes antes de salvar.` : undefined}
+                      style={{
+                        background: bg !== undefined ? bg : (fixo ? bgLinha : undefined),
+                        ...(fixo ? { position: 'sticky', left: offsetColunaFixa(c, largura), zIndex: 1 } : {}),
+                      }}
+                      title={celulaInvalida ? `"${linha[c]}" nao esta cadastrado em Padroes. Corrija ou cadastre em Padroes antes de salvar.` : (ehMatricula && ehDuplicada ? 'Matrícula duplicada — ver aviso abaixo da tabela.' : undefined)}
                     >
                       {editando ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                           {ehSituacao || ehProcesso ? (
                             <select
+                              data-nav={`${rowIndex}:${c}`}
                               value={valorSelect}
                               onChange={e => onChange(linha._tmpId, c, e.target.value)}
                               onPaste={e => onPaste(linha._tmpId, c, e)}
+                              onKeyDown={e => navegar(e, rowIndex, c)}
                               style={{
                                 width: '100%',
                                 border: 'none',
@@ -1432,9 +1751,11 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
                             </select>
                           ) : (
                             <input
+                              data-nav={`${rowIndex}:${c}`}
                               value={linha[c] || ''}
                               onChange={e => onChange(linha._tmpId, c, e.target.value)}
                               onPaste={e => onPaste(linha._tmpId, c, e)}
+                              onKeyDown={e => navegar(e, rowIndex, c)}
                               style={{
                                 width: '100%',
                                 border: 'none',
@@ -1468,7 +1789,10 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
                           )}
                         </div>
                       ) : (
-                        <span style={{ color, fontWeight: ehSituacao ? 900 : 600 }}>{linha[c] || ''}</span>
+                        <span style={{ color, fontWeight: ehSituacao ? 900 : 600 }}>
+                          {ehMatricula && ehDuplicada && <span title="Matrícula duplicada">⚠️ </span>}
+                          {linha[c] || ''}
+                        </span>
                       )}
                     </Td>
                   )
@@ -1483,7 +1807,7 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
   )
 }
 
-function Th({ children, width, onResize, onSort, sortDirection }) {
+function Th({ children, width, onResize, onSort, sortDirection, stickyLeft }) {
   const iniciarResize = (evento) => {
     if (!onResize) return
     evento.preventDefault()
@@ -1503,6 +1827,8 @@ function Th({ children, width, onResize, onSort, sortDirection }) {
     <th style={{
       position: 'sticky',
       top: 0,
+      left: stickyLeft != null ? stickyLeft : undefined,
+      zIndex: stickyLeft != null ? 3 : 2,
       background: '#f8fafc',
       color: '#334155',
       fontSize: 11,
