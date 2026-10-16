@@ -34,9 +34,11 @@ const COLUNAS_CONTEUDO = COLUNAS_ESPERADAS.filter(c => c !== 'descr_situacao')
 // usado pra decidir quem sobe pra estrutura_equipes). Linha DESLIGADO,
 // TRANSFERIDO, AF.PREVIDENCIA, SEM ELETRICISTA etc. nunca vai pro banco
 // mesmo, então não faz sentido exigir essas colunas nela.
+// PROCESSO_EQUIPE não entra aqui: é preenchido automaticamente com o nome
+// da aba ao salvar (ver salvarAba), nunca fica em branco por conta própria.
 const COLUNAS_OBRIGATORIAS = [
   'regional', 'matricula', 'colaborador', 'cpf_colaborador',
-  'processo_equipe', 'matricula_superv_campo', 'superv_campo', 'superv_operacao', 'coordenador',
+  'matricula_superv_campo', 'superv_campo', 'superv_operacao', 'coordenador',
 ]
 
 const MOTIVOS_PADRAO = [
@@ -562,7 +564,6 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [motivoForm, setMotivoForm] = useState({ descricao: '', cor_fundo: '#f1f5f9', cor_texto: '#334155', permite_importar_estrutura: false })
   const [processoForm, setProcessoForm] = useState({ descricao: '' })
   const [motivoRapido, setMotivoRapido] = useState('')
-  const [processoRapido, setProcessoRapido] = useState('')
   const [tabelaAmpliada, setTabelaAmpliada] = useState(false)
   const [largurasColunas, setLargurasColunas] = useState({})
   const [ordenacao, setOrdenacao] = useState({ coluna: '', direcao: 'asc' })
@@ -907,23 +908,23 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const salvarAba = async () => {
     if (!podeEditar || !abaAtiva) return
     setErro('')
-    const normalizadas = linhasAtuais.map(normalizarLinha).filter(l => !linhaVazia(l))
+    // PROCESSO_EQUIPE não é mais digitado pelo usuário: é sempre o nome da
+    // aba selecionada (PLANTAO, COMERCIAL, PERDAS...), mesmo que a linha
+    // tenha vindo de um paste/edição com outro valor (decisão do Gileno).
+    const processoDaAba = normalizarProcesso(abaAtual?.nome)
+    const normalizadas = linhasAtuais
+      .map(normalizarLinha)
+      .filter(l => !linhaVazia(l))
+      .map(l => ({ ...l, processo_equipe: processoDaAba }))
 
     const situacoesValidas = new Set(motivos.map(m => normalizarSituacao(m.descricao)))
-    const processosValidos = new Set(processosEquipe.map(p => normalizarProcesso(p.descricao)))
     const situacoesInvalidas = new Set()
-    const processosInvalidos = new Set()
     normalizadas.forEach(l => {
       const situacao = normalizarSituacao(l.descr_situacao)
       if (situacao && !situacoesValidas.has(situacao)) situacoesInvalidas.add(situacao)
-      const processo = normalizarProcesso(l.processo_equipe)
-      if (processo && !processosValidos.has(processo)) processosInvalidos.add(processo)
     })
-    if (situacoesInvalidas.size > 0 || processosInvalidos.size > 0) {
-      const partes = []
-      if (situacoesInvalidas.size > 0) partes.push(`DESCR_SITUACAO nao cadastrada(s) em Padroes: ${[...situacoesInvalidas].join(', ')}`)
-      if (processosInvalidos.size > 0) partes.push(`PROCESSO_EQUIPE nao cadastrado(s) em Padroes: ${[...processosInvalidos].join(', ')}`)
-      setErro(`Nao foi possivel salvar. Somente motivos/processos cadastrados em Padroes podem ser salvos. ${partes.join(' | ')}`)
+    if (situacoesInvalidas.size > 0) {
+      setErro(`Nao foi possivel salvar. Somente motivos cadastrados em Padroes podem ser salvos. DESCR_SITUACAO nao cadastrada(s) em Padroes: ${[...situacoesInvalidas].join(', ')}`)
       return
     }
 
@@ -1068,7 +1069,6 @@ export default function EstruturaOnline({ usuarioLogado }) {
         .eq('descricao', descricao)
       if (error) throw error
       setProcessosEquipe(prev => prev.filter(p => normalizarProcesso(p.descricao) !== descricao))
-      if (processoRapido === descricao) setProcessoRapido('')
       setMsg(`Processo ${descricao} excluido da lista.`)
     } catch (e) {
       setErro(e.message || String(e))
@@ -1140,11 +1140,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
   )
 
   const opcoesMotivosAtuais = motivos.map(m => normalizarSituacao(m.descricao)).filter(Boolean)
-  const opcoesProcessosAtuais = processosEquipe.map(p => normalizarProcesso(p.descricao)).filter(Boolean)
+  // PROCESSO_EQUIPE não entra mais nessa checagem: é sempre o nome da aba,
+  // nunca um valor digitado que possa ficar fora de Padroes.
   const existeLinhaInvalida = linhasOrdenadas.some(l => {
     const situacao = normalizarSituacao(l.descr_situacao)
-    const processo = normalizarProcesso(l.processo_equipe)
-    return (situacao && !opcoesMotivosAtuais.includes(situacao)) || (processo && !opcoesProcessosAtuais.includes(processo))
+    return situacao && !opcoesMotivosAtuais.includes(situacao)
   })
 
   const linhasComCampoFaltando = linhasOrdenadas
@@ -1264,7 +1264,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
         {existeLinhaInvalida && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
-            🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
+            🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
           </div>
         )}
 
@@ -1293,7 +1293,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
         <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
 
         {estaEditando && abaAtiva !== 'TOTAL' && (
-          <BarraSelecaoMassa selecionados={selecionados} motivos={motivos} processosEquipe={processosEquipe} onAplicar={aplicarEmMassa} />
+          <BarraSelecaoMassa selecionados={selecionados} motivos={motivos} onAplicar={aplicarEmMassa} />
         )}
 
         {planilhas.length === 0 ? (
@@ -1304,9 +1304,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
           <TabelaEstrutura
             linhas={linhasRender}
             motivos={motivos}
-            processosEquipe={processosEquipe}
+            processoAba={abaAtiva !== 'TOTAL' ? normalizarProcesso(abaAtual?.nome) : ''}
             motivoRapido={motivoRapido}
-            processoRapido={processoRapido}
             editando={estaEditando && abaAtiva !== 'TOTAL'}
             onChange={atualizarCelula}
             onPaste={colarExcel}
@@ -1360,7 +1359,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
             />
             {existeLinhaInvalida && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
-                🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
+                🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
               </div>
             )}
             {linhasComCampoFaltando.length > 0 && (
@@ -1384,14 +1383,13 @@ export default function EstruturaOnline({ usuarioLogado }) {
             )}
             <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
             {estaEditando && abaAtiva !== 'TOTAL' && (
-              <BarraSelecaoMassa selecionados={selecionados} motivos={motivos} processosEquipe={processosEquipe} onAplicar={aplicarEmMassa} />
+              <BarraSelecaoMassa selecionados={selecionados} motivos={motivos} onAplicar={aplicarEmMassa} />
             )}
             <TabelaEstrutura
               linhas={linhasRender}
               motivos={motivos}
-              processosEquipe={processosEquipe}
+              processoAba={abaAtiva !== 'TOTAL' ? normalizarProcesso(abaAtual?.nome) : ''}
               motivoRapido={motivoRapido}
-              processoRapido={processoRapido}
               editando={estaEditando && abaAtiva !== 'TOTAL'}
               onChange={atualizarCelula}
               onPaste={colarExcel}
@@ -1500,11 +1498,14 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 <Campo label="Processo equipe"><input style={inputStyle} value={processoForm.descricao} onChange={e => setProcessoForm({ descricao: e.target.value })} placeholder="Ex: CORTE" /></Campo>
                 <button onClick={salvarProcessoEquipe} style={botao('#7c3aed')}>Salvar processo</button>
               </div>
+              <p style={{ fontSize: 11.5, color: '#64748b', fontWeight: 600, marginBottom: 8 }}>
+                A coluna PROCESSO_EQUIPE da grade não usa mais esta lista pra edição — ela é
+                preenchida automaticamente com o nome da aba. Esta lista fica só como catálogo de referência.
+              </p>
               <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: 10 }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520, background: '#fff' }}>
                   <thead>
                     <tr>
-                      <Th>usar</Th>
                       <Th>processo</Th>
                       <Th>ordem</Th>
                       <Th>excluir</Th>
@@ -1513,17 +1514,6 @@ export default function EstruturaOnline({ usuarioLogado }) {
                   <tbody>
                     {processosEquipe.map(p => (
                       <tr key={p.descricao}>
-                        <Td>
-                          <button
-                            onClick={() => {
-                              setProcessoRapido(normalizarProcesso(p.descricao))
-                              setMsg(`Processo ${normalizarProcesso(p.descricao)} selecionado para ajuste manual na coluna PROCESSO_EQUIPE.`)
-                            }}
-                            style={botao(processoRapido === normalizarProcesso(p.descricao) ? '#0f766e' : '#64748b')}
-                          >
-                            {processoRapido === normalizarProcesso(p.descricao) ? 'Selecionado' : 'Selecionar'}
-                          </button>
-                        </Td>
                         <Td><span style={{ borderRadius: 999, padding: '5px 10px', fontSize: 11, fontWeight: 900, background: '#e0f2fe', color: '#075985', border: '1px solid #07598522' }}>{normalizarProcesso(p.descricao)}</span></Td>
                         <Td>{p.ordem_exibicao || '-'}</Td>
                         <Td><button onClick={() => excluirProcessoEquipe(p)} style={botao('#dc2626')}>Excluir</button></Td>
@@ -1660,12 +1650,11 @@ function BuscaESortSecundario({ buscaGlobal, onBuscaGlobal, ordenacaoSecundaria,
 }
 
 // ─── Edição em massa: aparece só quando tem linha selecionada (checkbox na
-// 1ª coluna da grade, modo edição). Escopo limitado a DESCR_SITUACAO e
-// PROCESSO_EQUIPE — as 2 únicas colunas com lista fechada de valores
-// (Padrões), pra evitar digitar algo errado em várias linhas de uma vez.
-function BarraSelecaoMassa({ selecionados, motivos, processosEquipe, onAplicar }) {
+// 1ª coluna da grade, modo edição). Escopo limitado a DESCR_SITUACAO — a
+// única coluna com lista fechada de valores (Padrões) que ainda é digitada
+// pelo usuário. PROCESSO_EQUIPE não entra aqui: é sempre o nome da aba.
+function BarraSelecaoMassa({ selecionados, motivos, onAplicar }) {
   const [situacaoEscolhida, setSituacaoEscolhida] = useState('')
-  const [processoEscolhido, setProcessoEscolhido] = useState('')
   if (!selecionados || selecionados.size === 0) return null
   return (
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', background: '#eff6ff', border: '1.5px solid #93c5fd', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
@@ -1679,26 +1668,16 @@ function BarraSelecaoMassa({ selecionados, motivos, processosEquipe, onAplicar }
         onClick={() => { onAplicar('descr_situacao', situacaoEscolhida); setSituacaoEscolhida('') }}
         style={botao(situacaoEscolhida ? '#1e40af' : '#cbd5e1')}
       >Aplicar situação</button>
-      <select value={processoEscolhido} onChange={e => setProcessoEscolhido(e.target.value)} style={{ ...filtroInputStyle, width: 170, padding: '6px 8px' }}>
-        <option value="">PROCESSO_EQUIPE...</option>
-        {(processosEquipe || []).map(p => <option key={p.descricao} value={normalizarProcesso(p.descricao)}>{p.descricao}</option>)}
-      </select>
-      <button
-        type="button" disabled={!processoEscolhido}
-        onClick={() => { onAplicar('processo_equipe', processoEscolhido); setProcessoEscolhido('') }}
-        style={botao(processoEscolhido ? '#1e40af' : '#cbd5e1')}
-      >Aplicar processo</button>
     </div>
   )
 }
 
 function TabelaEstrutura({
-  linhas, motivos, processosEquipe, motivoRapido, processoRapido, editando, onChange, onPaste, onRemove, total,
+  linhas, motivos, processoAba, motivoRapido, editando, onChange, onPaste, onRemove, total,
   altura = 520, largurasColunas = {}, onResizeColuna, ordenacao, onOrdenar, filtros = {}, onFiltrar,
   duplicadas, colunasCongeladas, selecionados, onToggleSelecao, onToggleSelecaoTodos,
 }) {
   const opcoesMotivos = (motivos || []).map(m => normalizarSituacao(m.descricao)).filter(Boolean)
-  const opcoesProcessos = (processosEquipe || []).map(p => normalizarProcesso(p.descricao)).filter(Boolean)
   const largura = coluna => largurasColunas[coluna] || larguraPadraoColuna(coluna)
   const mostrarSelecao = editando && !!onToggleSelecao
   const todosVisiveisSelecionados = mostrarSelecao && linhas.length > 0 && linhas.every(l => selecionados?.has(l._tmpId))
@@ -1781,10 +1760,8 @@ function TabelaEstrutura({
           {linhas.map((linha, rowIndex) => {
             const info = infoSituacao(linha.descr_situacao, motivos)
             const situacaoValor = normalizarSituacao(linha.descr_situacao)
-            const processoValor = normalizarProcesso(linha.processo_equipe)
             const situacaoInvalida = situacaoValor && !opcoesMotivos.includes(situacaoValor)
-            const processoInvalido = processoValor && !opcoesProcessos.includes(processoValor)
-            const linhaInvalida = situacaoInvalida || processoInvalido
+            const linhaInvalida = situacaoInvalida
             const ehDuplicada = !linhaInvalida && norm(linha.matricula) && duplicadas?.has(linha.matricula)
             const faltandoObrigatorio = camposObrigatoriosFaltando(linha)
             const bgLinha = linhaInvalida ? '#fef2f2' : ehDuplicada ? '#fffbeb' : (situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa')
@@ -1802,11 +1779,15 @@ function TabelaEstrutura({
                 {COLUNAS_ESPERADAS.map(c => {
                   const ehSituacao = c === 'descr_situacao'
                   const ehProcesso = c === 'processo_equipe'
-                  const opcoesSelect = ehSituacao ? opcoesMotivos : opcoesProcessos
-                  const valorSelect = ehSituacao ? normalizarSituacao(linha[c]) : normalizarProcesso(linha[c])
-                  const valorRapido = ehSituacao ? motivoRapido : processoRapido
-                  const celulaInvalida = (ehSituacao && situacaoInvalida) || (ehProcesso && processoInvalido)
+                  const opcoesSelect = opcoesMotivos
+                  const valorSelect = normalizarSituacao(linha[c])
+                  const valorRapido = motivoRapido
+                  const celulaInvalida = ehSituacao && situacaoInvalida
                   const campoObrigatorioVazio = faltandoObrigatorio.includes(c)
+                  // PROCESSO_EQUIPE não é mais digitado: na aba corrente é
+                  // sempre processoAba; no Total Consolidado, a aba de
+                  // origem de cada linha (linha.origem_aba).
+                  const processoExibido = total ? linha.origem_aba : processoAba
                   const bg = celulaInvalida ? '#fecaca' : campoObrigatorioVazio ? '#fecaca' : (ehSituacao ? info.cor_fundo : undefined)
                   const color = celulaInvalida ? '#7f1d1d' : campoObrigatorioVazio ? '#7f1d1d' : (ehSituacao ? info.cor_texto : '#0f172a')
                   const fixo = colunasCongeladas && COLUNAS_FIXAS.includes(c)
@@ -1820,13 +1801,16 @@ function TabelaEstrutura({
                       }}
                       title={
                         celulaInvalida ? `"${linha[c]}" nao esta cadastrado em Padroes. Corrija ou cadastre em Padroes antes de salvar.`
+                          : ehProcesso ? 'Preenchido automaticamente com o nome da aba — não é editável.'
                           : campoObrigatorioVazio ? `${c.toUpperCase()} é obrigatório — não pode ficar em branco.`
                           : (ehMatricula && ehDuplicada ? 'Matrícula duplicada — ver aviso abaixo da tabela.' : undefined)
                       }
                     >
-                      {editando ? (
+                      {ehProcesso ? (
+                        <span style={{ color: '#0f172a', fontWeight: 700 }}>{processoExibido}</span>
+                      ) : editando ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                          {ehSituacao || ehProcesso ? (
+                          {ehSituacao ? (
                             <select
                               data-nav={`${rowIndex}:${c}`}
                               value={valorSelect}
@@ -1869,7 +1853,7 @@ function TabelaEstrutura({
                               }}
                             />
                           )}
-                          {(ehSituacao || ehProcesso) && valorRapido && (
+                          {ehSituacao && valorRapido && (
                             <button
                               type="button"
                               title={`Aplicar ${valorRapido} nesta linha`}
