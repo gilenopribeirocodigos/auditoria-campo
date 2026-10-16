@@ -555,11 +555,25 @@ export default function EstruturaOnline({ usuarioLogado }) {
     return linhasTotal.filter(l => situacaoPermitida(l.descr_situacao) && norm(l.matricula) && norm(l.colaborador))
   }, [linhasTotal])
 
+  // Duplicada = mesma matrícula aparece em mais de 1 linha importável (ativa)
+  // no Total — guarda também o nome e em qual(is) aba(s) ela aparece, pra
+  // dar uma mensagem que já diz onde ir corrigir, em vez de só o número da
+  // matrícula (ver mensagemMatriculaDuplicada).
   const matriculasDuplicadas = useMemo(() => {
-    const contagem = {}
-    linhasTotalImportaveis.forEach(l => { contagem[l.matricula] = (contagem[l.matricula] || 0) + 1 })
-    return Object.entries(contagem).filter(([, qtd]) => qtd > 1).map(([matricula]) => matricula)
+    const porMatricula = {}
+    linhasTotalImportaveis.forEach(l => {
+      const m = l.matricula
+      if (!porMatricula[m]) porMatricula[m] = { matricula: m, colaborador: l.colaborador, abas: [] }
+      porMatricula[m].abas.push(l.origem_aba || 'aba sem nome')
+    })
+    return Object.values(porMatricula)
+      .filter(d => d.abas.length > 1)
+      .map(d => ({ ...d, abasUnicas: [...new Set(d.abas)] }))
   }, [linhasTotalImportaveis])
+
+  const mensagemMatriculaDuplicada = d => d.abasUnicas.length > 1
+    ? `Matrícula ${d.matricula} (${d.colaborador}) está tanto na estrutura ${d.abasUnicas.slice(0, -1).join(', ')} quanto na ${d.abasUnicas[d.abasUnicas.length - 1]} — registro duplicado. Deve ficar em apenas uma das estruturas.`
+    : `Matrícula ${d.matricula} (${d.colaborador}) aparece ${d.abas.length}x dentro da própria aba ${d.abasUnicas[0]} — remova a linha repetida.`
 
   const carregar = async () => {
     setLoading(true)
@@ -908,7 +922,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
       return
     }
     if (matriculasDuplicadas.length > 0) {
-      setErro(`Existem matriculas duplicadas no Total: ${matriculasDuplicadas.join(', ')}`)
+      setErro(`Existem matrículas duplicadas no Total — corrija antes de importar: ${matriculasDuplicadas.map(mensagemMatriculaDuplicada).join(' | ')}`)
       return
     }
     setSalvando(true)
@@ -1287,7 +1301,18 @@ export default function EstruturaOnline({ usuarioLogado }) {
             <p style={{ fontSize: 12, color: '#1e40af', marginTop: 4 }}>
               Total: {linhasTotal.length} linha(s). Importaveis: {linhasTotalImportaveis.length}. Fora da carga: {linhasTotal.length - linhasTotalImportaveis.length}.
             </p>
-            {matriculasDuplicadas.length > 0 && <p style={{ fontSize: 12, color: '#991b1b', marginTop: 4, fontWeight: 800 }}>Duplicadas: {matriculasDuplicadas.join(', ')}</p>}
+            {matriculasDuplicadas.length > 0 && (
+              <div style={{ marginTop: 6, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '8px 10px' }}>
+                <p style={{ fontSize: 11, fontWeight: 900, color: '#991b1b', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 4 }}>
+                  ⚠️ {matriculasDuplicadas.length} matrícula{matriculasDuplicadas.length === 1 ? '' : 's'} duplicada{matriculasDuplicadas.length === 1 ? '' : 's'} — corrija antes de importar
+                </p>
+                {matriculasDuplicadas.map(d => (
+                  <p key={d.matricula} style={{ fontSize: 12, color: '#991b1b', fontWeight: 600, margin: '2px 0', lineHeight: 1.5 }}>
+                    {mensagemMatriculaDuplicada(d)}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
           <div style={{ minWidth: 260 }}>
             <input value={confirmacao} onChange={e => setConfirmacao(e.target.value)} placeholder="Digite CONFIRMAR CARGA" style={{ ...inputStyle, marginBottom: 8 }} />
