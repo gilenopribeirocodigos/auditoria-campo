@@ -26,6 +26,20 @@ const COLUNAS_ESPERADAS = [
 ]
 const COLUNAS_CONTEUDO = COLUNAS_ESPERADAS.filter(c => c !== 'descr_situacao')
 
+// Colunas que não podem ficar em branco (pedido do Gileno — ver print com
+// as colunas circuladas: REGIONAL, MATRICULA, COLABORADOR, CPF_COLABORADOR,
+// PROCESSO_EQUIPE, MATRICULA_SUPERV_CAMPO, SUPERV_CAMPO, SUPERV_OPERACAO,
+// COORDENADOR). MATRICULA/COLABORADOR/CPF_COLABORADOR viram exceção numa
+// linha com DESCR_SITUACAO = SEM ELETRICISTA — esse status já existe no
+// sistema exatamente pra marcar uma vaga de equipe sem ninguém designado
+// (aplicarSituacaoAutomatica), então exigir colaborador ali quebraria esse
+// recurso que já funciona.
+const COLUNAS_OBRIGATORIAS = [
+  'regional', 'matricula', 'colaborador', 'cpf_colaborador',
+  'processo_equipe', 'matricula_superv_campo', 'superv_campo', 'superv_operacao', 'coordenador',
+]
+const COLUNAS_OBRIGATORIAS_EXCETO_SEM_ELETRICISTA = ['matricula', 'colaborador', 'cpf_colaborador']
+
 const MOTIVOS_PADRAO = [
   { descricao: 'ATIVO', cor_fundo: '#dcfce7', cor_texto: '#166534', permite_importar_estrutura: true, ordem_exibicao: 1, ativo: true },
   { descricao: 'RESERVA', cor_fundo: '#dbeafe', cor_texto: '#1e40af', permite_importar_estrutura: true, ordem_exibicao: 2, ativo: true },
@@ -119,6 +133,24 @@ function novaLinha() {
 
 function linhaVazia(linha) {
   return COLUNAS_CONTEUDO.every(c => !norm(linha?.[c]))
+}
+
+// ─── Lista as colunas obrigatórias que estão em branco numa linha (ignora
+// linha totalmente vazia — essa já é tratada como "sem preencher ainda",
+// não como erro). MATRICULA/COLABORADOR/CPF_COLABORADOR não contam quando
+// a situação é SEM ELETRICISTA (vaga sem ninguém designado, de propósito).
+function camposObrigatoriosFaltando(linha) {
+  if (linhaVazia(linha)) return []
+  const semEletricista = normalizarSituacao(linha?.descr_situacao) === SITUACAO_SEM_ELETRICISTA
+  return COLUNAS_OBRIGATORIAS.filter(c => {
+    if (semEletricista && COLUNAS_OBRIGATORIAS_EXCETO_SEM_ELETRICISTA.includes(c)) return false
+    return !norm(linha?.[c])
+  })
+}
+
+function mensagemCampoObrigatorio(linha, faltando) {
+  const quem = linha.colaborador || linha.matricula || linha.prefixo || 'linha sem identificação'
+  return `${quem}${linha.matricula ? ` (mat. ${linha.matricula})` : ''}: falta ${faltando.join(', ').toUpperCase()}`
 }
 
 function aplicarSituacaoAutomatica(linha) {
@@ -546,6 +578,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
   const [selecionados, setSelecionados] = useState(() => new Set())
   const [historico, setHistorico] = useState([])
   const [ordenacaoSecundaria, setOrdenacaoSecundaria] = useState([])
+  // _tmpId das linhas criadas/editadas NESTA sessão de edição — os campos
+  // obrigatórios (COLUNAS_OBRIGATORIAS) só travam o Salvar pra essas, não
+  // pra linha legada que ninguém tocou (decisão do Gileno: não mexer no
+  // que já está rodando, só exigir ao atualizar de novo).
+  const [linhasTocadas, setLinhasTocadas] = useState(() => new Set())
 
   const isAdmin = usuarioLogado?.perfil === 'ADMIN'
   const podeVisualizar = isAdmin || temPermissao(usuarioLogado, 'estrutura_online_visualizar') || temPermissao(usuarioLogado, 'importar_equipes')
@@ -733,6 +770,16 @@ export default function EstruturaOnline({ usuarioLogado }) {
     setSnapshotEdicao(assinaturaLinhas(linhasPorAba[id] || []))
     setHistorico([])
     setSelecionados(new Set())
+    setLinhasTocadas(new Set())
+  }
+
+  const marcarTocada = (linhaId) => {
+    setLinhasTocadas(prev => {
+      if (prev.has(linhaId)) return prev
+      const novo = new Set(prev)
+      novo.add(linhaId)
+      return novo
+    })
   }
 
   // Desfazer (↩): guarda até 20 passos do estado da aba ANTES de cada
@@ -752,6 +799,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
 
   const atualizarCelula = (linhaId, coluna, valor) => {
     registrarHistorico()
+    marcarTocada(linhaId)
     setLinhasPorAba(prev => ({
       ...prev,
       [abaAtiva]: (prev[abaAtiva] || []).map(l => (
@@ -775,6 +823,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
     let rowIndex = linhasBase.findIndex(l => l._tmpId === linhaId)
     if (rowIndex < 0) rowIndex = 0
 
+    const tmpIdsColados = []
     linhasTexto.forEach((txt, offsetLinha) => {
       const valores = txt.split('\t')
       const destino = rowIndex + offsetLinha
@@ -784,15 +833,19 @@ export default function EstruturaOnline({ usuarioLogado }) {
         if (col) linhasBase[destino][col] = normalizarValorCelula(col, valor)
       })
       linhasBase[destino] = aplicarSituacaoAutomatica(linhasBase[destino])
+      tmpIdsColados.push(linhasBase[destino]._tmpId)
     })
 
     setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: linhasBase }))
+    setLinhasTocadas(prev => new Set([...prev, ...tmpIdsColados]))
     setMsg('Dados colados. Confira e clique em Salvar.')
   }
 
   const adicionarLinha = () => {
     registrarHistorico()
-    setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [...(prev[abaAtiva] || []), novaLinha()] }))
+    const linha = novaLinha()
+    setLinhasPorAba(prev => ({ ...prev, [abaAtiva]: [...(prev[abaAtiva] || []), linha] }))
+    marcarTocada(linha._tmpId)
   }
 
   const removerLinha = (linhaId) => {
@@ -838,6 +891,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
         selecionados.has(l._tmpId) ? aplicarSituacaoAutomatica({ ...l, [coluna]: normalizarValorCelula(coluna, valor) }) : l
       ),
     }))
+    setLinhasTocadas(prev => new Set([...prev, ...selecionados]))
     setMsg(`"${valor}" aplicado em ${coluna === 'descr_situacao' ? 'DESCR_SITUACAO' : 'PROCESSO_EQUIPE'} de ${selecionados.size} linha(s). Confira e clique em Salvar.`)
   }
 
@@ -874,6 +928,23 @@ export default function EstruturaOnline({ usuarioLogado }) {
       if (situacoesInvalidas.size > 0) partes.push(`DESCR_SITUACAO nao cadastrada(s) em Padroes: ${[...situacoesInvalidas].join(', ')}`)
       if (processosInvalidos.size > 0) partes.push(`PROCESSO_EQUIPE nao cadastrado(s) em Padroes: ${[...processosInvalidos].join(', ')}`)
       setErro(`Nao foi possivel salvar. Somente motivos/processos cadastrados em Padroes podem ser salvos. ${partes.join(' | ')}`)
+      return
+    }
+
+    // Só exige os campos obrigatórios nas linhas criadas/editadas NESTA
+    // sessão (linhasTocadas) — linha legada que ninguém tocou continua
+    // salvando normal, sem travar o uso de hoje por causa de um histórico
+    // que ainda não foi todo corrigido (decisão do Gileno).
+    const comCampoFaltando = linhasAtuais
+      .filter(l => linhasTocadas.has(l._tmpId))
+      .map(normalizarLinha)
+      .filter(l => !linhaVazia(l))
+      .map(l => ({ linha: l, faltando: camposObrigatoriosFaltando(l) }))
+      .filter(x => x.faltando.length > 0)
+    if (comCampoFaltando.length > 0) {
+      const lista = comCampoFaltando.slice(0, 6).map(x => mensagemCampoObrigatorio(x.linha, x.faltando)).join(' | ')
+      const resto = comCampoFaltando.length > 6 ? ` | + ${comCampoFaltando.length - 6} outra(s) linha(s) com campo obrigatorio vazio` : ''
+      setErro(`Nao foi possivel salvar. ${comCampoFaltando.length} linha(s) criada(s)/editada(s) agora com campo obrigatorio em branco: ${lista}${resto}`)
       return
     }
 
@@ -1018,6 +1089,11 @@ export default function EstruturaOnline({ usuarioLogado }) {
       setErro(`Existem matrículas duplicadas no Total — corrija antes de importar: ${matriculasDuplicadas.map(mensagemMatriculaDuplicada).join(' | ')}`)
       return
     }
+    // Campo obrigatório em branco no Total NÃO bloqueia o Importar Total —
+    // só mexe no que foi criado/editado agora (ver salvarAba); o Total
+    // Consolidado reúne o que já estava salvo em cada aba, inclusive linha
+    // legada anterior a essa validação. Fica só o aviso visual (banner +
+    // célula vermelha) acima, informando o que ainda falta completar.
     setSalvando(true)
     setErro('')
     setRelatorioImportacao(null)
@@ -1074,6 +1150,10 @@ export default function EstruturaOnline({ usuarioLogado }) {
     const processo = normalizarProcesso(l.processo_equipe)
     return (situacao && !opcoesMotivosAtuais.includes(situacao)) || (processo && !opcoesProcessosAtuais.includes(processo))
   })
+
+  const linhasComCampoFaltando = linhasOrdenadas
+    .map(l => ({ linha: l, faltando: camposObrigatoriosFaltando(l) }))
+    .filter(x => x.faltando.length > 0)
 
   const alternarOrdenacao = (coluna) => {
     setOrdenacao(prev => ({
@@ -1192,6 +1272,16 @@ export default function EstruturaOnline({ usuarioLogado }) {
           </div>
         )}
 
+        {linhasComCampoFaltando.length > 0 && (
+          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
+            🔴 {linhasComCampoFaltando.length} linha(s) com campo obrigatório em branco (destacado em vermelho na célula) — preencha antes de salvar:
+            <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2, fontWeight: 600 }}>
+              {linhasComCampoFaltando.slice(0, 8).map((x, i) => <span key={i}>{mensagemCampoObrigatorio(x.linha, x.faltando)}</span>)}
+              {linhasComCampoFaltando.length > 8 && <span>+ {linhasComCampoFaltando.length - 8} outra(s) linha(s)...</span>}
+            </div>
+          </div>
+        )}
+
         {temFiltroAtivo && (
           <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
             Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
@@ -1275,6 +1365,15 @@ export default function EstruturaOnline({ usuarioLogado }) {
             {existeLinhaInvalida && (
               <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
                 🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
+              </div>
+            )}
+            {linhasComCampoFaltando.length > 0 && (
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 12, fontWeight: 700 }}>
+                🔴 {linhasComCampoFaltando.length} linha(s) com campo obrigatório em branco (destacado em vermelho na célula) — preencha antes de salvar:
+                <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 2, fontWeight: 600 }}>
+                  {linhasComCampoFaltando.slice(0, 8).map((x, i) => <span key={i}>{mensagemCampoObrigatorio(x.linha, x.faltando)}</span>)}
+                  {linhasComCampoFaltando.length > 8 && <span>+ {linhasComCampoFaltando.length - 8} outra(s) linha(s)...</span>}
+                </div>
               </div>
             )}
             {temFiltroAtivo && (
@@ -1650,7 +1749,7 @@ function TabelaEstrutura({
                 sortDirection={ordenacao?.coluna === c ? ordenacao.direcao : ''}
                 stickyLeft={colunasCongeladas && COLUNAS_FIXAS.includes(c) ? offsetColunaFixa(c, largura) : null}
               >
-                {c}
+                {c}{COLUNAS_OBRIGATORIAS.includes(c) && <span title="Campo obrigatório" style={{ color: '#dc2626' }}> *</span>}
               </Th>
             ))}
             {editando && <Th width={110}>acao</Th>}
@@ -1691,6 +1790,7 @@ function TabelaEstrutura({
             const processoInvalido = processoValor && !opcoesProcessos.includes(processoValor)
             const linhaInvalida = situacaoInvalida || processoInvalido
             const ehDuplicada = !linhaInvalida && norm(linha.matricula) && duplicadas?.has(linha.matricula)
+            const faltandoObrigatorio = camposObrigatoriosFaltando(linha)
             const bgLinha = linhaInvalida ? '#fef2f2' : ehDuplicada ? '#fffbeb' : (situacaoPermitida(linha.descr_situacao) ? '#fff' : '#fafafa')
             return (
               <tr
@@ -1710,8 +1810,9 @@ function TabelaEstrutura({
                   const valorSelect = ehSituacao ? normalizarSituacao(linha[c]) : normalizarProcesso(linha[c])
                   const valorRapido = ehSituacao ? motivoRapido : processoRapido
                   const celulaInvalida = (ehSituacao && situacaoInvalida) || (ehProcesso && processoInvalido)
-                  const bg = celulaInvalida ? '#fecaca' : (ehSituacao ? info.cor_fundo : undefined)
-                  const color = celulaInvalida ? '#7f1d1d' : (ehSituacao ? info.cor_texto : '#0f172a')
+                  const campoObrigatorioVazio = faltandoObrigatorio.includes(c)
+                  const bg = celulaInvalida ? '#fecaca' : campoObrigatorioVazio ? '#fecaca' : (ehSituacao ? info.cor_fundo : undefined)
+                  const color = celulaInvalida ? '#7f1d1d' : campoObrigatorioVazio ? '#7f1d1d' : (ehSituacao ? info.cor_texto : '#0f172a')
                   const fixo = colunasCongeladas && COLUNAS_FIXAS.includes(c)
                   const ehMatricula = c === 'matricula'
                   return (
@@ -1721,7 +1822,11 @@ function TabelaEstrutura({
                         background: bg !== undefined ? bg : (fixo ? bgLinha : undefined),
                         ...(fixo ? { position: 'sticky', left: offsetColunaFixa(c, largura), zIndex: 1 } : {}),
                       }}
-                      title={celulaInvalida ? `"${linha[c]}" nao esta cadastrado em Padroes. Corrija ou cadastre em Padroes antes de salvar.` : (ehMatricula && ehDuplicada ? 'Matrícula duplicada — ver aviso abaixo da tabela.' : undefined)}
+                      title={
+                        celulaInvalida ? `"${linha[c]}" nao esta cadastrado em Padroes. Corrija ou cadastre em Padroes antes de salvar.`
+                          : campoObrigatorioVazio ? `${c.toUpperCase()} é obrigatório — não pode ficar em branco.`
+                          : (ehMatricula && ehDuplicada ? 'Matrícula duplicada — ver aviso abaixo da tabela.' : undefined)
+                      }
                     >
                       {editando ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1743,7 +1848,7 @@ function TabelaEstrutura({
                                 cursor: 'pointer',
                               }}
                             >
-                              <option value="">Selecione...</option>
+                              <option value="">{campoObrigatorioVazio ? 'Selecione... (obrigatório)' : 'Selecione...'}</option>
                               {valorSelect && !opcoesSelect.includes(valorSelect) && (
                                 <option value={valorSelect}>{valorSelect}</option>
                               )}
@@ -1756,6 +1861,7 @@ function TabelaEstrutura({
                               onChange={e => onChange(linha._tmpId, c, e.target.value)}
                               onPaste={e => onPaste(linha._tmpId, c, e)}
                               onKeyDown={e => navegar(e, rowIndex, c)}
+                              placeholder={campoObrigatorioVazio ? 'Obrigatório — não deixe em branco' : undefined}
                               style={{
                                 width: '100%',
                                 border: 'none',
