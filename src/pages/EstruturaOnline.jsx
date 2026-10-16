@@ -29,16 +29,15 @@ const COLUNAS_CONTEUDO = COLUNAS_ESPERADAS.filter(c => c !== 'descr_situacao')
 // Colunas que não podem ficar em branco (pedido do Gileno — ver print com
 // as colunas circuladas: REGIONAL, MATRICULA, COLABORADOR, CPF_COLABORADOR,
 // PROCESSO_EQUIPE, MATRICULA_SUPERV_CAMPO, SUPERV_CAMPO, SUPERV_OPERACAO,
-// COORDENADOR). MATRICULA/COLABORADOR/CPF_COLABORADOR viram exceção numa
-// linha com DESCR_SITUACAO = SEM ELETRICISTA — esse status já existe no
-// sistema exatamente pra marcar uma vaga de equipe sem ninguém designado
-// (aplicarSituacaoAutomatica), então exigir colaborador ali quebraria esse
-// recurso que já funciona.
+// COORDENADOR) — mas só valem pra linha "importável" (DESCR_SITUACAO ATIVO
+// ou RESERVA, mesmo critério de situacaoPermitida()/linhasTotalImportaveis
+// usado pra decidir quem sobe pra estrutura_equipes). Linha DESLIGADO,
+// TRANSFERIDO, AF.PREVIDENCIA, SEM ELETRICISTA etc. nunca vai pro banco
+// mesmo, então não faz sentido exigir essas colunas nela.
 const COLUNAS_OBRIGATORIAS = [
   'regional', 'matricula', 'colaborador', 'cpf_colaborador',
   'processo_equipe', 'matricula_superv_campo', 'superv_campo', 'superv_operacao', 'coordenador',
 ]
-const COLUNAS_OBRIGATORIAS_EXCETO_SEM_ELETRICISTA = ['matricula', 'colaborador', 'cpf_colaborador']
 
 const MOTIVOS_PADRAO = [
   { descricao: 'ATIVO', cor_fundo: '#dcfce7', cor_texto: '#166534', permite_importar_estrutura: true, ordem_exibicao: 1, ativo: true },
@@ -135,17 +134,14 @@ function linhaVazia(linha) {
   return COLUNAS_CONTEUDO.every(c => !norm(linha?.[c]))
 }
 
-// ─── Lista as colunas obrigatórias que estão em branco numa linha (ignora
-// linha totalmente vazia — essa já é tratada como "sem preencher ainda",
-// não como erro). MATRICULA/COLABORADOR/CPF_COLABORADOR não contam quando
-// a situação é SEM ELETRICISTA (vaga sem ninguém designado, de propósito).
+// ─── Lista as colunas obrigatórias que estão em branco numa linha — só
+// checa linha "importável" (DESCR_SITUACAO ATIVO/RESERVA, situacaoPermitida);
+// linha vazia ou com outra situação (DESLIGADO, SEM ELETRICISTA etc.) nunca
+// entra em estrutura_equipes mesmo, então não precisa ter essas colunas
+// completas.
 function camposObrigatoriosFaltando(linha) {
-  if (linhaVazia(linha)) return []
-  const semEletricista = normalizarSituacao(linha?.descr_situacao) === SITUACAO_SEM_ELETRICISTA
-  return COLUNAS_OBRIGATORIAS.filter(c => {
-    if (semEletricista && COLUNAS_OBRIGATORIAS_EXCETO_SEM_ELETRICISTA.includes(c)) return false
-    return !norm(linha?.[c])
-  })
+  if (linhaVazia(linha) || !situacaoPermitida(linha?.descr_situacao)) return []
+  return COLUNAS_OBRIGATORIAS.filter(c => !norm(linha?.[c]))
 }
 
 function mensagemCampoObrigatorio(linha, faltando) {
