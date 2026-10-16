@@ -706,8 +706,8 @@ export default function EstruturaOnline({ usuarioLogado }) {
     setSalvando(true)
     try {
       const payload = [
-        { nome: 'Plantao', ordem: 1, criado_por: usuarioLogado?.login, atualizado_por: usuarioLogado?.login },
-        { nome: 'Comercial', ordem: 2, criado_por: usuarioLogado?.login, atualizado_por: usuarioLogado?.login },
+        { nome: 'PLANTAO', ordem: 1, criado_por: usuarioLogado?.login, atualizado_por: usuarioLogado?.login },
+        { nome: 'COMERCIAL', ordem: 2, criado_por: usuarioLogado?.login, atualizado_por: usuarioLogado?.login },
       ]
       const { error } = await supabase.from('estrutura_planilhas').insert(payload)
       if (error) throw error
@@ -729,7 +729,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
     try {
       const { data, error } = await supabase.from('estrutura_planilhas')
         .insert({
-          nome: limparTexto(nome),
+          nome: limparTexto(nome).toUpperCase(),
           ordem: planilhas.length + 1,
           criado_por: usuarioLogado?.login,
           atualizado_por: usuarioLogado?.login,
@@ -753,7 +753,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
     const nome = window.prompt('Novo nome da aba:', abaAtual.nome)
     if (!nome) return
     try {
-      const atualizado = { nome: limparTexto(nome), atualizado_por: usuarioLogado?.login, atualizado_em: new Date().toISOString() }
+      const atualizado = { nome: limparTexto(nome).toUpperCase(), atualizado_por: usuarioLogado?.login, atualizado_em: new Date().toISOString() }
       const { error } = await supabase.from('estrutura_planilhas').update(atualizado).eq('id', abaAtual.id)
       if (error) throw error
       setPlanilhas(prev => prev.map(p => p.id === abaAtual.id ? { ...p, ...atualizado } : p))
