@@ -960,9 +960,13 @@ export default function EstruturaOnline({ usuarioLogado }) {
     ? ordenarPorSituacao(linhasTotal, motivos, ordenacao)
     : ordenarLinhas(linhasAtuais, motivos, ordenacao, estaEditando)
 
-  const linhasRender = estaEditando
-    ? linhasOrdenadas
-    : linhasOrdenadas.filter(l => COLUNAS_ESPERADAS.every(c => valorContemFiltro(l[c], filtrosColuna[c])))
+  // Filtro por coluna funciona tanto em leitura quanto editando — edição de
+  // célula (atualizarCelula) e colar do Excel (colarExcel) já resolvem a
+  // linha pelo _tmpId (não pela posição na lista renderizada), então
+  // filtrar não quebra edição de 1 célula/linha de cada vez. O único cuidado
+  // é colar um BLOCO de várias linhas do Excel com filtro ativo — aí o
+  // aviso abaixo (pertoDoFiltro) avisa pra limpar o filtro antes.
+  const linhasRender = linhasOrdenadas.filter(l => COLUNAS_ESPERADAS.every(c => valorContemFiltro(l[c], filtrosColuna[c])))
 
   const opcoesMotivosAtuais = motivos.map(m => normalizarSituacao(m.descricao)).filter(Boolean)
   const opcoesProcessosAtuais = processosEquipe.map(p => normalizarProcesso(p.descricao)).filter(Boolean)
@@ -1080,10 +1084,16 @@ export default function EstruturaOnline({ usuarioLogado }) {
           </div>
         )}
 
-        {temFiltroAtivo && !estaEditando && (
+        {temFiltroAtivo && (
           <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
             Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
           </p>
+        )}
+
+        {temFiltroAtivo && estaEditando && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: '#92400e' }}>
+            ⚠️ Editando com filtro ativo: editar uma célula de cada vez funciona normal. Só evite colar um BLOCO de várias linhas do Excel agora — limpe o filtro antes, senão as linhas coladas podem cair em posições erradas.
+          </div>
         )}
 
         <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
@@ -1142,10 +1152,15 @@ export default function EstruturaOnline({ usuarioLogado }) {
                 🔴 As linhas destacadas em vermelho tem DESCR_SITUACAO ou PROCESSO_EQUIPE fora de Padroes. Corrija o valor ou cadastre-o em Padroes antes de salvar.
               </div>
             )}
-            {temFiltroAtivo && !estaEditando && (
+            {temFiltroAtivo && (
               <p style={{ fontSize: 11, color: '#64748b', fontWeight: 700, marginBottom: 8 }}>
                 Mostrando {linhasRender.filter(l => !linhaVazia(l)).length} de {linhasOrdenadas.filter(l => !linhaVazia(l)).length} linha(s) — filtro ativo.
               </p>
+            )}
+            {temFiltroAtivo && estaEditando && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 10, padding: '8px 10px', marginBottom: 10, fontSize: 11.5, fontWeight: 700, color: '#92400e' }}>
+                ⚠️ Editando com filtro ativo: editar uma célula de cada vez funciona normal. Só evite colar um BLOCO de várias linhas do Excel agora — limpe o filtro antes, senão as linhas coladas podem cair em posições erradas.
+              </div>
             )}
             <ResumoSituacoes linhas={abaAtiva === 'TOTAL' ? linhasTotal : linhasAtuais} motivos={motivos} />
             <TabelaEstrutura
@@ -1386,7 +1401,7 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
             ))}
             {editando && <Th width={110}>acao</Th>}
           </tr>
-          {!editando && onFiltrar && (
+          {onFiltrar && (
             <tr>
               {total && <th style={filtroThStyle} />}
               {COLUNAS_ESPERADAS.map(c => (
@@ -1399,6 +1414,7 @@ function TabelaEstrutura({ linhas, motivos, processosEquipe, motivoRapido, proce
                   />
                 </th>
               ))}
+              {editando && <th style={filtroThStyle} />}
             </tr>
           )}
         </thead>
