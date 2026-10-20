@@ -218,13 +218,16 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
             </p>
           )}
           {(grupo.itens[0]?.tratamento_assinatura_url || grupo.itens[0]?.tratamento_assinatura2_url) && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+            <div style={{ marginTop: 8 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>✍️ Assinatura</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               {[grupo.itens[0]?.tratamento_assinatura_url, grupo.itens[0]?.tratamento_assinatura2_url].filter(Boolean).map((url, i) => (
                 <a key={i} href={url} target="_blank" rel="noreferrer">
                   <img src={url} alt={`Assinatura ${i + 1}`}
-                    style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
+                    style={{ height: 110, maxWidth: 240, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6 }} />
                 </a>
               ))}
+              </div>
             </div>
           )}
           {Array.isArray(grupo.itens[0]?.tratamento_evidencias_urls) && grupo.itens[0].tratamento_evidencias_urls.length > 0 && (
@@ -738,16 +741,19 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
             ? colaboradoresEquipe.filter(c => c.assinatura_url).map(c => c.assinatura_url)
             : [oc.tratamento_assinatura_url, oc.tratamento_assinatura2_url].filter(Boolean)
           ).length > 0 && (
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-              {(modoEquipe
-                ? colaboradoresEquipe.filter(c => c.assinatura_url).map(c => c.assinatura_url)
-                : [oc.tratamento_assinatura_url, oc.tratamento_assinatura2_url].filter(Boolean)
-              ).map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noreferrer">
-                  <img src={url} alt={`Assinatura ${i + 1}`}
-                    style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
-                </a>
-              ))}
+            <div style={{ marginTop: 8 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>✍️ Assinatura</p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {(modoEquipe
+                  ? colaboradoresEquipe.filter(c => c.assinatura_url).map(c => c.assinatura_url)
+                  : [oc.tratamento_assinatura_url, oc.tratamento_assinatura2_url].filter(Boolean)
+                ).map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer">
+                    <img src={url} alt={`Assinatura ${i + 1}`}
+                      style={{ height: 110, maxWidth: 240, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6 }} />
+                  </a>
+                ))}
+              </div>
             </div>
           )}
           {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
