@@ -69,6 +69,16 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
   const [abaAtiva, setAbaAtiva] = useState('meta_dia')
   const [loading,  setLoading]  = useState(true)
 
+  // Meses realmente em uso pra Meta do Mês/metas/dias úteis: com o modo
+  // "Mês" permitindo vários meses selecionados (selMeses), usa a seleção;
+  // senão cai no único mês do filtro de sempre (mesAno).
+  const mesesAtivos = filtros.tipoPeriodo === 'mes'
+    ? (filtros.selMeses.length > 0 ? filtros.selMeses : [filtros.mesAno || calcMesAtual()])
+    : [filtros.mesAno || calcMesAtual()]
+  const mesesAtivosLabel = mesesAtivos.length > 1
+    ? [...mesesAtivos].sort().map(mesLabel).join(', ')
+    : mesLabel(mesesAtivos[0])
+
   // ── dados raw (vindos do banco) ───────────────────────────────────────────
   const [audsRaw,        setAudsRaw]        = useState([])
   const [audsHojeRaw,    setAudsHojeRaw]    = useState([])
@@ -94,11 +104,19 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
         supabase.from('auditorias').select('*').gte('data_auditoria', ini).lte('data_auditoria', fim).order('data_auditoria'),
         supabase.from('auditorias').select('fiscal, status, nota, data_auditoria, prefixo').eq('data_auditoria', hojeStr()),
         supabase.from('usuarios').select('nome, login, matricula').in('status', ['ATIVO', 'RESERVA']).order('nome'),
-        supabase.from('metas_fiscal').select('*').eq('mes_ano', filtros.mesAno),
+        supabase.from('metas_fiscal').select('*').in('mes_ano', mesesAtivos),
         supabase.from('feriados').select('*').order('data'),
       ])
 
-      setAudsRaw(auds || [])
+      // getDatasQuery() busca o intervalo amplo (1º dia do mês mais antigo
+      // selecionado ao último dia do mais recente) — com vários meses
+      // selecionados sem serem consecutivos (ex.: Mai + Set), filtra aqui
+      // pra não incluir os meses "do meio" que não foram marcados.
+      const audsFiltradasPorMes = filtros.tipoPeriodo === 'mes'
+        ? (auds || []).filter(a => mesesAtivos.includes((a.data_auditoria || '').slice(0, 7)))
+        : (auds || [])
+
+      setAudsRaw(audsFiltradasPorMes)
       setAudsHojeRaw(audsHoje || [])
       setFiscais(fData || [])
       setMetas(mData || [])
@@ -115,7 +133,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
     if (filtros.modoPeriodo && !filtros.dataIni) return
     carregar()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtros.mesAno, filtros.modoPeriodo, filtros.dataIni, filtros.dataFim])
+  }, [filtros.mesAno, filtros.selMeses, filtros.modoPeriodo, filtros.dataIni, filtros.dataFim])
 
   // ── auditorias FILTRADAS (filtros.filtrar aplica Sup. Op + Sup. Campo + Prefixo + SEGREGAÇÃO) ──
   const realizadas     = useMemo(() => filtros.filtrar(audsRaw),
@@ -192,14 +210,17 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
   }, [realizadas])
 
   // ── computed metas ────────────────────────────────────────────────────────
-  const diasUteis         = diasUteisMes(filtros.mesAno || calcMesAtual(), feriados)
-  const feriadosDoMes     = feriadosLista.filter(f => f.data.startsWith(filtros.mesAno || ''))
+  // Soma dias úteis/feriados de todos os meses ativos — com 1 mês só
+  // (comportamento de sempre), a soma é igual ao valor de um mês único.
+  const diasUteis         = mesesAtivos.reduce((acc, m) => acc + diasUteisMes(m, feriados), 0)
+  const feriadosDoMes     = feriadosLista.filter(f => mesesAtivos.some(m => f.data.startsWith(m)))
   const dataHojeFormatada = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
 
   const dadosFiscais = useMemo(() => {
     return fiscais.map(f => {
-      const metaObj    = metas.find(m => m.fiscal_login === f.login)
-      const meta       = metaObj?.meta ?? 0
+      // Soma a meta de todos os meses ativos (pode haver mais de uma linha
+      // por fiscal em `metas` quando vários meses estão selecionados).
+      const meta       = metas.filter(m => m.fiscal_login === f.login).reduce((s, m) => s + (Number(m.meta) || 0), 0)
       const metaDia    = meta > 0 && diasUteis > 0 ? Math.ceil(meta / diasUteis) : 0
       const auds       = realizadas.filter(a => a.fiscal === f.nome)
       const audsHoje   = realizadasHoje.filter(a => a.fiscal === f.nome)
@@ -324,6 +345,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
           filtros={filtros}
           titulo="🔍 Filtros do Dashboard"
           badge="aplica em todas as abas"
+          permitirVariosMeses
         />
 
         {/* Abas */}
@@ -362,7 +384,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
                     <div style={{ height: 12, borderRadius: 6, width: `${Math.min(pctGeralHoje, 100)}%`, background: barColor(pctGeralHoje), transition: 'width 0.5s' }} />
                   </div>
                   <p style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
-                    Meta diária baseada em {diasUteis} dias úteis em {mesLabel(filtros.mesAno || calcMesAtual())}
+                    Meta diária baseada em {diasUteis} dias úteis em {mesesAtivosLabel}
                     {feriadosDoMes.length > 0 && ` (${feriadosDoMes.length} feriado(s) descontado(s))`}
                   </p>
                 </div>
@@ -372,7 +394,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
                     <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
                     <p>{filtroHierarquicoAtivo
                       ? 'Nenhum fiscal com auditorias para os filtros selecionados.'
-                      : `Nenhuma meta cadastrada para ${mesLabel(filtros.mesAno || calcMesAtual())}.`}</p>
+                      : `Nenhuma meta cadastrada para ${mesesAtivosLabel}.`}</p>
                     {!filtroHierarquicoAtivo && <p style={{ fontSize: 12, marginTop: 8 }}>Acesse <strong>Metas por Fiscal</strong> para cadastrar.</p>}
                   </div>
                 ) : (
@@ -436,7 +458,7 @@ export default function Dashboard({ usuarioLogado, onVoltar }) {
                     <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
                     <p style={{ marginBottom: 8 }}>{filtroHierarquicoAtivo
                       ? 'Nenhum fiscal com auditorias para os filtros selecionados.'
-                      : `Nenhuma meta cadastrada para ${mesLabel(filtros.mesAno || calcMesAtual())}.`}</p>
+                      : `Nenhuma meta cadastrada para ${mesesAtivosLabel}.`}</p>
                     {!filtroHierarquicoAtivo && <p style={{ fontSize: 12 }}>Acesse <strong>Metas por Fiscal</strong> para cadastrar.</p>}
                   </div>
                 ) : (
