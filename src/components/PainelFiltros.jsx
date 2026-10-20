@@ -312,6 +312,11 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   const periodoInicial = periodoPadrao || (inicializarMes ? 'mes' : 'todos')
   const [tipoPeriodo, setTipoPeriodo] = useState(periodoInicial)
   const [mesAno,      setMesAno]      = useState(inicializarMes ? calcMesAtual() : '')
+  // Seleção de vários meses de uma vez (opt-in — só é usada/exibida quando a
+  // tela passa `permitirVariosMeses` pro <PainelFiltros>; nas demais telas
+  // fica sempre vazia e não muda nada do comportamento de hoje, que continua
+  // em `mesAno`/`setMesAno`).
+  const [selMeses,    setSelMeses]    = useState([])
   const [dataIni,     setDataIni]     = useState('')
   const [dataFim,     setDataFim]     = useState('')
   const [selRegional, setSelRegional] = useState([])
@@ -467,6 +472,12 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
   }, [selRegional, selSupOp, selSupCampo, estrutura.prefixosTodos, estrutura.mapPrefixo])
 
   // ── Datas para uso em queries (.gte/.lte) ──
+  // Com vários meses selecionados (selMeses), a query busca o intervalo
+  // amplo (do 1º dia do mês mais antigo ao último dia do mais recente) —
+  // quem usa `selMeses` (ex.: Dashboard) ainda precisa filtrar o resultado
+  // por mês pertencente a `selMeses` depois, pra não incluir um mês "no
+  // meio" que não foi selecionado (ex.: selecionou Mai + Set, não deve
+  // trazer Jun/Jul/Ago).
   const getDatasQuery = () => {
     if (tipoPeriodo === 'hoje') {
       const hoje = calcHoje()
@@ -474,6 +485,15 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     }
     if (tipoPeriodo === 'periodo' && dataIni) {
       return { ini: dataIni, fim: dataFim || dataIni }
+    }
+    if (tipoPeriodo === 'mes' && selMeses.length > 0) {
+      const ordenados = [...selMeses].sort()
+      const [anoIni, mesIni] = ordenados[0].split('-')
+      const [anoFim, mesFim] = ordenados[ordenados.length - 1].split('-')
+      return {
+        ini: `${anoIni}-${mesIni}-01`,
+        fim: new Date(parseInt(anoFim), parseInt(mesFim), 0).toISOString().split('T')[0],
+      }
     }
     if (tipoPeriodo === 'mes' && mesAno) {
       const [ano, mes] = mesAno.split('-')
@@ -490,7 +510,9 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     ? `Hoje (${fmtData(calcHoje())})`
     : tipoPeriodo === 'periodo' && dataIni
       ? (dataFim && dataFim !== dataIni ? `${fmtData(dataIni)} → ${fmtData(dataFim)}` : fmtData(dataIni))
-      : tipoPeriodo === 'mes' && mesAno ? mesLabel(mesAno) : 'Todos'
+      : tipoPeriodo === 'mes' && selMeses.length > 1
+        ? `${selMeses.length} meses (${[...selMeses].sort().map(mesLabel).join(', ')})`
+        : tipoPeriodo === 'mes' && (selMeses[0] || mesAno) ? mesLabel(selMeses[0] || mesAno) : 'Todos'
 
   // ── Filtra uma lista em memória por supervisor/prefixo ──
   // Cada item precisa ter um campo de prefixo (default: 'prefixo').
@@ -544,6 +566,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     setDataFim('')
     setTipoPeriodo(periodoInicial)
     if (inicializarMes) setMesAno(calcMesAtual())
+    setSelMeses([])
   }
 
   // ── Algum filtro está ativo? ──
@@ -554,6 +577,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     selPrefixos.length > 0 ||
     tipoPeriodo !== periodoInicial ||
     (tipoPeriodo === 'mes' && inicializarMes && mesAno !== calcMesAtual()) ||
+    (tipoPeriodo === 'mes' && selMeses.length > 0 && !(selMeses.length === 1 && selMeses[0] === calcMesAtual())) ||
     (tipoPeriodo === 'periodo' && (dataIni || dataFim))
   )
 
@@ -562,6 +586,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     tipoPeriodo, setTipoPeriodo,
     modoPeriodo, setModoPeriodo,
     mesAno,      setMesAno,
+    selMeses,    setSelMeses,
     dataIni,     setDataIni,
     dataFim,     setDataFim,
     selRegional, setSelRegional,
@@ -599,11 +624,13 @@ export function PainelFiltros({
   mesesOpcoesCount = 6,
   mostrarMesPeriodo = true,
   mostrarPrefixo = true,
+  permitirVariosMeses = false,
 }) {
   const {
     tipoPeriodo, setTipoPeriodo,
     modoPeriodo, setModoPeriodo,
     mesAno,      setMesAno,
+    selMeses,    setSelMeses,
     dataIni,     setDataIni,
     dataFim,     setDataFim,
     selRegional, setSelRegional,
@@ -625,6 +652,7 @@ export function PainelFiltros({
     setDataIni('')
     setDataFim('')
     if (!mesAno && mesesOpcoesCount > 0) setMesAno(calcMesAtual())
+    if (permitirVariosMeses && selMeses.length === 0) setSelMeses([calcMesAtual()])
   }
 
   const selecionarPeriodo = () => {
@@ -717,8 +745,18 @@ export function PainelFiltros({
               </div>
             )}
 
-            {/* Modo Mês: dropdown de mês */}
-            {tipoPeriodo === 'mes' && (
+            {/* Modo Mês: dropdown de mês único, ou multi-select quando a
+                tela pede `permitirVariosMeses` (ex.: Dashboard) */}
+            {tipoPeriodo === 'mes' && permitirVariosMeses && (
+              <MultiSelect
+                opcoes={mesesOpcoes}
+                selecionados={selMeses}
+                onChange={setSelMeses}
+                placeholder="Selecione o(s) mês(es)"
+                formatOption={m => `${mesLabel(m)}${m === calcMesAtual() ? ' ← atual' : ''}`}
+              />
+            )}
+            {tipoPeriodo === 'mes' && !permitirVariosMeses && (
               <select value={mesAno} onChange={e => setMesAno(e.target.value)} style={{
                 ...INPUT_STYLE,
                 cursor: 'pointer',

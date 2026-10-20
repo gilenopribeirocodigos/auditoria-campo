@@ -217,6 +217,25 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
               {[grupo.itens[0]?.tratamento_assinatura_nome, grupo.itens[0]?.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}
             </p>
           )}
+          {(grupo.itens[0]?.tratamento_assinatura_url || grupo.itens[0]?.tratamento_assinatura2_url) && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+              {[grupo.itens[0]?.tratamento_assinatura_url, grupo.itens[0]?.tratamento_assinatura2_url].filter(Boolean).map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt={`Assinatura ${i + 1}`}
+                    style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
+                </a>
+              ))}
+            </div>
+          )}
+          {Array.isArray(grupo.itens[0]?.tratamento_evidencias_urls) && grupo.itens[0].tratamento_evidencias_urls.length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+              {grupo.itens[0].tratamento_evidencias_urls.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt={`Evidência ${i + 1}`} style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                </a>
+              ))}
+            </div>
+          )}
           {isAdmin(usuarioLogado) && (
             <button onClick={reabrir} disabled={reabrindo} style={{
               marginTop: 8, fontSize: 11, fontWeight: 700, color: '#dc2626',
@@ -714,6 +733,22 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
             <p style={{ marginTop: 4 }}>
               <strong>Colaborador(es) cientificado(s):</strong> {[oc.tratamento_assinatura_nome, oc.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}
             </p>
+          )}
+          {(modoEquipe
+            ? colaboradoresEquipe.filter(c => c.assinatura_url).map(c => c.assinatura_url)
+            : [oc.tratamento_assinatura_url, oc.tratamento_assinatura2_url].filter(Boolean)
+          ).length > 0 && (
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+              {(modoEquipe
+                ? colaboradoresEquipe.filter(c => c.assinatura_url).map(c => c.assinatura_url)
+                : [oc.tratamento_assinatura_url, oc.tratamento_assinatura2_url].filter(Boolean)
+              ).map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noreferrer">
+                  <img src={url} alt={`Assinatura ${i + 1}`}
+                    style={{ height: 40, maxWidth: 100, objectFit: 'contain', borderRadius: 6, background: '#fff', border: '1px solid #e2e8f0' }} />
+                </a>
+              ))}
+            </div>
           )}
           {Array.isArray(oc.tratamento_fotos_urls) && oc.tratamento_fotos_urls.length > 0 && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
