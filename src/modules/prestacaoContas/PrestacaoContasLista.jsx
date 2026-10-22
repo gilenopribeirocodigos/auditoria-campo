@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CarregandoHexagono } from '../../components/Shared.jsx'
 import { temPermissao } from '../../lib/auth.js'
 import PCRecebidaDetalhe from './telas/PCRecebidaDetalhe.jsx'
@@ -10,7 +10,21 @@ import PCFechadas from './telas/PCFechadas.jsx'
 import {
   listarMinhasPrestacoes, listarRecebidas, obterPrestacao, obterNomeUsuario,
   aprovarPrestacao, rejeitarPrestacao, excluirRascunho, cancelarRejeitada, obterPermissaoUsuario,
+  agruparDuplicatasVisiveis,
 } from './lib/prestacaoContas.js'
+
+// Ciclo de cores pra marcar pares/grupos de possível duplicata na lista de
+// Recebidas — cada grupo (agruparDuplicatasVisiveis) usa a cor do seu índice,
+// ciclando quando há mais grupos que cores (o selo com o número da outra
+// prestação continua sendo a forma confiável de achar o par certo).
+const PALETA_DUPLICATAS = [
+  { accent: '#f59e0b', bg: '#fffbeb', border: '#fcd34d', ink: '#92400e' }, // âmbar
+  { accent: '#8b5cf6', bg: '#f5f3ff', border: '#d8b4fe', ink: '#6d28d9' }, // roxo
+  { accent: '#0d9488', bg: '#f0fdfa', border: '#5eead4', ink: '#0f766e' }, // verde-água
+  { accent: '#e11d48', bg: '#fff1f2', border: '#fda4af', ink: '#9f1239' }, // rosa
+  { accent: '#0ea5e9', bg: '#f0f9ff', border: '#7dd3fc', ink: '#075985' }, // azul
+  { accent: '#65a30d', bg: '#f7fee7', border: '#bef264', ink: '#3f6212' }, // verde-oliva
+]
 
 // Cada status tem uma cor própria — aplicada tanto no card inteiro (fundo
 // claro + borda) quanto no selo, pra dar sinal visual imediato de qual é
@@ -185,6 +199,11 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
   }
 
   const pendentes = recebidas.filter(p => p.status === 'ENVIADO').length
+
+  // Marcação visual de possível duplicata na lista — recalcula só quando a
+  // lista de recebidas muda (não a cada busca/filtro, que não altera quem é
+  // duplicata de quem).
+  const duplicatasMapa = useMemo(() => agruparDuplicatasVisiveis(recebidas), [recebidas])
 
   // Busca por número, solicitante, classificação, descrição ou fornecedor —
   // e filtro por status. Aplicado só na lista visível (a troca de aba reseta).
@@ -436,6 +455,11 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                   ['ENVIADO', 'Recebida/Recebida (reenvio)'], ['APROVADO', 'Aprovada'],
                   ['REJEITADO', 'Rejeitada'], ['FECHADA', 'Conta Realizada'],
                 ]} />
+                {Object.keys(duplicatasMapa).length > 0 && (
+                  <p style={{ fontSize: 11, color: '#92400e', marginBottom: 10 }}>
+                    🟡 Cards com faixa colorida na borda + selo "Possível duplicata" formam um par — mesma cor nos dois, mesmo valor/data/alocação.
+                  </p>
+                )}
                 <BarraBuscaFiltro placeholder="Buscar por número, solicitante, classificação..." />
               </>
             )}
@@ -451,11 +475,17 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {recebidasFiltradas.map(p => {
                   const v = visualStatus(p.status)
+                  const dup = duplicatasMapa[p.id]
+                  const corDup = dup ? PALETA_DUPLICATAS[dup.corIndex % PALETA_DUPLICATAS.length] : null
                   return (
                     <button key={p.id} onClick={() => abrirDetalhe(p.id, p.remetente_id)} style={{
-                      textAlign: 'left', background: v.cardBg, border: `1.5px solid ${v.cardBorder}`, borderRadius: 12,
-                      padding: '12px 14px', cursor: 'pointer',
+                      textAlign: 'left', background: v.cardBg, border: `1.5px solid ${corDup ? corDup.accent : v.cardBorder}`, borderRadius: 12,
+                      padding: corDup ? '12px 14px 12px 18px' : '12px 14px', cursor: 'pointer',
+                      position: 'relative', overflow: 'hidden',
                     }}>
+                      {corDup && (
+                        <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 5, background: corDup.accent }} />
+                      )}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{p.numero_pc}</span>
                         <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 9px', borderRadius: 999, background: v.badgeBg, color: v.badgeColor }}>{rotuloStatus(p.status, p.rodada, 'recebidas')}</span>
@@ -463,6 +493,17 @@ export default function PrestacaoContasLista({ usuarioLogado, onVoltar, onNova, 
                       <p style={{ fontSize: 12, color: '#64748b' }}>
                         {p.remetente_nome} · {p.total_itens} {p.total_itens === 1 ? 'item' : 'itens'} · R$ {p.valor_total.toFixed(2).replace('.', ',')}
                       </p>
+                      {dup && (
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 8,
+                          fontSize: 11, fontWeight: 700, color: corDup.ink,
+                          background: corDup.bg, border: `1px solid ${corDup.border}`,
+                          borderRadius: 999, padding: '3px 10px 3px 7px',
+                        }}>
+                          <span style={{ width: 7, height: 7, borderRadius: '50%', background: corDup.accent, flexShrink: 0 }} />
+                          Possível duplicata: {dup.parceiros.join(', ')}
+                        </span>
+                      )}
                     </button>
                   )
                 })}

@@ -311,7 +311,7 @@ export async function listarRecebidas(destinatarioId) {
   assertSupabase()
   const { data, error } = await supabase
     .from('pc_prestacoes')
-    .select('*, pc_itens(valor, classificacao, descricao, fornecedor)')
+    .select('*, pc_itens(valor, classificacao, descricao, fornecedor, data_emissao, categoria_despesa, colaborador_1, colaborador_2, alocacao)')
     .eq('destinatario_id', destinatarioId)
     .neq('status', 'RASCUNHO')
     .order('criado_em', { ascending: false })
@@ -490,6 +490,74 @@ export async function buscarDuplicatasPotenciais(remetenteId, item, prestacaoIdA
   return (data || []).filter(p => (p.pc_itens || []).some(i => (
     Number(i.valor) === Number(valor) && i.data_emissao === dataEmissao && mesmaAlocacao(i)
   )))
+}
+
+function mesmaAlocacaoItens(a, b) {
+  if (!a.categoria_despesa || !b.categoria_despesa) return true // dado legado — não dá pra comparar
+  if (a.categoria_despesa !== b.categoria_despesa) return false
+  if (a.categoria_despesa === 'COLABORADOR') {
+    const colabsA = [a.colaborador_1, a.colaborador_2].filter(Boolean).map(c => c.trim().toUpperCase())
+    const colabsB = [b.colaborador_1, b.colaborador_2].filter(Boolean).map(c => c.trim().toUpperCase())
+    return colabsA.some(c => colabsB.includes(c))
+  }
+  if (a.categoria_despesa === 'ADMINISTRATIVA') return true
+  return !!(a.alocacao || '').trim() && (a.alocacao || '').trim().toUpperCase() === (b.alocacao || '').trim().toUpperCase()
+}
+
+// ── Agrupamento de duplicatas pra marcação visual na lista (Recebidas) ──────
+// Mesma regra de comparação de buscarDuplicatasPotenciais (valor + data de
+// emissão + mesma alocação, mesmo remetente), mas calculada 100% em memória
+// sobre uma lista já carregada — sem 1 consulta extra por item ao banco.
+// Só marca grupos com 2+ prestações. Cada grupo recebe um índice sequencial
+// (0, 1, 2...) pra a tela escolher uma cor do ciclo de cores — pares
+// diferentes caem em índices diferentes.
+// Isso é só pra dar um sinal visual rápido na lista; o alerta oficial de
+// duplicidade na tela de análise (PCRecebidaDetalhe) continua vindo de
+// buscarDuplicatasPotenciais, que é mais abrangente (olha TODAS as
+// prestações do remetente, não só as que estão na lista visível).
+export function agruparDuplicatasVisiveis(prestacoes) {
+  const n = prestacoes.length
+  const pai = Array.from({ length: n }, (_, i) => i)
+  const encontrar = i => (pai[i] === i ? i : (pai[i] = encontrar(pai[i])))
+  const unir = (i, j) => {
+    const ri = encontrar(i), rj = encontrar(j)
+    if (ri !== rj) pai[ri] = rj
+  }
+
+  for (let i = 0; i < n; i++) {
+    for (let j = i + 1; j < n; j++) {
+      const p1 = prestacoes[i], p2 = prestacoes[j]
+      if (p1.remetente_id !== p2.remetente_id) continue
+      const bate = (p1.pc_itens || []).some(i1 => (p2.pc_itens || []).some(i2 => (
+        i1.data_emissao && i1.valor != null &&
+        Number(i1.valor) === Number(i2.valor) &&
+        i1.data_emissao === i2.data_emissao &&
+        mesmaAlocacaoItens(i1, i2)
+      )))
+      if (bate) unir(i, j)
+    }
+  }
+
+  const gruposPorRaiz = {}
+  for (let i = 0; i < n; i++) {
+    const raiz = encontrar(i)
+    if (!gruposPorRaiz[raiz]) gruposPorRaiz[raiz] = []
+    gruposPorRaiz[raiz].push(i)
+  }
+
+  const mapa = {}
+  let corIndex = 0
+  Object.values(gruposPorRaiz).forEach(indices => {
+    if (indices.length < 2) return // sozinho — não é duplicata de ninguém visível
+    indices.forEach(i => {
+      mapa[prestacoes[i].id] = {
+        corIndex,
+        parceiros: indices.filter(j => j !== i).map(j => prestacoes[j].numero_pc),
+      }
+    })
+    corIndex++
+  })
+  return mapa
 }
 
 // ── Histórico (linha do tempo imutável de envio/aprovação/rejeição) ─────────
