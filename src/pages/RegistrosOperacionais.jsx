@@ -49,7 +49,7 @@ import {
   useFiltrosOperacionais,
   PainelFiltros,
   MultiSelect,
-  FIELD_HEIGHT, LABEL_STYLE,
+  FIELD_HEIGHT, LABEL_STYLE, INPUT_STYLE,
 } from '../components/PainelFiltros.jsx'
 
 const TIPO_MEDIDA_LABEL = {
@@ -317,6 +317,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // ─── Filtros EXTRAS desta tela ───
   const [tiposSel,   setTiposSel]   = useState([])   // multi select — [] = Todos
   const [fiscaisSel, setFiscaisSel] = useState([])   // multi select
+  // Status só se aplica a Ocorrências (único tipo com ciclo pendente/tratada
+  // — os demais tipos de Registro já nascem concluídos) — single select
+  const [statusOcorrenciaSel, setStatusOcorrenciaSel] = useState('')
 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
@@ -406,7 +409,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       } else {
         try {
           const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
-          const ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
+          let ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
+          if (statusOcorrenciaSel) ocNoPeriodo = ocNoPeriodo.filter(o => o.status === statusOcorrenciaSel)
           setOcorrencias(filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' }))
         } catch (e) {
           console.error('Erro ao carregar ocorrências:', e)
@@ -546,7 +550,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     fetchAssinaturasOnline(r.id)
   }
 
-  // ─── Filtros EXTRAS no painel: Tipo + Fiscal/Usuário ───
+  // ─── Filtros EXTRAS no painel: Tipo + Fiscal/Usuário + Status (Ocorrência) ───
   const extras = (
     <>
       <div>
@@ -567,6 +571,23 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           onChange={setFiscaisSel}
           placeholder="Todos"
         />
+      </div>
+      <div>
+        <label style={LABEL_STYLE}>
+          Status
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
+            (Abertura de Ocorrência)
+          </span>
+        </label>
+        <select value={statusOcorrenciaSel} onChange={e => setStatusOcorrenciaSel(e.target.value)} style={{
+          ...INPUT_STYLE, cursor: 'pointer', appearance: 'none',
+          backgroundImage: 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'10\' height=\'6\' viewBox=\'0 0 10 6\'%3E%3Cpath d=\'M1 1l4 4 4-4\' stroke=\'%2394a3b8\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E")',
+          backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center', paddingRight: 32,
+        }}>
+          <option value="">Todos</option>
+          <option value="PENDENTE">🟠 Pendente</option>
+          <option value="TRATADA">🟢 Tratada</option>
+        </select>
       </div>
     </>
   )
