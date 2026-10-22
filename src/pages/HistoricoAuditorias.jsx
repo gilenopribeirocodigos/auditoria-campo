@@ -801,6 +801,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               {[
                 ['No. AS',         detalhe.numero_as],
                 ['Tipo Auditoria', detalhe.tipo_auditoria === 'DESEMPENHO' ? '📊 Desempenho Op.' : '✅ Pós Serviço'],
+                ['Motivo Auditoria', detalhe.motivo_auditoria],
                 ['Tipo Serviço',   detalhe.tipo_servico + (detalhe.produtivo ? ' · Produtivo' : ' · Improdutivo')],
                 ['Fiscal',         detalhe.fiscal],
                 ['Matrícula',      detalhe.matricula],
@@ -817,7 +818,7 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               ].filter(([, v]) => v).map(([label, val]) => (
                 <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
                   <span style={{ color: '#94a3b8', fontWeight: 500 }}>{label}</span>
-                  <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{val}</span>
+                  <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word', textTransform: 'uppercase' }}>{val}</span>
                 </div>
               ))}
             </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { buscarDuplicatasPotenciais } from '../lib/prestacaoContas.js'
-import { labelCategoriaDespesa, formatarAlocacao } from '../lib/categorias.js'
+import { buscarDuplicatasPotenciais, listarClassificacoes } from '../lib/prestacaoContas.js'
+import { labelCategoriaDespesa, formatarAlocacao, mapaSugestoesAlocacao, divergenciaAlocacao } from '../lib/categorias.js'
 import PCSearchSelect from './PCSearchSelect.jsx'
 
 export default function PCRevisaoEnvio({
@@ -11,6 +11,11 @@ export default function PCRevisaoEnvio({
   const itensSemFoto = itens.filter(i => !(i.pc_fotos?.length > 0))
   const [duplicatas, setDuplicatas] = useState([])
   const [cienteDuplicata, setCienteDuplicata] = useState(false)
+  const [sugestoesAlocacao, setSugestoesAlocacao] = useState({})
+
+  useEffect(() => {
+    listarClassificacoes().then(cs => setSugestoesAlocacao(mapaSugestoesAlocacao(cs))).catch(() => {})
+  }, [])
 
   // Alerta de possível nota duplicada: mesmo solicitante já lançou outra
   // prestação com o mesmo valor e a mesma data de emissão (regra de negócio
@@ -52,6 +57,7 @@ export default function PCRevisaoEnvio({
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 18 }}>
         {itens.map(item => {
           const semFoto = !(item.pc_fotos?.length > 0)
+          const sugestaoAlocacao = divergenciaAlocacao(item, sugestoesAlocacao)
           return (
             <div key={item.id} style={{
               background: '#fff', border: `1.5px solid ${semFoto ? '#fca5a5' : '#e2e8f0'}`,
@@ -72,6 +78,11 @@ export default function PCRevisaoEnvio({
               {semFoto && (
                 <p style={{ fontSize: 11, color: '#dc2626', fontWeight: 700, marginTop: 6 }}>
                   ⚠️ sem foto do comprovante
+                </p>
+              )}
+              {sugestaoAlocacao && (
+                <p style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '5px 8px', marginTop: 6 }}>
+                  ⚠️ "{item.classificacao}" costuma ser alocada a <strong>{labelCategoriaDespesa(sugestaoAlocacao)}</strong> — confira a alocação.
                 </p>
               )}
             </div>

@@ -1,6 +1,6 @@
 {
   "name": "auditoria-campo-dpl",
-  "version": "3.126.0",
+  "version": "3.131.0",
   "private": true,
   "scripts": {
     "dev": "vite",
@@ -16,6 +16,7 @@
     "@capacitor/share": "^7.0.4",
     "@supabase/supabase-js": "^2.39.0",
     "@transistorsoft/capacitor-background-geolocation": "^9.0.0",
+    "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jszip": "^3.10.1",

@@ -2,11 +2,31 @@ import { useEffect, useState } from 'react'
 import { CarregandoHexagono } from '../../../components/Shared.jsx'
 import {
   listarClassificacoes, criarClassificacao, atualizarClassificacao, removerClassificacao,
+  atualizarAlocacaoSugerida,
   listarTiposComprovanteCadastrados, criarTipoComprovante, atualizarTipoComprovante, removerTipoComprovante,
   listarFormasPagamento, criarFormaPagamento, atualizarFormaPagamento, removerFormaPagamento,
 } from '../lib/prestacaoContas.js'
+import { CATEGORIAS_DESPESA } from '../lib/categorias.js'
 
-function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemover, onEditar, placeholder }) {
+// Dropdown da "Alocação sugerida" por Classificação — direto na tabela, sem
+// precisar entrar em modo de edição (diferente da coluna Nome, que usa
+// confirmar/cancelar). "— sem sugestão —" = alocacao_sugerida null, mesmo
+// comportamento de hoje (nenhum aviso em Nova Despesa/Revisão/Análise).
+function SelectAlocacaoSugerida({ valor, onMudar }) {
+  const [salvando, setSalvando] = useState(false)
+  return (
+    <select
+      value={valor || ''} disabled={salvando}
+      onChange={async e => { setSalvando(true); try { await onMudar(e.target.value) } finally { setSalvando(false) } }}
+      style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, color: '#1e293b', background: '#fff', width: '100%' }}
+    >
+      <option value="">— sem sugestão —</option>
+      {CATEGORIAS_DESPESA.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+    </select>
+  )
+}
+
+function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemover, onEditar, placeholder, colunaExtra }) {
   const [editandoId, setEditandoId] = useState(null)
   const [editandoValor, setEditandoValor] = useState('')
   const [salvando, setSalvando] = useState(false)
@@ -48,6 +68,11 @@ function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemo
             <thead>
               <tr style={{ background: '#f8fafc' }}>
                 <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4 }}>Nome</th>
+                {colunaExtra && (
+                  <th style={{ textAlign: 'left', padding: '8px 12px', fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.4, width: 220 }}>
+                    {colunaExtra.titulo}
+                  </th>
+                )}
                 <th style={{ width: 76 }}></th>
               </tr>
             </thead>
@@ -66,6 +91,9 @@ function Secao({ titulo, itens, novoValor, onMudarNovoValor, onAdicionar, onRemo
                         />
                       ) : it.nome}
                     </td>
+                    {colunaExtra && (
+                      <td style={{ padding: '6px 10px' }}>{colunaExtra.render(it)}</td>
+                    )}
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
                       {editando ? (
                         <>
@@ -142,6 +170,11 @@ export default function PCPadroes({ onVoltar }) {
     catch (e) { alert('Não foi possível salvar: ' + (e.message || e)) }
   }
 
+  const mudarAlocacaoSugeridaItem = async (id, valor) => {
+    try { await atualizarAlocacaoSugerida(id, valor); await carregar() }
+    catch (e) { alert('Não foi possível salvar a alocação sugerida: ' + (e.message || e)) }
+  }
+
   const removerClassificacaoItem = async (it) => {
     if (!confirm(`Remover "${it.nome}" da lista de classificações?`)) return
     try { await removerClassificacao(it.id); await carregar() }
@@ -200,6 +233,7 @@ export default function PCPadroes({ onVoltar }) {
       <main className="app-content">
         <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
           Gerencie as opções sugeridas nos campos de Classificação, Forma de Pagamento e Comprovante. Remover um item daqui não altera despesas já lançadas com esse texto.
+          Na Classificação, a "Alocação sugerida" pré-preenche o campo "Alocado a" ao lançar uma despesa (o usuário pode trocar) e avisa — sem bloquear — quando a alocação escolhida diverge da sugestão. Deixe em "— sem sugestão —" pra não mostrar nenhum aviso.
         </p>
         {carregando ? (
           <CarregandoHexagono texto="Carregando..." />
@@ -216,6 +250,15 @@ export default function PCPadroes({ onVoltar }) {
               onEditar={editarClassificacaoItem}
               onRemover={removerClassificacaoItem}
               placeholder="Ex.: PEDÁGIO"
+              colunaExtra={{
+                titulo: 'Alocação sugerida',
+                render: it => (
+                  <SelectAlocacaoSugerida
+                    valor={it.alocacao_sugerida}
+                    onMudar={valor => mudarAlocacaoSugeridaItem(it.id, valor)}
+                  />
+                ),
+              }}
             />
             <Secao
               titulo="Forma de Pagamento"

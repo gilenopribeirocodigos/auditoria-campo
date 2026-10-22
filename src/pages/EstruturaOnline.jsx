@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import * as XLSX from 'xlsx'
 import { supabase, buscarTodasLinhas } from '../lib/supabase.js'
 import { temPermissao } from '../lib/auth.js'
 
@@ -1171,7 +1170,7 @@ export default function EstruturaOnline({ usuarioLogado }) {
     setMsg('Largura das colunas ajustada ao conteudo visivel.')
   }
 
-  const exportarExcel = () => {
+  const exportarExcel = async () => {
     const linhas = linhasRender.filter(l => !linhaVazia(l))
     if (linhas.length === 0) {
       setErro('Nao ha linhas para exportar nesta aba.')
@@ -1190,15 +1189,45 @@ export default function EstruturaOnline({ usuarioLogado }) {
       return item
     })
 
-    const ws = XLSX.utils.json_to_sheet(dados, { header: colunas })
-    ws['!cols'] = colunas.map(coluna => ({
-      wch: Math.max(12, Math.min(45, Math.round((largurasColunas[coluna] || larguraPadraoColuna(coluna)) / 7))),
-    }))
-    const wb = XLSX.utils.book_new()
     const nomeAba = (abaAtiva === 'TOTAL' ? 'Total Consolidado' : abaAtual?.nome || 'Estrutura').slice(0, 31)
-    XLSX.utils.book_append_sheet(wb, ws, nomeAba)
-    XLSX.writeFile(wb, `${nomeArquivoSeguro(nomeAba)}_${hojeISO()}.xlsx`)
-    setMsg(`Excel da aba ${nomeAba} gerado com sucesso.`)
+
+    // O pacote xlsx (SheetJS) usado no resto do app não grava cor de célula
+    // no .xlsx gerado (limitação da versão gratuita) — por isso essa
+    // exportação usa exceljs, carregado só aqui (import dinâmico) pra não
+    // engordar o bundle inicial. Colore o cabeçalho das colunas obrigatórias
+    // de amarelo, pra quem baixar o Excel (ex.: só pra pegar o modelo) já
+    // ver visualmente quais colunas precisa preencher.
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet(nomeAba)
+    ws.columns = colunas.map(coluna => ({
+      header: coluna,
+      key: coluna,
+      width: Math.max(12, Math.min(45, Math.round((largurasColunas[coluna] || larguraPadraoColuna(coluna)) / 7))),
+    }))
+    dados.forEach(item => ws.addRow(item))
+
+    ws.getRow(1).eachCell((cell, colNumero) => {
+      const obrigatoria = COLUNAS_OBRIGATORIAS.includes(colunas[colNumero - 1])
+      cell.font = { bold: true, color: { argb: obrigatoria ? 'FF7C2D12' : 'FF1E293B' } }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: obrigatoria ? 'FFFDE68A' : 'FFE2E8F0' } }
+      if (obrigatoria) {
+        cell.note = 'Campo obrigatório — não pode ficar em branco (quando DESCR_SITUACAO for ATIVO ou RESERVA).'
+      }
+    })
+
+    const buffer = await wb.xlsx.writeBuffer()
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${nomeArquivoSeguro(nomeAba)}_${hojeISO()}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    setMsg(`Excel da aba ${nomeAba} gerado com sucesso — colunas obrigatórias destacadas em amarelo no cabeçalho.`)
   }
 
   return (
