@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../../lib/supabase.js'
-import { CATEGORIAS_SUGERIDAS, CATEGORIAS_DESPESA, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE } from '../lib/categorias.js'
+import {
+  CATEGORIAS_SUGERIDAS, CATEGORIAS_DESPESA, FORMAS_PAGAMENTO, TIPOS_COMPROVANTE,
+  labelCategoriaDespesa, mapaSugestoesAlocacao, divergenciaAlocacao,
+} from '../lib/categorias.js'
 import { listarClassificacoes, listarTiposComprovanteCadastrados, listarFormasPagamento } from '../lib/prestacaoContas.js'
 import PCSearchSelect from './PCSearchSelect.jsx'
 
@@ -90,6 +93,7 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
   const [fotos, setFotos] = useState(() => (fotosIniciais || []).map(f => ({ id: f.id, foto_url: f.foto_url })))
   const [fotosRemovidasIds, setFotosRemovidasIds] = useState([])
   const [classificacoes, setClassificacoes] = useState(CATEGORIAS_SUGERIDAS)
+  const [sugestoesAlocacao, setSugestoesAlocacao] = useState({})
   const [tiposComprovante, setTiposComprovante] = useState(TIPOS_COMPROVANTE)
   const [formasPagamento, setFormasPagamento] = useState(FORMAS_PAGAMENTO)
   const cameraRef = useRef(null)
@@ -101,7 +105,10 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
     (async () => {
       try {
         const cs = await listarClassificacoes()
-        if (cs.length > 0) setClassificacoes(cs.map(c => c.nome))
+        if (cs.length > 0) {
+          setClassificacoes(cs.map(c => c.nome))
+          setSugestoesAlocacao(mapaSugestoesAlocacao(cs))
+        }
       } catch { /* mantém a lista fixa */ }
       try {
         const ts = await listarTiposComprovanteCadastrados()
@@ -190,7 +197,17 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
         <label className="form-label">Classificação *</label>
         <PCSearchSelect
           opcoes={classificacoes} valor={item.classificacao}
-          onSelecionar={v => upd('classificacao', v)}
+          onSelecionar={v => {
+            // Escolheu a Classificação: se "Alocado a" ainda está vazio e
+            // essa classificação tem uma sugestão cadastrada em Padrões,
+            // pré-preenche — o usuário pode trocar normalmente depois.
+            const sugestao = sugestoesAlocacao[v]
+            setItem(f => (
+              sugestao && !f.categoria_despesa
+                ? { ...f, classificacao: v, categoria_despesa: sugestao }
+                : { ...f, classificacao: v }
+            ))
+          }}
           placeholder="Buscar e escolher a classificação..."
         />
       </div>
@@ -202,6 +219,20 @@ export default function PCItemForm({ itemInicial, fotosIniciais, onSalvar, onCan
           onSelecionar={v => upd('categoria_despesa', v)}
           placeholder="Escolha para quem/o quê alocar..."
         />
+        {(() => {
+          const sugestao = sugestoesAlocacao[item.classificacao]
+          if (!sugestao) return null
+          const divergente = divergenciaAlocacao(item, sugestoesAlocacao)
+          return divergente ? (
+            <p style={{ fontSize: 11.5, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '6px 10px', marginTop: 6 }}>
+              ⚠️ Despesas de "{item.classificacao}" costumam ser alocadas a <strong>{labelCategoriaDespesa(sugestao)}</strong>. Confira se "{labelCategoriaDespesa(item.categoria_despesa)}" está correto.
+            </p>
+          ) : (
+            <p style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
+              💡 Sugestão pra "{item.classificacao}": {labelCategoriaDespesa(sugestao)}.
+            </p>
+          )
+        })()}
       </div>
 
       {item.categoria_despesa === 'COLABORADOR' && (

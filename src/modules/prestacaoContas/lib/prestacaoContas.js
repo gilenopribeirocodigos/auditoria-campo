@@ -16,7 +16,7 @@ function assertSupabase() {
 export async function listarClassificacoes() {
   assertSupabase()
   const { data, error } = await supabase
-    .from('pc_classificacoes').select('id, nome').eq('ativo', true).order('nome')
+    .from('pc_classificacoes').select('id, nome, alocacao_sugerida').eq('ativo', true).order('nome')
   if (error) throw error
   return data || []
 }
@@ -32,6 +32,16 @@ export async function criarClassificacao(nome) {
 export async function atualizarClassificacao(id, nome) {
   assertSupabase()
   const { error } = await supabase.from('pc_classificacoes').update({ nome: nome.trim().toUpperCase() }).eq('id', id)
+  if (error) throw error
+}
+
+// Alocação sugerida (campo "Alocado a") pra essa Classificação — valor é um
+// dos CATEGORIAS_DESPESA (lib/categorias.js) ou null (sem sugestão). Editado
+// à parte do nome, na tela Padrões.
+export async function atualizarAlocacaoSugerida(id, alocacaoSugerida) {
+  assertSupabase()
+  const { error } = await supabase
+    .from('pc_classificacoes').update({ alocacao_sugerida: alocacaoSugerida || null }).eq('id', id)
   if (error) throw error
 }
 
