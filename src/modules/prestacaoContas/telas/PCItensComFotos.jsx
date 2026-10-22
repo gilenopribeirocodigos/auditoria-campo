@@ -2,12 +2,22 @@
 // na análise de quem recebe (PCRecebidaDetalhe) quanto, agora, por quem
 // enviou (PrestacaoContasLista, aba "Minhas Prestações"), pra poder rever o
 // próprio comprovante depois de enviar sem precisar ser aprovador.
-import { labelCategoriaDespesa, formatarAlocacao } from '../lib/categorias.js'
+import { useEffect, useState } from 'react'
+import { labelCategoriaDespesa, formatarAlocacao, mapaSugestoesAlocacao, divergenciaAlocacao } from '../lib/categorias.js'
+import { listarClassificacoes } from '../lib/prestacaoContas.js'
 
 export default function PCItensComFotos({ itens }) {
+  const [sugestoesAlocacao, setSugestoesAlocacao] = useState({})
+
+  useEffect(() => {
+    listarClassificacoes().then(cs => setSugestoesAlocacao(mapaSugestoesAlocacao(cs))).catch(() => {})
+  }, [])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      {itens.map((item, i) => (
+      {itens.map((item, i) => {
+        const sugestaoAlocacao = divergenciaAlocacao(item, sugestoesAlocacao)
+        return (
         <div key={item.id} style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: '10px 12px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
             <p style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{i + 1}. {item.classificacao} — <strong>DESCRIÇÃO:</strong> {item.descricao}</p>
@@ -19,6 +29,11 @@ export default function PCItensComFotos({ itens }) {
           {item.categoria_despesa && (
             <p style={{ fontSize: 11, color: '#2563eb', fontWeight: 700, marginBottom: 6 }}>
               🏷️ {labelCategoriaDespesa(item.categoria_despesa)}{formatarAlocacao(item) !== '—' ? `: ${formatarAlocacao(item)}` : ''}
+            </p>
+          )}
+          {sugestaoAlocacao && (
+            <p style={{ fontSize: 11, color: '#92400e', background: '#fffbeb', border: '1px solid #fcd34d', borderRadius: 8, padding: '5px 8px', marginBottom: 6 }}>
+              ⚠️ "{item.classificacao}" costuma ser alocada a <strong>{labelCategoriaDespesa(sugestaoAlocacao)}</strong> — confira a alocação.
             </p>
           )}
           {item.observacao && <p style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Obs.: {item.observacao}</p>}
@@ -34,7 +49,8 @@ export default function PCItensComFotos({ itens }) {
             <p style={{ fontSize: 11, color: '#dc2626', fontWeight: 700 }}>⚠️ sem foto do comprovante</p>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

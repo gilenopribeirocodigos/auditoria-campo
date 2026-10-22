@@ -44,3 +44,23 @@ export function formatarAlocacao(item) {
   if (item.categoria_despesa === 'ADMINISTRATIVA') return '—'
   return item.alocacao || '—'
 }
+
+// ── Sugestão de alocação por Classificação (cadastrada em Padrões) ──────────
+// Mapa { NOME_DA_CLASSIFICACAO: categoria_despesa_sugerida } a partir da
+// lista vinda de listarClassificacoes() (cada item com `alocacao_sugerida`,
+// ou null quando não há sugestão cadastrada pra essa classificação).
+export function mapaSugestoesAlocacao(classificacoes) {
+  const mapa = {}
+  ;(classificacoes || []).forEach(c => { if (c.alocacao_sugerida) mapa[c.nome] = c.alocacao_sugerida })
+  return mapa
+}
+
+// Compara a alocação escolhida num item com a sugestão cadastrada pra sua
+// Classificação. Retorna a categoria sugerida quando ela diverge da
+// escolhida (pra montar o aviso), ou null quando não há sugestão cadastrada
+// pra essa classificação, ou quando a escolha já bate com a sugestão.
+export function divergenciaAlocacao(item, mapaSugestoes) {
+  const sugestao = mapaSugestoes?.[item.classificacao]
+  if (!sugestao || !item.categoria_despesa || item.categoria_despesa === sugestao) return null
+  return sugestao
+}
