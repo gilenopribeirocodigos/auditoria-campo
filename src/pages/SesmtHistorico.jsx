@@ -121,7 +121,15 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
       await limparNaoAssinadosNaLista(data)
       setAcoes(data)
     } catch (e) {
-      setErro(e.message || 'Erro ao carregar histórico.')
+      // Erro técnico do Postgres (ex.: "canceling statement due to statement
+      // timeout") não ajuda o usuário a entender nem a agir — troca por uma
+      // mensagem amigável, com o motivo diferenciado quando for timeout
+      // (costuma ser um blip passageiro do banco, não um problema do filtro).
+      const msg = e.message || ''
+      const foiTimeout = /timeout/i.test(msg)
+      setErro(foiTimeout
+        ? 'A busca demorou demais pra responder. Costuma ser algo passageiro — tente novamente em alguns instantes.'
+        : 'Não foi possível carregar o histórico. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -774,7 +782,13 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
         {loading ? (
           <CarregandoHexagono texto="Carregando ações..." />
         ) : erro ? (
-          <p style={{ color: '#dc2626', fontWeight: 700, textAlign: 'center', padding: 20 }}>⚠️ {erro}</p>
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <p style={{ color: '#dc2626', fontWeight: 700, marginBottom: 12 }}>⚠️ {erro}</p>
+            <button onClick={buscar} style={{
+              border: 'none', background: '#d97706', color: '#fff',
+              padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>🔄 Tentar novamente</button>
+          </div>
         ) : acoes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🦺</div>
