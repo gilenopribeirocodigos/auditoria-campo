@@ -307,6 +307,96 @@ async function gerarPDFOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null)
   await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
 }
 
+// ─── Mesmo padrão de montarConteudoImpressaoOcorrencia, pra Tratamento de
+// Reincidência — tema laranja (combina com a tela de lançamento), sem Local
+// (não existe nesse tipo) e com o quadro técnico OE/ABRG/PDF/AL/R07/R30/R90
+// em destaque, que é o que diferencia esse card do de Ocorrência comum.
+// Sem seção de tratamento/assinantes ainda (fase 1 — só lançamento).
+function montarConteudoImpressaoReincidencia(r, versaoApp = '') {
+  const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+  const colaboradores = [r.eletricista_equipe, r.eletricista_equipe_2].filter(Boolean).join(' e ')
+  const dadosTecnicos = [
+    ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
+    ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
+  ].filter(([, v]) => v)
+
+  return `
+  <div style="background:linear-gradient(135deg,#c2410c,#ea580c);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
+    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VérticeGP</div>
+    <div style="font-size:20px;font-weight:800;">🔁 Tratamento de Reincidência</div>
+    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(r)}</div>
+  </div>
+  ${dadosTecnicos.length > 0 ? `
+  <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:4px 0;margin-bottom:16px;">
+    <div style="padding:12px 14px;border-bottom:1px solid #fed7aa;font-size:12px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.4px;">📊 Dados Técnicos</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;">
+      ${dadosTecnicos.map(([l, v]) => `
+        <div style="padding:10px 12px;border-top:1px solid #fed7aa22;">
+          <div style="font-size:10px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.3px;">${l}</div>
+          <div style="font-size:14px;font-weight:800;color:#7c2d12;margin-top:2px;">${v}</div>
+        </div>`).join('')}
+    </div>
+  </div>` : ''}
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
+    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados do Lançamento</div>
+    <table style="width:100%;border-collapse:collapse;">
+      ${[['Aberto por', r.aberto_por], ['Data/Hora', formatDataHora(r.criado_em)], ['Prefixo/Equipe', r.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', r.direcionado_para]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+    </table>
+  </div>
+  ${r.motivo ? (() => {
+    const tema = temaMotivoOcorrencia(r.motivo)
+    return `<div style="background:${tema.bg};border:1.5px solid ${tema.border};border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:24px;">${tema.emoji}</div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:${tema.color};text-transform:uppercase;letter-spacing:0.5px;">Motivo</div>
+        <div style="font-size:15px;font-weight:800;color:${tema.color};">${r.motivo}</div>
+      </div>
+    </div>`
+  })() : ''}
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:8px;">DESCRIÇÃO DA REINCIDÊNCIA</div>
+    <div style="font-size:13px;color:#9a3412;line-height:1.7;">${(r.descricao || '').split('\n').join('<br/>')}</div>
+  </div>
+  ${r.foto_url ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Foto da Reincidência</div>
+    <img src="${r.foto_url}" crossorigin="anonymous" style="width:100%;max-width:300px;border-radius:8px;display:block;"/>
+  </div>` : ''}
+  <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
+    <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
+  </div>`
+}
+
+function imprimirReincidenciaDoc(r, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoReincidencia(r, versaoApp)
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+  <title>Tratamento de Reincidência</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
+  @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
+  ${conteudo}
+  <div class="no-print" style="text-align:center;margin-top:24px;">
+    <button onclick="window.print()" style="padding:12px 32px;background:#c2410c;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
+  </div>
+  </body></html>`
+
+  const janela = window.open('', '_blank', 'width=700,height=900')
+  if (!janela) { alert('Permita pop-ups.'); return }
+  janela.document.write(html)
+  janela.document.close()
+  janela.onload = () => setTimeout(() => janela.print(), 600)
+}
+
+async function gerarPDFReincidenciaDoc(r, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoReincidencia(r, versaoApp)
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+  const canvas = await renderizarHtmlParaCanvas(html, {
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
+  })
+  const nomeArq = `Reincidencia_${r.numero_ocorrencia || r.id}.pdf`.replace(/\s+/g, '_')
+  await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
+}
+
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
   // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
   // Passa `usuarioLogado` pra ativar segregação por estrutura.
@@ -327,6 +417,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [reincidencias, setReincidencias] = useState([])
   const [detalhe,       setDetalhe]       = useState(null)
   const [detalheOc,     setDetalheOc]     = useState(null) // ocorrência aberta no modal de PDF/Zap
+  const [detalheReinc,  setDetalheReinc]  = useState(null) // reincidência aberta no modal de PDF/Zap
   // Equipe completa (ocorrencias_colaboradores) da Ocorrência aberta no
   // modal — null = ainda não buscou/sem ocorrência aberta; [] = buscou e
   // não achou (ocorrência antiga, sem linhas na tabela nova) — mesmo padrão
@@ -339,6 +430,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   }, [detalheOc])
   const [capturandoOc,  setCapturandoOc]  = useState(false)
   const [gerandoPDFOc,  setGerandoPDFOc]  = useState(false)
+  const [capturandoReinc, setCapturandoReinc] = useState(false)
+  const [gerandoPDFReinc, setGerandoPDFReinc] = useState(false)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
   const [tokensAtivos,  setTokensAtivos]  = useState({})
@@ -378,6 +471,36 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
     } finally {
       setCapturandoOc(false)
+    }
+  }
+
+  // Mesmo padrão de compartilharOcorrenciaWhatsApp, pra Tratamento de
+  // Reincidência.
+  const compartilharReincidenciaWhatsApp = async (r) => {
+    setCapturandoReinc(true)
+    try {
+      const conteudo = montarConteudoImpressaoReincidencia(r, versaoSistema)
+      const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">${conteudo}</div>`
+      const canvas = await renderizarHtmlParaCanvas(html, { largura: 640, escala: 6, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#f0f4f8' })
+      const nomeArq = `Reincidencia_${r.numero_ocorrencia || r.id}.png`.replace(/\s+/g, '_')
+      if (Capacitor.isNativePlatform()) {
+        await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
+      } else if (navigator.share && navigator.canShare) {
+        canvas.toBlob(async blob => {
+          const file = new File([blob], nomeArq, { type: 'image/png' })
+          if (navigator.canShare({ files: [file] })) {
+            await navigator.share({ files: [file], title: 'Tratamento de Reincidência' })
+          } else {
+            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+          }
+        }, 'image/png')
+      } else {
+        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+      }
+    } catch (err) {
+      console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
+    } finally {
+      setCapturandoReinc(false)
     }
   }
 
@@ -774,45 +897,44 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {reincidencias.map(r => (
-                <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #fed7aa', padding: '14px 16px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                    <span style={{ fontSize: 18 }}>🔁</span>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
-                    <span style={{ fontSize: 12, color: '#9a3412', opacity: 0.85 }}>{numeroOcorrencia(r)}</span>
+                <div key={r.id} onClick={() => setDetalheReinc(r)} style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #fed7aa', padding: '14px 16px', cursor: 'pointer' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                        <span style={{ fontSize: 18 }}>🔁</span>
+                        <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
+                        <span style={{ fontSize: 12, color: '#9a3412', opacity: 0.85 }}>{numeroOcorrencia(r)}</span>
+                      </div>
+                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7, marginBottom: 8 }}>
+                        <span>👤 {r.aberto_por}</span>
+                        <span style={{ margin: '0 8px' }}>·</span>
+                        <span>📅 {new Date(r.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                        {r.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {r.prefixo}</span></>)}
+                        <span style={{ margin: '0 8px' }}>·</span>
+                        <span>📨 {r.direcionado_para}</span>
+                        {r.motivo && (() => {
+                          const tema = temaMotivoOcorrencia(r.motivo)
+                          return (
+                            <>
+                              <span style={{ margin: '0 8px' }}>·</span>
+                              <span style={{ color: tema.color, fontWeight: 700 }}>{tema.emoji} {r.motivo}</span>
+                            </>
+                          )
+                        })()}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                        {[
+                          ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
+                          ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
+                        ].filter(([, v]) => v).map(([label, v]) => (
+                          <span key={label} style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 999, padding: '2px 8px' }}>
+                            {label}: {v}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
                   </div>
-                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7, marginBottom: 8 }}>
-                    <span>👤 {r.aberto_por}</span>
-                    <span style={{ margin: '0 8px' }}>·</span>
-                    <span>📅 {new Date(r.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                    {r.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {r.prefixo}</span></>)}
-                    <span style={{ margin: '0 8px' }}>·</span>
-                    <span>📨 {r.direcionado_para}</span>
-                    {r.motivo && (() => {
-                      const tema = temaMotivoOcorrencia(r.motivo)
-                      return (
-                        <>
-                          <span style={{ margin: '0 8px' }}>·</span>
-                          <span style={{ color: tema.color, fontWeight: 700 }}>{tema.emoji} {r.motivo}</span>
-                        </>
-                      )
-                    })()}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-                    {[
-                      ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
-                      ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
-                    ].filter(([, v]) => v).map(([label, v]) => (
-                      <span key={label} style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 999, padding: '2px 8px' }}>
-                        {label}: {v}
-                      </span>
-                    ))}
-                  </div>
-                  {r.descricao && <p style={{ fontSize: 12, color: '#374151', marginBottom: r.foto_url ? 8 : 0 }}>{r.descricao}</p>}
-                  {r.foto_url && (
-                    <a href={r.foto_url} target="_blank" rel="noreferrer">
-                      <img src={r.foto_url} alt="Evidência" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
-                    </a>
-                  )}
                 </div>
               ))}
             </div>
@@ -1407,6 +1529,114 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   </button>
 
                   <button onClick={() => setDetalheOc(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Fechar
+                  </button>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {detalheReinc && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
+          onClick={e => { if (e.target === e.currentTarget) setDetalheReinc(null) }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '24px 20px 40px' }}>
+            {(() => {
+              const r = detalheReinc
+              const colaboradores = [r.eletricista_equipe, r.eletricista_equipe_2].filter(Boolean).join(' e ')
+              const dadosTecnicos = [
+                ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
+                ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
+              ].filter(([, v]) => v)
+              return (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 17, fontWeight: 800 }}>🔁 Tratamento de Reincidência</h3>
+                    <button onClick={() => setDetalheReinc(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+                  </div>
+
+                  <div style={{ background: '#fff7ed', border: '2px solid #fed7aa', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
+                    <div style={{ fontSize: 40, marginBottom: 6 }}>🔁</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</div>
+                    <div style={{ fontSize: 13, color: '#c2410c', opacity: 0.85, marginTop: 4 }}>{numeroOcorrencia(r)}</div>
+                  </div>
+
+                  {dadosTecnicos.length > 0 && (
+                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>📊 Dados Técnicos</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
+                        {dadosTecnicos.map(([l, v]) => (
+                          <div key={l}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: 0.3 }}>{l}</div>
+                            <div style={{ fontSize: 14, fontWeight: 800, color: '#7c2d12' }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                    {[
+                      ['Aberto por',        r.aberto_por],
+                      ['Data / Hora',       new Date(r.criado_em).toLocaleString('pt-BR')],
+                      ['Prefixo / Equipe',  r.prefixo],
+                      ['Colaborador(es)',   colaboradores],
+                      ['Direcionado para',  r.direcionado_para],
+                    ].filter(([, v]) => v).map(([l, v]) => (
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                        <span style={{ color: '#94a3b8', fontWeight: 500 }}>{l}</span>
+                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {r.motivo && (() => {
+                    const tema = temaMotivoOcorrencia(r.motivo)
+                    return (
+                      <div style={{ background: tema.bg, border: `1.5px solid ${tema.border}`, borderRadius: 12, padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 24 }}>{tema.emoji}</span>
+                        <div>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: tema.color, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Motivo</p>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: tema.color }}>{r.motivo}</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 6 }}>DESCRIÇÃO DA REINCIDÊNCIA:</p>
+                    <p style={{ fontSize: 13, color: '#9a3412', lineHeight: 1.6 }}>{r.descricao}</p>
+                  </div>
+
+                  {r.foto_url && (
+                    <div style={{ marginBottom: 14 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📷 Foto da Reincidência</p>
+                      <a href={r.foto_url} target="_blank" rel="noreferrer">
+                        <img src={r.foto_url} alt="Foto da reincidência" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                      </a>
+                    </div>
+                  )}
+
+                  <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
+                    v{versaoSistema}
+                  </p>
+
+                  <button onClick={async () => {
+                    if (!Capacitor.isNativePlatform()) { imprimirReincidenciaDoc(r, versaoSistema); return }
+                    setGerandoPDFReinc(true)
+                    try { await gerarPDFReincidenciaDoc(r, versaoSistema) }
+                    catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
+                    finally { setGerandoPDFReinc(false) }
+                  }} disabled={gerandoPDFReinc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: gerandoPDFReinc ? '#64748b' : '#c2410c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDFReinc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {gerandoPDFReinc ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
+                  </button>
+
+                  <button onClick={() => compartilharReincidenciaWhatsApp(r)} disabled={capturandoReinc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: capturandoReinc ? '#64748b' : '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: capturandoReinc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {capturandoReinc ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
+                  </button>
+
+                  <button onClick={() => setDetalheReinc(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Fechar
                   </button>
                 </>
