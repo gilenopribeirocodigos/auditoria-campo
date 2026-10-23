@@ -324,6 +324,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [ocorrencias,   setOcorrencias]   = useState([])
+  const [reincidencias, setReincidencias] = useState([])
   const [detalhe,       setDetalhe]       = useState(null)
   const [detalheOc,     setDetalheOc]     = useState(null) // ocorrência aberta no modal de PDF/Zap
   // Equipe completa (ocorrencias_colaboradores) da Ocorrência aberta no
@@ -392,29 +393,37 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         setRegistros([])
         setTokensAtivos({})
         setOcorrencias([])
+        setReincidencias([])
         setLoading(false)
         return
       }
 
-      // ─── Ocorrências abertas pelo usuário (ou todas, se privilegiado) ───
-      // Aparecem junto com os registros normais nesta tela pra fins de
-      // busca/acompanhamento — status PENDENTE/TRATADA acompanha o que foi
-      // feito em Tratamento de Não Conformidades. Respeita o filtro Tipo
-      // (agora multi-select): some se houver tipos selecionados e nenhum
-      // deles for "Abertura de Ocorrência".
-      const tiposRegistroSel = tiposSel.filter(t => t !== 'OCORRENCIA')
+      // ─── Ocorrências e Reincidências abertas pelo usuário (ou todas, se
+      // privilegiado) ─── Mesma tabela (`ocorrencias`), discriminadas por
+      // tipo_ocorrencia. Aparecem junto com os registros normais nesta tela
+      // pra fins de busca/acompanhamento — status PENDENTE/TRATADA acompanha
+      // o que foi feito em Tratamento de Não Conformidades (só pra
+      // Ocorrência; Reincidência ainda não tem esse fluxo — fase futura).
+      // Respeita o filtro Tipo (multi-select): some se houver tipos
+      // selecionados e nenhum deles for Ocorrência/Reincidência.
+      const tiposRegistroSel = tiposSel.filter(t => t !== 'OCORRENCIA' && t !== 'REINCIDENCIA')
       const mostrarOcorrencias = tiposSel.length === 0 || tiposSel.includes('OCORRENCIA')
-      if (!mostrarOcorrencias) {
+      const mostrarReincidencias = tiposSel.length === 0 || tiposSel.includes('REINCIDENCIA')
+      if (!mostrarOcorrencias && !mostrarReincidencias) {
         setOcorrencias([])
+        setReincidencias([])
       } else {
         try {
           const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
           let ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
           if (statusOcorrenciaSel) ocNoPeriodo = ocNoPeriodo.filter(o => o.status === statusOcorrenciaSel)
-          setOcorrencias(filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' }))
+          const ocFiltradas = filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' })
+          setOcorrencias(mostrarOcorrencias ? ocFiltradas.filter(o => (o.tipo_ocorrencia || 'OCORRENCIA') === 'OCORRENCIA') : [])
+          setReincidencias(mostrarReincidencias ? ocFiltradas.filter(o => o.tipo_ocorrencia === 'REINCIDENCIA') : [])
         } catch (e) {
           console.error('Erro ao carregar ocorrências:', e)
           setOcorrencias([])
+          setReincidencias([])
         }
       }
 
@@ -465,8 +474,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       }
 
       // ─── 2) Chama listarRegistros com filtros básicos (data + tipo + fiscais) ───
-      // Só "Abertura de Ocorrência" selecionada (sem nenhum tipo de Registro
-      // junto) → não busca registros_operacionais, a tabela é outra.
+      // Só "Abertura de Ocorrência"/"Tratamento de Reincidência" selecionados
+      // (sem nenhum tipo de Registro junto) → não busca registros_operacionais,
+      // a tabela é outra.
       const somenteOcorrenciaSelecionada = tiposSel.length > 0 && tiposRegistroSel.length === 0
       let data = somenteOcorrenciaSelecionada ? [] : await listarRegistros({
         dataIni: ini,
@@ -556,11 +566,11 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       <div>
         <label style={LABEL_STYLE}>Tipo</label>
         <MultiSelect
-          opcoes={[...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA']}
+          opcoes={[...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA', 'REINCIDENCIA']}
           selecionados={tiposSel}
           onChange={setTiposSel}
           placeholder="Todos"
-          formatOption={k => k === 'OCORRENCIA' ? '📦 Abertura de Ocorrência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
+          formatOption={k => k === 'OCORRENCIA' ? '📦 Abertura de Ocorrência' : k === 'REINCIDENCIA' ? '🔁 Tratamento de Reincidência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
         />
       </div>
       <div>
@@ -665,12 +675,19 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             Treinamento, Feedback, Reunião, Disciplinar) são avulsos, sem
             status, então mostram só o total. Grade de 3 colunas (em vez de
             cards largos) pra caber até 7 tipos sem rolar a tela pro lado. */}
-        {!loading && (registros.length > 0 || ocorrencias.length > 0) && (() => {
+        {!loading && (registros.length > 0 || ocorrencias.length > 0 || reincidencias.length > 0) && (() => {
           const porTipo = {}
           for (const r of registros) porTipo[r.tipo] = (porTipo[r.tipo] || 0) + 1
           const tiles = Object.entries(TIPOS_REGISTRO)
             .filter(([tipo]) => porTipo[tipo] > 0)
             .map(([tipo, cfg]) => ({ tipo, emoji: cfg.emoji, label: cfg.label, color: cfg.color, border: cfg.border, total: porTipo[tipo] }))
+          // Reincidência ainda não tem pendente/tratada (fase futura) — só total.
+          if (reincidencias.length > 0) {
+            tiles.unshift({
+              tipo: 'REINCIDENCIA', emoji: '🔁', label: 'Reincidência', color: '#c2410c', border: '#fed7aa',
+              total: reincidencias.length,
+            })
+          }
           if (ocorrencias.length > 0) {
             tiles.unshift({
               tipo: 'OCORRENCIA', emoji: '📦', label: 'Ocorrências', color: '#4338ca', border: '#c7d2fe',
@@ -742,6 +759,62 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   </div>
                 )
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Tratamento de Reincidência — fase 1: só listagem (sem detalhe/
+            tratamento ainda, ver TratamentoReincidencia.jsx). Mostra os
+            dados direto no card, sem modal, já que não há ação a tomar
+            por enquanto. */}
+        {reincidencias.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <p style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', marginBottom: 10 }}>
+              🔁 Tratamento de Reincidência
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {reincidencias.map(r => (
+                <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #fed7aa', padding: '14px 16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                    <span style={{ fontSize: 18 }}>🔁</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
+                    <span style={{ fontSize: 12, color: '#9a3412', opacity: 0.85 }}>{numeroOcorrencia(r)}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7, marginBottom: 8 }}>
+                    <span>👤 {r.aberto_por}</span>
+                    <span style={{ margin: '0 8px' }}>·</span>
+                    <span>📅 {new Date(r.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                    {r.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {r.prefixo}</span></>)}
+                    <span style={{ margin: '0 8px' }}>·</span>
+                    <span>📨 {r.direcionado_para}</span>
+                    {r.motivo && (() => {
+                      const tema = temaMotivoOcorrencia(r.motivo)
+                      return (
+                        <>
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span style={{ color: tema.color, fontWeight: 700 }}>{tema.emoji} {r.motivo}</span>
+                        </>
+                      )
+                    })()}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {[
+                      ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
+                      ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
+                    ].filter(([, v]) => v).map(([label, v]) => (
+                      <span key={label} style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 999, padding: '2px 8px' }}>
+                        {label}: {v}
+                      </span>
+                    ))}
+                  </div>
+                  {r.descricao && <p style={{ fontSize: 12, color: '#374151', marginBottom: r.foto_url ? 8 : 0 }}>{r.descricao}</p>}
+                  {r.foto_url && (
+                    <a href={r.foto_url} target="_blank" rel="noreferrer">
+                      <img src={r.foto_url} alt="Evidência" style={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                    </a>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -11,6 +11,7 @@ import R6ResultadoReg  from './steps/R6ResultadoReg.jsx'
 import AberturaOcorrencia from './pages/AberturaOcorrencia.jsx'
 import EscolhaAberturaOcorrencia from './pages/EscolhaAberturaOcorrencia.jsx'
 import ImportarOcorrenciasLote from './pages/ImportarOcorrenciasLote.jsx'
+import TratamentoReincidencia from './pages/TratamentoReincidencia.jsx'
 
 export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   const [step, setStep] = useState(0)
@@ -19,6 +20,10 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   // extra em R0TipoRegistro: primeiro uma telinha de escolha (manual x lote),
   // depois o formulário manual de sempre ou a importação em lote.
   const [modoOcorrencia, setModoOcorrencia] = useState(null) // null | 'escolha' | 'manual' | 'lote'
+  // Tratamento de Reincidência — mesmo princípio de "fluxo à parte" da
+  // Ocorrência, mas sem a telinha de escolha manual/lote (só 1 caminho por
+  // enquanto).
+  const [mostrarReincidencia, setMostrarReincidencia] = useState(false)
   const [form, setForm] = useState(() => ({
     ...FORM_REGISTRO_INICIAL(),
     fiscal:           usuarioLogado?.nome      || '',
@@ -70,6 +75,17 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
     )
   }
 
+  if (mostrarReincidencia) {
+    return (
+      <TratamentoReincidencia
+        usuarioLogado={usuarioLogado}
+        isOnline={isOnline}
+        onHome={onVoltar}
+        onVoltar={() => setMostrarReincidencia(false)}
+      />
+    )
+  }
+
   return (
     <div className="app-shell">
       {/* Header — padrão VérticeGP (idêntico ao header da Auditoria em App.jsx) */}
@@ -112,6 +128,7 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
               // — vai direto pro manual, igual já era antes dessa feature.
               temPermissao(usuarioLogado, 'importar_ocorrencias_lote') ? 'escolha' : 'manual'
             )}
+            onAbrirReincidencia={() => setMostrarReincidencia(true)}
           />
         )}
         {step === 1 && <R1Modalidade    {...stepProps} />}
