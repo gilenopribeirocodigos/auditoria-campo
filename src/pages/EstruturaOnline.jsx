@@ -39,6 +39,12 @@ const COLUNAS_OBRIGATORIAS = [
   'regional', 'matricula', 'colaborador', 'cpf_colaborador',
   'matricula_superv_campo', 'superv_campo', 'superv_operacao', 'coordenador',
 ]
+// Só pro cabeçalho do Excel exportado (exportarExcel) — além das
+// COLUNAS_OBRIGATORIAS de verdade, destaca também PROCESSO_EQUIPE em
+// amarelo, pra quem usa a planilha exportada como modelo já saber que
+// precisa preencher essa coluna (mesmo sendo preenchida automaticamente
+// pelo nome da aba quando editado dentro do app).
+const COLUNAS_OBRIGATORIAS_EXCEL = [...COLUNAS_OBRIGATORIAS, 'processo_equipe']
 
 const MOTIVOS_PADRAO = [
   { descricao: 'ATIVO', cor_fundo: '#dcfce7', cor_texto: '#166534', permite_importar_estrutura: true, ordem_exibicao: 1, ativo: true },
@@ -1208,10 +1214,13 @@ export default function EstruturaOnline({ usuarioLogado }) {
     dados.forEach(item => ws.addRow(item))
 
     ws.getRow(1).eachCell((cell, colNumero) => {
-      const obrigatoria = COLUNAS_OBRIGATORIAS.includes(colunas[colNumero - 1])
+      const coluna = colunas[colNumero - 1]
+      const obrigatoria = COLUNAS_OBRIGATORIAS_EXCEL.includes(coluna)
       cell.font = { bold: true, color: { argb: obrigatoria ? 'FF7C2D12' : 'FF1E293B' } }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: obrigatoria ? 'FFFDE68A' : 'FFE2E8F0' } }
-      if (obrigatoria) {
+      if (coluna === 'processo_equipe') {
+        cell.note = 'Campo obrigatório — preenchido automaticamente com o nome da aba ao editar dentro do app.'
+      } else if (obrigatoria) {
         cell.note = 'Campo obrigatório — não pode ficar em branco (quando DESCR_SITUACAO for ATIVO ou RESERVA).'
       }
     })
