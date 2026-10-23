@@ -792,8 +792,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         </div>
 
         {/* Resumo por tipo — grade de tiles (Total + Pendentes quando houver)
-            do período filtrado. Ocorrências é o único tipo com pendente/
-            tratada hoje, então é o único que mostra a faixa de pendentes;
+            do período filtrado. Ocorrências e Reincidência têm pendente/
+            tratada, então são os únicos que mostram a faixa de pendentes;
             os demais tipos de Registro (Alinhamento, Diálogo de Segurança,
             Treinamento, Feedback, Reunião, Disciplinar) são avulsos, sem
             status, então mostram só o total. Grade de 3 colunas (em vez de
@@ -804,11 +804,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           const tiles = Object.entries(TIPOS_REGISTRO)
             .filter(([tipo]) => porTipo[tipo] > 0)
             .map(([tipo, cfg]) => ({ tipo, emoji: cfg.emoji, label: cfg.label, color: cfg.color, border: cfg.border, total: porTipo[tipo] }))
-          // Reincidência ainda não tem pendente/tratada (fase futura) — só total.
           if (reincidencias.length > 0) {
             tiles.unshift({
               tipo: 'REINCIDENCIA', emoji: '🔁', label: 'Reincidência', color: '#c2410c', border: '#fed7aa',
-              total: reincidencias.length,
+              total: reincidencias.length, pendentes: reincidencias.filter(r => r.status === 'PENDENTE').length,
             })
           }
           if (ocorrencias.length > 0) {
@@ -886,57 +885,41 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           </div>
         )}
 
-        {/* Tratamento de Reincidência — fase 1: só listagem (sem detalhe/
-            tratamento ainda, ver TratamentoReincidencia.jsx). Mostra os
-            dados direto no card, sem modal, já que não há ação a tomar
-            por enquanto. */}
         {reincidencias.length > 0 && (
           <div style={{ marginBottom: 20 }}>
             <p style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', marginBottom: 10 }}>
               🔁 Tratamento de Reincidência
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {reincidencias.map(r => (
-                <div key={r.id} onClick={() => setDetalheReinc(r)} style={{ background: '#fff', borderRadius: 14, border: '1.5px solid #fed7aa', padding: '14px 16px', cursor: 'pointer' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                        <span style={{ fontSize: 18 }}>🔁</span>
-                        <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
-                        <span style={{ fontSize: 12, color: '#9a3412', opacity: 0.85 }}>{numeroOcorrencia(r)}</span>
+              {reincidencias.map(r => {
+                const pendente = r.status === 'PENDENTE'
+                return (
+                  <div key={r.id} onClick={() => setDetalheReinc(r)}
+                    style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#fdba74' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                          <span style={{ fontSize: 18 }}>🔁</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
+                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+                          <span>👤 {r.aberto_por}</span>
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📅 {new Date(r.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          {r.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {r.prefixo}</span></>)}
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📨 {r.direcionado_para}</span>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7, marginBottom: 8 }}>
-                        <span>👤 {r.aberto_por}</span>
-                        <span style={{ margin: '0 8px' }}>·</span>
-                        <span>📅 {new Date(r.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
-                        {r.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {r.prefixo}</span></>)}
-                        <span style={{ margin: '0 8px' }}>·</span>
-                        <span>📨 {r.direcionado_para}</span>
-                        {r.motivo && (() => {
-                          const tema = temaMotivoOcorrencia(r.motivo)
-                          return (
-                            <>
-                              <span style={{ margin: '0 8px' }}>·</span>
-                              <span style={{ color: tema.color, fontWeight: 700 }}>{tema.emoji} {r.motivo}</span>
-                            </>
-                          )
-                        })()}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                        {[
-                          ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
-                          ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
-                        ].filter(([, v]) => v).map(([label, v]) => (
-                          <span key={label} style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 999, padding: '2px 8px' }}>
-                            {label}: {v}
-                          </span>
-                        ))}
-                      </div>
+                      <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
                     </div>
-                    <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         )}
@@ -1544,6 +1527,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '24px 20px 40px' }}>
             {(() => {
               const r = detalheReinc
+              const pendente = r.status === 'PENDENTE'
               const colaboradores = [r.eletricista_equipe, r.eletricista_equipe_2].filter(Boolean).join(' e ')
               const dadosTecnicos = [
                 ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
@@ -1560,6 +1544,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     <div style={{ fontSize: 40, marginBottom: 6 }}>🔁</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</div>
                     <div style={{ fontSize: 13, color: '#c2410c', opacity: 0.85, marginTop: 4 }}>{numeroOcorrencia(r)}</div>
+                    <div style={{ marginTop: 8 }}>
+                      <span style={{
+                        padding: '3px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        background: pendente ? '#fff' : '#15803d', color: pendente ? '#9a3412' : '#fff',
+                      }}>{pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+                    </div>
                   </div>
 
                   {dadosTecnicos.length > 0 && (

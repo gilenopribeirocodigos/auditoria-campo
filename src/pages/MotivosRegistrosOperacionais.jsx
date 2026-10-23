@@ -9,11 +9,10 @@ import { listarMotivos, criarMotivo, atualizarMotivo, removerMotivo } from '../l
 // texto livre, sem constraint no banco) — por isso entram só aqui, nas
 // opções do cadastro.
 const LABEL_OCORRENCIA = '📦 Abertura de Ocorrência'
-const LABEL_REINCIDENCIA = '🔁 Tratamento de Reincidência'
 
-const OPCOES_TIPO = [...Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => `${tipo.emoji} ${tipo.label}`), LABEL_OCORRENCIA, LABEL_REINCIDENCIA]
-const LABEL_POR_CHAVE = { ...Object.fromEntries(Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => [chave, `${tipo.emoji} ${tipo.label}`])), OCORRENCIA: LABEL_OCORRENCIA, REINCIDENCIA: LABEL_REINCIDENCIA }
-const CHAVE_POR_LABEL = { ...Object.fromEntries(Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => [`${tipo.emoji} ${tipo.label}`, chave])), [LABEL_OCORRENCIA]: 'OCORRENCIA', [LABEL_REINCIDENCIA]: 'REINCIDENCIA' }
+const OPCOES_TIPO = [...Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => `${tipo.emoji} ${tipo.label}`), LABEL_OCORRENCIA]
+const LABEL_POR_CHAVE = { ...Object.fromEntries(Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => [chave, `${tipo.emoji} ${tipo.label}`])), OCORRENCIA: LABEL_OCORRENCIA }
+const CHAVE_POR_LABEL = { ...Object.fromEntries(Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => [`${tipo.emoji} ${tipo.label}`, chave])), [LABEL_OCORRENCIA]: 'OCORRENCIA' }
 
 export default function MotivosRegistrosOperacionais({ onVoltar }) {
   const [carregando, setCarregando] = useState(true)

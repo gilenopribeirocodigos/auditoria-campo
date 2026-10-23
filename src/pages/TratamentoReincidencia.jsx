@@ -9,7 +9,6 @@ import { supabase } from '../lib/supabase.js'
 import { Textarea, SearchSelect } from '../components/Shared.jsx'
 import { prepararPayloadOcorrencia, salvarOcorrenciaBD, listarFiscaisParaDirecionamento } from '../lib/ocorrencias.js'
 import { salvarOcorrenciaOffline } from '../lib/ocorrencias_offline.js'
-import { listarMotivosPorTipo } from '../lib/motivosRegistros.js'
 
 // Mesma marca d'água discreta de AberturaOcorrencia.jsx.
 function processarFotoReincidencia(file) {
@@ -245,7 +244,6 @@ export default function TratamentoReincidencia({ usuarioLogado, isOnline, onHome
   const [direcionadoPara,    setDirecionadoPara]    = useState('')
   const [matriculaDestino,   setMatriculaDestino]   = useState('')
   const [descricao,          setDescricao]          = useState('')
-  const [motivo,              setMotivo]            = useState('')
   const [foto,                setFoto]              = useState(null)
   const [status,              setStatus]            = useState('idle') // idle | saving | saved | error
   const [erro,                setErro]              = useState('')
@@ -266,21 +264,9 @@ export default function TratamentoReincidencia({ usuarioLogado, isOnline, onHome
 
   const online = isOnline !== undefined ? isOnline : navigator.onLine
 
-  // Motivos cadastrados pra "Tratamento de Reincidência" — bucket próprio
-  // (tipo_registro = 'REINCIDENCIA'), separado do de Abertura de Ocorrência.
-  const [motivos, setMotivos] = useState([])
-  const [carregandoMotivos, setCarregandoMotivos] = useState(true)
-  useEffect(() => {
-    listarMotivosPorTipo('REINCIDENCIA')
-      .then(lista => setMotivos(lista.map(m => m.motivo)))
-      .catch(() => setMotivos([]))
-      .finally(() => setCarregandoMotivos(false))
-  }, [])
-
   const podeEnviar = colaboradorEnvolvido.trim() && direcionadoPara.trim() && descricao.trim().length > 0 && !!foto &&
     numeroOE.trim() && abrangencia.trim() && componentePDF.trim() && alimentadorAL.trim() &&
-    reincidenciaR07.trim() && reincidenciaR30.trim() && reincidenciaR90.trim() &&
-    !carregandoMotivos && (motivos.length === 0 || !!motivo)
+    reincidenciaR07.trim() && reincidenciaR30.trim() && reincidenciaR90.trim()
 
   const addFoto = async e => {
     const file = e.target.files?.[0]
@@ -303,7 +289,6 @@ export default function TratamentoReincidencia({ usuarioLogado, isOnline, onHome
       direcionado_para:          direcionadoPara.trim(),
       matricula_fiscal_destino:  matriculaDestino,
       descricao:                 descricao.trim(),
-      motivo:                    motivo || null,
       foto,
       aberto_por:                usuarioLogado?.nome || '',
       matricula_aberto_por:      usuarioLogado?.matricula || '',
@@ -343,7 +328,7 @@ export default function TratamentoReincidencia({ usuarioLogado, isOnline, onHome
 
   const reiniciar = () => {
     setPrefixo(''); setColaboradorEnvolvido(''); setColaboradorEnvolvido2(''); setDirecionadoPara(''); setMatriculaDestino('')
-    setDescricao(''); setMotivo(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
+    setDescricao(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
     setData(new Date().toISOString().split('T')[0]); setHora(new Date().toTimeString().slice(0, 5))
     setNumeroOE(''); setAbrangencia(''); setComponentePDF(''); setAlimentadorAL('')
     setReincidenciaR07(''); setReincidenciaR30(''); setReincidenciaR90('')
@@ -473,20 +458,6 @@ export default function TratamentoReincidencia({ usuarioLogado, isOnline, onHome
                 nome={direcionadoPara} matricula={matriculaDestino}
                 onNome={setDirecionadoPara} onMatricula={setMatriculaDestino}
               />
-
-              <div className="form-group">
-                <label className="form-label">Motivo{motivos.length > 0 ? ' *' : ' (opcional)'}</label>
-                <SearchSelect
-                  opcoes={motivos} valor={motivo}
-                  onSelecionar={setMotivo}
-                  placeholder={carregandoMotivos ? 'Carregando motivos...' : 'Buscar e escolher o motivo...'}
-                />
-                {!carregandoMotivos && motivos.length === 0 && (
-                  <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                    Nenhum motivo cadastrado ainda para Tratamento de Reincidência (⚙️ Motivos, em Registros Operacionais).
-                  </p>
-                )}
-              </div>
 
               <Textarea label="Descrição da Reincidência *" value={descricao} onChange={setDescricao}
                 placeholder="Descreva a reincidência (ex: área com 3 desligamentos no período)..." rows={4} />
