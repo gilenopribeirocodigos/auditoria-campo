@@ -729,6 +729,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     return <MotivosRegistrosOperacionais onVoltar={() => setMostrarMotivos(false)} />
   }
 
+  // Lista única, ordenada por data/hora de abertura decrescente — Ocorrências,
+  // Reincidências e os demais tipos de Registro Operacional ficam misturados
+  // numa linha do tempo só, em vez de blocos separados por tipo (senão um
+  // registro recém-aberto de um tipo podia aparecer abaixo de registros
+  // antigos de outro tipo).
+  const timestampRegistro = r => new Date(`${r.data_registro}T${r.hora_registro || '00:00'}`).getTime()
+  const itensLista = [
+    ...ocorrencias.map(oc => ({ kind: 'ocorrencia', item: oc, ts: new Date(oc.criado_em).getTime() })),
+    ...reincidencias.map(r => ({ kind: 'reincidencia', item: r, ts: new Date(r.criado_em).getTime() })),
+    ...registros.map(r => ({ kind: 'registro', item: r, ts: timestampRegistro(r) })),
+  ].sort((a, b) => b.ts - a.ts)
+
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
 
@@ -837,16 +849,24 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           )
         })()}
 
-        {ocorrencias.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#4338ca', marginBottom: 10 }}>
-              📦 Ocorrências
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {ocorrencias.map(oc => {
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+            <p>Carregando registros...</p>
+          </div>
+        ) : itensLista.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
+            <p>Nenhum registro encontrado.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {itensLista.map(({ kind, item }) => {
+              if (kind === 'ocorrencia') {
+                const oc = item
                 const pendente = oc.status === 'PENDENTE'
                 return (
-                  <div key={oc.id} onClick={() => setDetalheOc(oc)}
+                  <div key={`oc-${oc.id}`} onClick={() => setDetalheOc(oc)}
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
@@ -880,18 +900,13 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   </div>
                 )
-              })}
-            </div>
-          </div>
-        )}
+              }
 
-        {reincidencias.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {reincidencias.map(r => {
+              if (kind === 'reincidencia') {
+                const r = item
                 const pendente = r.status === 'PENDENTE'
                 return (
-                  <div key={r.id} onClick={() => setDetalheReinc(r)}
+                  <div key={`re-${r.id}`} onClick={() => setDetalheReinc(r)}
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#fdba74' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
@@ -916,31 +931,16 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   </div>
                 )
-              })}
-            </div>
-          </div>
-        )}
+              }
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-            <p>Carregando registros...</p>
-          </div>
-        ) : registros.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
-            <p>Nenhum registro encontrado.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {registros.map(r => {
+              const r = item
               const tc = TIPOS_REGISTRO[r.tipo] || {}
               const mc = MODALIDADES[r.modalidade] || {}
               const tokenAtivo = tokensAtivos[r.id]
               const expira = tokenAtivo ? new Date(tokenAtivo.expires_at) : null
               const minutosRestantes = expira ? Math.ceil((expira - new Date()) / 60000) : 0
               return (
-                    <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: tokenAtivo ? '1.5px solid #22c55e' : `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
+                    <div key={`rg-${r.id}`} style={{ background: '#fff', borderRadius: 14, border: tokenAtivo ? '1.5px solid #22c55e' : `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
                       onClick={() => abrirDetalhe(r)}
                       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
                       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
