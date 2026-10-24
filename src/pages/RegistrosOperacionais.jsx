@@ -1626,6 +1626,84 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
+                  {/* Retroalimentação — o que o fiscal registrou ao tratar (aba
+                      🔁 Reincidência de Tratamento de Não Conformidades) volta
+                      pra cá, no mesmo card de abertura, já que é a mesma linha
+                      da tabela `ocorrencias`. Só aparece quando tratada. */}
+                  {!pendente && (
+                    <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>✅ Tratamento</p>
+                      <p style={{ fontSize: 12, color: '#166534', marginBottom: 10 }}>
+                        <strong>Tratado por</strong> {r.tratado_por_nome || r.tratado_por || '—'} em {r.tratado_em ? new Date(r.tratado_em).toLocaleString('pt-BR') : '—'}
+                      </p>
+
+                      <p style={{ fontSize: 10.5, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.3, margin: '10px 0 6px' }}>📋 Respostas do checklist</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                          <span>1. Rede BT inspecionada?</span>
+                          <strong style={{ color: r.reincidencia_rede_inspecionada ? '#15803d' : '#b91c1c' }}>{r.reincidencia_rede_inspecionada ? 'SIM' : 'NÃO'}</strong>
+                        </div>
+                        {r.reincidencia_acoes_equipe && (
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                            <span style={{ display: 'block', color: '#64748b', marginBottom: 2 }}>2. Ações executadas pela equipe:</span>
+                            <strong style={{ color: '#1e293b' }}>{r.reincidencia_acoes_equipe}</strong>
+                          </div>
+                        )}
+                        {r.reincidencia_leituras_eletricas && (
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                            <span style={{ display: 'block', color: '#64748b', marginBottom: 2 }}>3. Leituras elétricas:</span>
+                            <strong style={{ color: '#1e293b' }}>{r.reincidencia_leituras_eletricas}</strong>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                          <span>4. Resolveu em definitivo?</span>
+                          <strong style={{ color: r.reincidencia_resolvido_definitivo ? '#15803d' : '#b91c1c' }}>{r.reincidencia_resolvido_definitivo ? 'SIM' : 'NÃO'}</strong>
+                        </div>
+                        {r.reincidencia_vulnerabilidades && (
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                            <span style={{ display: 'block', color: '#64748b', marginBottom: 2 }}>5. Vulnerabilidades estruturais:</span>
+                            <strong style={{ color: '#1e293b' }}>{r.reincidencia_vulnerabilidades}</strong>
+                          </div>
+                        )}
+                      </div>
+
+                      {(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome || r.reincidencia_termo_fiscal_nome) && (
+                        <>
+                          <p style={{ fontSize: 10.5, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.3, margin: '10px 0 6px' }}>✍️ Ciência</p>
+                          {(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome) && (
+                            <p style={{ fontSize: 11.5, color: '#1e293b', marginBottom: 4 }}><strong>Eletricistas:</strong> {[r.tratamento_assinatura_nome, r.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}</p>
+                          )}
+                          {r.reincidencia_termo_fiscal_nome && (
+                            <p style={{ fontSize: 11.5, color: '#1e293b', marginBottom: 10 }}><strong>Termo de Ciência do Fiscal:</strong> {r.reincidencia_termo_fiscal_nome}</p>
+                          )}
+                        </>
+                      )}
+
+                      {[r.tratamento_assinatura_url, r.tratamento_assinatura2_url, r.reincidencia_termo_fiscal_assinatura_url].filter(Boolean).length > 0 && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                          {[r.tratamento_assinatura_url, r.tratamento_assinatura2_url, r.reincidencia_termo_fiscal_assinatura_url].filter(Boolean).map((url, i) => (
+                            <a key={i} href={url} target="_blank" rel="noreferrer">
+                              <img src={url} alt={`Assinatura ${i + 1}`} style={{ height: 64, maxWidth: 140, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6 }} />
+                            </a>
+                          ))}
+                        </div>
+                      )}
+
+                      {Array.isArray(r.tratamento_fotos_urls) && r.tratamento_fotos_urls.length > 0 && (
+                        <>
+                          <p style={{ fontSize: 10.5, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.3, margin: '4px 0 6px' }}>📷 Evidências do tratamento</p>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {r.tratamento_fotos_urls.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noreferrer">
+                                <img src={url} alt={`Evidência ${i + 1}`} style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                              </a>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
                   <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
                     v{versaoSistema}
                   </p>

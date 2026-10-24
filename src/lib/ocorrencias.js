@@ -172,12 +172,25 @@ export async function salvarOcorrenciaBD(payload) {
 }
 
 // ─── Lista ocorrências (Tratamento de Não Conformidades → aba Ocorrências) ───
-// Só tipo_ocorrencia = 'OCORRENCIA' — Tratamento de Reincidência (fase 1)
-// ainda não tem fluxo de pendente/tratada aqui; a atribuição/tratamento dela
-// dentro de Não Conformidades é uma fase futura, ainda a desenhar.
+// Só tipo_ocorrencia = 'OCORRENCIA' — Tratamento de Reincidência tem sua
+// própria lista/aba, ver listarReincidencias() logo abaixo.
 export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) {
   if (!supabase) return []
   let q = supabase.from('ocorrencias').select('*').neq('tipo_ocorrencia', 'REINCIDENCIA').order('criado_em', { ascending: false })
+  if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
+  if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
+  if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
+}
+
+// ─── Lista reincidências (Tratamento de Não Conformidades → aba Reincidência)
+// Espelha listarOcorrencias() acima, trocando .neq por .eq — mesma tabela,
+// só o tipo_ocorrencia filtrado muda.
+export async function listarReincidencias(statusTab = 'TODOS', { ini, fim } = {}) {
+  if (!supabase) return []
+  let q = supabase.from('ocorrencias').select('*').eq('tipo_ocorrencia', 'REINCIDENCIA').order('criado_em', { ascending: false })
   if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
   if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
   if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
@@ -267,6 +280,59 @@ export async function tratarOcorrencia(id, {
         .eq('id', c.id)
     ))
   }
+}
+
+// ─── Confirma o tratamento de uma reincidência ─────────────────────────────
+// Reaproveita as mesmas colunas de evidência/ciência que tratarOcorrencia()
+// usa (tratamento_fotos_urls, tratamento_assinatura_*/assinatura2_* — aqui
+// guardam a ciência do Eletricista 1 e do Eletricista 2), mas troca a
+// "observação" livre pelas 5 respostas do checklist específico de
+// Reincidência, e acrescenta o Termo de Ciência do Fiscal (assinatura
+// própria de quem tratou, exigida pelo checklist — distinta da ciência dos
+// eletricistas).
+export async function tratarReincidencia(id, {
+  redeInspecionada, acoesEquipe, leiturasEletricas, resolvidoDefinitivo, vulnerabilidades,
+  fotosUrls,
+  assinaturaEletricista1Url, assinaturaEletricista1Nome,
+  assinaturaEletricista2Url, assinaturaEletricista2Nome,
+  termoFiscalNome, termoFiscalAssinaturaUrl,
+  usuarioLogado,
+}) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const payload = {
+    status:                                    'TRATADA',
+    reincidencia_rede_inspecionada:             !!redeInspecionada,
+    reincidencia_acoes_equipe:                  acoesEquipe?.trim() || null,
+    reincidencia_leituras_eletricas:            leiturasEletricas?.trim() || null,
+    reincidencia_resolvido_definitivo:          !!resolvidoDefinitivo,
+    reincidencia_vulnerabilidades:              vulnerabilidades?.trim() || null,
+    reincidencia_termo_fiscal_nome:             termoFiscalNome || null,
+    reincidencia_termo_fiscal_assinatura_url:   termoFiscalAssinaturaUrl || null,
+    tratamento_fotos_urls:                      fotosUrls || [],
+    tratamento_assinatura_url:                  assinaturaEletricista1Url || null,
+    tratamento_assinatura_nome:                 assinaturaEletricista1Nome || null,
+    tratamento_assinatura2_url:                 assinaturaEletricista2Url || null,
+    tratamento_assinatura2_nome:                assinaturaEletricista2Nome || null,
+    tratado_por:                                usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
+    tratado_por_nome:                           usuarioLogado?.nome || null,
+    tratado_em:                                 new Date().toISOString(),
+  }
+  let { error } = await supabase.from('ocorrencias').update(payload).eq('id', id).eq('status', 'PENDENTE')
+
+  // Mesmo padrão de compatibilidade das demais funções deste arquivo — evita
+  // quebrar se o deploy chegar antes da migração SQL que adiciona as colunas
+  // reincidencia_* (ver sql/2026-10-24_reincidencia_tratamento.sql).
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const {
+      reincidencia_rede_inspecionada, reincidencia_acoes_equipe, reincidencia_leituras_eletricas,
+      reincidencia_resolvido_definitivo, reincidencia_vulnerabilidades,
+      reincidencia_termo_fiscal_nome, reincidencia_termo_fiscal_assinatura_url,
+      ...payloadCompat
+    } = payload
+    ;({ error } = await supabase.from('ocorrencias').update(payloadCompat).eq('id', id).eq('status', 'PENDENTE'))
+  }
+
+  if (error) throw error
 }
 
 // ─── Lista ocorrências abertas pelo usuário logado (ou todas, se privilegiado)

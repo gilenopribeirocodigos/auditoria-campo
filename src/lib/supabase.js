@@ -54,7 +54,7 @@ export async function buscarTodasLinhas(montarQuery, tamanhoPagina = TAMANHO_PAG
 // (por matrícula), pra os badges baterem com o que a pessoa realmente vai
 // ver ao entrar na tela.
 export async function contarPendenciasTratamentoNC(usuarioLogado, podeVerTodas) {
-  if (!supabase) return { ncPendentes: 0, ocPendentes: 0 }
+  if (!supabase) return { ncPendentes: 0, ocPendentes: 0, reincPendentes: 0 }
 
   const ncRows = await buscarTodasLinhas((from, to) => {
     let q = supabase.from('auditorias_nao_conformes').select('auditoria_id, numero_as').eq('status_tratamento', 'PENDENTE').range(from, to)
@@ -63,11 +63,15 @@ export async function contarPendenciasTratamentoNC(usuarioLogado, podeVerTodas) 
   })
   const ncPendentes = new Set(ncRows.map(n => n.auditoria_id || n.numero_as)).size
 
-  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE')
+  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE').neq('tipo_ocorrencia', 'REINCIDENCIA')
   if (!podeVerTodas) ocQ = ocQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
   const { count } = await ocQ
 
-  return { ncPendentes, ocPendentes: count || 0 }
+  let reincQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE').eq('tipo_ocorrencia', 'REINCIDENCIA')
+  if (!podeVerTodas) reincQ = reincQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
+  const { count: reincCount } = await reincQ
+
+  return { ncPendentes, ocPendentes: count || 0, reincPendentes: reincCount || 0 }
 }
 
 // Upload de imagem base64 para o Storage
