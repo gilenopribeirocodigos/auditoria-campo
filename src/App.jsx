@@ -101,6 +101,7 @@ export default function App() {
   const [pendentesOc,         setPendentesOc]         = useState(0)
   const [ncPendencias,        setNcPendencias]        = useState(0) // badge laranja: NCs de auditoria pendentes de tratamento
   const [ocPendencias,        setOcPendencias]        = useState(0) // badge azul claro: Ocorrências pendentes de tratamento
+  const [reincPendencias,     setReincPendencias]     = useState(0) // badge roxo: Reincidências pendentes de tratamento
 
   const { needRefresh: [needRefresh], updateServiceWorker } = useRegisterSW({
     // [DPL] Checa por atualização periodicamente (não só na primeira carga)
@@ -154,10 +155,10 @@ export default function App() {
   // Ocorrências pendentes mostrados separados (cores diferentes), só pra
   // quem tem a permissão de tratar.
   useEffect(() => {
-    if (!usuario || !temPermissao(usuario, 'tratar_nc')) { setNcPendencias(0); setOcPendencias(0); return }
+    if (!usuario || !temPermissao(usuario, 'tratar_nc')) { setNcPendencias(0); setOcPendencias(0); setReincPendencias(0); return }
     contarPendenciasTratamentoNC(usuario, temPermissao(usuario, 'ver_todas_pendencias_nc'))
-      .then(({ ncPendentes, ocPendentes }) => { setNcPendencias(ncPendentes); setOcPendencias(ocPendentes) })
-      .catch(() => { setNcPendencias(0); setOcPendencias(0) })
+      .then(({ ncPendentes, ocPendentes, reincPendentes }) => { setNcPendencias(ncPendentes); setOcPendencias(ocPendentes); setReincPendencias(reincPendentes) })
+      .catch(() => { setNcPendencias(0); setOcPendencias(0); setReincPendencias(0) })
   }, [usuario, tela])
 
   useEffect(() => {
@@ -698,7 +699,7 @@ export default function App() {
               cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
             }}>
               🛠️ Tratamento de Não Conformidades
-              {(ncPendencias > 0 || ocPendencias > 0) && (
+              {(ncPendencias > 0 || ocPendencias > 0 || reincPendencias > 0) && (
                 <span style={{ position: 'absolute', top: -7, right: -7, display: 'flex', gap: 4 }}>
                   {ocPendencias > 0 && (
                     <span title="Pendentes — Abertura de Ocorrência" style={{
@@ -706,6 +707,13 @@ export default function App() {
                       borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
                     }}>{ocPendencias}</span>
+                  )}
+                  {reincPendencias > 0 && (
+                    <span title="Pendentes — Tratamento de Reincidência" style={{
+                      background: '#9a3412', color: '#fff',
+                      borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
+                    }}>{reincPendencias}</span>
                   )}
                   {ncPendencias > 0 && (
                     <span title="Pendentes — Não Conformidade de Auditoria" style={{
