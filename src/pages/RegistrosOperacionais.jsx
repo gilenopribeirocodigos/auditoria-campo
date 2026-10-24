@@ -887,9 +887,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
         {reincidencias.length > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#c2410c', marginBottom: 10 }}>
-              🔁 Tratamento de Reincidência
-            </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {reincidencias.map(r => {
                 const pendente = r.status === 'PENDENTE'
@@ -1528,10 +1525,27 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             {(() => {
               const r = detalheReinc
               const pendente = r.status === 'PENDENTE'
-              const colaboradores = [r.eletricista_equipe, r.eletricista_equipe_2].filter(Boolean).join(' e ')
-              const dadosTecnicos = [
-                ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
-                ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
+              const camposPrincipais = [
+                ['No. REIC',        numeroOcorrencia(r)],
+                ['Tipo Tratamento', 'Reincidência'],
+                ['Data / Hora',     new Date(r.criado_em).toLocaleString('pt-BR')],
+                ['Fiscal',          r.aberto_por],
+                ['Matrícula',       r.matricula_aberto_por],
+                ['Equipe',          r.prefixo],
+                ['Direcionado para', r.direcionado_para],
+                ['Eletricista 1',   r.eletricista_equipe],
+                ['Eletricista 2',   r.eletricista_equipe_2],
+              ].filter(([, v]) => v)
+              const camposTecnicos = [
+                ['Número da Ocorrência (OE)', r.numero_oe],
+                ['Abrangência (ABRG)',        r.abrangencia],
+                ['Componente (PDF)',          r.componente_pdf],
+                ['Alimentador (AL)',          r.alimentador_al],
+              ].filter(([, v]) => v)
+              const reincidenciasPeriodo = [
+                ['7 dias',  r.reincidencia_r07],
+                ['30 dias', r.reincidencia_r30],
+                ['90 dias', r.reincidencia_r90],
               ].filter(([, v]) => v)
               return (
                 <>
@@ -1543,7 +1557,6 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   <div style={{ background: '#fff7ed', border: '2px solid #fed7aa', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
                     <div style={{ fontSize: 40, marginBottom: 6 }}>🔁</div>
                     <div style={{ fontSize: 18, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</div>
-                    <div style={{ fontSize: 13, color: '#c2410c', opacity: 0.85, marginTop: 4 }}>{numeroOcorrencia(r)}</div>
                     <div style={{ marginTop: 8 }}>
                       <span style={{
                         padding: '3px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
@@ -1552,34 +1565,39 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   </div>
 
-                  {dadosTecnicos.length > 0 && (
-                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                      <p style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>📊 Dados Técnicos</p>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                        {dadosTecnicos.map(([l, v]) => (
-                          <div key={l}>
-                            <div style={{ fontSize: 10, fontWeight: 700, color: '#c2410c', textTransform: 'uppercase', letterSpacing: 0.3 }}>{l}</div>
-                            <div style={{ fontSize: 14, fontWeight: 800, color: '#7c2d12' }}>{v}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 14 }}>
-                    {[
-                      ['Aberto por',        r.aberto_por],
-                      ['Data / Hora',       new Date(r.criado_em).toLocaleString('pt-BR')],
-                      ['Prefixo / Equipe',  r.prefixo],
-                      ['Colaborador(es)',   colaboradores],
-                      ['Direcionado para',  r.direcionado_para],
-                    ].filter(([, v]) => v).map(([l, v]) => (
+                    {camposPrincipais.map(([l, v]) => (
                       <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                        <span style={{ color: '#94a3b8', fontWeight: 500 }}>{l}</span>
-                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{v}</span>
+                        <span style={{ color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.2 }}>{l}</span>
+                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word', textTransform: 'uppercase' }}>{v}</span>
                       </div>
                     ))}
                   </div>
+
+                  {(camposTecnicos.length > 0 || reincidenciasPeriodo.length > 0) && (
+                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>📊 Dados Técnicos</p>
+                      {camposTecnicos.map(([l, v], i) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < camposTecnicos.length - 1 ? '1px solid #fed7aa' : 'none' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.2 }}>{l}</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: '#7c2d12', textAlign: 'right' }}>{v}</span>
+                        </div>
+                      ))}
+                      {reincidenciasPeriodo.length > 0 && (
+                        <>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.4, margin: '12px 0 6px', opacity: 0.8 }}>Nº de reincidências por período</p>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${reincidenciasPeriodo.length}, 1fr)`, gap: 8 }}>
+                            {reincidenciasPeriodo.map(([label, v]) => (
+                              <div key={label} style={{ background: '#fff', border: '1.5px solid #fdba74', borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 22, fontWeight: 800, color: '#c2410c', lineHeight: 1 }}>{v}</div>
+                                <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 3 }}>Reinc. {label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {r.motivo && (() => {
                     const tema = temaMotivoOcorrencia(r.motivo)
