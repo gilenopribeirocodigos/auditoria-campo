@@ -888,6 +888,16 @@ function PainelAssinaturaFiscal({ nomeFiscal, assinatura, onAssinatura }) {
   const drawing   = useRef(false)
   const traced    = useRef(false)
   const [signed, setSigned] = useState(!!assinatura)
+  // Confirmação manual obrigatória ANTES de liberar a assinatura — força o
+  // fiscal a marcar de propósito que leu as informações, em vez de poder
+  // assinar sem prestar atenção. Desmarcar depois de já ter assinado limpa a
+  // assinatura, pra não ficar uma assinatura "órfã" sem a confirmação.
+  const [ciente, setCiente] = useState(false)
+  const alternarCiente = e => {
+    const marcado = e.target.checked
+    setCiente(marcado)
+    if (!marcado) { onAssinatura(null); setSigned(false) }
+  }
 
   useEffect(() => {
     const c = canvasRef.current
@@ -942,17 +952,34 @@ function PainelAssinaturaFiscal({ nomeFiscal, assinatura, onAssinatura }) {
       <p style={{ fontSize: 12, color: '#92400e', lineHeight: 1.6, marginBottom: 12 }}>
         Eu, <strong>{nomeFiscal || '—'}</strong>, atesto que as informações registradas neste checklist refletem a inspeção realizada em campo.
       </p>
-      <canvas
-        ref={canvasRef}
-        width={560} height={150}
-        style={{ width: '100%', height: 150, border: '1.5px dashed #f59e0b', borderRadius: 10, background: '#fff', touchAction: 'none', display: 'block', cursor: 'crosshair' }}
-        onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
-        onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
-      />
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
-        <p style={{ fontSize: 11, color: '#92400e' }}>Use o dedo para assinar</p>
-        <button onClick={limpar} style={{ fontSize: 12, color: '#ef4444', textDecoration: 'underline', padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}>Limpar</button>
-      </div>
+
+      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 12, background: '#fff', border: '1.5px solid #f59e0b', borderRadius: 10, padding: '10px 12px' }}>
+        <input type="checkbox" checked={ciente} onChange={alternarCiente}
+          style={{ width: 20, height: 20, flexShrink: 0, marginTop: 1, accentColor: '#f59e0b', cursor: 'pointer' }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: '#92400e', lineHeight: 1.4 }}>
+          Confirmo que li e conferi as informações do checklist acima
+        </span>
+      </label>
+
+      {ciente ? (
+        <>
+          <canvas
+            ref={canvasRef}
+            width={560} height={150}
+            style={{ width: '100%', height: 150, border: '1.5px dashed #f59e0b', borderRadius: 10, background: '#fff', touchAction: 'none', display: 'block', cursor: 'crosshair' }}
+            onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+            onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}
+          />
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6 }}>
+            <p style={{ fontSize: 11, color: '#92400e' }}>Use o dedo para assinar</p>
+            <button onClick={limpar} style={{ fontSize: 12, color: '#ef4444', textDecoration: 'underline', padding: 0, background: 'none', border: 'none', cursor: 'pointer' }}>Limpar</button>
+          </div>
+        </>
+      ) : (
+        <div style={{ width: '100%', height: 150, border: '1.5px dashed #e2e8f0', borderRadius: 10, background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 16 }}>
+          <p style={{ fontSize: 12, color: '#94a3b8' }}>Marque a confirmação acima para liberar a assinatura</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -989,8 +1016,11 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
   }
   const removerFoto = i => setFotos(f => f.filter((_, j) => j !== i))
 
+  // Assinatura dos eletricistas é opcional (eles podem não estar mais no
+  // local na hora do tratamento) — só a do fiscal no Termo de Ciência é
+  // obrigatória, já que é ele quem está atestando o checklist.
   const podeConfirmar = redeInspecionada !== null && resolvidoDefinitivo !== null &&
-    fotos.length > 0 && !!assinatura1 && (!temEletricista2 || !!assinatura2) && !!assinaturaFiscal
+    fotos.length > 0 && !!assinaturaFiscal
 
   const confirmarTratamento = async () => {
     if (!podeConfirmar) return
@@ -1002,7 +1032,10 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
         const url = await uploadBase64(fotos[i], `reincidencia_tratamento/${r.id}/foto_${Date.now()}_${i + 1}.jpg`)
         fotosUrls.push(url)
       }
-      const assinatura1Url = await uploadBase64(assinatura1, `reincidencia_tratamento/${r.id}/assinatura_eletricista1_${Date.now()}.png`)
+      let assinatura1Url = null
+      if (assinatura1) {
+        assinatura1Url = await uploadBase64(assinatura1, `reincidencia_tratamento/${r.id}/assinatura_eletricista1_${Date.now()}.png`)
+      }
       let assinatura2Url = null
       if (temEletricista2 && assinatura2) {
         assinatura2Url = await uploadBase64(assinatura2, `reincidencia_tratamento/${r.id}/assinatura_eletricista2_${Date.now()}.png`)
@@ -1012,8 +1045,8 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
       await tratarReincidencia(r.id, {
         redeInspecionada, acoesEquipe, leiturasEletricas, resolvidoDefinitivo, vulnerabilidades,
         fotosUrls,
-        assinaturaEletricista1Url: assinatura1Url, assinaturaEletricista1Nome: nomeEletricista1 || null,
-        assinaturaEletricista2Url: assinatura2Url, assinaturaEletricista2Nome: temEletricista2 ? (nomeEletricista2 || null) : null,
+        assinaturaEletricista1Url: assinatura1Url, assinaturaEletricista1Nome: assinatura1Url ? (nomeEletricista1 || null) : null,
+        assinaturaEletricista2Url: assinatura2Url, assinaturaEletricista2Nome: assinatura2Url ? (nomeEletricista2 || null) : null,
         termoFiscalNome: usuarioLogado?.nome || null, termoFiscalAssinaturaUrl: termoFiscalUrl,
         usuarioLogado,
       })
@@ -1063,7 +1096,10 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
                 <span key={label} style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', background: '#fff', border: '1px solid #fed7aa', borderRadius: 999, padding: '2px 8px' }}>{label} {v}</span>
               ))}
           </div>
-          <p style={{ fontSize: 13, color: '#334155', margin: 0 }}>{r.descricao}</p>
+          <div style={{ background: '#fff', border: '1.5px solid #fdba74', borderRadius: 10, padding: '10px 12px' }}>
+            <p style={{ fontSize: 10, fontWeight: 800, color: '#c2410c', textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px' }}>📝 O que tratar</p>
+            <p style={{ fontSize: 14.5, fontWeight: 700, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{r.descricao}</p>
+          </div>
           {(r.eletricista_equipe || r.eletricista_equipe_2) && (
             <p style={{ fontSize: 11, color: '#9a3412', margin: '6px 0 0' }}>👤 {[r.eletricista_equipe, r.eletricista_equipe_2].filter(Boolean).join(' e ')}</p>
           )}
@@ -1115,18 +1151,28 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
             {r.reincidencia_termo_fiscal_nome && (
               <p style={{ marginBottom: 8 }}><strong>Termo de Ciência do Fiscal:</strong> {r.reincidencia_termo_fiscal_nome}</p>
             )}
-            {[r.tratamento_assinatura_url, r.tratamento_assinatura2_url, r.reincidencia_termo_fiscal_assinatura_url].filter(Boolean).length > 0 && (
-              <div style={{ marginTop: 8 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>Assinaturas</p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  {[r.tratamento_assinatura_url, r.tratamento_assinatura2_url, r.reincidencia_termo_fiscal_assinatura_url].filter(Boolean).map((url, i) => (
-                    <a key={i} href={url} target="_blank" rel="noreferrer">
-                      <img src={url} alt={`Assinatura ${i + 1}`} style={{ height: 90, maxWidth: 200, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6 }} />
-                    </a>
-                  ))}
+            {(() => {
+              const assinaturas = [
+                ['Eletricista 1', r.tratamento_assinatura_nome, r.tratamento_assinatura_url],
+                ['Eletricista 2', r.tratamento_assinatura2_nome, r.tratamento_assinatura2_url],
+                ['Termo de Ciência do Fiscal', r.reincidencia_termo_fiscal_nome, r.reincidencia_termo_fiscal_assinatura_url],
+              ].filter(([, , url]) => url)
+              if (assinaturas.length === 0) return null
+              return (
+                <div style={{ marginTop: 8 }}>
+                  <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 6 }}>Assinaturas</p>
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {assinaturas.map(([label, nome, url]) => (
+                      <a key={label} href={url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', width: 180 }}>
+                        <img src={url} alt={`Assinatura — ${nome || label}`} style={{ width: '100%', height: 130, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6, display: 'block' }} />
+                        <p style={{ fontSize: 11, color: '#374151', textAlign: 'center', marginTop: 4, fontWeight: 700 }}>{label}</p>
+                        {nome && <p style={{ fontSize: 10.5, color: '#64748b', textAlign: 'center', margin: 0 }}>{nome}</p>}
+                      </a>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
             {Array.isArray(r.tratamento_fotos_urls) && r.tratamento_fotos_urls.length > 0 && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
                 {r.tratamento_fotos_urls.map((url, i) => (
@@ -1214,7 +1260,7 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
               onNome={setNomeEletricista1}
               assinatura={assinatura1}
               onAssinatura={setAssinatura1}
-              obrigatorio={true}
+              obrigatorio={false}
             />
 
             {temEletricista2 && (
@@ -1224,7 +1270,7 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
                 onNome={setNomeEletricista2}
                 assinatura={assinatura2}
                 onAssinatura={setAssinatura2}
-                obrigatorio={true}
+                obrigatorio={false}
               />
             )}
 

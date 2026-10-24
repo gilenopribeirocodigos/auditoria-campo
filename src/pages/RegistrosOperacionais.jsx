@@ -1679,15 +1679,25 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                         </>
                       )}
 
-                      {[r.tratamento_assinatura_url, r.tratamento_assinatura2_url, r.reincidencia_termo_fiscal_assinatura_url].filter(Boolean).length > 0 && (
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                          {[r.tratamento_assinatura_url, r.tratamento_assinatura2_url, r.reincidencia_termo_fiscal_assinatura_url].filter(Boolean).map((url, i) => (
-                            <a key={i} href={url} target="_blank" rel="noreferrer">
-                              <img src={url} alt={`Assinatura ${i + 1}`} style={{ height: 64, maxWidth: 140, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6 }} />
-                            </a>
-                          ))}
-                        </div>
-                      )}
+                      {(() => {
+                        const assinaturas = [
+                          ['Eletricista 1', r.tratamento_assinatura_nome, r.tratamento_assinatura_url],
+                          ['Eletricista 2', r.tratamento_assinatura2_nome, r.tratamento_assinatura2_url],
+                          ['Termo de Ciência do Fiscal', r.reincidencia_termo_fiscal_nome, r.reincidencia_termo_fiscal_assinatura_url],
+                        ].filter(([, , url]) => url)
+                        if (assinaturas.length === 0) return null
+                        return (
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                            {assinaturas.map(([label, nome, url]) => (
+                              <a key={label} href={url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', width: 140 }}>
+                                <img src={url} alt={`Assinatura — ${nome || label}`} style={{ width: '100%', height: 100, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6, display: 'block' }} />
+                                <p style={{ fontSize: 10.5, color: '#166534', textAlign: 'center', marginTop: 4, fontWeight: 700 }}>{label}</p>
+                                {nome && <p style={{ fontSize: 10, color: '#166534', opacity: 0.8, textAlign: 'center', margin: 0 }}>{nome}</p>}
+                              </a>
+                            ))}
+                          </div>
+                        )
+                      })()}
 
                       {Array.isArray(r.tratamento_fotos_urls) && r.tratamento_fotos_urls.length > 0 && (
                         <>
