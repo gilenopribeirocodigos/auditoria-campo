@@ -33,6 +33,51 @@ export async function compartilharImagemNativo(canvas, nomeArquivo, { titulo = '
   await Share.share({ title: titulo, text: texto, url: uri, dialogTitle: 'Compartilhar' })
 }
 
+// ─── WhatsApp no navegador DESKTOP (PC) ──────────────────────────────────
+// navigator.share() no Windows abre o painel de compartilhar do próprio
+// Windows — que só lista o WhatsApp se o app DESKTOP estiver instalado;
+// quem só usa WhatsApp Web no navegador cai num "Instalar" sem saída. No
+// celular isso não acontece (o painel do Android/iPhone já inclui o
+// WhatsApp instalado), então lá o navigator.share continua sendo usado
+// normalmente — esse helper é só pro caso do desktop.
+export function ehNavegadorMobile() {
+  if (typeof navigator === 'undefined') return false
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+}
+
+// Baixa a imagem direto (sem passar pelo painel de compartilhar do SO).
+export function baixarImagemCanvas(canvas, nomeArquivo, tipo = 'image/png', qualidade) {
+  const link = document.createElement('a')
+  link.download = nomeArquivo
+  link.href = canvas.toDataURL(tipo, qualidade)
+  link.click()
+}
+
+// Abre o WhatsApp Web (não o app nativo) numa aba nova, com uma mensagem
+// pronta — sem passar pelo painel de compartilhar do Windows. Sem número
+// de telefone (a pessoa escolhe o contato/grupo lá dentro), mesmo espírito
+// do botão atual onde o destinatário é escolhido na hora.
+export function abrirWhatsAppWeb(mensagem) {
+  window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(mensagem)}`, '_blank', 'noopener')
+}
+
+// Compartilhamento no navegador (não nativo): mobile usa a Web Share API
+// normalmente (já funciona bem); desktop baixa a imagem e abre o WhatsApp
+// Web com um aviso pra anexar o arquivo baixado, em vez de cair no painel
+// de compartilhar do Windows.
+export async function compartilharImagemWeb(canvas, nomeArquivo, { titulo = '', tipo = 'image/png', qualidade } = {}) {
+  if (ehNavegadorMobile() && navigator.share && navigator.canShare) {
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, tipo, qualidade))
+    const file = new File([blob], nomeArquivo, { type: tipo })
+    if (navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: titulo })
+      return
+    }
+  }
+  baixarImagemCanvas(canvas, nomeArquivo, tipo, qualidade)
+  abrirWhatsAppWeb(`Segue em anexo${titulo ? ` o relatório de ${titulo}` : ''} — anexe a imagem "${nomeArquivo}" que acabou de baixar.`)
+}
+
 // O PDF usa o tamanho do canvas como o tamanho da própria página (em "px").
 // Como esses canvases são renderizados em alta resolução (escala 4-8, pra
 // ficarem nítidos como imagem do WhatsApp), um relatório longo com fotos

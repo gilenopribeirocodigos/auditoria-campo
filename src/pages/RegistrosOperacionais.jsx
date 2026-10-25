@@ -6,7 +6,7 @@ import { listarOcorrenciasDoUsuario, numeroOcorrencia, listarColaboradoresOcorre
 import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import { MARCADOR_ERRO_CONCLUSAO, MARCADOR_OBSERVACAO } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
@@ -467,17 +467,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.png`.replace(/\s+/g, '_')
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArq, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Abertura de Ocorrência' })
-          } else {
-            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-          }
-        }, 'image/png')
       } else {
-        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+        await compartilharImagemWeb(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
       }
     } catch (err) {
       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
@@ -497,17 +488,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       const nomeArq = `Reincidencia_${r.numero_ocorrencia || r.id}.png`.replace(/\s+/g, '_')
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArq, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Tratamento de Reincidência' })
-          } else {
-            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-          }
-        }, 'image/png')
       } else {
-        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+        await compartilharImagemWeb(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
       }
     } catch (err) {
       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
@@ -1347,17 +1329,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.jpg`.replace(/\s+/g, '_')
                       if (Capacitor.isNativePlatform()) {
                         await compartilharImagemNativo(canvas, nomeArq.replace(/\.jpg$/, '.png'), { titulo: tc2.label })
-                      } else if (navigator.share && navigator.canShare) {
-                        canvas.toBlob(async blob => {
-                          const file = new File([blob], nomeArq, { type: 'image/jpeg' })
-                          if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({ files: [file], title: tc2.label })
-                          } else {
-                            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-                          }
-                        }, 'image/jpeg', 0.95)
                       } else {
-                        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
+                        await compartilharImagemWeb(canvas, nomeArq, { titulo: tc2.label, tipo: 'image/jpeg', qualidade: 0.95 })
                       }
                     } catch (err) {
                       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
