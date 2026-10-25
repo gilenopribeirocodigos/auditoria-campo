@@ -147,6 +147,52 @@ não têm um `numero_as` salvo. Usado em `GestaoPauta.jsx`, `HistoricoAuditorias
   não aceita `true`/`false` como chave de índice, por isso o padrão é `0`/`1`.
 - Qualquer feature nova deve funcionar sem internet (ver seção 11).
 
+### 4.5 Tratamento de Reincidência
+Reincidência é um dos tipos de Registro Operacional (`tipo_ocorrencia = 'REINCIDENCIA'`,
+mesma tabela `ocorrencias` usada por Ocorrência comum). Fluxo em 3 etapas:
+
+1. **Abertura** (`src/steps/R0TipoRegistro.jsx` → fluxo próprio, não o wizard R0..R6 padrão):
+   fiscal lança OE/Abrangência/Componente/Alimentador, reincidências por período (R07/R30/R90),
+   eletricistas, direciona pra outro fiscal tratar e descreve o problema.
+2. **Tratamento** (`src/pages/TratamentoNaoConformidades.jsx`, componente `CardReincidencia`,
+   aba própria "🔁 Reincidência" — terceiro `modulo` ao lado de `'NC'`/`'OCORRENCIAS'`):
+   checklist de 5 perguntas, evidências, assinatura dos eletricistas (opcional) e
+   **Termo de Ciência do Fiscal** (obrigatório, `PainelAssinaturaFiscal` — nome fixo do
+   usuário logado, não editável, com checkbox de confirmação antes de liberar a assinatura).
+   Persistido via `tratarReincidencia()` em `src/lib/ocorrencias.js`.
+3. **Retroalimentação**: o card de abertura (modal de detalhe em `RegistrosOperacionais.jsx`,
+   `detalheReinc`) mostra tudo que foi registrado no tratamento quando `status !== 'PENDENTE'`
+   — é a mesma linha da tabela, não uma cópia.
+
+**Compartilhamento no WhatsApp/PDF** (`compartilharReincidenciaWhatsApp` em
+`RegistrosOperacionais.jsx`): a imagem enviada é uma **captura direta do próprio modal de
+detalhe já renderizado na tela** (`reincConteudoRef` + `renderizarElementoVisivelParaCanvas`
+em `src/lib/compartilhar.js`), não uma remontagem em HTML string — isso é proposital, depois
+de uma versão anterior (que remontava os campos à parte) divergir visualmente do card real.
+O PDF/impressão (`gerarPDFReincidenciaDoc`/`imprimirReincidenciaDoc`) ainda usa a versão em
+HTML string (`montarConteudoImpressaoReincidencia`) — ver dívida técnica na seção 13.
+
+### 4.6 Permissão por Tipo de Registro Operacional (`registro_tipo_*`)
+Mecanismo pra restringir um perfil a só enxergar determinados tipos de Registro Operacional
+(ex.: um analista administrativo que só deve ver Reincidência, nunca os demais tipos),
+**sem precisar criar um perfil hardcoded novo** — reaproveita a tabela `perfis_permissoes`
+já existente (chave livre por perfil).
+
+- 8 chaves de permissão, uma por tipo (`registro_tipo_OCORRENCIA`, `registro_tipo_REINCIDENCIA`,
+  `registro_tipo_ALINHAMENTO`, `registro_tipo_DS`, `registro_tipo_TREINAMENTO`,
+  `registro_tipo_FEEDBACK`, `registro_tipo_REUNIAO`, `registro_tipo_DISCIPLINAR`) —
+  declaradas em `TODAS_PERMISSOES` (`src/pages/GestaoUsuarios.jsx`), todas com
+  `grupo: 'Registros Operacionais'` (renderizadas num card recolhível via `GrupoPermissao`,
+  não como linhas soltas).
+- **Regra**: perfil com **zero** `registro_tipo_*` marcadas → vê **todos** os tipos
+  (comportamento padrão, ninguém que já usa o sistema é afetado). Com **pelo menos uma**
+  marcada → só vê os tipos marcados.
+- Aplicado em dois lugares com a mesma lógica (`tiposPermitidos`/`podeMostrar`):
+  `src/pages/RegistrosOperacionais.jsx` (lista/filtro/resumo) e
+  `src/steps/R0TipoRegistro.jsx` (quais botões "Novo Registro" aparecem).
+- Perfil de exemplo que usa isso: `ANALISTA II` (o perfil antigo `ANALISTA` foi renomeado
+  pra `ANALISTA I` — ver `sql/2026-10-25_renomear_perfil_analista.sql`).
+
 ## 5. Banco de Dados
 
 ### 5.1 Schemas
@@ -348,6 +394,11 @@ feita separadamente via Codex/SQL manual — só o código.
 ## 13. Dívidas Técnicas Conhecidas
 - **Lógica PAI/FILHO duplicada**: mesma regra implementada em `src/data/checklists.js`
   (`isItemConforme`, linhas 386-395) e `src/steps/S3Checklist.jsx` (linhas 151-157).
+- **Card de Reincidência tem duas fontes diferentes dependendo do destino**: o botão
+  "Compartilhar no WhatsApp" captura o modal de detalhe ao vivo (sempre fiel à tela —
+  ver seção 4.5), mas o PDF/impressão ainda usa `montarConteudoImpressaoReincidencia`
+  (HTML string remontado à parte, em `RegistrosOperacionais.jsx`) — se um campo novo for
+  adicionado ao modal, o PDF **não** o pega automaticamente; precisa ser replicado lá também.
 - **RLS + GRANTS não versionados no repo**: aplicados manualmente via ChatGPT Codex
   direto no Supabase, fora do controle de versão (ver seções 5.2 e 6).
 - **README desatualizado**: menciona deploy via Vercel, mas a hospedagem real é
