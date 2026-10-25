@@ -308,17 +308,27 @@ async function gerarPDFOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null)
 }
 
 // ─── Mesmo padrão de montarConteudoImpressaoOcorrencia, pra Tratamento de
-// Reincidência — tema laranja (combina com a tela de lançamento), sem Local
-// (não existe nesse tipo) e com o quadro técnico OE/ABRG/PDF/AL/R07/R30/R90
-// em destaque, que é o que diferencia esse card do de Ocorrência comum.
-// Sem seção de tratamento/assinantes ainda (fase 1 — só lançamento).
+// Reincidência — tema laranja (combina com a tela de lançamento). Espelha
+// EXATAMENTE os campos/seções do modal de detalhe (ver o bloco `detalheReinc`
+// mais abaixo): selo Pendente/Tratada, Dados do Lançamento (Fiscal, Matrícula,
+// Equipe, Eletricista 1/2...), Dados Técnicos + reincidências por período, e,
+// quando tratada, a seção de Tratamento inteira (checklist, ciência,
+// assinaturas e fotos de evidência) — pra imagem/PDF compartilhados baterem
+// com o que aparece na tela, em vez de mostrar só os dados de abertura.
 function montarConteudoImpressaoReincidencia(r, versaoApp = '') {
+  const pendente = r.status === 'PENDENTE'
   const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
-  const colaboradores = [r.eletricista_equipe, r.eletricista_equipe_2].filter(Boolean).join(' e ')
   const dadosTecnicos = [
     ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
-    ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90],
   ].filter(([, v]) => v)
+  const reincidenciasPeriodo = [
+    ['7 dias', r.reincidencia_r07], ['30 dias', r.reincidencia_r30], ['90 dias', r.reincidencia_r90],
+  ].filter(([, v]) => v)
+  const assinantesTratamento = [
+    ['Eletricista 1', r.tratamento_assinatura_nome, r.tratamento_assinatura_url],
+    ['Eletricista 2', r.tratamento_assinatura2_nome, r.tratamento_assinatura2_url],
+    ['Termo de Ciência do Fiscal', r.reincidencia_termo_fiscal_nome, r.reincidencia_termo_fiscal_assinatura_url],
+  ].filter(([, , url]) => url)
 
   return `
   <div style="background:linear-gradient(135deg,#c2410c,#ea580c);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
@@ -326,23 +336,43 @@ function montarConteudoImpressaoReincidencia(r, versaoApp = '') {
     <div style="font-size:20px;font-weight:800;">🔁 Tratamento de Reincidência</div>
     <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(r)}</div>
   </div>
-  ${dadosTecnicos.length > 0 ? `
-  <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:4px 0;margin-bottom:16px;">
-    <div style="padding:12px 14px;border-bottom:1px solid #fed7aa;font-size:12px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.4px;">📊 Dados Técnicos</div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;">
-      ${dadosTecnicos.map(([l, v]) => `
-        <div style="padding:10px 12px;border-top:1px solid #fed7aa22;">
-          <div style="font-size:10px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.3px;">${l}</div>
-          <div style="font-size:14px;font-weight:800;color:#7c2d12;margin-top:2px;">${v}</div>
-        </div>`).join('')}
-    </div>
-  </div>` : ''}
+  <div style="text-align:center;margin-bottom:16px;">
+    <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? '#fff7ed' : '#dcfce7'};color:${pendente ? '#9a3412' : '#15803d'};border:1.5px solid ${pendente ? '#fed7aa' : '#86efac'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+  </div>
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
     <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados do Lançamento</div>
     <table style="width:100%;border-collapse:collapse;">
-      ${[['Aberto por', r.aberto_por], ['Data/Hora', formatDataHora(r.criado_em)], ['Prefixo/Equipe', r.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', r.direcionado_para]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+      ${[
+        ['Fiscal', r.aberto_por],
+        ['Matrícula', r.matricula_aberto_por],
+        ['Data/Hora', formatDataHora(r.criado_em)],
+        ['Equipe', r.prefixo],
+        ['Direcionado para', r.direcionado_para],
+        ['Eletricista 1', r.eletricista_equipe],
+        ['Eletricista 2', r.eletricista_equipe_2],
+      ].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
     </table>
   </div>
+  ${(dadosTecnicos.length > 0 || reincidenciasPeriodo.length > 0) ? `
+  <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:14px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;">📊 Dados Técnicos</div>
+    ${dadosTecnicos.length > 0 ? `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:${reincidenciasPeriodo.length > 0 ? '10px' : '0'};">
+      ${dadosTecnicos.map(([l, v]) => `
+        <div style="padding:6px 8px;">
+          <div style="font-size:10px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.3px;">${l}</div>
+          <div style="font-size:14px;font-weight:800;color:#7c2d12;margin-top:2px;">${v}</div>
+        </div>`).join('')}
+    </div>` : ''}
+    ${reincidenciasPeriodo.length > 0 ? `
+    <div style="display:grid;grid-template-columns:repeat(${reincidenciasPeriodo.length},1fr);gap:8px;">
+      ${reincidenciasPeriodo.map(([l, v]) => `
+        <div style="background:#fff;border:1.5px solid #fdba74;border-radius:10px;padding:10px 6px;text-align:center;">
+          <div style="font-size:20px;font-weight:800;color:#c2410c;line-height:1;">${v}</div>
+          <div style="font-size:9.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.3px;margin-top:3px;">Reinc. ${l}</div>
+        </div>`).join('')}
+    </div>` : ''}
+  </div>` : ''}
   ${r.motivo ? (() => {
     const tema = temaMotivoOcorrencia(r.motivo)
     return `<div style="background:${tema.bg};border:1.5px solid ${tema.border};border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
@@ -361,6 +391,46 @@ function montarConteudoImpressaoReincidencia(r, versaoApp = '') {
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
     <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Foto da Reincidência</div>
     <img src="${r.foto_url}" crossorigin="anonymous" style="width:100%;max-width:300px;border-radius:8px;display:block;"/>
+  </div>` : ''}
+  ${!pendente ? `
+  <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;">✅ Tratamento</div>
+    <div style="font-size:12px;color:#166534;margin-bottom:10px;"><strong>Tratado por</strong> ${r.tratado_por_nome || r.tratado_por || '—'} em ${formatDataHora(r.tratado_em)}</div>
+
+    <div style="font-size:10.5px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;">📋 Respostas do checklist</div>
+    <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;">
+      <span>1. Rede BT inspecionada?</span>
+      <strong style="color:${r.reincidencia_rede_inspecionada ? '#15803d' : '#b91c1c'};">${r.reincidencia_rede_inspecionada ? 'SIM' : 'NÃO'}</strong>
+    </div>
+    ${r.reincidencia_acoes_equipe ? `<div style="background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;"><span style="display:block;color:#64748b;margin-bottom:2px;">2. Ações executadas pela equipe:</span><strong style="color:#1e293b;">${r.reincidencia_acoes_equipe}</strong></div>` : ''}
+    ${r.reincidencia_leituras_eletricas ? `<div style="background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;"><span style="display:block;color:#64748b;margin-bottom:2px;">3. Leituras elétricas:</span><strong style="color:#1e293b;">${r.reincidencia_leituras_eletricas}</strong></div>` : ''}
+    <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;">
+      <span>4. Resolveu em definitivo?</span>
+      <strong style="color:${r.reincidencia_resolvido_definitivo ? '#15803d' : '#b91c1c'};">${r.reincidencia_resolvido_definitivo ? 'SIM' : 'NÃO'}</strong>
+    </div>
+    ${r.reincidencia_vulnerabilidades ? `<div style="background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:10px;"><span style="display:block;color:#64748b;margin-bottom:2px;">5. Vulnerabilidades estruturais:</span><strong style="color:#1e293b;">${r.reincidencia_vulnerabilidades}</strong></div>` : ''}
+
+    ${(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome || r.reincidencia_termo_fiscal_nome) ? `
+    <div style="font-size:10.5px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin:10px 0 6px;">✍️ Ciência</div>
+    ${(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome) ? `<div style="font-size:11.5px;color:#1e293b;margin-bottom:4px;"><strong>Eletricistas:</strong> ${[r.tratamento_assinatura_nome, r.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}</div>` : ''}
+    ${r.reincidencia_termo_fiscal_nome ? `<div style="font-size:11.5px;color:#1e293b;margin-bottom:10px;"><strong>Termo de Ciência do Fiscal:</strong> ${r.reincidencia_termo_fiscal_nome}</div>` : ''}
+    ` : ''}
+
+    ${assinantesTratamento.length > 0 ? `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      ${assinantesTratamento.map(([label, nome, url]) => `
+        <div style="width:140px;">
+          <img src="${url}" crossorigin="anonymous" style="width:100%;height:100px;object-fit:contain;border-radius:8px;background:#fff;border:1.5px solid #cbd5e1;padding:6px;display:block;"/>
+          <div style="font-size:10.5px;color:#166534;text-align:center;margin-top:4px;font-weight:700;">${label}</div>
+          ${nome ? `<div style="font-size:10px;color:#166534;opacity:0.8;text-align:center;">${nome}</div>` : ''}
+        </div>`).join('')}
+    </div>` : ''}
+
+    ${Array.isArray(r.tratamento_fotos_urls) && r.tratamento_fotos_urls.length > 0 ? `
+    <div style="font-size:10.5px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin:4px 0 6px;">📷 Evidências do tratamento</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${r.tratamento_fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:54px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;"/>`).join('')}
+    </div>` : ''}
   </div>` : ''}
   <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
     <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
@@ -489,7 +559,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
       } else {
-        await compartilharImagemWeb(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
+        await compartilharImagemWeb(canvas, nomeArq, {
+          titulo: 'Tratamento de Reincidência',
+          mensagem: `Segue em anexo o registro de Reincidência "nº ${r.numero_ocorrencia || r.id}.png" para tratamento !`,
+        })
       }
     } catch (err) {
       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
