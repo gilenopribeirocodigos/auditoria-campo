@@ -97,7 +97,7 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
           <button onClick={onVoltar} style={{
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
-          }}>🏠 Home</button>
+          }}>← Voltar</button>
         </div>
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 10 }}>
           {tipoConfig ? `${tipoConfig.emoji} ${tipoConfig.label}` : '📝 Registros Operacionais'}

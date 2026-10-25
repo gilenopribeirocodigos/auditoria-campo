@@ -344,7 +344,7 @@ export default function TratamentoReincidencia({ usuarioLogado, isOnline, onHome
           <button onClick={onHome} style={{
             background: 'rgba(255,255,255,0.15)', border: 'none', color: '#fff',
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
-          }}>🏠 Home</button>
+          }}>← Voltar</button>
         </div>
         <div style={{ fontSize: 17, fontWeight: 700 }}>🔁 Tratamento de Reincidência</div>
         <p style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>

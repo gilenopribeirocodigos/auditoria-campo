@@ -473,7 +473,7 @@ export default function App() {
   if (tela === 'mapa-fiscais')         return <MapaFiscais              usuarioLogado={usuario} onVoltar={() => setTela('home')} />
   if (tela === 'registros-historico')  return <RegistrosOperacionais    usuarioLogado={usuario} onVoltar={() => setTela('home')} onNovo={() => setTela('registros-novo')} onRelatorio={() => setTela('relatorio-evidencias')} isOnline={online} />
   if (tela === 'relatorio-evidencias') return <RelatorioEvidencias      usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} />
-  if (tela === 'registros-novo')       return <RegistrosApp             usuarioLogado={usuario} onVoltar={() => setTela('home')} isOnline={online} />
+  if (tela === 'registros-novo')       return <RegistrosApp             usuarioLogado={usuario} onVoltar={() => setTela('registros-historico')} isOnline={online} />
   if (tela === 'prestacao-contas')     return <PrestacaoContasLista     usuarioLogado={usuario} onVoltar={() => setTela('home')} onNova={() => { setPcEditandoId(null); setTela('prestacao-contas-novo') }} onCorrigir={id => { setPcEditandoId(id); setTela('prestacao-contas-novo') }} />
   if (tela === 'prestacao-contas-novo') return <PrestacaoContasNovo      usuarioLogado={usuario} prestacaoIdExistente={pcEditandoId} onVoltar={() => setTela('prestacao-contas')} onHome={() => setTela('home')} />
   // ── NOVO: Indisponibilidade ──────────────────────────────────────────────────
