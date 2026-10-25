@@ -6,7 +6,7 @@ import { listarOcorrenciasDoUsuario, numeroOcorrencia, listarColaboradoresOcorre
 import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, renderizarElementoVisivelParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import { MARCADOR_ERRO_CONCLUSAO, MARCADOR_OBSERVACAO } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
@@ -307,12 +307,184 @@ async function gerarPDFOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null)
   await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
 }
 
+// ─── Mesmo padrão de montarConteudoImpressaoOcorrencia, pra Tratamento de
+// Reincidência — tema laranja (combina com a tela de lançamento). Espelha
+// EXATAMENTE os campos/seções do modal de detalhe (ver o bloco `detalheReinc`
+// mais abaixo): selo Pendente/Tratada, Dados do Lançamento (Fiscal, Matrícula,
+// Equipe, Eletricista 1/2...), Dados Técnicos + reincidências por período, e,
+// quando tratada, a seção de Tratamento inteira (checklist, ciência,
+// assinaturas e fotos de evidência) — pra imagem/PDF compartilhados baterem
+// com o que aparece na tela, em vez de mostrar só os dados de abertura.
+function montarConteudoImpressaoReincidencia(r, versaoApp = '') {
+  const pendente = r.status === 'PENDENTE'
+  const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
+  const dadosTecnicos = [
+    ['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al],
+  ].filter(([, v]) => v)
+  const reincidenciasPeriodo = [
+    ['7 dias', r.reincidencia_r07], ['30 dias', r.reincidencia_r30], ['90 dias', r.reincidencia_r90],
+  ].filter(([, v]) => v)
+  const assinantesTratamento = [
+    ['Eletricista 1', r.tratamento_assinatura_nome, r.tratamento_assinatura_url],
+    ['Eletricista 2', r.tratamento_assinatura2_nome, r.tratamento_assinatura2_url],
+    ['Termo de Ciência do Fiscal', r.reincidencia_termo_fiscal_nome, r.reincidencia_termo_fiscal_assinatura_url],
+  ].filter(([, , url]) => url)
+
+  return `
+  <div style="background:linear-gradient(135deg,#c2410c,#ea580c);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
+    <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VérticeGP</div>
+    <div style="font-size:20px;font-weight:800;">🔁 Tratamento de Reincidência</div>
+    <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(r)}</div>
+  </div>
+  <div style="text-align:center;margin-bottom:16px;">
+    <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? '#fff7ed' : '#dcfce7'};color:${pendente ? '#9a3412' : '#15803d'};border:1.5px solid ${pendente ? '#fed7aa' : '#86efac'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+  </div>
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
+    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados do Lançamento</div>
+    <table style="width:100%;border-collapse:collapse;">
+      ${[
+        ['Fiscal', r.aberto_por],
+        ['Matrícula', r.matricula_aberto_por],
+        ['Data/Hora', formatDataHora(r.criado_em)],
+        ['Equipe', r.prefixo],
+        ['Direcionado para', r.direcionado_para],
+        ['Eletricista 1', r.eletricista_equipe],
+        ['Eletricista 2', r.eletricista_equipe_2],
+      ].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+    </table>
+  </div>
+  ${(dadosTecnicos.length > 0 || reincidenciasPeriodo.length > 0) ? `
+  <div style="background:#fff7ed;border:1.5px solid #fed7aa;border-radius:14px;padding:14px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:8px;">📊 Dados Técnicos</div>
+    ${dadosTecnicos.length > 0 ? `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0;margin-bottom:${reincidenciasPeriodo.length > 0 ? '10px' : '0'};">
+      ${dadosTecnicos.map(([l, v]) => `
+        <div style="padding:6px 8px;">
+          <div style="font-size:10px;font-weight:700;color:#c2410c;text-transform:uppercase;letter-spacing:0.3px;">${l}</div>
+          <div style="font-size:14px;font-weight:800;color:#7c2d12;margin-top:2px;">${v}</div>
+        </div>`).join('')}
+    </div>` : ''}
+    ${reincidenciasPeriodo.length > 0 ? `
+    <div style="display:grid;grid-template-columns:repeat(${reincidenciasPeriodo.length},1fr);gap:8px;">
+      ${reincidenciasPeriodo.map(([l, v]) => `
+        <div style="background:#fff;border:1.5px solid #fdba74;border-radius:10px;padding:10px 6px;text-align:center;">
+          <div style="font-size:20px;font-weight:800;color:#c2410c;line-height:1;">${v}</div>
+          <div style="font-size:9.5px;font-weight:700;color:#9a3412;text-transform:uppercase;letter-spacing:0.3px;margin-top:3px;">Reinc. ${l}</div>
+        </div>`).join('')}
+    </div>` : ''}
+  </div>` : ''}
+  ${r.motivo ? (() => {
+    const tema = temaMotivoOcorrencia(r.motivo)
+    return `<div style="background:${tema.bg};border:1.5px solid ${tema.border};border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
+      <div style="font-size:24px;">${tema.emoji}</div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:${tema.color};text-transform:uppercase;letter-spacing:0.5px;">Motivo</div>
+        <div style="font-size:15px;font-weight:800;color:${tema.color};">${r.motivo}</div>
+      </div>
+    </div>`
+  })() : ''}
+  <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#9a3412;margin-bottom:8px;">DESCRIÇÃO DA REINCIDÊNCIA</div>
+    <div style="font-size:13px;color:#9a3412;line-height:1.7;">${(r.descricao || '').split('\n').join('<br/>')}</div>
+  </div>
+  ${r.foto_url ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:12px;">📷 Foto da Reincidência</div>
+    <img src="${r.foto_url}" crossorigin="anonymous" style="width:100%;max-width:300px;border-radius:8px;display:block;"/>
+  </div>` : ''}
+  ${!pendente ? `
+  <div style="background:#f0fdf4;border:1.5px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:10px;">✅ Tratamento</div>
+    <div style="font-size:12px;color:#166534;margin-bottom:10px;"><strong>Tratado por</strong> ${r.tratado_por_nome || r.tratado_por || '—'} em ${formatDataHora(r.tratado_em)}</div>
+
+    <div style="font-size:10.5px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:6px;">📋 Respostas do checklist</div>
+    <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;">
+      <span>1. Rede BT inspecionada?</span>
+      <strong style="color:${r.reincidencia_rede_inspecionada ? '#15803d' : '#b91c1c'};">${r.reincidencia_rede_inspecionada ? 'SIM' : 'NÃO'}</strong>
+    </div>
+    ${r.reincidencia_acoes_equipe ? `<div style="background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;"><span style="display:block;color:#64748b;margin-bottom:2px;">2. Ações executadas pela equipe:</span><strong style="color:#1e293b;">${r.reincidencia_acoes_equipe}</strong></div>` : ''}
+    ${r.reincidencia_leituras_eletricas ? `<div style="background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;"><span style="display:block;color:#64748b;margin-bottom:2px;">3. Leituras elétricas:</span><strong style="color:#1e293b;">${r.reincidencia_leituras_eletricas}</strong></div>` : ''}
+    <div style="display:flex;justify-content:space-between;background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:6px;">
+      <span>4. Resolveu em definitivo?</span>
+      <strong style="color:${r.reincidencia_resolvido_definitivo ? '#15803d' : '#b91c1c'};">${r.reincidencia_resolvido_definitivo ? 'SIM' : 'NÃO'}</strong>
+    </div>
+    ${r.reincidencia_vulnerabilidades ? `<div style="background:#fff;border-radius:8px;padding:7px 10px;font-size:11.5px;margin-bottom:10px;"><span style="display:block;color:#64748b;margin-bottom:2px;">5. Vulnerabilidades estruturais:</span><strong style="color:#1e293b;">${r.reincidencia_vulnerabilidades}</strong></div>` : ''}
+
+    ${(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome || r.reincidencia_termo_fiscal_nome) ? `
+    <div style="font-size:10.5px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin:10px 0 6px;">✍️ Ciência</div>
+    ${(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome) ? `<div style="font-size:11.5px;color:#1e293b;margin-bottom:4px;"><strong>Eletricistas:</strong> ${[r.tratamento_assinatura_nome, r.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}</div>` : ''}
+    ${r.reincidencia_termo_fiscal_nome ? `<div style="font-size:11.5px;color:#1e293b;margin-bottom:10px;"><strong>Termo de Ciência do Fiscal:</strong> ${r.reincidencia_termo_fiscal_nome}</div>` : ''}
+    ` : ''}
+
+    ${assinantesTratamento.length > 0 ? `
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      ${assinantesTratamento.map(([label, nome, url]) => `
+        <div style="width:140px;">
+          <img src="${url}" crossorigin="anonymous" style="width:100%;height:100px;object-fit:contain;border-radius:8px;background:#fff;border:1.5px solid #cbd5e1;padding:6px;display:block;"/>
+          <div style="font-size:10.5px;color:#166534;text-align:center;margin-top:4px;font-weight:700;">${label}</div>
+          ${nome ? `<div style="font-size:10px;color:#166534;opacity:0.8;text-align:center;">${nome}</div>` : ''}
+        </div>`).join('')}
+    </div>` : ''}
+
+    ${Array.isArray(r.tratamento_fotos_urls) && r.tratamento_fotos_urls.length > 0 ? `
+    <div style="font-size:10.5px;font-weight:800;color:#166534;text-transform:uppercase;letter-spacing:0.3px;margin:4px 0 6px;">📷 Evidências do tratamento</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+      ${r.tratamento_fotos_urls.map(url => `<img src="${url}" crossorigin="anonymous" style="width:54px;height:54px;object-fit:cover;border-radius:6px;border:1px solid #e2e8f0;"/>`).join('')}
+    </div>` : ''}
+  </div>` : ''}
+  <div style="border-top:1px solid #e2e8f0;padding-top:14px;text-align:center;">
+    <p style="font-size:11px;color:#94a3b8;">VérticeGP · Plataforma de Gestão Operacional</p>
+    <p style="font-size:10px;color:#cbd5e1;margin-top:2px;">Gerado em ${new Date().toLocaleDateString('pt-BR', { dateStyle: 'long' })} · <span style="color:#dc2626;">v${versaoApp}</span></p>
+  </div>`
+}
+
+function imprimirReincidenciaDoc(r, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoReincidencia(r, versaoApp)
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
+  <title>Tratamento de Reincidência</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
+  @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
+  ${conteudo}
+  <div class="no-print" style="text-align:center;margin-top:24px;">
+    <button onclick="window.print()" style="padding:12px 32px;background:#c2410c;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
+  </div>
+  </body></html>`
+
+  const janela = window.open('', '_blank', 'width=700,height=900')
+  if (!janela) { alert('Permita pop-ups.'); return }
+  janela.document.write(html)
+  janela.document.close()
+  janela.onload = () => setTimeout(() => janela.print(), 600)
+}
+
+async function gerarPDFReincidenciaDoc(r, versaoApp = '') {
+  const conteudo = montarConteudoImpressaoReincidencia(r, versaoApp)
+  const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
+  const canvas = await renderizarHtmlParaCanvas(html, {
+    largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
+  })
+  const nomeArq = `Reincidencia_${r.numero_ocorrencia || r.id}.pdf`.replace(/\s+/g, '_')
+  await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
+}
+
 export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo }) {
   // ─── Hook do painel: Período + Sup. Op + Sup. Campo + Prefixo ───
   // Passa `usuarioLogado` pra ativar segregação por estrutura.
   const filtros = useFiltrosOperacionais({ inicializarMes: true, usuarioLogado })
   const podeCadastrarMotivos = temPermissao(usuarioLogado, 'cadastrar_motivos_registros')
   const [mostrarMotivos, setMostrarMotivos] = useState(false)
+
+  // ─── Restrição por tipo de Registro Operacional (perfis como ANALISTA II)
+  // — permissão nova `registro_tipo_<TIPO>`, uma por tipo, configurada em
+  // Gestão de Usuários → Permissões por Perfil. Sem NENHUMA marcada, o
+  // perfil continua vendo todos os tipos (comportamento de sempre, ninguém
+  // que já usa o sistema hoje é afetado). Com pelo menos uma marcada, só os
+  // tipos marcados aparecem — na lista, no filtro e no resumo.
+  const TIPOS_REGISTRO_TODOS = [...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA', 'REINCIDENCIA']
+  const tiposPermitidos = (() => {
+    const permitidos = TIPOS_REGISTRO_TODOS.filter(t => temPermissao(usuarioLogado, `registro_tipo_${t}`))
+    return permitidos.length > 0 ? permitidos : null
+  })()
 
   // ─── Filtros EXTRAS desta tela ───
   const [tiposSel,   setTiposSel]   = useState([])   // multi select — [] = Todos
@@ -324,8 +496,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
   const [ocorrencias,   setOcorrencias]   = useState([])
+  const [reincidencias, setReincidencias] = useState([])
   const [detalhe,       setDetalhe]       = useState(null)
   const [detalheOc,     setDetalheOc]     = useState(null) // ocorrência aberta no modal de PDF/Zap
+  const [detalheReinc,  setDetalheReinc]  = useState(null) // reincidência aberta no modal de PDF/Zap
   // Equipe completa (ocorrencias_colaboradores) da Ocorrência aberta no
   // modal — null = ainda não buscou/sem ocorrência aberta; [] = buscou e
   // não achou (ocorrência antiga, sem linhas na tabela nova) — mesmo padrão
@@ -338,6 +512,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   }, [detalheOc])
   const [capturandoOc,  setCapturandoOc]  = useState(false)
   const [gerandoPDFOc,  setGerandoPDFOc]  = useState(false)
+  const [capturandoReinc, setCapturandoReinc] = useState(false)
+  const [gerandoPDFReinc, setGerandoPDFReinc] = useState(false)
+  // Aponta pro card já renderizado no modal de detalhe da Reincidência —
+  // capturado direto (ver renderizarElementoVisivelParaCanvas) pro
+  // compartilhamento no WhatsApp sair idêntico ao que está na tela.
+  const reincConteudoRef = useRef(null)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
   const [tokensAtivos,  setTokensAtivos]  = useState({})
@@ -361,22 +541,40 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.png`.replace(/\s+/g, '_')
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArq, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Abertura de Ocorrência' })
-          } else {
-            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-          }
-        }, 'image/png')
       } else {
-        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+        await compartilharImagemWeb(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
       }
     } catch (err) {
       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
     } finally {
       setCapturandoOc(false)
+    }
+  }
+
+  // Diferente de compartilharOcorrenciaWhatsApp (que remonta o conteúdo como
+  // HTML string à parte, via montarConteudoImpressaoOcorrencia), aqui
+  // capturamos direto o card já renderizado no modal de detalhe
+  // (reincConteudoRef) — só chamado com o modal aberto, então o ref sempre
+  // existe. Garante que a imagem enviada no WhatsApp sai idêntica ao que o
+  // fiscal/analista está vendo na tela, sem precisar manter dois lugares
+  // (JSX do modal + string HTML) sincronizados a cada campo novo.
+  const compartilharReincidenciaWhatsApp = async (r) => {
+    setCapturandoReinc(true)
+    try {
+      const canvas = await renderizarElementoVisivelParaCanvas(reincConteudoRef.current, { escala: 4, corFundo: '#fff' })
+      const nomeArq = `Reincidencia_${r.numero_ocorrencia || r.id}.png`.replace(/\s+/g, '_')
+      if (Capacitor.isNativePlatform()) {
+        await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
+      } else {
+        await compartilharImagemWeb(canvas, nomeArq, {
+          titulo: 'Tratamento de Reincidência',
+          mensagem: `Segue em anexo o registro de Reincidência "nº ${r.numero_ocorrencia || r.id}.png" para tratamento !`,
+        })
+      }
+    } catch (err) {
+      console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
+    } finally {
+      setCapturandoReinc(false)
     }
   }
 
@@ -392,29 +590,45 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         setRegistros([])
         setTokensAtivos({})
         setOcorrencias([])
+        setReincidencias([])
         setLoading(false)
         return
       }
 
-      // ─── Ocorrências abertas pelo usuário (ou todas, se privilegiado) ───
-      // Aparecem junto com os registros normais nesta tela pra fins de
-      // busca/acompanhamento — status PENDENTE/TRATADA acompanha o que foi
-      // feito em Tratamento de Não Conformidades. Respeita o filtro Tipo
-      // (agora multi-select): some se houver tipos selecionados e nenhum
-      // deles for "Abertura de Ocorrência".
-      const tiposRegistroSel = tiposSel.filter(t => t !== 'OCORRENCIA')
-      const mostrarOcorrencias = tiposSel.length === 0 || tiposSel.includes('OCORRENCIA')
-      if (!mostrarOcorrencias) {
+      // ─── Ocorrências e Reincidências abertas pelo usuário (ou todas, se
+      // privilegiado) ─── Mesma tabela (`ocorrencias`), discriminadas por
+      // tipo_ocorrencia. Aparecem junto com os registros normais nesta tela
+      // pra fins de busca/acompanhamento — status PENDENTE/TRATADA acompanha
+      // o que foi feito em Tratamento de Não Conformidades (só pra
+      // Ocorrência; Reincidência ainda não tem esse fluxo — fase futura).
+      // Respeita o filtro Tipo (multi-select): some se houver tipos
+      // selecionados e nenhum deles for Ocorrência/Reincidência.
+      // "Todos" (tiposSel vazio) passa a significar "todos os tipos
+      // PERMITIDOS" — pra perfis sem restrição (tiposPermitidos null) isso
+      // já é a lista inteira de sempre; pra um perfil restrito (ex: ANALISTA
+      // II só com Reincidência), equivale a só aquele tipo, mesmo sem a
+      // pessoa precisar mexer no filtro.
+      const tiposSelEfetivo = tiposPermitidos
+        ? (tiposSel.length > 0 ? tiposSel.filter(t => tiposPermitidos.includes(t)) : tiposPermitidos)
+        : tiposSel
+      const tiposRegistroSel = tiposSelEfetivo.filter(t => t !== 'OCORRENCIA' && t !== 'REINCIDENCIA')
+      const mostrarOcorrencias = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('OCORRENCIA')
+      const mostrarReincidencias = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('REINCIDENCIA')
+      if (!mostrarOcorrencias && !mostrarReincidencias) {
         setOcorrencias([])
+        setReincidencias([])
       } else {
         try {
           const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
           let ocNoPeriodo = ocData.filter(o => o.criado_em >= `${ini}T00:00:00` && o.criado_em <= `${fim}T23:59:59`)
           if (statusOcorrenciaSel) ocNoPeriodo = ocNoPeriodo.filter(o => o.status === statusOcorrenciaSel)
-          setOcorrencias(filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' }))
+          const ocFiltradas = filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' })
+          setOcorrencias(mostrarOcorrencias ? ocFiltradas.filter(o => (o.tipo_ocorrencia || 'OCORRENCIA') === 'OCORRENCIA') : [])
+          setReincidencias(mostrarReincidencias ? ocFiltradas.filter(o => o.tipo_ocorrencia === 'REINCIDENCIA') : [])
         } catch (e) {
           console.error('Erro ao carregar ocorrências:', e)
           setOcorrencias([])
+          setReincidencias([])
         }
       }
 
@@ -465,9 +679,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       }
 
       // ─── 2) Chama listarRegistros com filtros básicos (data + tipo + fiscais) ───
-      // Só "Abertura de Ocorrência" selecionada (sem nenhum tipo de Registro
-      // junto) → não busca registros_operacionais, a tabela é outra.
-      const somenteOcorrenciaSelecionada = tiposSel.length > 0 && tiposRegistroSel.length === 0
+      // Só "Abertura de Ocorrência"/"Tratamento de Reincidência" selecionados
+      // (sem nenhum tipo de Registro junto) → não busca registros_operacionais,
+      // a tabela é outra.
+      const somenteOcorrenciaSelecionada = tiposSelEfetivo.length > 0 && tiposRegistroSel.length === 0
       let data = somenteOcorrenciaSelecionada ? [] : await listarRegistros({
         dataIni: ini,
         dataFim: fim,
@@ -556,11 +771,11 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       <div>
         <label style={LABEL_STYLE}>Tipo</label>
         <MultiSelect
-          opcoes={[...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA']}
+          opcoes={tiposPermitidos || TIPOS_REGISTRO_TODOS}
           selecionados={tiposSel}
           onChange={setTiposSel}
           placeholder="Todos"
-          formatOption={k => k === 'OCORRENCIA' ? '📦 Abertura de Ocorrência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
+          formatOption={k => k === 'OCORRENCIA' ? '📦 Abertura de Ocorrência' : k === 'REINCIDENCIA' ? '🔁 Tratamento de Reincidência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
         />
       </div>
       <div>
@@ -595,6 +810,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   if (mostrarMotivos) {
     return <MotivosRegistrosOperacionais onVoltar={() => setMostrarMotivos(false)} />
   }
+
+  // Lista única, ordenada por data/hora de abertura decrescente — Ocorrências,
+  // Reincidências e os demais tipos de Registro Operacional ficam misturados
+  // numa linha do tempo só, em vez de blocos separados por tipo (senão um
+  // registro recém-aberto de um tipo podia aparecer abaixo de registros
+  // antigos de outro tipo).
+  const timestampRegistro = r => new Date(`${r.data_registro}T${r.hora_registro || '00:00'}`).getTime()
+  const itensLista = [
+    ...ocorrencias.map(oc => ({ kind: 'ocorrencia', item: oc, ts: new Date(oc.criado_em).getTime() })),
+    ...reincidencias.map(r => ({ kind: 'reincidencia', item: r, ts: new Date(r.criado_em).getTime() })),
+    ...registros.map(r => ({ kind: 'registro', item: r, ts: timestampRegistro(r) })),
+  ].sort((a, b) => b.ts - a.ts)
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -659,18 +886,24 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         </div>
 
         {/* Resumo por tipo — grade de tiles (Total + Pendentes quando houver)
-            do período filtrado. Ocorrências é o único tipo com pendente/
-            tratada hoje, então é o único que mostra a faixa de pendentes;
+            do período filtrado. Ocorrências e Reincidência têm pendente/
+            tratada, então são os únicos que mostram a faixa de pendentes;
             os demais tipos de Registro (Alinhamento, Diálogo de Segurança,
             Treinamento, Feedback, Reunião, Disciplinar) são avulsos, sem
             status, então mostram só o total. Grade de 3 colunas (em vez de
             cards largos) pra caber até 7 tipos sem rolar a tela pro lado. */}
-        {!loading && (registros.length > 0 || ocorrencias.length > 0) && (() => {
+        {!loading && (registros.length > 0 || ocorrencias.length > 0 || reincidencias.length > 0) && (() => {
           const porTipo = {}
           for (const r of registros) porTipo[r.tipo] = (porTipo[r.tipo] || 0) + 1
           const tiles = Object.entries(TIPOS_REGISTRO)
             .filter(([tipo]) => porTipo[tipo] > 0)
             .map(([tipo, cfg]) => ({ tipo, emoji: cfg.emoji, label: cfg.label, color: cfg.color, border: cfg.border, total: porTipo[tipo] }))
+          if (reincidencias.length > 0) {
+            tiles.unshift({
+              tipo: 'REINCIDENCIA', emoji: '🔁', label: 'Reincidência', color: '#c2410c', border: '#fed7aa',
+              total: reincidencias.length, pendentes: reincidencias.filter(r => r.status === 'PENDENTE').length,
+            })
+          }
           if (ocorrencias.length > 0) {
             tiles.unshift({
               tipo: 'OCORRENCIA', emoji: '📦', label: 'Ocorrências', color: '#4338ca', border: '#c7d2fe',
@@ -698,16 +931,24 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           )
         })()}
 
-        {ocorrencias.length > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <p style={{ fontSize: 13, fontWeight: 800, color: '#4338ca', marginBottom: 10 }}>
-              📦 Ocorrências
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {ocorrencias.map(oc => {
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
+            <p>Carregando registros...</p>
+          </div>
+        ) : itensLista.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
+            <p>Nenhum registro encontrado.</p>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {itensLista.map(({ kind, item }) => {
+              if (kind === 'ocorrencia') {
+                const oc = item
                 const pendente = oc.status === 'PENDENTE'
                 return (
-                  <div key={oc.id} onClick={() => setDetalheOc(oc)}
+                  <div key={`oc-${oc.id}`} onClick={() => setDetalheOc(oc)}
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
@@ -741,31 +982,47 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   </div>
                 )
-              })}
-            </div>
-          </div>
-        )}
+              }
 
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#64748b' }}>
-            <div style={{ fontSize: 32, marginBottom: 12 }}>⏳</div>
-            <p>Carregando registros...</p>
-          </div>
-        ) : registros.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>📝</div>
-            <p>Nenhum registro encontrado.</p>
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {registros.map(r => {
+              if (kind === 'reincidencia') {
+                const r = item
+                const pendente = r.status === 'PENDENTE'
+                return (
+                  <div key={`re-${r.id}`} onClick={() => setDetalheReinc(r)}
+                    style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#fdba74' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                          <span style={{ fontSize: 18 }}>🔁</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
+                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+                          <span>👤 {r.aberto_por}</span>
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📅 {new Date(r.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          {r.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {r.prefixo}</span></>)}
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📨 {r.direcionado_para}</span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
+                    </div>
+                  </div>
+                )
+              }
+
+              const r = item
               const tc = TIPOS_REGISTRO[r.tipo] || {}
               const mc = MODALIDADES[r.modalidade] || {}
               const tokenAtivo = tokensAtivos[r.id]
               const expira = tokenAtivo ? new Date(tokenAtivo.expires_at) : null
               const minutosRestantes = expira ? Math.ceil((expira - new Date()) / 60000) : 0
               return (
-                    <div key={r.id} style={{ background: '#fff', borderRadius: 14, border: tokenAtivo ? '1.5px solid #22c55e' : `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
+                    <div key={`rg-${r.id}`} style={{ background: '#fff', borderRadius: 14, border: tokenAtivo ? '1.5px solid #22c55e' : `1.5px solid ${tc.border || '#e2e8f0'}`, padding: '14px 16px', cursor: 'pointer' }}
                       onClick={() => abrirDetalhe(r)}
                       onMouseEnter={e => e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.1)'}
                       onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}
@@ -1152,17 +1409,8 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                       const nomeArq = `Registro_${detalhe.tipo}_${detalhe.data_registro}.jpg`.replace(/\s+/g, '_')
                       if (Capacitor.isNativePlatform()) {
                         await compartilharImagemNativo(canvas, nomeArq.replace(/\.jpg$/, '.png'), { titulo: tc2.label })
-                      } else if (navigator.share && navigator.canShare) {
-                        canvas.toBlob(async blob => {
-                          const file = new File([blob], nomeArq, { type: 'image/jpeg' })
-                          if (navigator.canShare({ files: [file] })) {
-                            await navigator.share({ files: [file], title: tc2.label })
-                          } else {
-                            const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-                          }
-                        }, 'image/jpeg', 0.95)
                       } else {
-                        const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
+                        await compartilharImagemWeb(canvas, nomeArq, { titulo: tc2.label, tipo: 'image/jpeg', qualidade: 0.95 })
                       }
                     } catch (err) {
                       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
@@ -1334,6 +1582,232 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   </button>
 
                   <button onClick={() => setDetalheOc(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
+                    Fechar
+                  </button>
+                </>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+
+      {detalheReinc && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 1000 }}
+          onClick={e => { if (e.target === e.currentTarget) setDetalheReinc(null) }}>
+          <div style={{ background: '#fff', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 560, maxHeight: '88vh', overflowY: 'auto', padding: '24px 20px 40px' }}>
+            {(() => {
+              const r = detalheReinc
+              const pendente = r.status === 'PENDENTE'
+              const camposPrincipais = [
+                ['No. REIC',        numeroOcorrencia(r)],
+                ['Tipo Tratamento', 'Reincidência'],
+                ['Data / Hora',     new Date(r.criado_em).toLocaleString('pt-BR')],
+                ['Fiscal',          r.aberto_por],
+                ['Matrícula',       r.matricula_aberto_por],
+                ['Equipe',          r.prefixo],
+                ['Direcionado para', r.direcionado_para],
+                ['Eletricista 1',   r.eletricista_equipe],
+                ['Eletricista 2',   r.eletricista_equipe_2],
+              ].filter(([, v]) => v)
+              const camposTecnicos = [
+                ['Número da Ocorrência (OE)', r.numero_oe],
+                ['Abrangência (ABRG)',        r.abrangencia],
+                ['Componente (PDF)',          r.componente_pdf],
+                ['Alimentador (AL)',          r.alimentador_al],
+              ].filter(([, v]) => v)
+              const reincidenciasPeriodo = [
+                ['7 dias',  r.reincidencia_r07],
+                ['30 dias', r.reincidencia_r30],
+                ['90 dias', r.reincidencia_r90],
+              ].filter(([, v]) => v)
+              return (
+                <>
+                <div ref={reincConteudoRef}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                    <h3 style={{ fontSize: 17, fontWeight: 800 }}>🔁 Tratamento de Reincidência</h3>
+                    <button onClick={() => setDetalheReinc(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
+                  </div>
+
+                  <div style={{ background: '#fff7ed', border: '2px solid #fed7aa', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
+                    <div style={{ fontSize: 40, marginBottom: 6 }}>🔁</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</div>
+                    <div style={{ marginTop: 8 }}>
+                      <span style={{
+                        padding: '3px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        background: pendente ? '#fff' : '#15803d', color: pendente ? '#9a3412' : '#fff',
+                      }}>{pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                    {camposPrincipais.map(([l, v]) => (
+                      <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
+                        <span style={{ color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.2 }}>{l}</span>
+                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word', textTransform: 'uppercase' }}>{v}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(camposTecnicos.length > 0 || reincidenciasPeriodo.length > 0) && (
+                    <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>📊 Dados Técnicos</p>
+                      {camposTecnicos.map(([l, v], i) => (
+                        <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < camposTecnicos.length - 1 ? '1px solid #fed7aa' : 'none' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.2 }}>{l}</span>
+                          <span style={{ fontSize: 14, fontWeight: 800, color: '#7c2d12', textAlign: 'right' }}>{v}</span>
+                        </div>
+                      ))}
+                      {reincidenciasPeriodo.length > 0 && (
+                        <>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.4, margin: '12px 0 6px', opacity: 0.8 }}>Nº de reincidências por período</p>
+                          <div style={{ display: 'grid', gridTemplateColumns: `repeat(${reincidenciasPeriodo.length}, 1fr)`, gap: 8 }}>
+                            {reincidenciasPeriodo.map(([label, v]) => (
+                              <div key={label} style={{ background: '#fff', border: '1.5px solid #fdba74', borderRadius: 10, padding: '10px 6px', textAlign: 'center' }}>
+                                <div style={{ fontSize: 22, fontWeight: 800, color: '#c2410c', lineHeight: 1 }}>{v}</div>
+                                <div style={{ fontSize: 9.5, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.3, marginTop: 3 }}>Reinc. {label}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {r.motivo && (() => {
+                    const tema = temaMotivoOcorrencia(r.motivo)
+                    return (
+                      <div style={{ background: tema.bg, border: `1.5px solid ${tema.border}`, borderRadius: 12, padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 24 }}>{tema.emoji}</span>
+                        <div>
+                          <p style={{ fontSize: 10, fontWeight: 700, color: tema.color, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 }}>Motivo</p>
+                          <p style={{ fontSize: 15, fontWeight: 800, color: tema.color }}>{r.motivo}</p>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', marginBottom: 6 }}>DESCRIÇÃO DA REINCIDÊNCIA:</p>
+                    <p style={{ fontSize: 13, color: '#9a3412', lineHeight: 1.6 }}>{r.descricao}</p>
+                  </div>
+
+                  {r.foto_url && (
+                    <div style={{ marginBottom: 14 }}>
+                      <p style={{ fontSize: 12, fontWeight: 700, color: '#374151', marginBottom: 8 }}>📷 Foto da Reincidência</p>
+                      <a href={r.foto_url} target="_blank" rel="noreferrer">
+                        <img src={r.foto_url} alt="Foto da reincidência" style={{ width: 100, height: 100, objectFit: 'cover', borderRadius: 8, display: 'block' }} />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Retroalimentação — o que o fiscal registrou ao tratar (aba
+                      🔁 Reincidência de Tratamento de Não Conformidades) volta
+                      pra cá, no mesmo card de abertura, já que é a mesma linha
+                      da tabela `ocorrencias`. Só aparece quando tratada. */}
+                  {!pendente && (
+                    <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 10 }}>✅ Tratamento</p>
+                      <p style={{ fontSize: 12, color: '#166534', marginBottom: 10 }}>
+                        <strong>Tratado por</strong> {r.tratado_por_nome || r.tratado_por || '—'} em {r.tratado_em ? new Date(r.tratado_em).toLocaleString('pt-BR') : '—'}
+                      </p>
+
+                      <p style={{ fontSize: 10.5, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.3, margin: '10px 0 6px' }}>📋 Respostas do checklist</p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                          <span>1. Rede BT inspecionada?</span>
+                          <strong style={{ color: r.reincidencia_rede_inspecionada ? '#15803d' : '#b91c1c' }}>{r.reincidencia_rede_inspecionada ? 'SIM' : 'NÃO'}</strong>
+                        </div>
+                        {r.reincidencia_acoes_equipe && (
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                            <span style={{ display: 'block', color: '#64748b', marginBottom: 2 }}>2. Ações executadas pela equipe:</span>
+                            <strong style={{ color: '#1e293b' }}>{r.reincidencia_acoes_equipe}</strong>
+                          </div>
+                        )}
+                        {r.reincidencia_leituras_eletricas && (
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                            <span style={{ display: 'block', color: '#64748b', marginBottom: 2 }}>3. Leituras elétricas:</span>
+                            <strong style={{ color: '#1e293b' }}>{r.reincidencia_leituras_eletricas}</strong>
+                          </div>
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                          <span>4. Resolveu em definitivo?</span>
+                          <strong style={{ color: r.reincidencia_resolvido_definitivo ? '#15803d' : '#b91c1c' }}>{r.reincidencia_resolvido_definitivo ? 'SIM' : 'NÃO'}</strong>
+                        </div>
+                        {r.reincidencia_vulnerabilidades && (
+                          <div style={{ background: '#fff', borderRadius: 8, padding: '7px 10px', fontSize: 11.5 }}>
+                            <span style={{ display: 'block', color: '#64748b', marginBottom: 2 }}>5. Vulnerabilidades estruturais:</span>
+                            <strong style={{ color: '#1e293b' }}>{r.reincidencia_vulnerabilidades}</strong>
+                          </div>
+                        )}
+                      </div>
+
+                      {(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome || r.reincidencia_termo_fiscal_nome) && (
+                        <>
+                          <p style={{ fontSize: 10.5, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.3, margin: '10px 0 6px' }}>✍️ Ciência</p>
+                          {(r.tratamento_assinatura_nome || r.tratamento_assinatura2_nome) && (
+                            <p style={{ fontSize: 11.5, color: '#1e293b', marginBottom: 4 }}><strong>Eletricistas:</strong> {[r.tratamento_assinatura_nome, r.tratamento_assinatura2_nome].filter(Boolean).join(' e ')}</p>
+                          )}
+                          {r.reincidencia_termo_fiscal_nome && (
+                            <p style={{ fontSize: 11.5, color: '#1e293b', marginBottom: 10 }}><strong>Termo de Ciência do Fiscal:</strong> {r.reincidencia_termo_fiscal_nome}</p>
+                          )}
+                        </>
+                      )}
+
+                      {(() => {
+                        const assinaturas = [
+                          ['Eletricista 1', r.tratamento_assinatura_nome, r.tratamento_assinatura_url],
+                          ['Eletricista 2', r.tratamento_assinatura2_nome, r.tratamento_assinatura2_url],
+                          ['Termo de Ciência do Fiscal', r.reincidencia_termo_fiscal_nome, r.reincidencia_termo_fiscal_assinatura_url],
+                        ].filter(([, , url]) => url)
+                        if (assinaturas.length === 0) return null
+                        return (
+                          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                            {assinaturas.map(([label, nome, url]) => (
+                              <a key={label} href={url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none', width: 140 }}>
+                                <img src={url} alt={`Assinatura — ${nome || label}`} style={{ width: '100%', height: 100, objectFit: 'contain', borderRadius: 8, background: '#fff', border: '1.5px solid #cbd5e1', padding: 6, display: 'block' }} />
+                                <p style={{ fontSize: 10.5, color: '#166534', textAlign: 'center', marginTop: 4, fontWeight: 700 }}>{label}</p>
+                                {nome && <p style={{ fontSize: 10, color: '#166534', opacity: 0.8, textAlign: 'center', margin: 0 }}>{nome}</p>}
+                              </a>
+                            ))}
+                          </div>
+                        )
+                      })()}
+
+                      {Array.isArray(r.tratamento_fotos_urls) && r.tratamento_fotos_urls.length > 0 && (
+                        <>
+                          <p style={{ fontSize: 10.5, fontWeight: 800, color: '#166534', textTransform: 'uppercase', letterSpacing: 0.3, margin: '4px 0 6px' }}>📷 Evidências do tratamento</p>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {r.tratamento_fotos_urls.map((url, i) => (
+                              <a key={i} href={url} target="_blank" rel="noreferrer">
+                                <img src={url} alt={`Evidência ${i + 1}`} style={{ width: 54, height: 54, objectFit: 'cover', borderRadius: 6, border: '1px solid #e2e8f0' }} />
+                              </a>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
+                    v{versaoSistema}
+                  </p>
+                </div>
+
+                  <button onClick={async () => {
+                    if (!Capacitor.isNativePlatform()) { imprimirReincidenciaDoc(r, versaoSistema); return }
+                    setGerandoPDFReinc(true)
+                    try { await gerarPDFReincidenciaDoc(r, versaoSistema) }
+                    catch (err) { console.error('Erro ao gerar PDF:', err); alert('Não foi possível gerar o PDF: ' + descreverErro(err)) }
+                    finally { setGerandoPDFReinc(false) }
+                  }} disabled={gerandoPDFReinc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: gerandoPDFReinc ? '#64748b' : '#c2410c', color: '#fff', fontSize: 14, fontWeight: 700, cursor: gerandoPDFReinc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {gerandoPDFReinc ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
+                  </button>
+
+                  <button onClick={() => compartilharReincidenciaWhatsApp(r)} disabled={capturandoReinc} style={{ width: '100%', padding: 13, borderRadius: 10, border: 'none', background: capturandoReinc ? '#64748b' : '#25d366', color: '#fff', fontSize: 14, fontWeight: 700, cursor: capturandoReinc ? 'not-allowed' : 'pointer', marginBottom: 10 }}>
+                    {capturandoReinc ? '⏳ Gerando imagem...' : '📸 Compartilhar no WhatsApp'}
+                  </button>
+
+                  <button onClick={() => setDetalheReinc(null)} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 700, cursor: 'pointer' }}>
                     Fechar
                   </button>
                 </>

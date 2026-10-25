@@ -13,14 +13,18 @@ import { CarregandoHexagono, CampoSenha } from '../components/Shared.jsx'
 // Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
 import { obterPermissaoUsuario as obterPermissaoUsuarioPC, definirPermissaoUsuario as definirPermissaoUsuarioPC } from '../modules/prestacaoContas/lib/prestacaoContas.js'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT', 'TÉCNICO ALMOXARIFADO', 'ADMIN ALMOXARIFADO']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA I', 'ANALISTA II', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT', 'TÉCNICO ALMOXARIFADO', 'ADMIN ALMOXARIFADO']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
   'SUPERV. OPERAÇÃO': { bg: '#d1fae5', color: '#065f46' },
   'COORD. OPERAÇÃO':  { bg: '#e0f2fe', color: '#0369a1' },
   'SUPERV. CAMPO':    { bg: '#dbeafe', color: '#1e40af' },
-  'ANALISTA':         { bg: '#fef3c7', color: '#92400e' },
+  'ANALISTA I':       { bg: '#fef3c7', color: '#92400e' },
+  // ANALISTA II — perfil restrito (acesso de fora, ex: pessoa alocada
+  // dentro da Equatorial), por isso ganha uma cor própria em vez de
+  // reaproveitar o tom do ANALISTA I.
+  'ANALISTA II':      { bg: '#ffedd5', color: '#9a3412' },
   'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
   'TÉCNICO SESMT':    { bg: '#fee2e2', color: '#991b1b' },
   'ADMIN SESMT':      { bg: '#ffe4e6', color: '#9f1239' },
@@ -36,8 +40,22 @@ const TODAS_PERMISSOES = [
   { id: 'estrutura_csv_importar',      label: 'Estrutura Operacional - importar via arquivo CSV' },
   { id: 'iniciar_auditoria', label: '📋 Iniciar Auditoria' },
   { id: 'acesso_historico_auditorias', label: '📁 Acesso a Histórico de Auditorias' },
-  { id: 'acesso_registros_operacionais', label: '📝 Acesso a Registros Operacionais' },
-  { id: 'ver_todos_registros_operacionais', label: '👥 Registros Operacionais - ver registros de todos (senão, só os seus)' },
+  // Registros Operacionais — agrupadas num card só (ver GrupoPermissao
+  // abaixo), senão viram 10 linhas soltas no meio da lista. "Tipos
+  // visíveis": sem NENHUMA marcada, o perfil vê todos os tipos
+  // (comportamento de sempre). Marcando pelo menos uma, só os tipos
+  // marcados aparecem — na lista, no filtro e em "+ Novo Registro
+  // Operacional". Usado pra perfis restritos (ex: ANALISTA II).
+  { id: 'acesso_registros_operacionais', label: 'Acesso a Registros Operacionais', grupo: 'Registros Operacionais' },
+  { id: 'ver_todos_registros_operacionais', label: 'Ver registros de todos (senão, só os seus)', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_OCORRENCIA',   label: 'Tipo visível: 📦 Abertura de Ocorrência', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_REINCIDENCIA', label: 'Tipo visível: 🔁 Tratamento de Reincidência', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_ALINHAMENTO',  label: 'Tipo visível: 📋 Alinhamento com Equipe', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_DS',           label: 'Tipo visível: 🛡️ Diálogo de Segurança', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_TREINAMENTO',  label: 'Tipo visível: 🎓 Treinamento', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_FEEDBACK',     label: 'Tipo visível: 💬 Feedback', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_REUNIAO',      label: 'Tipo visível: 📊 Reunião de Resultado', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_DISCIPLINAR',  label: 'Tipo visível: ⚠️ Medida Disciplinar', grupo: 'Registros Operacionais' },
   { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },
@@ -99,6 +117,75 @@ function formatarUltimoLogin(iso) {
   if (mesmodia(d, hoje))  return `hoje às ${hora}`
   if (mesmodia(d, ontem)) return `ontem às ${hora}`
   return d.toLocaleDateString('pt-BR') + ' ' + hora
+}
+
+// ─── Linha de uma permissão (toggle) — usada solta e dentro de um GrupoPermissao ───
+function LinhaPermissao({ p, ativo, onToggle, indentada }) {
+  return (
+    <div onClick={onToggle} style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      padding: indentada ? '10px 12px' : '12px 14px', borderRadius: 10, cursor: 'pointer',
+      background: ativo ? '#f5f3ff' : '#f8fafc',
+      border: `1.5px solid ${ativo ? '#7c3aed' : '#e2e8f0'}`,
+      transition: 'all 0.2s',
+    }}>
+      <span style={{ fontSize: indentada ? 13 : 14, fontWeight: 600, color: ativo ? '#4c1d95' : '#64748b' }}>
+        {p.label}
+      </span>
+      <div style={{
+        width: indentada ? 38 : 44, height: indentada ? 21 : 24, borderRadius: 12,
+        background: ativo ? '#7c3aed' : '#cbd5e1',
+        position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+      }}>
+        <div style={{
+          position: 'absolute', top: 3,
+          left: ativo ? (indentada ? 20 : 23) : 3,
+          width: indentada ? 15 : 18, height: indentada ? 15 : 18, borderRadius: '50%',
+          background: '#fff', transition: 'left 0.2s',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+        }} />
+      </div>
+    </div>
+  )
+}
+
+// ─── Grupo de permissões relacionadas, num card colapsável só ──────────────
+// Em vez de várias linhas soltas no meio da lista (ex: as 10 de Registros
+// Operacionais), fica um card fechado e pequeno por padrão — só expande se
+// a pessoa quiser mexer em algum item do grupo.
+function GrupoPermissao({ nome, itens, ativos, onToggle }) {
+  const [aberto, setAberto] = useState(false)
+  const qtdAtivas = itens.filter(p => ativos.includes(p.id)).length
+  return (
+    <div style={{
+      borderRadius: 10, border: `1.5px solid ${qtdAtivas > 0 ? '#7c3aed' : '#e2e8f0'}`,
+      background: qtdAtivas > 0 ? '#f5f3ff' : '#f8fafc', overflow: 'hidden',
+    }}>
+      <div onClick={() => setAberto(a => !a)} style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '12px 14px', cursor: 'pointer',
+      }}>
+        <span style={{ fontSize: 14, fontWeight: 700, color: qtdAtivas > 0 ? '#4c1d95' : '#64748b' }}>
+          📝 {nome}
+        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {qtdAtivas > 0 && (
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#7c3aed', background: '#ede9fe', padding: '2px 8px', borderRadius: 20 }}>
+              {qtdAtivas}/{itens.length} ativas
+            </span>
+          )}
+          <span style={{ fontSize: 13, color: '#94a3b8' }}>{aberto ? '▾' : '▸'}</span>
+        </div>
+      </div>
+      {aberto && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 10px 10px' }}>
+          {itens.map(p => (
+            <LinhaPermissao key={p.id} p={p} ativo={ativos.includes(p.id)} onToggle={() => onToggle(p.id)} indentada />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
@@ -554,35 +641,25 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
                 </p>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {TODAS_PERMISSOES.map(p => {
-                    const ativo = (permissoes[perfilSelecionado] || []).includes(p.id)
-                    return (
-                      <div key={p.id} onClick={() => togglePermissao(perfilSelecionado, p.id)} style={{
-                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                        padding: '12px 14px', borderRadius: 10, cursor: 'pointer',
-                        background: ativo ? '#f5f3ff' : '#f8fafc',
-                        border: `1.5px solid ${ativo ? '#7c3aed' : '#e2e8f0'}`,
-                        transition: 'all 0.2s',
-                      }}>
-                        <span style={{ fontSize: 14, fontWeight: 600, color: ativo ? '#4c1d95' : '#64748b' }}>
-                          {p.label}
-                        </span>
-                        <div style={{
-                          width: 44, height: 24, borderRadius: 12,
-                          background: ativo ? '#7c3aed' : '#cbd5e1',
-                          position: 'relative', transition: 'background 0.2s',
-                        }}>
-                          <div style={{
-                            position: 'absolute', top: 3,
-                            left: ativo ? 23 : 3,
-                            width: 18, height: 18, borderRadius: '50%',
-                            background: '#fff', transition: 'left 0.2s',
-                            boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
-                          }} />
-                        </div>
-                      </div>
-                    )
-                  })}
+                  {(() => {
+                    const ativos = permissoes[perfilSelecionado] || []
+                    const gruposVistos = new Set()
+                    return TODAS_PERMISSOES.map(p => {
+                      if (p.grupo) {
+                        if (gruposVistos.has(p.grupo)) return null
+                        gruposVistos.add(p.grupo)
+                        const itensGrupo = TODAS_PERMISSOES.filter(x => x.grupo === p.grupo)
+                        return (
+                          <GrupoPermissao key={p.grupo} nome={p.grupo} itens={itensGrupo}
+                            ativos={ativos} onToggle={id => togglePermissao(perfilSelecionado, id)} />
+                        )
+                      }
+                      return (
+                        <LinhaPermissao key={p.id} p={p} ativo={ativos.includes(p.id)}
+                          onToggle={() => togglePermissao(perfilSelecionado, p.id)} />
+                      )
+                    })
+                  })()}
                 </div>
 
                 {/* ─── Aviso sobre processos agora serem por USUÁRIO ─── */}

@@ -5,7 +5,7 @@ import { reabrirAuditoria } from '../lib/supabase.js'
 import { CHECKLISTS, CAT_META, getItemsNaoConformes, getStatus, getChecklist, getItemsAtivos, getItemsParaCalculo, isItemConforme, isDisqualified } from '../data/checklists.js'
 import { getVersaoApp } from '../lib/auth.js'
 import { numeroASDaAuditoria } from '../lib/numeroAS.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import * as XLSX from 'xlsx'
 import {
   useFiltrosOperacionais,
@@ -891,6 +891,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
             </button>
 
+            {/* Compartilhar no WhatsApp: no celular usa a Web Share API nativa
+                (sempre funcionou bem); no PC, compartilharImagemWeb() baixa a
+                imagem e abre o WhatsApp Web direto, em vez de cair no painel
+                de compartilhar do Windows (que exige o WhatsApp Desktop
+                instalado) — ver lib/compartilhar.js. */}
             <button onClick={async () => {
               setCapturando(true)
               try {
@@ -903,17 +908,8 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
                 const nomeArq = `Auditoria_${detalhe.prefixo}_${detalhe.data_auditoria}.jpg`.replace(/\s+/g, '_')
                 if (Capacitor.isNativePlatform()) {
                   await compartilharImagemNativo(canvas, nomeArq.replace(/\.jpg$/, '.png'), { titulo: `Auditoria ${detalhe.prefixo}` })
-                } else if (navigator.share && navigator.canShare) {
-                  canvas.toBlob(async blob => {
-                    const file = new File([blob], nomeArq, { type: 'image/jpeg' })
-                    if (navigator.canShare({ files: [file] })) {
-                      await navigator.share({ files: [file], title: `Auditoria ${detalhe.prefixo}` })
-                    } else {
-                      const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
-                    }
-                  }, 'image/jpeg', 0.95)
                 } else {
-                  const link = document.createElement('a'); link.download = nomeArq; link.href = canvas.toDataURL('image/jpeg', 0.95); link.click()
+                  await compartilharImagemWeb(canvas, nomeArq, { titulo: `Auditoria ${detalhe.prefixo}`, tipo: 'image/jpeg', qualidade: 0.95 })
                 }
               } catch (err) {
                 console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))

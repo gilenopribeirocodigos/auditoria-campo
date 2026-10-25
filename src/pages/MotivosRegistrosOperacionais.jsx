@@ -3,10 +3,11 @@ import { CarregandoHexagono, SearchSelect } from '../components/Shared.jsx'
 import { TIPOS_REGISTRO } from '../data/registros_config.js'
 import { listarMotivos, criarMotivo, atualizarMotivo, removerMotivo } from '../lib/motivosRegistros.js'
 
-// "Abertura de Ocorrência" não faz parte de TIPOS_REGISTRO (não segue o
-// wizard padrão de Registro Operacional — ver R0TipoRegistro.jsx), mas
-// também tem motivo cadastrável (tipo_registro = 'OCORRENCIA' é texto livre,
-// sem constraint no banco) — por isso entra só aqui, nas opções do cadastro.
+// "Abertura de Ocorrência" e "Tratamento de Reincidência" não fazem parte de
+// TIPOS_REGISTRO (não seguem o wizard padrão de Registro Operacional — ver
+// R0TipoRegistro.jsx), mas também têm motivo cadastrável (tipo_registro é
+// texto livre, sem constraint no banco) — por isso entram só aqui, nas
+// opções do cadastro.
 const LABEL_OCORRENCIA = '📦 Abertura de Ocorrência'
 
 const OPCOES_TIPO = [...Object.entries(TIPOS_REGISTRO).map(([chave, tipo]) => `${tipo.emoji} ${tipo.label}`), LABEL_OCORRENCIA]

@@ -6,7 +6,7 @@ import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, isDuplicidadeNum
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 import { obterNumeroAS } from '../lib/numeroAS.js'
 import { sincronizarNCs } from '../lib/naoConformidades.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import { PainelAssinatura } from './S5Assinatura.jsx'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
@@ -245,7 +245,10 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
   // ── Compartilhar no WhatsApp (imagem) ──────────────────────────────────────
   // No app Android nativo, a Web Share API com arquivo é inconsistente dentro
   // do WebView do Capacitor — usa a folha de compartilhamento nativa em vez
-  // dela. Na web, mantém exatamente o comportamento de sempre.
+  // dela. Na web, compartilharImagemWeb() decide: celular mantém a Web Share
+  // API de sempre; PC baixa a imagem e abre o WhatsApp Web direto, em vez do
+  // painel de compartilhar do Windows (só lista o WhatsApp se o app Desktop
+  // estiver instalado) — ver lib/compartilhar.js.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
@@ -256,14 +259,9 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
 
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArquivo, { titulo, texto })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArquivo, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: titulo, text: texto })
-          } else { baixarImagem(canvas, nomeArquivo) }
-        }, 'image/png')
-      } else { baixarImagem(canvas, nomeArquivo) }
+      } else {
+        await compartilharImagemWeb(canvas, nomeArquivo, { titulo })
+      }
 
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)
@@ -271,13 +269,6 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
     } finally {
       setCapturando(false)
     }
-  }
-
-  const baixarImagem = (canvas, nomeArquivo) => {
-    const link = document.createElement('a')
-    link.download = nomeArquivo
-    link.href = canvas.toDataURL('image/png')
-    link.click()
   }
 
   // ── Gerar PDF / Imprimir ───────────────────────────────────────────────────

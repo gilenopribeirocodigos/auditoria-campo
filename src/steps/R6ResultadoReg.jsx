@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { salvarRegistroBD, prepararPayload } from '../lib/registros.js'
 import { salvarRegistroOffline } from '../lib/registros_offline.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import ModalLinkAssinatura from '../components/ModalLinkAssinatura.jsx'
 
 export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
@@ -205,7 +205,10 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
   // ── Compartilhar no WhatsApp (imagem) ──────────────────────────────────────
   // No app Android nativo, a Web Share API com arquivo é inconsistente dentro
   // do WebView do Capacitor — usa a folha de compartilhamento nativa em vez
-  // dela. Na web, mantém exatamente o comportamento de sempre.
+  // dela. Na web, compartilharImagemWeb() decide: celular mantém a Web Share
+  // API de sempre; PC baixa a imagem e abre o WhatsApp Web direto, em vez do
+  // painel de compartilhar do Windows (só lista o WhatsApp se o app Desktop
+  // estiver instalado) — ver lib/compartilhar.js.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
@@ -214,19 +217,8 @@ export default function R6ResultadoReg({ form, onConcluir, prev, isOnline }) {
 
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: tipoConfig?.label })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArq, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: tipoConfig?.label })
-          } else {
-            const link = document.createElement('a')
-            link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-          }
-        }, 'image/png')
       } else {
-        const link = document.createElement('a')
-        link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+        await compartilharImagemWeb(canvas, nomeArq, { titulo: tipoConfig?.label })
       }
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)

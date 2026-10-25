@@ -8,8 +8,10 @@ import { supabase, uploadBase64 } from './supabase.js'
 import { temPermissao } from './auth.js'
 
 // Mesmo padrão de numeroAS.js/gerarNumeroAcaoSesmt() — implementação própria
-// pra manter o módulo isolado (ver convenção do projeto).
-export function gerarNumeroOcorrencia() {
+// pra manter o módulo isolado (ver convenção do projeto). `prefixo`
+// diferencia Ocorrência (OC-) de Tratamento de Reincidência (RE-) — mesma
+// coluna numero_ocorrencia nos dois casos, só muda o prefixo gerado.
+function gerarNumeroRegistroOcorrencia(prefixo) {
   const agora = new Date()
   const partes = new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'America/Fortaleza',
@@ -20,15 +22,24 @@ export function gerarNumeroOcorrencia() {
   const data = `${valor('year')}${valor('month')}${valor('day')}`
   const hora = `${valor('hour')}${valor('minute')}${valor('second')}`
   const sufixo = Math.random().toString(36).slice(2, 6).toUpperCase().padEnd(4, 'X')
-  return `OC-${data}-${hora}-${sufixo}`
+  return `${prefixo}-${data}-${hora}-${sufixo}`
+}
+
+export function gerarNumeroOcorrencia() {
+  return gerarNumeroRegistroOcorrencia('OC')
+}
+
+export function gerarNumeroReincidencia() {
+  return gerarNumeroRegistroOcorrencia('RE')
 }
 
 // Ocorrências salvas antes da coluna numero_ocorrencia existir (não deve
 // acontecer em produção, mas evita quebrar a exibição de dados antigos).
 export function numeroOcorrencia(oc) {
   if (oc?.numero_ocorrencia) return oc.numero_ocorrencia
+  const prefixoLegado = oc?.tipo_ocorrencia === 'REINCIDENCIA' ? 'RE' : 'OC'
   const base = Number(oc?.id || 0).toString(36).toUpperCase().padStart(4, '0')
-  return `OC-LEGADO-${base}`
+  return `${prefixoLegado}-LEGADO-${base}`
 }
 
 // ─── Busca lista de fiscais ativos pra direcionamento (usado online) ─────────
@@ -44,6 +55,9 @@ export async function listarFiscaisParaDirecionamento() {
 }
 
 // ─── Faz upload da foto (se houver) e monta o payload pra inserir ────────────
+// `form.tipo_ocorrencia` ('OCORRENCIA' | 'REINCIDENCIA') decide o prefixo do
+// número gerado; os 7 campos extras (numero_oe...reincidencia_r90) só fazem
+// sentido pra Reincidência — ficam null quando o form não os preenche.
 export async function prepararPayloadOcorrencia(form) {
   let fotoUrl = null
   if (form.foto) {
@@ -51,8 +65,11 @@ export async function prepararPayloadOcorrencia(form) {
     fotoUrl = await uploadBase64(form.foto, `ocorrencias/${ref}/foto.jpg`, 'fotos-auditoria')
   }
 
+  const tipoOcorrencia = form.tipo_ocorrencia || 'OCORRENCIA'
+
   return {
-    numero_ocorrencia:         form.numero_ocorrencia || gerarNumeroOcorrencia(),
+    numero_ocorrencia:         form.numero_ocorrencia || (tipoOcorrencia === 'REINCIDENCIA' ? gerarNumeroReincidencia() : gerarNumeroOcorrencia()),
+    tipo_ocorrencia:           tipoOcorrencia,
     descricao:                 form.descricao,
     motivo:                    form.motivo || null,
     eletricista_equipe:        form.eletricista_equipe || null,
@@ -68,6 +85,13 @@ export async function prepararPayloadOcorrencia(form) {
     endereco:                  form.endereco || null,
     lat:                       form.lat ?? null,
     lng:                       form.lng ?? null,
+    numero_oe:                 form.numero_oe || null,
+    abrangencia:               form.abrangencia || null,
+    componente_pdf:            form.componente_pdf || null,
+    alimentador_al:            form.alimentador_al || null,
+    reincidencia_r07:          form.reincidencia_r07 || null,
+    reincidencia_r30:          form.reincidencia_r30 || null,
+    reincidencia_r90:          form.reincidencia_r90 || null,
   }
 }
 
@@ -122,9 +146,16 @@ export async function salvarOcorrenciaBD(payload) {
 
   // Mantém o salvamento funcionando caso o deploy do app chegue antes da
   // migração SQL que adiciona data_abertura/hora_abertura/endereco/lat/lng/
-  // eletricista_equipe_2 (mesmo padrão de salvarRegistroBD em lib/registros.js).
+  // eletricista_equipe_2/tipo_ocorrencia/numero_oe/abrangencia/
+  // componente_pdf/alimentador_al/reincidencia_r07-r90 (mesmo padrão de
+  // salvarRegistroBD em lib/registros.js).
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { data_abertura, hora_abertura, endereco, lat, lng, eletricista_equipe_2, motivo, ...payloadCompat } = payload
+    const {
+      data_abertura, hora_abertura, endereco, lat, lng, eletricista_equipe_2, motivo,
+      tipo_ocorrencia, numero_oe, abrangencia, componente_pdf, alimentador_al,
+      reincidencia_r07, reincidencia_r30, reincidencia_r90,
+      ...payloadCompat
+    } = payload
     ;({ data, error } = await supabase
       .from('ocorrencias')
       .insert(payloadCompat)
@@ -141,9 +172,25 @@ export async function salvarOcorrenciaBD(payload) {
 }
 
 // ─── Lista ocorrências (Tratamento de Não Conformidades → aba Ocorrências) ───
+// Só tipo_ocorrencia = 'OCORRENCIA' — Tratamento de Reincidência tem sua
+// própria lista/aba, ver listarReincidencias() logo abaixo.
 export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) {
   if (!supabase) return []
-  let q = supabase.from('ocorrencias').select('*').order('criado_em', { ascending: false })
+  let q = supabase.from('ocorrencias').select('*').neq('tipo_ocorrencia', 'REINCIDENCIA').order('criado_em', { ascending: false })
+  if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
+  if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
+  if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
+}
+
+// ─── Lista reincidências (Tratamento de Não Conformidades → aba Reincidência)
+// Espelha listarOcorrencias() acima, trocando .neq por .eq — mesma tabela,
+// só o tipo_ocorrencia filtrado muda.
+export async function listarReincidencias(statusTab = 'TODOS', { ini, fim } = {}) {
+  if (!supabase) return []
+  let q = supabase.from('ocorrencias').select('*').eq('tipo_ocorrencia', 'REINCIDENCIA').order('criado_em', { ascending: false })
   if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
   if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
   if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
@@ -233,6 +280,59 @@ export async function tratarOcorrencia(id, {
         .eq('id', c.id)
     ))
   }
+}
+
+// ─── Confirma o tratamento de uma reincidência ─────────────────────────────
+// Reaproveita as mesmas colunas de evidência/ciência que tratarOcorrencia()
+// usa (tratamento_fotos_urls, tratamento_assinatura_*/assinatura2_* — aqui
+// guardam a ciência do Eletricista 1 e do Eletricista 2), mas troca a
+// "observação" livre pelas 5 respostas do checklist específico de
+// Reincidência, e acrescenta o Termo de Ciência do Fiscal (assinatura
+// própria de quem tratou, exigida pelo checklist — distinta da ciência dos
+// eletricistas).
+export async function tratarReincidencia(id, {
+  redeInspecionada, acoesEquipe, leiturasEletricas, resolvidoDefinitivo, vulnerabilidades,
+  fotosUrls,
+  assinaturaEletricista1Url, assinaturaEletricista1Nome,
+  assinaturaEletricista2Url, assinaturaEletricista2Nome,
+  termoFiscalNome, termoFiscalAssinaturaUrl,
+  usuarioLogado,
+}) {
+  if (!supabase) throw new Error('Supabase não configurado.')
+  const payload = {
+    status:                                    'TRATADA',
+    reincidencia_rede_inspecionada:             !!redeInspecionada,
+    reincidencia_acoes_equipe:                  acoesEquipe?.trim() || null,
+    reincidencia_leituras_eletricas:            leiturasEletricas?.trim() || null,
+    reincidencia_resolvido_definitivo:          !!resolvidoDefinitivo,
+    reincidencia_vulnerabilidades:              vulnerabilidades?.trim() || null,
+    reincidencia_termo_fiscal_nome:             termoFiscalNome || null,
+    reincidencia_termo_fiscal_assinatura_url:   termoFiscalAssinaturaUrl || null,
+    tratamento_fotos_urls:                      fotosUrls || [],
+    tratamento_assinatura_url:                  assinaturaEletricista1Url || null,
+    tratamento_assinatura_nome:                 assinaturaEletricista1Nome || null,
+    tratamento_assinatura2_url:                 assinaturaEletricista2Url || null,
+    tratamento_assinatura2_nome:                assinaturaEletricista2Nome || null,
+    tratado_por:                                usuarioLogado?.matricula || usuarioLogado?.login || usuarioLogado?.nome || null,
+    tratado_por_nome:                           usuarioLogado?.nome || null,
+    tratado_em:                                 new Date().toISOString(),
+  }
+  let { error } = await supabase.from('ocorrencias').update(payload).eq('id', id).eq('status', 'PENDENTE')
+
+  // Mesmo padrão de compatibilidade das demais funções deste arquivo — evita
+  // quebrar se o deploy chegar antes da migração SQL que adiciona as colunas
+  // reincidencia_* (ver sql/2026-10-24_reincidencia_tratamento.sql).
+  if (error && /column .* does not exist/i.test(error.message || '')) {
+    const {
+      reincidencia_rede_inspecionada, reincidencia_acoes_equipe, reincidencia_leituras_eletricas,
+      reincidencia_resolvido_definitivo, reincidencia_vulnerabilidades,
+      reincidencia_termo_fiscal_nome, reincidencia_termo_fiscal_assinatura_url,
+      ...payloadCompat
+    } = payload
+    ;({ error } = await supabase.from('ocorrencias').update(payloadCompat).eq('id', id).eq('status', 'PENDENTE'))
+  }
+
+  if (error) throw error
 }
 
 // ─── Lista ocorrências abertas pelo usuário logado (ou todas, se privilegiado)

@@ -7,7 +7,7 @@ import { adicionarWatermark } from '../steps/sesmt/SS2Evidencias.jsx'
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
-import { compartilharImagemNativo, compartilharPDFMultiplasPaginasNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFMultiplasPaginasNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 // Mesmos tokens visuais/helpers de data do painel de filtros padrão do app
 // (Registros Operacionais) — reaproveitados aqui pra ficar com a cara igual,
 // sem puxar a parte de Regional/Supervisor/Prefixo (que depende de
@@ -121,7 +121,15 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
       await limparNaoAssinadosNaLista(data)
       setAcoes(data)
     } catch (e) {
-      setErro(e.message || 'Erro ao carregar histórico.')
+      // Erro técnico do Postgres (ex.: "canceling statement due to statement
+      // timeout") não ajuda o usuário a entender nem a agir — troca por uma
+      // mensagem amigável, com o motivo diferenciado quando for timeout
+      // (costuma ser um blip passageiro do banco, não um problema do filtro).
+      const msg = e.message || ''
+      const foiTimeout = /timeout/i.test(msg)
+      setErro(foiTimeout
+        ? 'A busca demorou demais pra responder. Costuma ser algo passageiro — tente novamente em alguns instantes.'
+        : 'Não foi possível carregar o histórico. Tente novamente.')
     } finally {
       setLoading(false)
     }
@@ -261,8 +269,10 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   // ── Compartilhar/PDF do card de detalhe — mesmo padrão de R6ResultadoReg.jsx
   // (lib/compartilhar.js): no app Android nativo (Capacitor), a Web Share API
   // com arquivo e o window.print() são inconsistentes dentro do WebView, então
-  // usa a folha de compartilhamento nativa em vez deles; na web, mantém o
-  // comportamento normal (Web Share API / popup de impressão).
+  // usa a folha de compartilhamento nativa em vez deles; na web,
+  // compartilharImagemWeb() mantém a Web Share API no celular (de sempre) e,
+  // no PC, baixa a imagem e abre o WhatsApp Web direto em vez do painel de
+  // compartilhar do Windows.
   const blocoAssinaturaParticipante = (p) => p.assinatura_url
     ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:44px;max-width:140px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
     : `<span style="font-size:12px;color:#d97706;font-weight:800;background:#fef3c7;padding:4px 10px;border-radius:6px;border:1.5px solid #fcd34d;white-space:nowrap;">⚠️ Não assinou</span>`
@@ -341,19 +351,8 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
 
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: tc.label })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArq, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: tc.label })
-          } else {
-            const link = document.createElement('a')
-            link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-          }
-        }, 'image/png')
       } else {
-        const link = document.createElement('a')
-        link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+        await compartilharImagemWeb(canvas, nomeArq, { titulo: tc.label })
       }
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)
@@ -774,7 +773,13 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
         {loading ? (
           <CarregandoHexagono texto="Carregando ações..." />
         ) : erro ? (
-          <p style={{ color: '#dc2626', fontWeight: 700, textAlign: 'center', padding: 20 }}>⚠️ {erro}</p>
+          <div style={{ textAlign: 'center', padding: 20 }}>
+            <p style={{ color: '#dc2626', fontWeight: 700, marginBottom: 12 }}>⚠️ {erro}</p>
+            <button onClick={buscar} style={{
+              border: 'none', background: '#d97706', color: '#fff',
+              padding: '9px 18px', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer',
+            }}>🔄 Tentar novamente</button>
+          </div>
         ) : acoes.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 60, color: '#94a3b8' }}>
             <div style={{ fontSize: 40, marginBottom: 12 }}>🦺</div>
