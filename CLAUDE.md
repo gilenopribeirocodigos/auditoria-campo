@@ -193,6 +193,26 @@ já existente (chave livre por perfil).
 - Perfil de exemplo que usa isso: `ANALISTA II` (o perfil antigo `ANALISTA` foi renomeado
   pra `ANALISTA I` — ver `sql/2026-10-25_renomear_perfil_analista.sql`).
 
+### 4.7 Compartilhamento de imagem no WhatsApp (mobile vs. desktop)
+`compartilharImagemWeb()` em `src/lib/compartilhar.js` é o ponto único pra compartilhar
+uma imagem (canvas já renderizado) fora do app nativo Android. Existe por causa de um bug
+real: `navigator.share()` sozinho, no **Windows desktop**, abre o painel de compartilhar
+do próprio SO — que só lista o WhatsApp se o app **Desktop** estiver instalado, deixando
+quem só usa WhatsApp Web num "Instalar" sem saída.
+
+- **Celular**: continua usando a Web Share API nativa (`navigator.share`), sem mudança —
+  nunca mexer nesse caminho sem pedido explícito.
+- **Desktop (navegador)**: baixa a imagem e abre `https://api.whatsapp.com/send?...`
+  (WhatsApp Web) numa aba nova, com uma mensagem pronta.
+- Detecção mobile/desktop via `ehNavegadorMobile()` (regex de user-agent), não feature
+  detection — ver comentário na função.
+- **Chamado hoje em 6 lugares** (mesmo padrão em todos): `S6Resultado.jsx` (Auditoria),
+  `R6ResultadoReg.jsx` (Registro Operacional), `HistoricoAuditorias.jsx`,
+  `SesmtHistorico.jsx`, e `RegistrosOperacionais.jsx` (Ocorrência e Reincidência — essa
+  última captura o modal ao vivo, ver seção 4.5, mas passa pelo mesmo
+  `compartilharImagemWeb()` no final). Qualquer tela nova com botão "Compartilhar no
+  WhatsApp" deve usar essa função, não reimplementar `navigator.share` na mão.
+
 ## 5. Banco de Dados
 
 ### 5.1 Schemas

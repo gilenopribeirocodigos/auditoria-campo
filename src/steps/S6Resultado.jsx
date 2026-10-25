@@ -245,7 +245,10 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
   // ── Compartilhar no WhatsApp (imagem) ──────────────────────────────────────
   // No app Android nativo, a Web Share API com arquivo é inconsistente dentro
   // do WebView do Capacitor — usa a folha de compartilhamento nativa em vez
-  // dela. Na web, mantém exatamente o comportamento de sempre.
+  // dela. Na web, compartilharImagemWeb() decide: celular mantém a Web Share
+  // API de sempre; PC baixa a imagem e abre o WhatsApp Web direto, em vez do
+  // painel de compartilhar do Windows (só lista o WhatsApp se o app Desktop
+  // estiver instalado) — ver lib/compartilhar.js.
   const gerarImagemWhatsApp = async () => {
     setCapturando(true)
     try {
