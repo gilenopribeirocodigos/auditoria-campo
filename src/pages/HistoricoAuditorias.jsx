@@ -891,6 +891,11 @@ export default function HistoricoAuditorias({ usuarioLogado, onVoltar }) {
               {gerandoPDF ? '⏳ Gerando PDF...' : '🖨️ Imprimir / Salvar PDF'}
             </button>
 
+            {/* Compartilhar no WhatsApp: no celular usa a Web Share API nativa
+                (sempre funcionou bem); no PC, compartilharImagemWeb() baixa a
+                imagem e abre o WhatsApp Web direto, em vez de cair no painel
+                de compartilhar do Windows (que exige o WhatsApp Desktop
+                instalado) — ver lib/compartilhar.js. */}
             <button onClick={async () => {
               setCapturando(true)
               try {

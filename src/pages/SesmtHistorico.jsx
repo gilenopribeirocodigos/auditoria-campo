@@ -269,8 +269,10 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
   // ── Compartilhar/PDF do card de detalhe — mesmo padrão de R6ResultadoReg.jsx
   // (lib/compartilhar.js): no app Android nativo (Capacitor), a Web Share API
   // com arquivo e o window.print() são inconsistentes dentro do WebView, então
-  // usa a folha de compartilhamento nativa em vez deles; na web, mantém o
-  // comportamento normal (Web Share API / popup de impressão).
+  // usa a folha de compartilhamento nativa em vez deles; na web,
+  // compartilharImagemWeb() mantém a Web Share API no celular (de sempre) e,
+  // no PC, baixa a imagem e abre o WhatsApp Web direto em vez do painel de
+  // compartilhar do Windows.
   const blocoAssinaturaParticipante = (p) => p.assinatura_url
     ? `<img src="${p.assinatura_url}" crossorigin="anonymous" style="height:44px;max-width:140px;object-fit:contain;background:#fff;border:1px solid #e2e8f0;border-radius:6px;padding:2px;" />`
     : `<span style="font-size:12px;color:#d97706;font-weight:800;background:#fef3c7;padding:4px 10px;border-radius:6px;border:1.5px solid #fcd34d;white-space:nowrap;">⚠️ Não assinou</span>`
