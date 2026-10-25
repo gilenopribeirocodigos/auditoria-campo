@@ -15,7 +15,7 @@ const STATUS = {
 }
 
 const PRIORIDADES = ['BAIXA', 'NORMAL', 'ALTA', 'CRITICA']
-const PERFIS_DESTINO = ['', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE']
+const PERFIS_DESTINO = ['', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA I', 'ASSISTENTE']
 const RECORRENCIAS = [
   { valor: 'DIARIA', label: 'Diária' },
   { valor: 'SEMANAL', label: 'Semanal' },

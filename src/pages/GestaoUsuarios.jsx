@@ -13,14 +13,18 @@ import { CarregandoHexagono, CampoSenha } from '../components/Shared.jsx'
 // Se o módulo for removido, é só apagar este import e o bloco de UI que o usa.
 import { obterPermissaoUsuario as obterPermissaoUsuarioPC, definirPermissaoUsuario as definirPermissaoUsuarioPC } from '../modules/prestacaoContas/lib/prestacaoContas.js'
 
-const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT', 'TÉCNICO ALMOXARIFADO', 'ADMIN ALMOXARIFADO']
+const PERFIS = ['ADMIN', 'SUPERV. OPERAÇÃO', 'COORD. OPERAÇÃO', 'SUPERV. CAMPO', 'ANALISTA I', 'ANALISTA II', 'ASSISTENTE', 'TÉCNICO SESMT', 'ADMIN SESMT', 'TÉCNICO ALMOXARIFADO', 'ADMIN ALMOXARIFADO']
 
 const PERFIL_CORES = {
   'ADMIN':            { bg: '#fce7f3', color: '#9d174d' },
   'SUPERV. OPERAÇÃO': { bg: '#d1fae5', color: '#065f46' },
   'COORD. OPERAÇÃO':  { bg: '#e0f2fe', color: '#0369a1' },
   'SUPERV. CAMPO':    { bg: '#dbeafe', color: '#1e40af' },
-  'ANALISTA':         { bg: '#fef3c7', color: '#92400e' },
+  'ANALISTA I':       { bg: '#fef3c7', color: '#92400e' },
+  // ANALISTA II — perfil restrito (acesso de fora, ex: pessoa alocada
+  // dentro da Equatorial), por isso ganha uma cor própria em vez de
+  // reaproveitar o tom do ANALISTA I.
+  'ANALISTA II':      { bg: '#ffedd5', color: '#9a3412' },
   'ASSISTENTE':       { bg: '#f3e8ff', color: '#6b21a8' },
   'TÉCNICO SESMT':    { bg: '#fee2e2', color: '#991b1b' },
   'ADMIN SESMT':      { bg: '#ffe4e6', color: '#9f1239' },
@@ -38,6 +42,18 @@ const TODAS_PERMISSOES = [
   { id: 'acesso_historico_auditorias', label: '📁 Acesso a Histórico de Auditorias' },
   { id: 'acesso_registros_operacionais', label: '📝 Acesso a Registros Operacionais' },
   { id: 'ver_todos_registros_operacionais', label: '👥 Registros Operacionais - ver registros de todos (senão, só os seus)' },
+  // Registros Operacionais — tipos visíveis: sem NENHUMA marcada, o perfil
+  // vê todos os tipos (comportamento de sempre). Marcando pelo menos uma,
+  // só os tipos marcados aparecem — na lista, no filtro e em "+ Novo
+  // Registro Operacional". Usado pra perfis restritos (ex: ANALISTA II).
+  { id: 'registro_tipo_OCORRENCIA',   label: '📝 Registros Operacionais - tipo visível: 📦 Abertura de Ocorrência' },
+  { id: 'registro_tipo_REINCIDENCIA', label: '📝 Registros Operacionais - tipo visível: 🔁 Tratamento de Reincidência' },
+  { id: 'registro_tipo_ALINHAMENTO',  label: '📝 Registros Operacionais - tipo visível: 📋 Alinhamento com Equipe' },
+  { id: 'registro_tipo_DS',           label: '📝 Registros Operacionais - tipo visível: 🛡️ Diálogo de Segurança' },
+  { id: 'registro_tipo_TREINAMENTO',  label: '📝 Registros Operacionais - tipo visível: 🎓 Treinamento' },
+  { id: 'registro_tipo_FEEDBACK',     label: '📝 Registros Operacionais - tipo visível: 💬 Feedback' },
+  { id: 'registro_tipo_REUNIAO',      label: '📝 Registros Operacionais - tipo visível: 📊 Reunião de Resultado' },
+  { id: 'registro_tipo_DISCIPLINAR',  label: '📝 Registros Operacionais - tipo visível: ⚠️ Medida Disciplinar' },
   { id: 'auditoria_avulsa_com_pauta', label: 'Auditoria - permitir avulsa com pauta pendente' },
   { id: 'dashboard',        label: '📊 Dashboard / Ranking'   },
   { id: 'indisponibilidade', label: '🚫 Registrar Indisponibilidade' },

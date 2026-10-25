@@ -404,6 +404,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const podeCadastrarMotivos = temPermissao(usuarioLogado, 'cadastrar_motivos_registros')
   const [mostrarMotivos, setMostrarMotivos] = useState(false)
 
+  // ─── Restrição por tipo de Registro Operacional (perfis como ANALISTA II)
+  // — permissão nova `registro_tipo_<TIPO>`, uma por tipo, configurada em
+  // Gestão de Usuários → Permissões por Perfil. Sem NENHUMA marcada, o
+  // perfil continua vendo todos os tipos (comportamento de sempre, ninguém
+  // que já usa o sistema hoje é afetado). Com pelo menos uma marcada, só os
+  // tipos marcados aparecem — na lista, no filtro e no resumo.
+  const TIPOS_REGISTRO_TODOS = [...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA', 'REINCIDENCIA']
+  const tiposPermitidos = (() => {
+    const permitidos = TIPOS_REGISTRO_TODOS.filter(t => temPermissao(usuarioLogado, `registro_tipo_${t}`))
+    return permitidos.length > 0 ? permitidos : null
+  })()
+
   // ─── Filtros EXTRAS desta tela ───
   const [tiposSel,   setTiposSel]   = useState([])   // multi select — [] = Todos
   const [fiscaisSel, setFiscaisSel] = useState([])   // multi select
@@ -529,9 +541,17 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       // Ocorrência; Reincidência ainda não tem esse fluxo — fase futura).
       // Respeita o filtro Tipo (multi-select): some se houver tipos
       // selecionados e nenhum deles for Ocorrência/Reincidência.
-      const tiposRegistroSel = tiposSel.filter(t => t !== 'OCORRENCIA' && t !== 'REINCIDENCIA')
-      const mostrarOcorrencias = tiposSel.length === 0 || tiposSel.includes('OCORRENCIA')
-      const mostrarReincidencias = tiposSel.length === 0 || tiposSel.includes('REINCIDENCIA')
+      // "Todos" (tiposSel vazio) passa a significar "todos os tipos
+      // PERMITIDOS" — pra perfis sem restrição (tiposPermitidos null) isso
+      // já é a lista inteira de sempre; pra um perfil restrito (ex: ANALISTA
+      // II só com Reincidência), equivale a só aquele tipo, mesmo sem a
+      // pessoa precisar mexer no filtro.
+      const tiposSelEfetivo = tiposPermitidos
+        ? (tiposSel.length > 0 ? tiposSel.filter(t => tiposPermitidos.includes(t)) : tiposPermitidos)
+        : tiposSel
+      const tiposRegistroSel = tiposSelEfetivo.filter(t => t !== 'OCORRENCIA' && t !== 'REINCIDENCIA')
+      const mostrarOcorrencias = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('OCORRENCIA')
+      const mostrarReincidencias = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('REINCIDENCIA')
       if (!mostrarOcorrencias && !mostrarReincidencias) {
         setOcorrencias([])
         setReincidencias([])
@@ -600,7 +620,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       // Só "Abertura de Ocorrência"/"Tratamento de Reincidência" selecionados
       // (sem nenhum tipo de Registro junto) → não busca registros_operacionais,
       // a tabela é outra.
-      const somenteOcorrenciaSelecionada = tiposSel.length > 0 && tiposRegistroSel.length === 0
+      const somenteOcorrenciaSelecionada = tiposSelEfetivo.length > 0 && tiposRegistroSel.length === 0
       let data = somenteOcorrenciaSelecionada ? [] : await listarRegistros({
         dataIni: ini,
         dataFim: fim,
@@ -689,7 +709,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       <div>
         <label style={LABEL_STYLE}>Tipo</label>
         <MultiSelect
-          opcoes={[...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA', 'REINCIDENCIA']}
+          opcoes={tiposPermitidos || TIPOS_REGISTRO_TODOS}
           selecionados={tiposSel}
           onChange={setTiposSel}
           placeholder="Todos"
