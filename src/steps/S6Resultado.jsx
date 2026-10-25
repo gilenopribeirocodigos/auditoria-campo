@@ -6,7 +6,7 @@ import { uploadBase64, salvarAuditoriaBD, atualizarAuditoriaBD, isDuplicidadeNum
 import { salvarAuditoriaOffline } from '../lib/offline.js'
 import { obterNumeroAS } from '../lib/numeroAS.js'
 import { sincronizarNCs } from '../lib/naoConformidades.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import { PainelAssinatura } from './S5Assinatura.jsx'
 
 function separarDataHoraFortaleza(valor = new Date().toISOString()) {
@@ -256,14 +256,9 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
 
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArquivo, { titulo, texto })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArquivo, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: titulo, text: texto })
-          } else { baixarImagem(canvas, nomeArquivo) }
-        }, 'image/png')
-      } else { baixarImagem(canvas, nomeArquivo) }
+      } else {
+        await compartilharImagemWeb(canvas, nomeArquivo, { titulo })
+      }
 
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)
@@ -271,13 +266,6 @@ export default function S6Resultado({ form, upd, setForm, setStep, pautaAtiva, o
     } finally {
       setCapturando(false)
     }
-  }
-
-  const baixarImagem = (canvas, nomeArquivo) => {
-    const link = document.createElement('a')
-    link.download = nomeArquivo
-    link.href = canvas.toDataURL('image/png')
-    link.click()
   }
 
   // ── Gerar PDF / Imprimir ───────────────────────────────────────────────────

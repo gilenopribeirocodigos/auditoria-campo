@@ -7,7 +7,7 @@ import { adicionarWatermark } from '../steps/sesmt/SS2Evidencias.jsx'
 import { TIPOS_ACAO_SESMT, REGIONAIS_SESMT } from '../data/sesmt_config.js'
 import { CarregandoHexagono } from '../components/Shared.jsx'
 import ModalLinkAssinaturaSesmt from '../components/ModalLinkAssinaturaSesmt.jsx'
-import { compartilharImagemNativo, compartilharPDFMultiplasPaginasNativo, renderizarHtmlParaCanvas, descreverErro } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFMultiplasPaginasNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 // Mesmos tokens visuais/helpers de data do painel de filtros padrão do app
 // (Registros Operacionais) — reaproveitados aqui pra ficar com a cara igual,
 // sem puxar a parte de Regional/Supervisor/Prefixo (que depende de
@@ -349,19 +349,8 @@ export default function SesmtHistorico({ usuarioLogado, onVoltar }) {
 
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: tc.label })
-      } else if (navigator.share && navigator.canShare) {
-        canvas.toBlob(async blob => {
-          const file = new File([blob], nomeArq, { type: 'image/png' })
-          if (navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: tc.label })
-          } else {
-            const link = document.createElement('a')
-            link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
-          }
-        }, 'image/png')
       } else {
-        const link = document.createElement('a')
-        link.download = nomeArq; link.href = canvas.toDataURL('image/png'); link.click()
+        await compartilharImagemWeb(canvas, nomeArq, { titulo: tc.label })
       }
     } catch (err) {
       console.error('Erro ao gerar imagem:', err)
