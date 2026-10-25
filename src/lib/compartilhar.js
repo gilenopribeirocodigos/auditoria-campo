@@ -64,8 +64,9 @@ export function abrirWhatsAppWeb(mensagem) {
 // Compartilhamento no navegador (não nativo): mobile usa a Web Share API
 // normalmente (já funciona bem); desktop baixa a imagem e abre o WhatsApp
 // Web com um aviso pra anexar o arquivo baixado, em vez de cair no painel
-// de compartilhar do Windows.
-export async function compartilharImagemWeb(canvas, nomeArquivo, { titulo = '', tipo = 'image/png', qualidade } = {}) {
+// de compartilhar do Windows. `mensagem` é opcional — quando quem chama
+// não passa um texto próprio, usa a frase genérica padrão.
+export async function compartilharImagemWeb(canvas, nomeArquivo, { titulo = '', tipo = 'image/png', qualidade, mensagem } = {}) {
   if (ehNavegadorMobile() && navigator.share && navigator.canShare) {
     const blob = await new Promise(resolve => canvas.toBlob(resolve, tipo, qualidade))
     const file = new File([blob], nomeArquivo, { type: tipo })
@@ -75,7 +76,7 @@ export async function compartilharImagemWeb(canvas, nomeArquivo, { titulo = '', 
     }
   }
   baixarImagemCanvas(canvas, nomeArquivo, tipo, qualidade)
-  abrirWhatsAppWeb(`Segue em anexo${titulo ? ` o relatório de ${titulo}` : ''} — anexe a imagem "${nomeArquivo}" que acabou de baixar.`)
+  abrirWhatsAppWeb(mensagem || `Segue em anexo${titulo ? ` o relatório de ${titulo}` : ''} — anexe a imagem "${nomeArquivo}" que acabou de baixar.`)
 }
 
 // O PDF usa o tamanho do canvas como o tamanho da própria página (em "px").
