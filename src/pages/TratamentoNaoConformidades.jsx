@@ -1090,12 +1090,44 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
       {aberto && <div onClick={e => e.stopPropagation()}>
 
         <div style={{ marginTop: 10, marginBottom: pendente ? 14 : 10, background: '#fff7ed', borderLeft: '3px solid #c2410c', borderRadius: '0 8px 8px 0', padding: '10px 12px' }}>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-            {[['OE', r.numero_oe], ['ABRG', r.abrangencia], ['PDF', r.componente_pdf], ['AL', r.alimentador_al], ['R07', r.reincidencia_r07], ['R30', r.reincidencia_r30], ['R90', r.reincidencia_r90]]
-              .filter(([, v]) => v).map(([label, v]) => (
-                <span key={label} style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', background: '#fff', border: '1px solid #fed7aa', borderRadius: 999, padding: '2px 8px' }}>{label} {v}</span>
-              ))}
-          </div>
+          {(() => {
+            const camposTecnicos = [
+              ['Número da Ocorrência (OE)', r.numero_oe],
+              ['Abrangência (ABRG)',        r.abrangencia],
+              ['Componente (PDF)',          r.componente_pdf],
+              ['Alimentador (AL)',          r.alimentador_al],
+            ].filter(([, v]) => v)
+            const reincidenciasPeriodo = [
+              ['7 dias',  r.reincidencia_r07],
+              ['30 dias', r.reincidencia_r30],
+              ['90 dias', r.reincidencia_r90],
+            ].filter(([, v]) => v)
+            if (camposTecnicos.length === 0 && reincidenciasPeriodo.length === 0) return null
+            return (
+              <div style={{ background: '#fff', border: '1.5px solid #fdba74', borderRadius: 10, padding: '10px 12px', marginBottom: 10 }}>
+                <p style={{ fontSize: 10, fontWeight: 800, color: '#c2410c', textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 6px' }}>📊 Dados Técnicos</p>
+                {camposTecnicos.map(([l, v], i) => (
+                  <div key={l} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 0', borderBottom: i < camposTecnicos.length - 1 ? '1px solid #fed7aa' : 'none' }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#9a3412' }}>{l}</span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: '#7c2d12', textAlign: 'right' }}>{v}</span>
+                  </div>
+                ))}
+                {reincidenciasPeriodo.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 9.5, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.4, margin: '10px 0 6px', opacity: 0.8 }}>Nº de reincidências por período</p>
+                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${reincidenciasPeriodo.length}, 1fr)`, gap: 6 }}>
+                      {reincidenciasPeriodo.map(([label, v]) => (
+                        <div key={label} style={{ background: '#fff7ed', border: '1.5px solid #fdba74', borderRadius: 8, padding: '6px 4px', textAlign: 'center' }}>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: '#c2410c', lineHeight: 1 }}>{v}</div>
+                          <div style={{ fontSize: 8, fontWeight: 700, color: '#9a3412', textTransform: 'uppercase' }}>Reinc. {label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )
+          })()}
           <div style={{ background: '#fff', border: '1.5px solid #fdba74', borderRadius: 10, padding: '10px 12px' }}>
             <p style={{ fontSize: 10, fontWeight: 800, color: '#c2410c', textTransform: 'uppercase', letterSpacing: 0.4, margin: '0 0 4px' }}>📝 O que tratar</p>
             <p style={{ fontSize: 14.5, fontWeight: 700, color: '#1e293b', lineHeight: 1.5, margin: 0 }}>{r.descricao}</p>
