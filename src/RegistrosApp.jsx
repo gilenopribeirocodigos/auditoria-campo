@@ -123,6 +123,7 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
         {step === 0 && (
           <R0TipoRegistro
             {...stepProps}
+            usuarioLogado={usuarioLogado}
             onAbrirOcorrencia={() => setModoOcorrencia(
               // Quem não tem a permissão de lote nem vê a telinha de escolha
               // — vai direto pro manual, igual já era antes dessa feature.
