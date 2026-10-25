@@ -6,7 +6,7 @@ import { listarOcorrenciasDoUsuario, numeroOcorrencia, listarColaboradoresOcorre
 import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
-import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
+import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, renderizarElementoVisivelParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
 import { MARCADOR_ERRO_CONCLUSAO, MARCADOR_OBSERVACAO } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
@@ -514,6 +514,10 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [gerandoPDFOc,  setGerandoPDFOc]  = useState(false)
   const [capturandoReinc, setCapturandoReinc] = useState(false)
   const [gerandoPDFReinc, setGerandoPDFReinc] = useState(false)
+  // Aponta pro card já renderizado no modal de detalhe da Reincidência —
+  // capturado direto (ver renderizarElementoVisivelParaCanvas) pro
+  // compartilhamento no WhatsApp sair idêntico ao que está na tela.
+  const reincConteudoRef = useRef(null)
   const [assinOnline,   setAssinOnline]   = useState([])
   const [loadingOnline, setLoadingOnline] = useState(false)
   const [tokensAtivos,  setTokensAtivos]  = useState({})
@@ -547,14 +551,17 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
     }
   }
 
-  // Mesmo padrão de compartilharOcorrenciaWhatsApp, pra Tratamento de
-  // Reincidência.
+  // Diferente de compartilharOcorrenciaWhatsApp (que remonta o conteúdo como
+  // HTML string à parte, via montarConteudoImpressaoOcorrencia), aqui
+  // capturamos direto o card já renderizado no modal de detalhe
+  // (reincConteudoRef) — só chamado com o modal aberto, então o ref sempre
+  // existe. Garante que a imagem enviada no WhatsApp sai idêntica ao que o
+  // fiscal/analista está vendo na tela, sem precisar manter dois lugares
+  // (JSX do modal + string HTML) sincronizados a cada campo novo.
   const compartilharReincidenciaWhatsApp = async (r) => {
     setCapturandoReinc(true)
     try {
-      const conteudo = montarConteudoImpressaoReincidencia(r, versaoSistema)
-      const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">${conteudo}</div>`
-      const canvas = await renderizarHtmlParaCanvas(html, { largura: 640, escala: 6, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#f0f4f8' })
+      const canvas = await renderizarElementoVisivelParaCanvas(reincConteudoRef.current, { escala: 4, corFundo: '#fff' })
       const nomeArq = `Reincidencia_${r.numero_ocorrencia || r.id}.png`.replace(/\s+/g, '_')
       if (Capacitor.isNativePlatform()) {
         await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Tratamento de Reincidência' })
@@ -1615,6 +1622,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
               ].filter(([, v]) => v)
               return (
                 <>
+                <div ref={reincConteudoRef}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                     <h3 style={{ fontSize: 17, fontWeight: 800 }}>🔁 Tratamento de Reincidência</h3>
                     <button onClick={() => setDetalheReinc(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
@@ -1783,6 +1791,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                   <p style={{ textAlign: 'center', fontSize: 11, color: '#dc2626', margin: '0 0 10px', fontWeight: 600 }}>
                     v{versaoSistema}
                   </p>
+                </div>
 
                   <button onClick={async () => {
                     if (!Capacitor.isNativePlatform()) { imprimirReincidenciaDoc(r, versaoSistema); return }
