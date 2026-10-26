@@ -119,28 +119,28 @@ export default function R0TipoRegistro({ form, upd, next, onAbrirOcorrencia, onA
         <button
           onClick={onAbrirOcorrenciaGenerica}
           style={{
-            background: '#fff', border: '2px solid #c7d2fe', borderRadius: 14,
+            background: '#fff', border: '2px solid #e3c39c', borderRadius: 14,
             padding: '16px', textAlign: 'left', cursor: 'pointer',
             display: 'flex', alignItems: 'center', gap: 14,
           }}
         >
           <div style={{
             width: 48, height: 48, borderRadius: 12,
-            background: '#eef2ff', border: '1.5px solid #c7d2fe',
+            background: '#fdf3e7', border: '1.5px solid #e3c39c',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 22, flexShrink: 0,
           }}>
             📦
           </div>
           <div style={{ flex: 1 }}>
-            <p style={{ fontSize: 15, fontWeight: 700, color: '#4338ca', marginBottom: 2 }}>
+            <p style={{ fontSize: 15, fontWeight: 700, color: '#78350f', marginBottom: 2 }}>
               Abertura de Ocorrência
             </p>
             <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
               Relate um problema (ex: devolução de material não realizada) e direcione para o fiscal tratar
             </p>
           </div>
-          <div style={{ fontSize: 18, color: '#4338ca' }}>›</div>
+          <div style={{ fontSize: 18, color: '#78350f' }}>›</div>
         </button>
         )}
 
