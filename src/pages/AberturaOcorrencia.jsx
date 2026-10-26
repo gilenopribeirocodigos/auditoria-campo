@@ -425,7 +425,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
   return (
     <div className="app-shell">
-      <header className="app-header no-print" style={{ background: '#4338ca' }}>
+      <header className="app-header no-print" style={{ background: ehGenerica ? '#78350f' : '#4338ca' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
           <div style={{ fontSize: 10, opacity: 0.65, letterSpacing: 1.5, textTransform: 'uppercase' }}>
             Plataforma de Gestão Operacional
@@ -452,9 +452,9 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
           {status === 'saved' ? (
             <>
-              <div style={{ background: salvoOffline ? '#fef3c7' : '#eef2ff', border: `1.5px solid ${salvoOffline ? '#fcd34d' : '#c7d2fe'}`, borderRadius: 14, padding: '18px 16px', marginBottom: 16, textAlign: 'center' }}>
+              <div style={{ background: salvoOffline ? '#fef3c7' : (ehGenerica ? '#fdf3e7' : '#eef2ff'), border: `1.5px solid ${salvoOffline ? '#fcd34d' : (ehGenerica ? '#e3c39c' : '#c7d2fe')}`, borderRadius: 14, padding: '18px 16px', marginBottom: 16, textAlign: 'center' }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>{salvoOffline ? '📵' : '✅'}</div>
-                <p style={{ color: salvoOffline ? '#92400e' : '#3730a3', fontWeight: 800, fontSize: 15, marginBottom: 4 }}>
+                <p style={{ color: salvoOffline ? '#92400e' : (ehGenerica ? '#78350f' : '#3730a3'), fontWeight: 800, fontSize: 15, marginBottom: 4 }}>
                   {salvoOffline ? `${nomeTipo} salvo(a) localmente!` : `${nomeTipo} enviado(a) com sucesso!`}
                 </p>
                 <p style={{ color: '#64748b', fontSize: 12 }}>
@@ -463,7 +463,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                     : `Direcionada para ${direcionadoPara} — ela aparecerá pendente na tela de Tratamento de Não Conformidades.`}
                 </p>
               </div>
-              <button onClick={reiniciar} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#4338ca', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
+              <button onClick={reiniciar} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: ehGenerica ? '#78350f' : '#4338ca', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
                 + Abrir Novo {nomeTipo}
               </button>
               <button onClick={onVoltar} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
@@ -627,7 +627,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
               <button onClick={enviar} disabled={!podeEnviar || status === 'saving'} style={{
                 width: '100%', padding: 14, borderRadius: 12, border: 'none',
-                background: (!podeEnviar || status === 'saving') ? '#e2e8f0' : (online ? '#4338ca' : '#dc2626'),
+                background: (!podeEnviar || status === 'saving') ? '#e2e8f0' : (online ? (ehGenerica ? '#78350f' : '#4338ca') : '#dc2626'),
                 color: (!podeEnviar || status === 'saving') ? '#94a3b8' : '#fff',
                 fontSize: 15, fontWeight: 700, cursor: (!podeEnviar || status === 'saving') ? 'not-allowed' : 'pointer',
                 marginBottom: 10,

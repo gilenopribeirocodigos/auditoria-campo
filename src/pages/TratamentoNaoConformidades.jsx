@@ -488,7 +488,9 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
   const equipeCarregada  = colaboradoresEquipe !== null
   const modoEquipe       = equipeCarregada && colaboradoresEquipe.length > 0
   const assinadosCount   = modoEquipe ? colaboradoresEquipe.filter(c => assinaturasEquipe[c.id]).length : 0
-  const minimoAssinaturas = modoEquipe ? Math.min(2, colaboradoresEquipe.length) : 0
+  // Retrabalho exige assinatura de TODOS os colaboradores da equipe (manual ou
+  // importado em lote) — diferente da Reincidência, que mantém a assinatura opcional.
+  const minimoAssinaturas = modoEquipe ? colaboradoresEquipe.length : 0
 
   // Corrigir prefixo/colaborador(es)/descrição digitados errado na abertura
   // — só enquanto pendente, e só quem abriu ou ADMIN (mesma regra de
@@ -823,7 +825,7 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
                 <div style={{ flex: 1, height: 6, borderRadius: 10, background: '#e2e8f0', overflow: 'hidden' }}>
                   <div style={{ height: '100%', background: '#15803d', width: `${Math.min(100, (assinadosCount / colaboradoresEquipe.length) * 100)}%` }} />
                 </div>
-                <span style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>mín. {minimoAssinaturas} pra liberar</span>
+                <span style={{ fontSize: 10.5, color: '#64748b', whiteSpace: 'nowrap' }}>todos precisam assinar</span>
               </div>
               {colaboradoresEquipe.map((c, i) => (
                 <PainelAssinatura
@@ -833,13 +835,12 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
                   onNome={v => setNomesEquipe(prev => ({ ...prev, [c.id]: v }))}
                   assinatura={assinaturasEquipe[c.id] || null}
                   onAssinatura={v => setAssinaturasEquipe(prev => ({ ...prev, [c.id]: v }))}
-                  obrigatorio={false}
+                  obrigatorio={true}
                 />
               ))}
               <p style={{ fontSize: 11, color: '#94a3b8', marginTop: -4, marginBottom: 14 }}>
-                Libera com {minimoAssinaturas} assinatura{minimoAssinaturas === 1 ? '' : 's'} — os demais continuam
-                opcionais, podem assinar a qualquer momento antes de confirmar. Quem não assinar nessa rodada não
-                entra no registro do tratamento.
+                A assinatura de todos os {colaboradoresEquipe.length} colaboradores da equipe é obrigatória para
+                confirmar o tratamento do Retrabalho.
               </p>
             </>
           ) : (

@@ -242,13 +242,13 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc =
     : oc.descricao
 
   return `
-  <div style="background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
+  <div style="background:linear-gradient(135deg,${ehGenerica ? '#78350f,#92400e' : '#4338ca,#6d28d9'});color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
     <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VérticeGP</div>
     <div style="font-size:20px;font-weight:800;">${ehGenerica ? '📦 Abertura de Ocorrência' : '🔧 Tratamento de Retrabalho'}</div>
     <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(oc)}</div>
   </div>
   <div style="text-align:center;margin-bottom:16px;">
-    <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? '#e0e7ff' : '#dcfce7'};color:${pendente ? '#3730a3' : '#15803d'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
+    <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? (ehGenerica ? '#fdf3e7' : '#e0e7ff') : '#dcfce7'};color:${pendente ? (ehGenerica ? '#78350f' : '#3730a3') : '#15803d'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
   </div>
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
     <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">${ehGenerica ? 'Dados da Ocorrência' : 'Dados do Retrabalho'}</div>
@@ -277,9 +277,9 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc =
         </div>`).join('')}
     </div>
   </div>` : ''}
-  <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;">DESCRIÇÃO${ehGenerica ? ' DA OCORRÊNCIA' : ''}</div>
-    <div style="font-size:13px;color:#3730a3;line-height:1.7;">${destacarDescricaoHtml(descricaoExibida)}</div>
+  <div style="background:${ehGenerica ? '#fdf3e7' : '#eef2ff'};border:1px solid ${ehGenerica ? '#e3c39c' : '#c7d2fe'};border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:${ehGenerica ? '#78350f' : '#3730a3'};margin-bottom:8px;">DESCRIÇÃO${ehGenerica ? ' DA OCORRÊNCIA' : ''}</div>
+    <div style="font-size:13px;color:${ehGenerica ? '#78350f' : '#3730a3'};line-height:1.7;">${destacarDescricaoHtml(descricaoExibida)}</div>
   </div>
   ${!pendente ? `
   <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
@@ -319,7 +319,8 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc =
 }
 
 function imprimirOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
-  const titulo = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA' ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'
+  const ehGenerica = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA'
+  const titulo = ehGenerica ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'
   const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp, colaboradoresOc)
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
   <title>${titulo}</title>
@@ -327,7 +328,7 @@ function imprimirOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
   @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
   ${conteudo}
   <div class="no-print" style="text-align:center;margin-top:24px;">
-    <button onclick="window.print()" style="padding:12px 32px;background:#4338ca;color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
+    <button onclick="window.print()" style="padding:12px 32px;background:${ehGenerica ? '#78350f' : '#4338ca'};color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:700;cursor:pointer;">🖨️ Imprimir / Salvar PDF</button>
   </div>
   </body></html>`
 
@@ -951,7 +952,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             .map(([tipo, cfg]) => ({ tipo, emoji: cfg.emoji, label: cfg.label, color: cfg.color, border: cfg.border, total: porTipo[tipo] }))
           if (genericas.length > 0) {
             tiles.unshift({
-              tipo: 'OCORRENCIA_GENERICA', emoji: '📦', label: 'Ocorrências', color: '#4338ca', border: '#c7d2fe',
+              tipo: 'OCORRENCIA_GENERICA', emoji: '📦', label: 'Ocorrências', color: '#78350f', border: '#e3c39c',
               total: genericas.length, pendentes: genericas.filter(o => o.status === 'PENDENTE').length,
             })
           }
@@ -1037,15 +1038,15 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 const pendente = oc.status === 'PENDENTE'
                 return (
                   <div key={`gen-${oc.id}`} onClick={() => setDetalheOc(oc)}
-                    style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
+                    style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#e3c39c' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
                           <span style={{ fontSize: 18 }}>📦</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Abertura de Ocorrência</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#78350f' }}>Abertura de Ocorrência</span>
                           <span style={{
                             fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+                            background: pendente ? '#fdf3e7' : '#dcfce7', color: pendente ? '#78350f' : '#15803d',
                           }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
@@ -1576,13 +1577,13 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     <button onClick={() => setDetalheOc(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
                   </div>
 
-                  <div style={{ background: '#e0e7ff', border: '2px solid #c7d2fe', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
+                  <div style={{ background: ehGenerica ? '#fdf3e7' : '#e0e7ff', border: `2px solid ${ehGenerica ? '#e3c39c' : '#c7d2fe'}`, borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
                     <div style={{ fontSize: 40, marginBottom: 6 }}>{ehGenerica ? '📦' : '🔧'}</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#4338ca' }}>{ehGenerica ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: ehGenerica ? '#78350f' : '#4338ca' }}>{ehGenerica ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'}</div>
                     <div style={{ marginTop: 8 }}>
                       <span style={{
                         padding: '3px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                        background: pendente ? '#fff' : '#15803d', color: pendente ? '#3730a3' : '#fff',
+                        background: pendente ? '#fff' : '#15803d', color: pendente ? (ehGenerica ? '#78350f' : '#3730a3') : '#fff',
                       }}>{pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
                     </div>
                   </div>
@@ -1631,9 +1632,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     </div>
                   )}
 
-                  <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>DESCRIÇÃO{ehGenerica ? ' DA OCORRÊNCIA' : ''}:</p>
-                    <p style={{ fontSize: 13, color: '#3730a3', lineHeight: 1.6 }}><DescricaoDestacada texto={descricaoExibida} /></p>
+                  <div style={{ background: ehGenerica ? '#fdf3e7' : '#eef2ff', border: `1px solid ${ehGenerica ? '#e3c39c' : '#c7d2fe'}`, borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: ehGenerica ? '#78350f' : '#3730a3', marginBottom: 6 }}>DESCRIÇÃO{ehGenerica ? ' DA OCORRÊNCIA' : ''}:</p>
+                    <p style={{ fontSize: 13, color: ehGenerica ? '#78350f' : '#3730a3', lineHeight: 1.6 }}><DescricaoDestacada texto={descricaoExibida} /></p>
                   </div>
 
                   {!pendente && (
