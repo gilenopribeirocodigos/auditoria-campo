@@ -702,22 +702,25 @@ export default function App() {
               {(ncPendencias > 0 || ocPendencias > 0 || reincPendencias > 0) && (
                 <span style={{ position: 'absolute', top: -7, right: -7, display: 'flex', gap: 4 }}>
                   {ocPendencias > 0 && (
-                    <span title="Pendentes — Abertura de Ocorrência" style={{
-                      background: '#38bdf8', color: '#fff',
+                    // Índigo claro — mesma identidade da aba Retrabalho (#4338ca).
+                    <span title="Pendentes — Tratamento de Retrabalho" style={{
+                      background: '#818cf8', color: '#fff',
                       borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
                     }}>{ocPendencias}</span>
                   )}
                   {reincPendencias > 0 && (
+                    // Laranja claro — mesma identidade da aba Reincidência (#c2410c).
                     <span title="Pendentes — Tratamento de Reincidência" style={{
-                      background: '#9a3412', color: '#fff',
+                      background: '#fb923c', color: '#fff',
                       borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
                     }}>{reincPendencias}</span>
                   )}
                   {ncPendencias > 0 && (
+                    // Vermelho claro — mesma identidade da aba Não Conformidades (#b91c1c).
                     <span title="Pendentes — Não Conformidade de Auditoria" style={{
-                      background: '#f59e0b', color: '#fff',
+                      background: '#f87171', color: '#fff',
                       borderRadius: 999, fontSize: 11, fontWeight: 800, minWidth: 21, height: 21, padding: '0 5px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
                     }}>{ncPendencias}</span>
