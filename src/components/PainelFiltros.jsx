@@ -531,14 +531,26 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     return lista.filter(item => {
       const pref = item[prefixoField]
 
-      // Sem prefixo (ex.: reserva sem equipe fixa) — não tem como aplicar
-      // segregação por estrutura nem os filtros de Regional/Supervisor
-      // Operacional/Supervisor de Campo (todos dependem do prefixo pra
-      // achar o dono via mapPrefixo). Fica visível por padrão em vez de
-      // sumir da lista só por não ter prefixo definido; só é escondido se
-      // o usuário filtrar explicitamente por um Prefixo específico (nesse
-      // caso, de fato não bate com nenhum).
-      if (!pref) return selPrefixos.length === 0
+      // Sem prefixo (ex.: reserva sem equipe fixa) — não dá pra achar o dono
+      // via mapPrefixo, mas a própria linha pode trazer regional/
+      // superv_operacao/superv_campo direto (quando quem chamou filtrar()
+      // buscou essas colunas também, não só prefixo). Nesse caso, compara
+      // contra os campos próprios da linha em vez de liberar sempre — foi
+      // exatamente isso que fazia gente sem prefixo (ex.: estrutura PERDAS)
+      // aparecer igual em QUALQUER filtro de Supervisor Operacional/Campo/
+      // Regional, mesmo sem nenhuma relação com o supervisor escolhido.
+      // Só continua "sempre visível" pros campos que o item não trouxe
+      // (undefined — quem chamou nem buscou a coluna, então não tem como
+      // comparar); um campo presente porém vazio ('', null) já reprova
+      // naturalmente o .includes() abaixo.
+      if (!pref) {
+        if (selPrefixos.length > 0) return false
+        if (!temFiltro) return true
+        if (selRegional.length > 0 && item.regional        !== undefined && !selRegional.includes(item.regional))        return false
+        if (selSupOp.length    > 0 && item.superv_operacao !== undefined && !selSupOp.includes(item.superv_operacao))    return false
+        if (selSupCampo.length > 0 && item.superv_campo    !== undefined && !selSupCampo.includes(item.superv_campo))    return false
+        return true
+      }
 
       // Segregação por estrutura (sempre aplicada quando há restrição)
       if (setPermitidos && !setPermitidos.has(pref)) return false

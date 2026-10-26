@@ -430,3 +430,17 @@ feita separadamente via Codex/SQL manual — só o código.
 - `src/lib/rastreio.js` mantém seu próprio banco IndexedDB (`rastreio_fila`),
   separado dos bancos usados pelas filas offline de auditorias/registros — não é bug,
   mas é bom ter em mente ao investigar problemas de sincronização.
+- **Filtro de Regional/Supervisor para colaborador sem prefixo** (`filtrar()` em
+  `src/components/PainelFiltros.jsx`): quando o item não tem `prefixo` (ex.: alguém na
+  estrutura PERDAS, sem equipe fixa), não dá pra achar o supervisor via `mapPrefixo` —
+  o filtro agora cai pra comparar os campos `regional`/`superv_operacao`/`superv_campo`
+  **da própria linha**, se quem chamou `filtrar()` buscou essas colunas no Supabase.
+  Corrigido em `IndisponibilidadePage.jsx` (que antes só buscava `superv_campo`, por
+  isso gente sem prefixo aparecia igual em QUALQUER Supervisor Operacional filtrado —
+  bug real reportado pelo Gileno). **Outras telas que usam `filtros.filtrar()` só
+  ganham esse comportamento se também passarem a buscar `regional`/`superv_operacao`/
+  `superv_campo` na query** — sem isso, continuam no comportamento antigo (sempre
+  visível). Além disso, a **segregação por estrutura** (`setPermitidos`, restrição de
+  prefixos do usuário logado) ainda não tem esse fallback — colaborador sem prefixo
+  continua visível pra qualquer usuário segregado, independente da regional/supervisor
+  dele; não foi tratado nesta correção.
