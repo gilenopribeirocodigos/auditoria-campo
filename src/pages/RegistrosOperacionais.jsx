@@ -98,6 +98,11 @@ function montarConteudoImpressaoRegistro(r, assinaturasOnline = [], versaoApp = 
     <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">${r.tipo==='DISCIPLINAR'?'Descrição da Ocorrência':'Pauta / Conteúdo'}</div>
     <div style="font-size:13px;color:#475569;line-height:1.7;">${r.pauta||''}</div>
   </div>
+  ${r.observacoes ? `
+  <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#374151;margin-bottom:8px;">Observações</div>
+    <div style="font-size:13px;color:#475569;line-height:1.7;">${r.observacoes}</div>
+  </div>` : ''}
   ${participantesRenderizados.length > 0 ? `
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;overflow:hidden;margin-bottom:16px;">
     <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;">LISTA DE FREQUÊNCIA (${participantesRenderizados.length + apenasOnline.length})</div>

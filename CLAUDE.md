@@ -419,6 +419,13 @@ feita separadamente via Codex/SQL manual — só o código.
   ver seção 4.5), mas o PDF/impressão ainda usa `montarConteudoImpressaoReincidencia`
   (HTML string remontado à parte, em `RegistrosOperacionais.jsx`) — se um campo novo for
   adicionado ao modal, o PDF **não** o pega automaticamente; precisa ser replicado lá também.
+- **Mesmo padrão de divergência no Registro Operacional comum** (`RegistrosOperacionais.jsx`):
+  o PDF/impressão usa a função de topo `montarConteudoImpressaoRegistro()`, mas o botão
+  "Compartilhar no WhatsApp" monta o HTML **de novo, inline**, dentro do próprio `onClick`
+  (around linha 1320+) — duas cópias quase idênticas da mesma montagem. Já corrigido um caso
+  real (campo `observacoes` sumia do PDF mas aparecia no WhatsApp — reportado pelo Gileno),
+  mas o risco de drift continua: qualquer campo novo adicionado a um dos dois precisa ser
+  replicado manualmente no outro.
 - **RLS + GRANTS não versionados no repo**: aplicados manualmente via ChatGPT Codex
   direto no Supabase, fora do controle de versão (ver seções 5.2 e 6).
 - **README desatualizado**: menciona deploy via Vercel, mas a hospedagem real é
