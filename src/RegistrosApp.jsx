@@ -15,11 +15,15 @@ import TratamentoReincidencia from './pages/TratamentoReincidencia.jsx'
 
 export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
   const [step, setStep] = useState(0)
-  // Abertura de Ocorrência não segue o wizard padrão (sem modalidade/
-  // participantes/checklist) — é um fluxo à parte, aberto a partir do card
-  // extra em R0TipoRegistro: primeiro uma telinha de escolha (manual x lote),
-  // depois o formulário manual de sempre ou a importação em lote.
-  const [modoOcorrencia, setModoOcorrencia] = useState(null) // null | 'escolha' | 'manual' | 'lote'
+  // Tratamento de Retrabalho (tipo_ocorrencia 'OCORRENCIA') não segue o
+  // wizard padrão (sem modalidade/participantes/checklist) — é um fluxo à
+  // parte, aberto a partir do card extra em R0TipoRegistro: primeiro uma
+  // telinha de escolha (manual x lote), depois o formulário manual de
+  // sempre ou a importação em lote. 'manual-generica' é a Ocorrência
+  // Genérica (tipo_ocorrencia 'OCORRENCIA_GENERICA') — cópia preservada do
+  // fluxo original, sem opção de lote (isso é específico do Retrabalho/TOA),
+  // vai direto pro formulário manual.
+  const [modoOcorrencia, setModoOcorrencia] = useState(null) // null | 'escolha' | 'manual' | 'manual-generica' | 'lote'
   // Tratamento de Reincidência — mesmo princípio de "fluxo à parte" da
   // Ocorrência, mas sem a telinha de escolha manual/lote (só 1 caminho por
   // enquanto).
@@ -59,8 +63,21 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
       <AberturaOcorrencia
         usuarioLogado={usuarioLogado}
         isOnline={isOnline}
+        tipoOcorrencia="OCORRENCIA"
         onHome={onVoltar}
         onVoltar={() => setModoOcorrencia('escolha')}
+      />
+    )
+  }
+
+  if (modoOcorrencia === 'manual-generica') {
+    return (
+      <AberturaOcorrencia
+        usuarioLogado={usuarioLogado}
+        isOnline={isOnline}
+        tipoOcorrencia="OCORRENCIA_GENERICA"
+        onHome={onVoltar}
+        onVoltar={() => setModoOcorrencia(null)}
       />
     )
   }
@@ -130,6 +147,7 @@ export default function RegistrosApp({ usuarioLogado, onVoltar, isOnline }) {
               temPermissao(usuarioLogado, 'importar_ocorrencias_lote') ? 'escolha' : 'manual'
             )}
             onAbrirReincidencia={() => setMostrarReincidencia(true)}
+            onAbrirOcorrenciaGenerica={() => setModoOcorrencia('manual-generica')}
           />
         )}
         {step === 1 && <R1Modalidade    {...stepProps} />}

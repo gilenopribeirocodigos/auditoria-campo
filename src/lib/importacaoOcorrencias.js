@@ -9,7 +9,7 @@
 // travar a importação das demais (fluxo não-bloqueante).
 // ─────────────────────────────────────────────────────────────────────────────
 import { supabase } from './supabase.js'
-import { gerarNumeroOcorrencia } from './ocorrencias.js'
+import { gerarNumeroRetrabalho } from './ocorrencias.js'
 
 export const MARCADOR_ERRO_CONCLUSAO = 'POSSÍVEL ERRO DE CONCLUSÃO DO SERVIÇO'
 export const MARCADOR_OBSERVACAO     = 'OBSERVAÇÃO'
@@ -283,11 +283,12 @@ export async function resolverLinhasImportacao(linhas) {
 
 function payloadOcorrenciaDaLinha(linha, usuarioLogado) {
   return {
-    numero_ocorrencia:        gerarNumeroOcorrencia(),
+    numero_ocorrencia:        gerarNumeroRetrabalho(),
     descricao:                linha.descricao,
     motivo:                   linha.motivo || null,
     uc:                       linha.uc || null,
     os:                       linha.os || null,
+    registro_execucao:        linha.registroExec || null,
     data_conclusao:           apenasData(linha.dataConclusaoFormatada) || null,
     eletricista_equipe:       linha.eletricistaEquipe  || null,
     eletricista_equipe_2:     linha.eletricistaEquipe2 || null,
@@ -307,7 +308,7 @@ export async function confirmarLinhasResolvidas(linhasResolvidas, usuarioLogado)
 
   let { data, error } = await supabase.from('ocorrencias').insert(payloads).select()
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const compat = payloads.map(({ eletricista_equipe_2, motivo, uc, os, data_conclusao, ...resto }) => resto)
+    const compat = payloads.map(({ eletricista_equipe_2, motivo, uc, os, registro_execucao, data_conclusao, ...resto }) => resto)
     ;({ data, error } = await supabase.from('ocorrencias').insert(compat).select())
   }
   if (error) throw error
@@ -397,7 +398,7 @@ export async function corrigirEAbrirPendencia(pendencia, ajustes, usuarioLogado)
 
   let { error } = await supabase.from('ocorrencias').insert(payload)
   if (error && /column .* does not exist/i.test(error.message || '')) {
-    const { eletricista_equipe_2, motivo, uc, os, data_conclusao, ...compat } = payload
+    const { eletricista_equipe_2, motivo, uc, os, registro_execucao, data_conclusao, ...compat } = payload
     ;({ error } = await supabase.from('ocorrencias').insert(compat))
   }
   if (error) throw error

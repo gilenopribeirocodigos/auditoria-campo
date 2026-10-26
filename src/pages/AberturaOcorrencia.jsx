@@ -248,7 +248,15 @@ function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
   )
 }
 
-export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, onVoltar }) {
+export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, onVoltar, tipoOcorrencia = 'OCORRENCIA' }) {
+  // 'OCORRENCIA' = Tratamento de Retrabalho (tipo original, renomeado/
+  // restilizado); 'OCORRENCIA_GENERICA' = cópia preservada do fluxo
+  // original (com Motivo) — ver seção 4.5 do CLAUDE.md. Mesmo formulário,
+  // só muda cabeçalho, se mostra Motivo ou os campos de Dados Técnicos do
+  // Retrabalho (UC/OS/Registro de Execução/Data de Conclusão), e o
+  // tipo_ocorrencia gravado.
+  const ehGenerica = tipoOcorrencia === 'OCORRENCIA_GENERICA'
+  const nomeTipo = ehGenerica ? 'Ocorrência' : 'Retrabalho'
   const [prefixo,            setPrefixo]            = useState('')
   const [colaboradorEnvolvido, setColaboradorEnvolvido] = useState('')
   const [colaboradorEnvolvido2, setColaboradorEnvolvido2] = useState('')
@@ -260,6 +268,14 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   const [status,              setStatus]            = useState('idle') // idle | saving | saved | error
   const [erro,                setErro]              = useState('')
   const [salvoOffline,        setSalvoOffline]      = useState(false)
+
+  // ─── Dados Técnicos (só pro Tratamento de Retrabalho) — mesmos campos que
+  // vêm da importação em lote (planilha TOA), só que digitados à mão aqui.
+  // Opcionais: nem toda abertura manual de Retrabalho tem esses dados.
+  const [uc,               setUc]               = useState('')
+  const [os,                setOs]              = useState('')
+  const [registroExecucao,  setRegistroExecucao] = useState('')
+  const [dataConclusao,     setDataConclusao]    = useState('')
 
   // Data/Hora de abertura — preenchidas automaticamente, mas editáveis
   // (mesmo padrão de R2Identificacao.jsx).
@@ -279,17 +295,20 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
 
   // Motivos cadastrados pra "Abertura de Ocorrência" (mesmo cadastro/tela de
   // Registros Operacionais, tipo_registro = 'OCORRENCIA' — ver
-  // MotivosRegistrosOperacionais.jsx). Só fica obrigatório quando existe
-  // pelo menos um cadastrado — mesma regra de R4Conteudo.jsx — assim a tela
-  // continua funcionando antes do admin cadastrar motivos pra Ocorrência.
+  // MotivosRegistrosOperacionais.jsx; reaproveitado pela Ocorrência Genérica
+  // mesmo depois do rename, já que os motivos cadastrados ali sempre foram
+  // pensados pro caso genérico, não pro Retrabalho). Só fica obrigatório
+  // quando existe pelo menos um cadastrado — mesma regra de R4Conteudo.jsx.
+  // O Tratamento de Retrabalho não usa Motivo — nem busca a lista.
   const [motivos, setMotivos] = useState([])
-  const [carregandoMotivos, setCarregandoMotivos] = useState(true)
+  const [carregandoMotivos, setCarregandoMotivos] = useState(ehGenerica)
   useEffect(() => {
+    if (!ehGenerica) return
     listarMotivosPorTipo('OCORRENCIA')
       .then(lista => setMotivos(lista.map(m => m.motivo)))
       .catch(() => setMotivos([]))
       .finally(() => setCarregandoMotivos(false))
-  }, [])
+  }, [ehGenerica])
 
   const obterGPS = () => {
     if (!navigator.geolocation) { setGpsStatus('erro'); return }
@@ -329,7 +348,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   useEffect(() => { obterGPS() }, [])
 
   const podeEnviar = colaboradorEnvolvido.trim() && direcionadoPara.trim() && descricao.trim().length > 0 && !!foto &&
-    !carregandoMotivos && (motivos.length === 0 || !!motivo)
+    (!ehGenerica || (!carregandoMotivos && (motivos.length === 0 || !!motivo)))
 
   const addFoto = async e => {
     const file = e.target.files?.[0]
@@ -344,14 +363,27 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
     setStatus('saving')
     setErro('')
 
+    // data_conclusao vem como TEXT no formato dia/mês/ano (mesmo padrão da
+    // importação em lote — ver corrigirDataConclusao/apenasData em
+    // lib/importacaoOcorrencias.js) — o <input type="date"> dá YYYY-MM-DD,
+    // então converte aqui antes de montar o form.
+    const dataConclusaoBr = dataConclusao
+      ? (() => { const [ano, mes, dia] = dataConclusao.split('-'); return `${dia}/${mes}/${ano}` })()
+      : null
+
     const form = {
+      tipo_ocorrencia:           tipoOcorrencia,
       prefixo:                   prefixo.trim().toUpperCase(),
       eletricista_equipe:        colaboradorEnvolvido.trim(),
       eletricista_equipe_2:      colaboradorEnvolvido2.trim() || null,
       direcionado_para:          direcionadoPara.trim(),
       matricula_fiscal_destino:  matriculaDestino,
       descricao:                 descricao.trim(),
-      motivo:                    motivo || null,
+      motivo:                    ehGenerica ? (motivo || null) : null,
+      uc:                        !ehGenerica ? (uc.trim() || null) : null,
+      os:                        !ehGenerica ? (os.trim() || null) : null,
+      registro_execucao:        !ehGenerica ? (registroExecucao.trim() || null) : null,
+      data_conclusao:            !ehGenerica ? dataConclusaoBr : null,
       foto,
       aberto_por:                usuarioLogado?.nome || '',
       matricula_aberto_por:      usuarioLogado?.matricula || '',
@@ -385,6 +417,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
   const reiniciar = () => {
     setPrefixo(''); setColaboradorEnvolvido(''); setColaboradorEnvolvido2(''); setDirecionadoPara(''); setMatriculaDestino('')
     setDescricao(''); setMotivo(''); setFoto(null); setStatus('idle'); setErro(''); setSalvoOffline(false)
+    setUc(''); setOs(''); setRegistroExecucao(''); setDataConclusao('')
     setData(new Date().toISOString().split('T')[0]); setHora(new Date().toTimeString().slice(0, 5))
     setEndereco(''); setLat(null); setLng(null); setGpsStatus('idle')
     obterGPS()
@@ -402,9 +435,9 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
           }}>← Voltar</button>
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>📦 Abertura de Ocorrência</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>{ehGenerica ? '📦 Abertura de Ocorrência' : '🔧 Tratamento de Retrabalho'}</div>
         <p style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>
-          Relate o problema e direcione para o fiscal tratar
+          {ehGenerica ? 'Relate o problema e direcione para o fiscal tratar' : 'Relate o retrabalho e direcione para o fiscal tratar'}
         </p>
       </header>
 
@@ -422,7 +455,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
               <div style={{ background: salvoOffline ? '#fef3c7' : '#eef2ff', border: `1.5px solid ${salvoOffline ? '#fcd34d' : '#c7d2fe'}`, borderRadius: 14, padding: '18px 16px', marginBottom: 16, textAlign: 'center' }}>
                 <div style={{ fontSize: 36, marginBottom: 8 }}>{salvoOffline ? '📵' : '✅'}</div>
                 <p style={{ color: salvoOffline ? '#92400e' : '#3730a3', fontWeight: 800, fontSize: 15, marginBottom: 4 }}>
-                  {salvoOffline ? 'Ocorrência salva localmente!' : 'Ocorrência enviada com sucesso!'}
+                  {salvoOffline ? `${nomeTipo} salvo(a) localmente!` : `${nomeTipo} enviado(a) com sucesso!`}
                 </p>
                 <p style={{ color: '#64748b', fontSize: 12 }}>
                   {salvoOffline
@@ -431,7 +464,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                 </p>
               </div>
               <button onClick={reiniciar} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#4338ca', color: '#fff', fontSize: 15, fontWeight: 700, cursor: 'pointer', marginBottom: 10 }}>
-                + Abrir Nova Ocorrência
+                + Abrir Novo {nomeTipo}
               </button>
               <button onClick={onVoltar} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                 ← Voltar
@@ -513,19 +546,45 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                 onNome={setDirecionadoPara} onMatricula={setMatriculaDestino}
               />
 
-              <div className="form-group">
-                <label className="form-label">Motivo{motivos.length > 0 ? ' *' : ' (opcional)'}</label>
-                <SearchSelect
-                  opcoes={motivos} valor={motivo}
-                  onSelecionar={setMotivo}
-                  placeholder={carregandoMotivos ? 'Carregando motivos...' : 'Buscar e escolher o motivo...'}
-                />
-                {!carregandoMotivos && motivos.length === 0 && (
-                  <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                    Nenhum motivo cadastrado ainda para Abertura de Ocorrência (⚙️ Motivos, em Registros Operacionais).
-                  </p>
-                )}
-              </div>
+              {ehGenerica && (
+                <div className="form-group">
+                  <label className="form-label">Motivo{motivos.length > 0 ? ' *' : ' (opcional)'}</label>
+                  <SearchSelect
+                    opcoes={motivos} valor={motivo}
+                    onSelecionar={setMotivo}
+                    placeholder={carregandoMotivos ? 'Carregando motivos...' : 'Buscar e escolher o motivo...'}
+                  />
+                  {!carregandoMotivos && motivos.length === 0 && (
+                    <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                      Nenhum motivo cadastrado ainda para Abertura de Ocorrência (⚙️ Motivos, em Registros Operacionais).
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!ehGenerica && (
+                <div style={{ background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                  <p style={{ fontSize: 12, fontWeight: 800, color: '#3730a3', marginBottom: 10 }}>📊 Dados Técnicos (opcional)</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">UC</label>
+                      <input className="form-input" value={uc} onChange={e => setUc(e.target.value)} placeholder="Ex: 1845675" />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">OS</label>
+                      <input className="form-input" value={os} onChange={e => setOs(e.target.value)} placeholder="Ex: 2026.00-10.00/26615.00" />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ marginTop: 10 }}>
+                    <label className="form-label">Registro de Execução</label>
+                    <input className="form-input" value={registroExecucao} onChange={e => setRegistroExecucao(e.target.value)} placeholder="Ex: Troca de fase / 12020218760" />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Data de Conclusão</label>
+                    <input className="form-input" type="date" value={dataConclusao} onChange={e => setDataConclusao(e.target.value)} />
+                  </div>
+                </div>
+              )}
 
               <Textarea label="Descrição da ocorrência *" value={descricao} onChange={setDescricao}
                 placeholder="Descreva o que aconteceu (ex: devolução de medidor antigo não realizada)..." rows={4} />
@@ -573,7 +632,7 @@ export default function AberturaOcorrencia({ usuarioLogado, isOnline, onHome, on
                 fontSize: 15, fontWeight: 700, cursor: (!podeEnviar || status === 'saving') ? 'not-allowed' : 'pointer',
                 marginBottom: 10,
               }}>
-                {status === 'saving' ? '⏳ Enviando...' : online ? '📦 Enviar Ocorrência' : '📵 Salvar Offline'}
+                {status === 'saving' ? '⏳ Enviando...' : online ? `${ehGenerica ? '📦' : '🔧'} Enviar ${nomeTipo}` : '📵 Salvar Offline'}
               </button>
               <button onClick={onVoltar} style={{ width: '100%', padding: 13, borderRadius: 10, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#374151', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
                 ← Cancelar

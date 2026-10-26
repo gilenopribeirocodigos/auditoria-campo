@@ -1,9 +1,11 @@
 // ── pages/EscolhaAberturaOcorrencia.jsx ─────────────────────────────────────
-// Telinha intermediária entre o card "Abertura de Ocorrência" (R0TipoRegistro)
-// e o formulário de verdade: deixa escolher abrir uma Ocorrência manual (fluxo
-// de sempre) ou importar várias de uma vez a partir de planilha (TOA). A
+// Telinha intermediária entre o card "Tratamento de Retrabalho" (R0TipoRegistro)
+// e o formulário de verdade: deixa escolher abrir um Retrabalho manual (fluxo
+// de sempre) ou importar vários de uma vez a partir de planilha (TOA). A
 // opção de lote só aparece pra quem tem a permissão 'importar_ocorrencias_lote'
-// — sem ela, o ideal é nem mostrar essa escolha (ver RegistrosApp.jsx).
+// — sem ela, o ideal é nem mostrar essa escolha (ver RegistrosApp.jsx). Só
+// serve o Retrabalho (tipo_ocorrencia 'OCORRENCIA') — a Ocorrência Genérica
+// vai direto pro manual, sem telinha de escolha (lote é específico do TOA).
 import { temPermissao } from '../lib/auth.js'
 
 export default function EscolhaAberturaOcorrencia({ usuarioLogado, onManual, onLote, onHome }) {
@@ -21,7 +23,7 @@ export default function EscolhaAberturaOcorrencia({ usuarioLogado, onManual, onL
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
           }}>← Voltar</button>
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>📦 Abertura de Ocorrência</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>🔧 Tratamento de Retrabalho</div>
         <p style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>Como você quer abrir?</p>
       </header>
 
@@ -41,7 +43,7 @@ export default function EscolhaAberturaOcorrencia({ usuarioLogado, onManual, onL
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 15, fontWeight: 700, color: '#4338ca', marginBottom: 2 }}>Abrir Manual</p>
               <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>
-                Uma ocorrência de cada vez — formulário atual
+                Um retrabalho de cada vez — formulário atual
               </p>
             </div>
             <div style={{ fontSize: 18, color: '#4338ca' }}>›</div>
