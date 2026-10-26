@@ -7,7 +7,7 @@ import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 import { compartilharImagemNativo, compartilharPDFNativo, renderizarHtmlParaCanvas, renderizarElementoVisivelParaCanvas, descreverErro, compartilharImagemWeb } from '../lib/compartilhar.js'
-import { MARCADOR_ERRO_CONCLUSAO, MARCADOR_OBSERVACAO } from '../lib/importacaoOcorrencias.js'
+import { MARCADOR_ERRO_CONCLUSAO, MARCADOR_OBSERVACAO, parseDescricaoImportada } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 import MotivosRegistrosOperacionais from './MotivosRegistrosOperacionais.jsx'
 
@@ -202,11 +202,17 @@ async function gerarPDFRegistro(r, assinaturasOnline = [], versaoApp = '') {
 // fallback pra ocorrências antigas, sem linhas na tabela nova).
 function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc = null) {
   const pendente = oc.status === 'PENDENTE'
+  const ehGenerica = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA'
   const formatDataHora = iso => iso ? new Date(iso).toLocaleString('pt-BR') : '—'
   const modoEquipe = Array.isArray(colaboradoresOc) && colaboradoresOc.length > 0
-  const colaboradores = modoEquipe
-    ? `${colaboradoresOc.length} colaborador${colaboradoresOc.length === 1 ? '' : 'es'} da equipe`
-    : [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
+  // Nomes em linhas separadas — mesmo padrão do modal (ver detalheOc em
+  // RegistrosOperacionais.jsx) em vez de um resumo "N colaborador(es) da
+  // equipe".
+  const colaboradoresNomeados = modoEquipe
+    ? colaboradoresOc.map((c, i) => [`Colaborador ${i + 1}`, c.nome])
+    : [oc.eletricista_equipe, oc.eletricista_equipe_2]
+        .map((nome, i) => [`Colaborador ${i + 1}`, nome])
+        .filter(([, nome]) => nome)
   const assinantes = modoEquipe
     ? colaboradoresOc.filter(c => c.assinatura_url).map(c => ({ nome: c.nome, url: c.assinatura_url }))
     : [
@@ -217,22 +223,40 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc =
     ? `✍️ COLABORADOR(ES) CIENTIFICADO(S) (${assinantes.length} de ${colaboradoresOc.length})`
     : '✍️ COLABORADOR(ES) CIENTIFICADO(S)'
 
+  // Dados Técnicos (só Retrabalho) — mesma lógica do modal: prefere as
+  // colunas estruturadas, cai pro texto da descrição importada em lote
+  // (ocorrências antigas, antes dessas colunas existirem) quando vazias.
+  const parsedDescricao = !ehGenerica ? parseDescricaoImportada(oc.descricao) : null
+  const dadosTecnicos = !ehGenerica ? [
+    ['UC', oc.uc || parsedDescricao?.uc],
+    ['OS', oc.os || parsedDescricao?.os],
+    ['Registro de Execução', oc.registro_execucao || parsedDescricao?.registroExec],
+    ['Data de Conclusão', oc.data_conclusao || parsedDescricao?.dataConclusao],
+  ].filter(([, v]) => v) : []
+  const descricaoExibida = (!ehGenerica && parsedDescricao)
+    ? [
+        'IMPORTADO EM LOTE VIA PLANILHA',
+        parsedDescricao.observacao ? `\n📝 ${MARCADOR_OBSERVACAO}: ${parsedDescricao.observacao}` : '',
+        parsedDescricao.erroConclusao ? `\n⚠️ ${MARCADOR_ERRO_CONCLUSAO}: ${parsedDescricao.erroConclusao}` : '',
+      ].filter(Boolean).join('\n')
+    : oc.descricao
+
   return `
   <div style="background:linear-gradient(135deg,#4338ca,#6d28d9);color:#fff;padding:20px 24px;border-radius:14px;margin-bottom:16px;">
     <div style="font-size:11px;opacity:0.7;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px;">VérticeGP</div>
-    <div style="font-size:20px;font-weight:800;">📦 Abertura de Ocorrência</div>
+    <div style="font-size:20px;font-weight:800;">${ehGenerica ? '📦 Abertura de Ocorrência' : '🔧 Tratamento de Retrabalho'}</div>
     <div style="font-size:13px;opacity:0.8;margin-top:2px;">${numeroOcorrencia(oc)}</div>
   </div>
   <div style="text-align:center;margin-bottom:16px;">
     <span style="display:inline-block;padding:4px 16px;border-radius:20px;font-size:13px;font-weight:700;background:${pendente ? '#e0e7ff' : '#dcfce7'};color:${pendente ? '#3730a3' : '#15803d'};">${pendente ? '🟣 Pendente' : '🟢 Tratada'}</span>
   </div>
   <div style="background:#fff;border-radius:14px;border:1px solid #e2e8f0;padding:4px 0;margin-bottom:16px;">
-    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">Dados da Ocorrência</div>
+    <div style="padding:12px 14px;border-bottom:1px solid #f1f5f9;font-size:12px;font-weight:700;color:#374151;text-transform:uppercase;">${ehGenerica ? 'Dados da Ocorrência' : 'Dados do Retrabalho'}</div>
     <table style="width:100%;border-collapse:collapse;">
-      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ['Colaborador(es)', colaboradores], ['Direcionado para', oc.direcionado_para], ['Local', oc.endereco]].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
+      ${[['Aberto por', oc.aberto_por], ['Data/Hora', formatDataHora(oc.criado_em)], ['Prefixo/Equipe', oc.prefixo], ...colaboradoresNomeados, ['Direcionado para', oc.direcionado_para], ...(ehGenerica ? [['Local', oc.endereco]] : [])].filter(([, v]) => v).map(([l, v]) => `<tr><td style="padding:7px 10px;color:#64748b;font-size:13px;border-bottom:1px solid #f1f5f9;">${l}</td><td style="padding:7px 10px;color:#1e293b;font-size:13px;font-weight:600;text-align:right;border-bottom:1px solid #f1f5f9;">${v}</td></tr>`).join('')}
     </table>
   </div>
-  ${oc.motivo ? (() => {
+  ${ehGenerica && oc.motivo ? (() => {
     const tema = temaMotivoOcorrencia(oc.motivo)
     return `<div style="background:${tema.bg};border:1.5px solid ${tema.border};border-radius:14px;padding:14px 16px;margin-bottom:16px;display:flex;align-items:center;gap:12px;">
       <div style="font-size:24px;">${tema.emoji}</div>
@@ -242,9 +266,20 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc =
       </div>
     </div>`
   })() : ''}
+  ${dadosTecnicos.length > 0 ? `
+  <div style="background:#eef2ff;border:1.5px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
+    <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.4px;">📊 Dados Técnicos</div>
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0;">
+      ${dadosTecnicos.map(([l, v]) => `
+        <div style="padding:7px 10px 7px 0;">
+          <div style="font-size:10px;font-weight:700;color:#4338ca;text-transform:uppercase;letter-spacing:0.3px;">${l}</div>
+          <div style="font-size:13px;font-weight:800;color:#312e81;margin-top:2px;">${v}</div>
+        </div>`).join('')}
+    </div>
+  </div>` : ''}
   <div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:14px;padding:16px;margin-bottom:16px;">
-    <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;">DESCRIÇÃO DA OCORRÊNCIA</div>
-    <div style="font-size:13px;color:#3730a3;line-height:1.7;">${destacarDescricaoHtml(oc.descricao)}</div>
+    <div style="font-size:12px;font-weight:700;color:#3730a3;margin-bottom:8px;">DESCRIÇÃO${ehGenerica ? ' DA OCORRÊNCIA' : ''}</div>
+    <div style="font-size:13px;color:#3730a3;line-height:1.7;">${destacarDescricaoHtml(descricaoExibida)}</div>
   </div>
   ${!pendente ? `
   <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:14px;padding:16px;margin-bottom:16px;">
@@ -284,9 +319,10 @@ function montarConteudoImpressaoOcorrencia(oc, versaoApp = '', colaboradoresOc =
 }
 
 function imprimirOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
+  const titulo = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA' ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'
   const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp, colaboradoresOc)
   const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"/>
-  <title>Abertura de Ocorrência</title>
+  <title>${titulo}</title>
   <style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:24px;}
   @media print{body{background:#fff;padding:0;}.no-print{display:none!important;}@page{margin:15mm;}}</style></head><body>
   ${conteudo}
@@ -303,13 +339,14 @@ function imprimirOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
 }
 
 async function gerarPDFOcorrenciaDoc(oc, versaoApp = '', colaboradoresOc = null) {
+  const titulo = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA' ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'
   const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoApp, colaboradoresOc)
   const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#fff;padding:24px;box-sizing:border-box;width:700px;color:#1e293b;">${conteudo}</div>`
   const canvas = await renderizarHtmlParaCanvas(html, {
     largura: 700, escala: 4, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#fff',
   })
   const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.pdf`.replace(/\s+/g, '_')
-  await compartilharPDFNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
+  await compartilharPDFNativo(canvas, nomeArq, { titulo })
 }
 
 // ─── Mesmo padrão de montarConteudoImpressaoOcorrencia, pra Tratamento de
@@ -485,7 +522,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // perfil continua vendo todos os tipos (comportamento de sempre, ninguém
   // que já usa o sistema hoje é afetado). Com pelo menos uma marcada, só os
   // tipos marcados aparecem — na lista, no filtro e no resumo.
-  const TIPOS_REGISTRO_TODOS = [...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA', 'REINCIDENCIA']
+  const TIPOS_REGISTRO_TODOS = [...Object.keys(TIPOS_REGISTRO), 'OCORRENCIA', 'REINCIDENCIA', 'OCORRENCIA_GENERICA']
   const tiposPermitidos = (() => {
     const permitidos = TIPOS_REGISTRO_TODOS.filter(t => temPermissao(usuarioLogado, `registro_tipo_${t}`))
     return permitidos.length > 0 ? permitidos : null
@@ -502,6 +539,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const [loading,       setLoading]       = useState(true)
   const [ocorrencias,   setOcorrencias]   = useState([])
   const [reincidencias, setReincidencias] = useState([])
+  const [genericas,     setGenericas]     = useState([]) // Ocorrência Genérica (tipo_ocorrencia 'OCORRENCIA_GENERICA') — ver seção 4.5 do CLAUDE.md
   const [detalhe,       setDetalhe]       = useState(null)
   const [detalheOc,     setDetalheOc]     = useState(null) // ocorrência aberta no modal de PDF/Zap
   const [detalheReinc,  setDetalheReinc]  = useState(null) // reincidência aberta no modal de PDF/Zap
@@ -540,14 +578,15 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const compartilharOcorrenciaWhatsApp = async (oc) => {
     setCapturandoOc(true)
     try {
+      const titulo = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA' ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'
       const conteudo = montarConteudoImpressaoOcorrencia(oc, versaoSistema, colaboradoresOc)
       const html = `<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f4f8;padding:20px;box-sizing:border-box;width:640px;">${conteudo}</div>`
       const canvas = await renderizarHtmlParaCanvas(html, { largura: 640, escala: 6, aguardarImagens: true, esperaExtraMs: 80, corFundo: '#f0f4f8' })
       const nomeArq = `Ocorrencia_${oc.numero_ocorrencia || oc.id}.png`.replace(/\s+/g, '_')
       if (Capacitor.isNativePlatform()) {
-        await compartilharImagemNativo(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
+        await compartilharImagemNativo(canvas, nomeArq, { titulo })
       } else {
-        await compartilharImagemWeb(canvas, nomeArq, { titulo: 'Abertura de Ocorrência' })
+        await compartilharImagemWeb(canvas, nomeArq, { titulo })
       }
     } catch (err) {
       console.error(err); alert('Não foi possível gerar a imagem: ' + descreverErro(err))
@@ -596,18 +635,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         setTokensAtivos({})
         setOcorrencias([])
         setReincidencias([])
+        setGenericas([])
         setLoading(false)
         return
       }
 
-      // ─── Ocorrências e Reincidências abertas pelo usuário (ou todas, se
-      // privilegiado) ─── Mesma tabela (`ocorrencias`), discriminadas por
-      // tipo_ocorrencia. Aparecem junto com os registros normais nesta tela
-      // pra fins de busca/acompanhamento — status PENDENTE/TRATADA acompanha
-      // o que foi feito em Tratamento de Não Conformidades (só pra
-      // Ocorrência; Reincidência ainda não tem esse fluxo — fase futura).
-      // Respeita o filtro Tipo (multi-select): some se houver tipos
-      // selecionados e nenhum deles for Ocorrência/Reincidência.
+      // ─── Tratamento de Retrabalho, Reincidências e Ocorrência Genérica
+      // abertos pelo usuário (ou todos, se privilegiado) ─── Mesma tabela
+      // (`ocorrencias`), discriminados por tipo_ocorrencia. Aparecem junto
+      // com os registros normais nesta tela pra fins de busca/
+      // acompanhamento — status PENDENTE/TRATADA acompanha o que foi feito
+      // em Tratamento de Não Conformidades (só pra Retrabalho; Reincidência
+      // e Genérica ainda não têm esse fluxo — fase futura). Respeita o
+      // filtro Tipo (multi-select): some se houver tipos selecionados e
+      // nenhum deles for Retrabalho/Reincidência/Genérica.
       // "Todos" (tiposSel vazio) passa a significar "todos os tipos
       // PERMITIDOS" — pra perfis sem restrição (tiposPermitidos null) isso
       // já é a lista inteira de sempre; pra um perfil restrito (ex: ANALISTA
@@ -616,12 +657,14 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       const tiposSelEfetivo = tiposPermitidos
         ? (tiposSel.length > 0 ? tiposSel.filter(t => tiposPermitidos.includes(t)) : tiposPermitidos)
         : tiposSel
-      const tiposRegistroSel = tiposSelEfetivo.filter(t => t !== 'OCORRENCIA' && t !== 'REINCIDENCIA')
+      const tiposRegistroSel = tiposSelEfetivo.filter(t => t !== 'OCORRENCIA' && t !== 'REINCIDENCIA' && t !== 'OCORRENCIA_GENERICA')
       const mostrarOcorrencias = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('OCORRENCIA')
       const mostrarReincidencias = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('REINCIDENCIA')
-      if (!mostrarOcorrencias && !mostrarReincidencias) {
+      const mostrarGenericas = tiposSelEfetivo.length === 0 || tiposSelEfetivo.includes('OCORRENCIA_GENERICA')
+      if (!mostrarOcorrencias && !mostrarReincidencias && !mostrarGenericas) {
         setOcorrencias([])
         setReincidencias([])
+        setGenericas([])
       } else {
         try {
           const ocData = await listarOcorrenciasDoUsuario(usuarioLogado)
@@ -630,10 +673,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           const ocFiltradas = filtros.filtrar(ocNoPeriodo, { prefixoField: 'prefixo' })
           setOcorrencias(mostrarOcorrencias ? ocFiltradas.filter(o => (o.tipo_ocorrencia || 'OCORRENCIA') === 'OCORRENCIA') : [])
           setReincidencias(mostrarReincidencias ? ocFiltradas.filter(o => o.tipo_ocorrencia === 'REINCIDENCIA') : [])
+          setGenericas(mostrarGenericas ? ocFiltradas.filter(o => o.tipo_ocorrencia === 'OCORRENCIA_GENERICA') : [])
         } catch (e) {
           console.error('Erro ao carregar ocorrências:', e)
           setOcorrencias([])
           setReincidencias([])
+          setGenericas([])
         }
       }
 
@@ -684,9 +729,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
       }
 
       // ─── 2) Chama listarRegistros com filtros básicos (data + tipo + fiscais) ───
-      // Só "Abertura de Ocorrência"/"Tratamento de Reincidência" selecionados
-      // (sem nenhum tipo de Registro junto) → não busca registros_operacionais,
-      // a tabela é outra.
+      // Só "Tratamento de Retrabalho"/"Tratamento de Reincidência"/"Abertura
+      // de Ocorrência" (genérica) selecionados (sem nenhum tipo de Registro
+      // junto) → não busca registros_operacionais, a tabela é outra.
       const somenteOcorrenciaSelecionada = tiposSelEfetivo.length > 0 && tiposRegistroSel.length === 0
       let data = somenteOcorrenciaSelecionada ? [] : await listarRegistros({
         dataIni: ini,
@@ -780,7 +825,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           selecionados={tiposSel}
           onChange={setTiposSel}
           placeholder="Todos"
-          formatOption={k => k === 'OCORRENCIA' ? '📦 Abertura de Ocorrência' : k === 'REINCIDENCIA' ? '🔁 Tratamento de Reincidência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
+          formatOption={k => k === 'OCORRENCIA' ? '🔧 Tratamento de Retrabalho' : k === 'REINCIDENCIA' ? '🔁 Tratamento de Reincidência' : k === 'OCORRENCIA_GENERICA' ? '📦 Abertura de Ocorrência' : `${TIPOS_REGISTRO[k].emoji} ${TIPOS_REGISTRO[k].label}`}
         />
       </div>
       <div>
@@ -796,7 +841,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         <label style={LABEL_STYLE}>
           Status
           <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
-            (Abertura de Ocorrência)
+            (Retrabalho / Reincidência / Ocorrência)
           </span>
         </label>
         <select value={statusOcorrenciaSel} onChange={e => setStatusOcorrenciaSel(e.target.value)} style={{
@@ -825,6 +870,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   const itensLista = [
     ...ocorrencias.map(oc => ({ kind: 'ocorrencia', item: oc, ts: new Date(oc.criado_em).getTime() })),
     ...reincidencias.map(r => ({ kind: 'reincidencia', item: r, ts: new Date(r.criado_em).getTime() })),
+    ...genericas.map(g => ({ kind: 'generica', item: g, ts: new Date(g.criado_em).getTime() })),
     ...registros.map(r => ({ kind: 'registro', item: r, ts: timestampRegistro(r) })),
   ].sort((a, b) => b.ts - a.ts)
 
@@ -897,12 +943,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             Treinamento, Feedback, Reunião, Disciplinar) são avulsos, sem
             status, então mostram só o total. Grade de 3 colunas (em vez de
             cards largos) pra caber até 7 tipos sem rolar a tela pro lado. */}
-        {!loading && (registros.length > 0 || ocorrencias.length > 0 || reincidencias.length > 0) && (() => {
+        {!loading && (registros.length > 0 || ocorrencias.length > 0 || reincidencias.length > 0 || genericas.length > 0) && (() => {
           const porTipo = {}
           for (const r of registros) porTipo[r.tipo] = (porTipo[r.tipo] || 0) + 1
           const tiles = Object.entries(TIPOS_REGISTRO)
             .filter(([tipo]) => porTipo[tipo] > 0)
             .map(([tipo, cfg]) => ({ tipo, emoji: cfg.emoji, label: cfg.label, color: cfg.color, border: cfg.border, total: porTipo[tipo] }))
+          if (genericas.length > 0) {
+            tiles.unshift({
+              tipo: 'OCORRENCIA_GENERICA', emoji: '📦', label: 'Ocorrências', color: '#4338ca', border: '#c7d2fe',
+              total: genericas.length, pendentes: genericas.filter(o => o.status === 'PENDENTE').length,
+            })
+          }
           if (reincidencias.length > 0) {
             tiles.unshift({
               tipo: 'REINCIDENCIA', emoji: '🔁', label: 'Reincidência', color: '#c2410c', border: '#fed7aa',
@@ -911,7 +963,7 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           }
           if (ocorrencias.length > 0) {
             tiles.unshift({
-              tipo: 'OCORRENCIA', emoji: '📦', label: 'Ocorrências', color: '#4338ca', border: '#c7d2fe',
+              tipo: 'OCORRENCIA', emoji: '🔧', label: 'Retrabalho', color: '#4338ca', border: '#c7d2fe',
               total: ocorrencias.length, pendentes: ocorrencias.filter(o => o.status === 'PENDENTE').length,
             })
           }
@@ -954,6 +1006,37 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                 const pendente = oc.status === 'PENDENTE'
                 return (
                   <div key={`oc-${oc.id}`} onClick={() => setDetalheOc(oc)}
+                    style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
+                          <span style={{ fontSize: 18 }}>🔧</span>
+                          <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Tratamento de Retrabalho</span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                            background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
+                          <span>👤 {oc.aberto_por}</span>
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📅 {new Date(oc.criado_em).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+                          {oc.prefixo && (<><span style={{ margin: '0 8px' }}>·</span><span>🎯 {oc.prefixo}</span></>)}
+                          <span style={{ margin: '0 8px' }}>·</span>
+                          <span>📨 {oc.direcionado_para}</span>
+                        </div>
+                      </div>
+                      <span style={{ fontSize: 18, color: '#94a3b8', marginLeft: 8 }}>›</span>
+                    </div>
+                  </div>
+                )
+              }
+
+              if (kind === 'generica') {
+                const oc = item
+                const pendente = oc.status === 'PENDENTE'
+                return (
+                  <div key={`gen-${oc.id}`} onClick={() => setDetalheOc(oc)}
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
@@ -1444,27 +1527,58 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
             {(() => {
               const oc = detalheOc
               const pendente = oc.status === 'PENDENTE'
+              const ehGenerica = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA'
               const modoEquipeOc = Array.isArray(colaboradoresOc) && colaboradoresOc.length > 0
-              const colaboradores = modoEquipeOc
-                ? `${colaboradoresOc.length} colaborador${colaboradoresOc.length === 1 ? '' : 'es'} da equipe`
-                : [oc.eletricista_equipe, oc.eletricista_equipe_2].filter(Boolean).join(' e ')
+              // Nomes em linhas separadas (mesmo padrão de Eletricista 1/2 na
+              // Reincidência) em vez de um resumo tipo "2 colaboradores da
+              // equipe" — uma linha por pessoa, cobre tanto o caso fixo
+              // (eletricista_equipe/_2) quanto a equipe dinâmica
+              // (ocorrencias_colaboradores, qualquer tamanho).
+              const colaboradoresNomeados = modoEquipeOc
+                ? colaboradoresOc.map((c, i) => [`Colaborador ${i + 1}`, c.nome])
+                : [oc.eletricista_equipe, oc.eletricista_equipe_2]
+                    .map((nome, i) => [`Colaborador ${i + 1}`, nome])
+                    .filter(([, nome]) => nome)
               const assinantes = modoEquipeOc
                 ? colaboradoresOc.filter(c => c.assinatura_url).map(c => ({ nome: c.nome, url: c.assinatura_url }))
                 : [
                     { nome: oc.tratamento_assinatura_nome,  url: oc.tratamento_assinatura_url },
                     { nome: oc.tratamento_assinatura2_nome, url: oc.tratamento_assinatura2_url },
                   ].filter(a => a.nome || a.url)
+
+              // Dados Técnicos (só Tratamento de Retrabalho) — prefere as
+              // colunas estruturadas (uc/os/registro_execucao/
+              // data_conclusao); cai pro texto da descrição (ocorrências
+              // importadas em lote antes dessas colunas existirem) só quando
+              // a coluna está vazia — ver parseDescricaoImportada.
+              const parsedDescricao = !ehGenerica ? parseDescricaoImportada(oc.descricao) : null
+              const dadosTecnicos = !ehGenerica ? [
+                ['UC', oc.uc || parsedDescricao?.uc],
+                ['OS', oc.os || parsedDescricao?.os],
+                ['Registro de Execução', oc.registro_execucao || parsedDescricao?.registroExec],
+                ['Data de Conclusão', oc.data_conclusao || parsedDescricao?.dataConclusao],
+              ].filter(([, v]) => v) : []
+              // Descrição exibida: pra Retrabalho com texto importado em
+              // lote, mostra só Observação/Erro de conclusão (UC/OS/etc. já
+              // aparecem em Dados Técnicos, não precisa repetir) — senão
+              // mostra o texto puro (entrada manual, ou Ocorrência Genérica).
+              const descricaoExibida = (!ehGenerica && parsedDescricao)
+                ? [
+                    'IMPORTADO EM LOTE VIA PLANILHA',
+                    parsedDescricao.observacao ? `\n📝 ${MARCADOR_OBSERVACAO}: ${parsedDescricao.observacao}` : '',
+                    parsedDescricao.erroConclusao ? `\n⚠️ ${MARCADOR_ERRO_CONCLUSAO}: ${parsedDescricao.erroConclusao}` : '',
+                  ].filter(Boolean).join('\n')
+                : oc.descricao
               return (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ fontSize: 17, fontWeight: 800 }}>📦 Abertura de Ocorrência</h3>
+                    <h3 style={{ fontSize: 17, fontWeight: 800 }}>{ehGenerica ? '📦 Abertura de Ocorrência' : '🔧 Tratamento de Retrabalho'}</h3>
                     <button onClick={() => setDetalheOc(null)} style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', color: '#64748b' }}>×</button>
                   </div>
 
                   <div style={{ background: '#e0e7ff', border: '2px solid #c7d2fe', borderRadius: 14, padding: '16px', textAlign: 'center', marginBottom: 16 }}>
-                    <div style={{ fontSize: 40, marginBottom: 6 }}>📦</div>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: '#4338ca' }}>Abertura de Ocorrência</div>
-                    <div style={{ fontSize: 13, color: '#4338ca', opacity: 0.85, marginTop: 4 }}>{numeroOcorrencia(oc)}</div>
+                    <div style={{ fontSize: 40, marginBottom: 6 }}>{ehGenerica ? '📦' : '🔧'}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: '#4338ca' }}>{ehGenerica ? 'Abertura de Ocorrência' : 'Tratamento de Retrabalho'}</div>
                     <div style={{ marginTop: 8 }}>
                       <span style={{
                         padding: '3px 12px', borderRadius: 8, fontSize: 12, fontWeight: 700,
@@ -1475,21 +1589,22 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
 
                   <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 14 }}>
                     {[
+                      [ehGenerica ? 'Nº Ocorrência' : 'Nº Retrabalho', numeroOcorrencia(oc)],
                       ['Aberto por',        oc.aberto_por],
                       ['Data / Hora',       new Date(oc.criado_em).toLocaleString('pt-BR')],
                       ['Prefixo / Equipe',  oc.prefixo],
-                      ['Colaborador(es)',   colaboradores],
+                      ...colaboradoresNomeados,
                       ['Direcionado para',  oc.direcionado_para],
-                      ['Local',             oc.endereco],
+                      ...(ehGenerica ? [['Local', oc.endereco]] : []),
                     ].filter(([, v]) => v).map(([l, v]) => (
                       <div key={l} style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 0', borderBottom: '1px solid #f1f5f9', fontSize: 13 }}>
-                        <span style={{ color: '#94a3b8', fontWeight: 500 }}>{l}</span>
-                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word' }}>{v}</span>
+                        <span style={{ color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase', letterSpacing: 0.2 }}>{l}</span>
+                        <span style={{ color: '#1e293b', fontWeight: 600, textAlign: 'right', maxWidth: '60%', wordBreak: 'break-word', textTransform: 'uppercase' }}>{v}</span>
                       </div>
                     ))}
                   </div>
 
-                  {oc.motivo && (() => {
+                  {ehGenerica && oc.motivo && (() => {
                     const tema = temaMotivoOcorrencia(oc.motivo)
                     return (
                       <div style={{ background: tema.bg, border: `1.5px solid ${tema.border}`, borderRadius: 12, padding: '12px 14px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -1502,9 +1617,23 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     )
                   })()}
 
+                  {dadosTecnicos.length > 0 && (
+                    <div style={{ background: '#eef2ff', border: '1.5px solid #c7d2fe', borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>📊 Dados Técnicos</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 0 }}>
+                        {dadosTecnicos.map(([l, v], i) => (
+                          <div key={l} style={{ padding: '7px 0', borderTop: i >= 2 ? '1px solid #c7d2fe55' : 'none' }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: '#4338ca', textTransform: 'uppercase', letterSpacing: 0.3 }}>{l}</div>
+                            <div style={{ fontSize: 13, fontWeight: 800, color: '#312e81', marginTop: 2, wordBreak: 'break-word' }}>{v}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-                    <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>DESCRIÇÃO DA OCORRÊNCIA:</p>
-                    <p style={{ fontSize: 13, color: '#3730a3', lineHeight: 1.6 }}><DescricaoDestacada texto={oc.descricao} /></p>
+                    <p style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', marginBottom: 6 }}>DESCRIÇÃO{ehGenerica ? ' DA OCORRÊNCIA' : ''}:</p>
+                    <p style={{ fontSize: 13, color: '#3730a3', lineHeight: 1.6 }}><DescricaoDestacada texto={descricaoExibida} /></p>
                   </div>
 
                   {!pendente && (

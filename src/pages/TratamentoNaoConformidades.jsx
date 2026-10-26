@@ -1592,7 +1592,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             background: modulo === 'OCORRENCIAS' ? '#4338ca' : 'transparent',
             color: modulo === 'OCORRENCIAS' ? '#fff' : '#64748b',
           }}>
-            📦 Ocorrências
+            🔧 Retrabalho
             {pendentesOcQtd > 0 && (
               <span style={{
                 // Azul claro (não vermelho) — mesma cor já usada na Home pro
@@ -1761,8 +1761,8 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
               <CarregandoHexagono />
             ) : ocorrenciasFiltradas.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-                <div style={{ fontSize: 40, marginBottom: 10 }}>📦</div>
-                <p>Nenhuma ocorrência encontrada para os filtros selecionados</p>
+                <div style={{ fontSize: 40, marginBottom: 10 }}>🔧</div>
+                <p>Nenhum retrabalho encontrado para os filtros selecionados</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

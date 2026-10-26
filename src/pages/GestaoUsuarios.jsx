@@ -48,8 +48,9 @@ const TODAS_PERMISSOES = [
   // Operacional". Usado pra perfis restritos (ex: ANALISTA II).
   { id: 'acesso_registros_operacionais', label: 'Acesso a Registros Operacionais', grupo: 'Registros Operacionais' },
   { id: 'ver_todos_registros_operacionais', label: 'Ver registros de todos (senão, só os seus)', grupo: 'Registros Operacionais' },
-  { id: 'registro_tipo_OCORRENCIA',   label: 'Tipo visível: 📦 Abertura de Ocorrência', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_OCORRENCIA',   label: 'Tipo visível: 🔧 Tratamento de Retrabalho', grupo: 'Registros Operacionais' },
   { id: 'registro_tipo_REINCIDENCIA', label: 'Tipo visível: 🔁 Tratamento de Reincidência', grupo: 'Registros Operacionais' },
+  { id: 'registro_tipo_OCORRENCIA_GENERICA', label: 'Tipo visível: 📦 Abertura de Ocorrência', grupo: 'Registros Operacionais' },
   { id: 'registro_tipo_ALINHAMENTO',  label: 'Tipo visível: 📋 Alinhamento com Equipe', grupo: 'Registros Operacionais' },
   { id: 'registro_tipo_DS',           label: 'Tipo visível: 🛡️ Diálogo de Segurança', grupo: 'Registros Operacionais' },
   { id: 'registro_tipo_TREINAMENTO',  label: 'Tipo visível: 🎓 Treinamento', grupo: 'Registros Operacionais' },

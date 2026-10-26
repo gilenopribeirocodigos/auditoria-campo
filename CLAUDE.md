@@ -178,7 +178,8 @@ Mecanismo pra restringir um perfil a só enxergar determinados tipos de Registro
 **sem precisar criar um perfil hardcoded novo** — reaproveita a tabela `perfis_permissoes`
 já existente (chave livre por perfil).
 
-- 8 chaves de permissão, uma por tipo (`registro_tipo_OCORRENCIA`, `registro_tipo_REINCIDENCIA`,
+- 9 chaves de permissão, uma por tipo (`registro_tipo_OCORRENCIA` — hoje o Tratamento de
+  Retrabalho, ver seção 4.8 —, `registro_tipo_REINCIDENCIA`, `registro_tipo_OCORRENCIA_GENERICA`,
   `registro_tipo_ALINHAMENTO`, `registro_tipo_DS`, `registro_tipo_TREINAMENTO`,
   `registro_tipo_FEEDBACK`, `registro_tipo_REUNIAO`, `registro_tipo_DISCIPLINAR`) —
   declaradas em `TODAS_PERMISSOES` (`src/pages/GestaoUsuarios.jsx`), todas com
@@ -212,6 +213,46 @@ quem só usa WhatsApp Web num "Instalar" sem saída.
   última captura o modal ao vivo, ver seção 4.5, mas passa pelo mesmo
   `compartilharImagemWeb()` no final). Qualquer tela nova com botão "Compartilhar no
   WhatsApp" deve usar essa função, não reimplementar `navigator.share` na mão.
+
+### 4.8 Tratamento de Retrabalho vs. Ocorrência Genérica
+`tipo_ocorrencia = 'OCORRENCIA'` (mesma tabela `ocorrencias`) era originalmente um fluxo
+genérico "Abertura de Ocorrência" (com campo Motivo). O Gileno já estava usando esse tipo
+pra tratar **retrabalho** especificamente e pediu pra renomear/restilizar a UI pra
+"🔧 Tratamento de Retrabalho" (card no mesmo padrão visual da Reincidência — ver seção 4.5),
+**sem criar um tipo novo pra não perder os dados já populados**. Como o Motivo e outros usos
+genéricos ainda podem fazer falta no futuro, o fluxo original foi **copiado à parte** —
+não reaproveitado — como `tipo_ocorrencia = 'OCORRENCIA_GENERICA'` ("📦 Abertura de
+Ocorrência", ícone/Motivo originais intactos).
+
+- **Números**: `RT-` pro Retrabalho (`gerarNumeroRetrabalho()`), `OC-` pra Ocorrência Genérica
+  (`gerarNumeroOcorrenciaGenerica()`, reaproveita o prefixo histórico), `RE-` Reincidência —
+  todos em `src/lib/ocorrencias.js`. **Só vale pra números novos** — Retrabalho já tinha
+  números `OC-...` gravados antes dessa mudança; nunca renumerar o que já existe.
+- **Um único formulário/modal pros dois tipos**, com branch por `tipo_ocorrencia`
+  (`AberturaOcorrencia.jsx` via prop `tipoOcorrencia`; modal de detalhe e
+  `montarConteudoImpressaoOcorrencia` em `RegistrosOperacionais.jsx` via
+  `ehGenerica = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA'`) — não duas cópias de código.
+  Motivo só aparece pra Genérica; Retrabalho não tem Motivo.
+- **Motivos cadastrados continuam em `tipo_registro = 'OCORRENCIA'`** (tela Motivos, ⚙️ em
+  Registros Operacionais) — a Ocorrência Genérica reaproveita esse cadastro mesmo depois do
+  rename, já que esses motivos sempre foram pensados pro caso genérico, não pro Retrabalho.
+- **"Dados Técnicos" do Retrabalho** (UC/OS/Registro de Execução/Data de Conclusão): vêm da
+  importação em lote (planilha TOA, `src/lib/importacaoOcorrencias.js`) ou digitados à mão
+  no formulário (campos opcionais, só aparecem pra Retrabalho). `uc`/`os`/`data_conclusao` já
+  eram colunas da tabela; `registro_execucao` é nova — ver
+  `sql/2026-10-26_ocorrencias_registro_execucao.sql`. Pra ocorrências antigas (antes dessas
+  colunas), o modal/PDF caem pra extrair os valores do texto da `descricao` via
+  `parseDescricaoImportada()` (já existia, usado também em `CardOcorrencia` de
+  `TratamentoNaoConformidades.jsx`) — texto e colunas continuam coexistindo (a importação em
+  lote grava os dois), o que é exibido muda conforme o que está preenchido.
+- **Colaboradores em linhas nomeadas** ("Colaborador 1", "Colaborador 2", ... — uma por
+  pessoa) em vez de um resumo tipo "2 colaboradores da equipe", no mesmo padrão do
+  Eletricista 1/2 da Reincidência — cobre tanto o caso fixo (`eletricista_equipe`/`_2`)
+  quanto a equipe dinâmica (`ocorrencias_colaboradores`, qualquer tamanho).
+- **Ocorrência Genérica ainda não tem aba própria em Tratamento de Não Conformidades** —
+  fica pendente/visível só em Registros Operacionais até o Gileno definir a próxima demanda
+  que vai usar esse tipo. Sem opção de lote (isso é específico do Retrabalho/TOA) — abre
+  direto no formulário manual a partir de R0TipoRegistro.jsx.
 
 ## 5. Banco de Dados
 
