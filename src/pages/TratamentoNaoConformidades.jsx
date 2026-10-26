@@ -156,7 +156,7 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
   }
 
   return (
-    <div className="card" style={{ border: `1.5px solid ${temPendente ? '#fdba74' : '#86efac'}`, cursor: 'pointer' }}
+    <div className="card" style={{ border: `1.5px solid ${temPendente ? '#fca5a5' : '#86efac'}`, cursor: 'pointer' }}
       onClick={() => setAberto(a => !a)}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
@@ -166,7 +166,7 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
             <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{grupo.numero_as || '—'}</span>
             <span style={{
               fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-              background: temPendente ? '#fef3c7' : '#dcfce7', color: temPendente ? '#92400e' : '#15803d',
+              background: temPendente ? '#fee2e2' : '#dcfce7', color: temPendente ? '#b91c1c' : '#15803d',
             }}>
               {temPendente ? `🟠 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
             </span>
@@ -1583,7 +1583,9 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
           <button onClick={() => setModulo('NC')} style={{
             flex: 1, padding: 10, borderRadius: 9, border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: 700,
-            background: modulo === 'NC' ? '#c2410c' : 'transparent',
+            // Vermelho — identidade própria, separada do laranja da
+            // Reincidência (as duas usavam tons de laranja quase iguais).
+            background: modulo === 'NC' ? '#b91c1c' : 'transparent',
             color: modulo === 'NC' ? '#fff' : '#64748b',
           }}>🛠️ Não Conformidades</button>
           <button onClick={() => setModulo('OCORRENCIAS')} style={{
@@ -1596,11 +1598,10 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             🔧 Retrabalho
             {pendentesOcQtd > 0 && (
               <span style={{
-                // Azul claro (não vermelho) — mesma cor já usada na Home pro
-                // badge de Ocorrência pendente, pra diferenciar visualmente
-                // de Não Conformidade (laranja/vermelho) e não se misturar
-                // com o roxo/índigo da própria aba quando ativa.
-                position: 'absolute', top: -6, right: -6, background: '#38bdf8', color: '#fff',
+                // Índigo mais claro que o da aba (#4338ca) — mesma cor da
+                // própria identidade, só numa tonalidade mais clara pro
+                // número se destacar em cima do botão.
+                position: 'absolute', top: -6, right: -6, background: '#818cf8', color: '#fff',
                 borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 18, height: 18, padding: '0 4px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
               }}>{pendentesOcQtd}</span>
@@ -1610,16 +1611,17 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             position: 'relative',
             flex: 1, padding: 10, borderRadius: 9, border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: 700,
-            // Laranja mais escuro que o do módulo NC (#c2410c) — evita
-            // confundir os dois quando alternando entre eles, já que
-            // Reincidência mantém o laranja como identidade em todo o app.
-            background: modulo === 'REINCIDENCIA' ? '#9a3412' : 'transparent',
+            // Laranja — identidade da Reincidência em todo o app (PDF,
+            // WhatsApp). Com Não Conformidades virando vermelho (acima),
+            // não precisa mais de um tom escurecido só pra não confundir.
+            background: modulo === 'REINCIDENCIA' ? '#c2410c' : 'transparent',
             color: modulo === 'REINCIDENCIA' ? '#fff' : '#64748b',
           }}>
             🔁 Reincidência
             {pendentesReincQtd > 0 && (
               <span style={{
-                position: 'absolute', top: -6, right: -6, background: '#38bdf8', color: '#fff',
+                // Laranja mais claro que o da aba (#c2410c).
+                position: 'absolute', top: -6, right: -6, background: '#fb923c', color: '#fff',
                 borderRadius: 999, fontSize: 10, fontWeight: 800, minWidth: 18, height: 18, padding: '0 4px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 0 2px #fff',
               }}>{pendentesReincQtd}</span>
@@ -1655,7 +1657,7 @@ export default function TratamentoNaoConformidades({ usuarioLogado, onVoltar }) 
             <button key={s} onClick={() => setStatusTab(s)} style={{
               padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
               fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap',
-              background: statusTab === s ? (modulo === 'NC' ? '#c2410c' : modulo === 'OCORRENCIAS' ? '#4338ca' : '#9a3412') : '#e2e8f0',
+              background: statusTab === s ? (modulo === 'NC' ? '#b91c1c' : modulo === 'OCORRENCIAS' ? '#4338ca' : '#c2410c') : '#e2e8f0',
               color: statusTab === s ? '#fff' : '#374151',
             }}>{s}</button>
           ))}
