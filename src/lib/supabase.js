@@ -63,7 +63,10 @@ export async function contarPendenciasTratamentoNC(usuarioLogado, podeVerTodas) 
   })
   const ncPendentes = new Set(ncRows.map(n => n.auditoria_id || n.numero_as)).size
 
-  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE').neq('tipo_ocorrencia', 'REINCIDENCIA')
+  // Só Retrabalho (tipo_ocorrencia 'OCORRENCIA') — Ocorrência Genérica tem
+  // identidade própria e não entra nesse badge (mesmo critério já usado em
+  // listarOcorrencias(), ver lib/ocorrencias.js).
+  let ocQ = supabase.from('ocorrencias').select('*', { count: 'exact', head: true }).eq('status', 'PENDENTE').eq('tipo_ocorrencia', 'OCORRENCIA')
   if (!podeVerTodas) ocQ = ocQ.eq('matricula_fiscal_destino', usuarioLogado?.matricula)
   const { count } = await ocQ
 
