@@ -178,7 +178,8 @@ Mecanismo pra restringir um perfil a só enxergar determinados tipos de Registro
 **sem precisar criar um perfil hardcoded novo** — reaproveita a tabela `perfis_permissoes`
 já existente (chave livre por perfil).
 
-- 8 chaves de permissão, uma por tipo (`registro_tipo_OCORRENCIA`, `registro_tipo_REINCIDENCIA`,
+- 9 chaves de permissão, uma por tipo (`registro_tipo_OCORRENCIA` — hoje o Tratamento de
+  Retrabalho, ver seção 4.8 —, `registro_tipo_REINCIDENCIA`, `registro_tipo_OCORRENCIA_GENERICA`,
   `registro_tipo_ALINHAMENTO`, `registro_tipo_DS`, `registro_tipo_TREINAMENTO`,
   `registro_tipo_FEEDBACK`, `registro_tipo_REUNIAO`, `registro_tipo_DISCIPLINAR`) —
   declaradas em `TODAS_PERMISSOES` (`src/pages/GestaoUsuarios.jsx`), todas com
@@ -212,6 +213,46 @@ quem só usa WhatsApp Web num "Instalar" sem saída.
   última captura o modal ao vivo, ver seção 4.5, mas passa pelo mesmo
   `compartilharImagemWeb()` no final). Qualquer tela nova com botão "Compartilhar no
   WhatsApp" deve usar essa função, não reimplementar `navigator.share` na mão.
+
+### 4.8 Tratamento de Retrabalho vs. Ocorrência Genérica
+`tipo_ocorrencia = 'OCORRENCIA'` (mesma tabela `ocorrencias`) era originalmente um fluxo
+genérico "Abertura de Ocorrência" (com campo Motivo). O Gileno já estava usando esse tipo
+pra tratar **retrabalho** especificamente e pediu pra renomear/restilizar a UI pra
+"🔧 Tratamento de Retrabalho" (card no mesmo padrão visual da Reincidência — ver seção 4.5),
+**sem criar um tipo novo pra não perder os dados já populados**. Como o Motivo e outros usos
+genéricos ainda podem fazer falta no futuro, o fluxo original foi **copiado à parte** —
+não reaproveitado — como `tipo_ocorrencia = 'OCORRENCIA_GENERICA'` ("📦 Abertura de
+Ocorrência", ícone/Motivo originais intactos).
+
+- **Números**: `RT-` pro Retrabalho (`gerarNumeroRetrabalho()`), `OC-` pra Ocorrência Genérica
+  (`gerarNumeroOcorrenciaGenerica()`, reaproveita o prefixo histórico), `RE-` Reincidência —
+  todos em `src/lib/ocorrencias.js`. **Só vale pra números novos** — Retrabalho já tinha
+  números `OC-...` gravados antes dessa mudança; nunca renumerar o que já existe.
+- **Um único formulário/modal pros dois tipos**, com branch por `tipo_ocorrencia`
+  (`AberturaOcorrencia.jsx` via prop `tipoOcorrencia`; modal de detalhe e
+  `montarConteudoImpressaoOcorrencia` em `RegistrosOperacionais.jsx` via
+  `ehGenerica = oc.tipo_ocorrencia === 'OCORRENCIA_GENERICA'`) — não duas cópias de código.
+  Motivo só aparece pra Genérica; Retrabalho não tem Motivo.
+- **Motivos cadastrados continuam em `tipo_registro = 'OCORRENCIA'`** (tela Motivos, ⚙️ em
+  Registros Operacionais) — a Ocorrência Genérica reaproveita esse cadastro mesmo depois do
+  rename, já que esses motivos sempre foram pensados pro caso genérico, não pro Retrabalho.
+- **"Dados Técnicos" do Retrabalho** (UC/OS/Registro de Execução/Data de Conclusão): vêm da
+  importação em lote (planilha TOA, `src/lib/importacaoOcorrencias.js`) ou digitados à mão
+  no formulário (campos opcionais, só aparecem pra Retrabalho). `uc`/`os`/`data_conclusao` já
+  eram colunas da tabela; `registro_execucao` é nova — ver
+  `sql/2026-10-26_ocorrencias_registro_execucao.sql`. Pra ocorrências antigas (antes dessas
+  colunas), o modal/PDF caem pra extrair os valores do texto da `descricao` via
+  `parseDescricaoImportada()` (já existia, usado também em `CardOcorrencia` de
+  `TratamentoNaoConformidades.jsx`) — texto e colunas continuam coexistindo (a importação em
+  lote grava os dois), o que é exibido muda conforme o que está preenchido.
+- **Colaboradores em linhas nomeadas** ("Colaborador 1", "Colaborador 2", ... — uma por
+  pessoa) em vez de um resumo tipo "2 colaboradores da equipe", no mesmo padrão do
+  Eletricista 1/2 da Reincidência — cobre tanto o caso fixo (`eletricista_equipe`/`_2`)
+  quanto a equipe dinâmica (`ocorrencias_colaboradores`, qualquer tamanho).
+- **Ocorrência Genérica ainda não tem aba própria em Tratamento de Não Conformidades** —
+  fica pendente/visível só em Registros Operacionais até o Gileno definir a próxima demanda
+  que vai usar esse tipo. Sem opção de lote (isso é específico do Retrabalho/TOA) — abre
+  direto no formulário manual a partir de R0TipoRegistro.jsx.
 
 ## 5. Banco de Dados
 
@@ -419,6 +460,13 @@ feita separadamente via Codex/SQL manual — só o código.
   ver seção 4.5), mas o PDF/impressão ainda usa `montarConteudoImpressaoReincidencia`
   (HTML string remontado à parte, em `RegistrosOperacionais.jsx`) — se um campo novo for
   adicionado ao modal, o PDF **não** o pega automaticamente; precisa ser replicado lá também.
+- **Mesmo padrão de divergência no Registro Operacional comum** (`RegistrosOperacionais.jsx`):
+  o PDF/impressão usa a função de topo `montarConteudoImpressaoRegistro()`, mas o botão
+  "Compartilhar no WhatsApp" monta o HTML **de novo, inline**, dentro do próprio `onClick`
+  (around linha 1320+) — duas cópias quase idênticas da mesma montagem. Já corrigido um caso
+  real (campo `observacoes` sumia do PDF mas aparecia no WhatsApp — reportado pelo Gileno),
+  mas o risco de drift continua: qualquer campo novo adicionado a um dos dois precisa ser
+  replicado manualmente no outro.
 - **RLS + GRANTS não versionados no repo**: aplicados manualmente via ChatGPT Codex
   direto no Supabase, fora do controle de versão (ver seções 5.2 e 6).
 - **README desatualizado**: menciona deploy via Vercel, mas a hospedagem real é
@@ -430,3 +478,17 @@ feita separadamente via Codex/SQL manual — só o código.
 - `src/lib/rastreio.js` mantém seu próprio banco IndexedDB (`rastreio_fila`),
   separado dos bancos usados pelas filas offline de auditorias/registros — não é bug,
   mas é bom ter em mente ao investigar problemas de sincronização.
+- **Filtro de Regional/Supervisor para colaborador sem prefixo** (`filtrar()` em
+  `src/components/PainelFiltros.jsx`): quando o item não tem `prefixo` (ex.: alguém na
+  estrutura PERDAS, sem equipe fixa), não dá pra achar o supervisor via `mapPrefixo` —
+  o filtro agora cai pra comparar os campos `regional`/`superv_operacao`/`superv_campo`
+  **da própria linha**, se quem chamou `filtrar()` buscou essas colunas no Supabase.
+  Corrigido em `IndisponibilidadePage.jsx` (que antes só buscava `superv_campo`, por
+  isso gente sem prefixo aparecia igual em QUALQUER Supervisor Operacional filtrado —
+  bug real reportado pelo Gileno). **Outras telas que usam `filtros.filtrar()` só
+  ganham esse comportamento se também passarem a buscar `regional`/`superv_operacao`/
+  `superv_campo` na query** — sem isso, continuam no comportamento antigo (sempre
+  visível). Além disso, a **segregação por estrutura** (`setPermitidos`, restrição de
+  prefixos do usuário logado) ainda não tem esse fallback — colaborador sem prefixo
+  continua visível pra qualquer usuário segregado, independente da regional/supervisor
+  dele; não foi tratado nesta correção.

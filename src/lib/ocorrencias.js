@@ -9,8 +9,16 @@ import { temPermissao } from './auth.js'
 
 // Mesmo padrão de numeroAS.js/gerarNumeroAcaoSesmt() — implementação própria
 // pra manter o módulo isolado (ver convenção do projeto). `prefixo`
-// diferencia Ocorrência (OC-) de Tratamento de Reincidência (RE-) — mesma
-// coluna numero_ocorrencia nos dois casos, só muda o prefixo gerado.
+// diferencia Tratamento de Retrabalho (RT-, ver nota abaixo — é o
+// tipo_ocorrencia 'OCORRENCIA' original, só renomeado), Tratamento de
+// Reincidência (RE-) e a Ocorrência Genérica (OC-, cópia do fluxo original
+// com Motivo, preservada à parte — ver tipo_ocorrencia 'OCORRENCIA_GENERICA')
+// — mesma coluna numero_ocorrencia nos três casos, só muda o prefixo gerado.
+//
+// ⚠️ O prefixo OC- (Retrabalho) virou RT- a partir desta mudança (pedido do
+// Gileno) — só pra números NOVOS daqui pra frente. Ocorrências já salvas
+// antes disso continuam com "OC-..." gravado em numero_ocorrencia; nunca
+// renumerar/migrar o que já existe.
 function gerarNumeroRegistroOcorrencia(prefixo) {
   const agora = new Date()
   const partes = new Intl.DateTimeFormat('sv-SE', {
@@ -25,12 +33,16 @@ function gerarNumeroRegistroOcorrencia(prefixo) {
   return `${prefixo}-${data}-${hora}-${sufixo}`
 }
 
-export function gerarNumeroOcorrencia() {
-  return gerarNumeroRegistroOcorrencia('OC')
+export function gerarNumeroRetrabalho() {
+  return gerarNumeroRegistroOcorrencia('RT')
 }
 
 export function gerarNumeroReincidencia() {
   return gerarNumeroRegistroOcorrencia('RE')
+}
+
+export function gerarNumeroOcorrenciaGenerica() {
+  return gerarNumeroRegistroOcorrencia('OC')
 }
 
 // Ocorrências salvas antes da coluna numero_ocorrencia existir (não deve
@@ -55,9 +67,10 @@ export async function listarFiscaisParaDirecionamento() {
 }
 
 // ─── Faz upload da foto (se houver) e monta o payload pra inserir ────────────
-// `form.tipo_ocorrencia` ('OCORRENCIA' | 'REINCIDENCIA') decide o prefixo do
-// número gerado; os 7 campos extras (numero_oe...reincidencia_r90) só fazem
-// sentido pra Reincidência — ficam null quando o form não os preenche.
+// `form.tipo_ocorrencia` ('OCORRENCIA' | 'REINCIDENCIA' | 'OCORRENCIA_GENERICA')
+// decide o prefixo do número gerado; os 7 campos extras
+// (numero_oe...reincidencia_r90) só fazem sentido pra Reincidência — ficam
+// null quando o form não os preenche.
 export async function prepararPayloadOcorrencia(form) {
   let fotoUrl = null
   if (form.foto) {
@@ -66,9 +79,13 @@ export async function prepararPayloadOcorrencia(form) {
   }
 
   const tipoOcorrencia = form.tipo_ocorrencia || 'OCORRENCIA'
+  const geradorNumero =
+    tipoOcorrencia === 'REINCIDENCIA'        ? gerarNumeroReincidencia :
+    tipoOcorrencia === 'OCORRENCIA_GENERICA' ? gerarNumeroOcorrenciaGenerica :
+    gerarNumeroRetrabalho
 
   return {
-    numero_ocorrencia:         form.numero_ocorrencia || (tipoOcorrencia === 'REINCIDENCIA' ? gerarNumeroReincidencia() : gerarNumeroOcorrencia()),
+    numero_ocorrencia:         form.numero_ocorrencia || geradorNumero(),
     tipo_ocorrencia:           tipoOcorrencia,
     descricao:                 form.descricao,
     motivo:                    form.motivo || null,
@@ -92,6 +109,15 @@ export async function prepararPayloadOcorrencia(form) {
     reincidencia_r07:          form.reincidencia_r07 || null,
     reincidencia_r30:          form.reincidencia_r30 || null,
     reincidencia_r90:          form.reincidencia_r90 || null,
+    // "Dados Técnicos" do Tratamento de Retrabalho — vêm da planilha TOA
+    // (ImportarOcorrenciasLote/importacaoOcorrencias.js) OU digitados à mão
+    // aqui no formulário manual (ver AberturaOcorrencia.jsx). uc/os/
+    // data_conclusao já existiam como colunas (import em lote já usava);
+    // registro_execucao é novo — ver sql/2026-10-26_ocorrencias_registro_execucao.sql.
+    uc:                        form.uc || null,
+    os:                        form.os || null,
+    registro_execucao:         form.registro_execucao || null,
+    data_conclusao:            form.data_conclusao || null,
   }
 }
 
@@ -147,13 +173,15 @@ export async function salvarOcorrenciaBD(payload) {
   // Mantém o salvamento funcionando caso o deploy do app chegue antes da
   // migração SQL que adiciona data_abertura/hora_abertura/endereco/lat/lng/
   // eletricista_equipe_2/tipo_ocorrencia/numero_oe/abrangencia/
-  // componente_pdf/alimentador_al/reincidencia_r07-r90 (mesmo padrão de
-  // salvarRegistroBD em lib/registros.js).
+  // componente_pdf/alimentador_al/reincidencia_r07-r90/uc/os/
+  // registro_execucao/data_conclusao (mesmo padrão de salvarRegistroBD em
+  // lib/registros.js).
   if (error && /column .* does not exist/i.test(error.message || '')) {
     const {
       data_abertura, hora_abertura, endereco, lat, lng, eletricista_equipe_2, motivo,
       tipo_ocorrencia, numero_oe, abrangencia, componente_pdf, alimentador_al,
       reincidencia_r07, reincidencia_r30, reincidencia_r90,
+      uc, os, registro_execucao, data_conclusao,
       ...payloadCompat
     } = payload
     ;({ data, error } = await supabase
@@ -171,12 +199,15 @@ export async function salvarOcorrenciaBD(payload) {
   return data
 }
 
-// ─── Lista ocorrências (Tratamento de Não Conformidades → aba Ocorrências) ───
-// Só tipo_ocorrencia = 'OCORRENCIA' — Tratamento de Reincidência tem sua
+// ─── Lista ocorrências (Tratamento de Não Conformidades → aba Ocorrências,
+// hoje rotulada "Tratamento de Retrabalho" na UI) ─── Só
+// tipo_ocorrencia = 'OCORRENCIA' (igualdade explícita, não só "diferente de
+// REINCIDENCIA" — senão a Ocorrência Genérica, tipo_ocorrencia
+// 'OCORRENCIA_GENERICA', cairia aqui misturada) — Reincidência tem sua
 // própria lista/aba, ver listarReincidencias() logo abaixo.
 export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) {
   if (!supabase) return []
-  let q = supabase.from('ocorrencias').select('*').neq('tipo_ocorrencia', 'REINCIDENCIA').order('criado_em', { ascending: false })
+  let q = supabase.from('ocorrencias').select('*').eq('tipo_ocorrencia', 'OCORRENCIA').order('criado_em', { ascending: false })
   if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
   if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
   if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
@@ -191,6 +222,24 @@ export async function listarOcorrencias(statusTab = 'TODOS', { ini, fim } = {}) 
 export async function listarReincidencias(statusTab = 'TODOS', { ini, fim } = {}) {
   if (!supabase) return []
   let q = supabase.from('ocorrencias').select('*').eq('tipo_ocorrencia', 'REINCIDENCIA').order('criado_em', { ascending: false })
+  if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
+  if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
+  if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)
+  const { data, error } = await q
+  if (error) throw error
+  return data || []
+}
+
+// ─── Lista Ocorrências Genéricas — cópia do fluxo original de "Abertura de
+// Ocorrência" (com Motivo), preservada à parte depois que o tipo_ocorrencia
+// 'OCORRENCIA' virou Tratamento de Retrabalho. Mesmo padrão de
+// listarReincidencias() acima, só o tipo_ocorrencia filtrado muda. Usada hoje
+// só em RegistrosOperacionais.jsx (listagem) — ainda não tem aba própria em
+// Tratamento de Não Conformidades (fica pra quando o Gileno definir a
+// próxima demanda que vai usar esse tipo).
+export async function listarOcorrenciasGenericas(statusTab = 'TODOS', { ini, fim } = {}) {
+  if (!supabase) return []
+  let q = supabase.from('ocorrencias').select('*').eq('tipo_ocorrencia', 'OCORRENCIA_GENERICA').order('criado_em', { ascending: false })
   if (statusTab !== 'TODOS') q = q.eq('status', statusTab)
   if (ini) q = q.gte('criado_em', `${ini}T00:00:00`)
   if (fim) q = q.lte('criado_em', `${fim}T23:59:59`)

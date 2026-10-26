@@ -1,9 +1,11 @@
 // ── pages/ImportarOcorrenciasLote.jsx ───────────────────────────────────────
-// Importa "Abertura de Ocorrência" em lote a partir da planilha do TOA.
-// Fluxo não-bloqueante: ao confirmar, linha que resolveu tudo (prefixo +
-// colaboradores + supervisor via matrícula) já vira Ocorrência de verdade;
-// linha que não resolveu fica guardada em "Pendências de Importação" —
-// revisitável a qualquer momento, sem travar as demais (ver mockup aprovado).
+// Importa "Tratamento de Retrabalho" em lote a partir da planilha do TOA
+// (tipo_ocorrencia 'OCORRENCIA' — nome histórico, só renomeado/restilizado
+// na UI, ver seção 4.5 do CLAUDE.md). Fluxo não-bloqueante: ao confirmar,
+// linha que resolveu tudo (prefixo + colaboradores + supervisor via
+// matrícula) já vira Retrabalho de verdade; linha que não resolveu fica
+// guardada em "Pendências de Importação" — revisitável a qualquer momento,
+// sem travar as demais (ver mockup aprovado).
 // Admin-only/online-only (mesmo padrão de ImportarEquipes.jsx/
 // SesmtCargaPessoas.jsx) — não participa da fila offline.
 import { useEffect, useState } from 'react'
@@ -166,7 +168,7 @@ function CardPendencia({ pendencia, usuarioLogado, onMudou }) {
   const [excluindo, setExcluindo] = useState(false)
 
   const excluir = async () => {
-    if (!window.confirm(`Excluir a pendência do prefixo "${pendencia.prefixo || '—'}"? Ela nunca virará uma Ocorrência.`)) return
+    if (!window.confirm(`Excluir a pendência do prefixo "${pendencia.prefixo || '—'}"? Ela nunca virará um Retrabalho.`)) return
     setExcluindo(true)
     try { await excluirPendenciaImportacao(pendencia.id); onMudou() }
     catch (e) { alert('Erro ao excluir: ' + e.message); setExcluindo(false) }
@@ -296,7 +298,7 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
             padding: '4px 10px', borderRadius: 6, fontSize: 11, cursor: 'pointer',
           }}>← Voltar</button>
         </div>
-        <div style={{ fontSize: 17, fontWeight: 700 }}>📥 Abrir Ocorrências em Lote</div>
+        <div style={{ fontSize: 17, fontWeight: 700 }}>📥 Abrir Retrabalho em Lote</div>
         <p style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>Importar de planilha (TOA)</p>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
           <button onClick={onVoltar} style={{
@@ -398,8 +400,8 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                 {processando
                   ? 'Importando...'
                   : revisar.length > 0
-                    ? `📦 Abrir ${prontas.length} Ocorrência${prontas.length === 1 ? '' : 's'} Pronta${prontas.length === 1 ? '' : 's'} (${revisar.length} fica${revisar.length === 1 ? '' : 'm'} pendente${revisar.length === 1 ? '' : 's'})`
-                    : `📦 Abrir ${prontas.length} Ocorrência${prontas.length === 1 ? '' : 's'}`}
+                    ? `🔧 Abrir ${prontas.length} Retrabalho${prontas.length === 1 ? '' : 's'} Pronto${prontas.length === 1 ? '' : 's'} (${revisar.length} fica${revisar.length === 1 ? '' : 'm'} pendente${revisar.length === 1 ? '' : 's'})`
+                    : `🔧 Abrir ${prontas.length} Retrabalho${prontas.length === 1 ? '' : 's'}`}
               </button>
               <button onClick={() => { setTela('upload'); setLinhasResolvidas([]); setNomeArquivo('') }} style={{
                 width: '100%', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff',
@@ -414,7 +416,7 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
                 <div style={{ background: '#f0fdf4', border: '1.5px solid #86efac', borderRadius: 12, padding: 14, textAlign: 'center', marginBottom: 16 }}>
                   <div style={{ fontSize: 28, marginBottom: 4 }}>✅</div>
                   <div style={{ fontSize: 14, fontWeight: 800, color: '#15803d' }}>
-                    {resultadoConfirmacao.criadas} Ocorrência{resultadoConfirmacao.criadas === 1 ? '' : 's'} aberta{resultadoConfirmacao.criadas === 1 ? '' : 's'} com sucesso!
+                    {resultadoConfirmacao.criadas} Retrabalho{resultadoConfirmacao.criadas === 1 ? '' : 's'} aberto{resultadoConfirmacao.criadas === 1 ? '' : 's'} com sucesso!
                   </div>
                   <div style={{ fontSize: 11.5, color: '#15803d', opacity: 0.85, marginTop: 2 }}>
                     Já aparece{resultadoConfirmacao.criadas === 1 ? '' : 'm'} pendente{resultadoConfirmacao.criadas === 1 ? '' : 's'} de tratamento em "Tratamento de Não Conformidades"
@@ -424,7 +426,7 @@ export default function ImportarOcorrenciasLote({ usuarioLogado, onHome, onVolta
 
               <h3 style={{ fontSize: 13, fontWeight: 800, color: '#92400e', marginBottom: 4 }}>📋 Pendências de Importação ({pendencias.length})</h3>
               <p style={{ fontSize: 11.5, color: '#64748b', margin: '0 0 12px' }}>
-                Essas linhas ainda não viraram Ocorrência — ficam guardadas aqui até você decidir.
+                Essas linhas ainda não viraram Retrabalho — ficam guardadas aqui até você decidir.
               </p>
 
               {carregandoPendencias && <p style={{ fontSize: 13, color: '#64748b' }}>Carregando...</p>}
