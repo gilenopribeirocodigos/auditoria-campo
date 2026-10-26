@@ -342,7 +342,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
       let remanejadosComDestino = []
       if (idsRemanejadosDia.length > 0) {
         const { data: eletRemanejados, error: erroEletRemanejados } = await supabase.from('estrutura_equipes')
-          .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, superv_campo, processo_equipe, base')
+          .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, regional, superv_campo, superv_operacao, processo_equipe, base')
           .in('id', idsRemanejadosDia)
         if (erroEletRemanejados) throw erroEletRemanejados
 
@@ -373,8 +373,13 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         }
       }))
 
+      // regional/superv_operacao entram aqui (além de superv_campo, que já
+      // vinha) pra quem não tem prefixo (ex.: estrutura PERDAS) deixar de
+      // aparecer igual em QUALQUER filtro de Supervisor Operacional/Campo/
+      // Regional — ver o fallback por campos próprios em filtrar()
+      // (PainelFiltros.jsx) que só funciona se a coluna for buscada aqui.
       let query = supabase.from('estrutura_equipes')
-        .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, superv_campo, processo_equipe, base')
+        .select('id, id_eletricista, colaborador, matricula, cpf_colaborador, prefixo, regional, superv_campo, superv_operacao, processo_equipe, base')
         .in('descr_situacao', ['ATIVO', 'RESERVA']).order('colaborador')
       if (prefixosRestritos) query = query.in('prefixo', prefixosRestritos)
 
