@@ -436,6 +436,15 @@ export default function S1Identificacao({ form, upd, setForm, next, prev, pautaA
     )
   }
 
+  // Tenta capturar o GPS assim que a tela abre, sem esperar o fiscal tocar no
+  // botão — mesmo padrão já usado em AberturaOcorrencia.jsx e SS1Identificacao.jsx.
+  // Continua obrigatório pra avançar (`ok` acima já exige form.lat) e o botão
+  // de captura manual continua disponível, pra tentar de novo se isso falhar
+  // ou se o fiscal já tiver voltado pra essa etapa com o GPS capturado antes.
+  useEffect(() => {
+    if (!form.lat) capturarGPS()
+  }, [])
+
   const temInfoPauta = pautaAtiva && (
     pautaAtiva.motivo_auditoria ||
     pautaAtiva.qtde_cabos_os ||
