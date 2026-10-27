@@ -700,12 +700,16 @@ export function PainelFiltros({
     }
   }
 
+  // Fundo branco em cima do wrapper quase-branco (#f1f5f9) ficava com
+  // contraste baixo demais pro "ativo" ser percebido (reportado pelo
+  // Gileno — o filtro já aplicava certo, só não dava pra ver qual opção
+  // tava selecionada). Preenchimento azul sólido, mesma cor já usada no
+  // resto do painel (data "Hoje", texto "Filtrando: ...").
   const botaoPeriodoStyle = (ativo) => ({
     flex: 1, borderRadius: 8, border: 'none', cursor: 'pointer',
     fontSize: 12, fontWeight: 700, transition: 'all 0.2s',
-    background: ativo ? '#fff' : 'transparent',
-    color:      ativo ? '#1e3a5f' : '#64748b',
-    boxShadow:  ativo ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+    background: ativo ? '#2563eb' : 'transparent',
+    color:      ativo ? '#fff' : '#64748b',
     whiteSpace: 'nowrap',
   })
 
