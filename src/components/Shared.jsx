@@ -2,6 +2,7 @@
 // COMPONENTES COMPARTILHADOS
 // ================================================================
 import { useEffect, useRef, useState } from 'react'
+import { supabase } from '../lib/supabase.js'
 
 export function SectionTitle({ children }) {
   return <p className="section-title">{children}</p>
@@ -74,6 +75,94 @@ export function Textarea({ label, value, onChange, placeholder, rows = 3 }) {
         className="form-textarea"
         rows={rows}
       />
+    </div>
+  )
+}
+
+// Campo com autocomplete de colaborador — busca em 2 fontes: eletricistas
+// de campo (estrutura_equipes) e usuários do sistema (ADMIN, supervisores
+// etc.), já que o colaborador pode precisar ser chamado de qualquer um dos
+// dois grupos. Sem forçar seleção: se o que foi digitado não bate com
+// nenhuma sugestão, a lista simplesmente some e o texto digitado continua
+// valendo como está — é assim que a digitação livre funciona sem precisar
+// de um botão separado pra "desligar" o autocomplete. Nesse caso de
+// digitação livre, o texto sai em maiúsculo automático (mesmo padrão já
+// usado no campo de Fiscal destinatário offline), pra bater com o padrão
+// de maiúsculo dos nomes vindos da estrutura/usuários.
+// Movido de AberturaOcorrencia.jsx (onde já existia) pra cá, pra também
+// servir o campo de nome do PainelAssinatura (S5Assinatura.jsx) sem
+// duplicar a mesma busca em dois arquivos.
+export function CampoColaboradorEnvolvido({ value, onChange, label, placeholder }) {
+  const [sugestoes, setSugestoes] = useState([])
+  const [aberto,    setAberto]    = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const fn = e => { if (ref.current && !ref.current.contains(e.target)) setAberto(false) }
+    document.addEventListener('mousedown', fn)
+    return () => document.removeEventListener('mousedown', fn)
+  }, [])
+
+  const buscar = async v => {
+    if (!v || v.length < 2) { setSugestoes([]); setAberto(false); return }
+    try {
+      const [eq, us] = await Promise.all([
+        supabase.from('estrutura_equipes').select('colaborador').ilike('colaborador', `%${v}%`).order('colaborador').limit(10),
+        supabase.from('usuarios').select('nome').eq('status', 'ATIVO').ilike('nome', `%${v}%`).order('nome').limit(10),
+      ])
+      const deEquipe    = (eq.data || []).map(r => r.colaborador?.trim()).filter(Boolean).map(nome => ({ nome, origem: 'equipe' }))
+      const deUsuarios  = (us.data || []).map(r => r.nome?.trim()).filter(Boolean).map(nome => ({ nome, origem: 'usuario' }))
+      const vistos = new Set()
+      const combinadas = [...deEquipe, ...deUsuarios].filter(s => {
+        const chave = s.nome.toUpperCase()
+        if (vistos.has(chave)) return false
+        vistos.add(chave)
+        return true
+      })
+      setSugestoes(combinadas)
+      setAberto(combinadas.length > 0)
+    } catch { setSugestoes([]); setAberto(false) }
+  }
+
+  const handleChange = e => {
+    const v = e.target.value.toUpperCase()
+    onChange(v)
+    buscar(v)
+  }
+
+  const selecionar = s => { onChange(s.nome); setSugestoes([]); setAberto(false) }
+
+  return (
+    <div ref={ref} className="form-group" style={{ position: 'relative' }}>
+      {label && <label className="form-label">{label}</label>}
+      <input className="form-input" value={value} onChange={handleChange}
+        onFocus={() => value && buscar(value)}
+        placeholder={placeholder} autoComplete="off" />
+      {aberto && sugestoes.length > 0 && (
+        <div style={{
+          position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 200, marginTop: 2,
+          background: '#fff', border: '1.5px solid #bfdbfe', borderRadius: 8,
+          boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 200, overflowY: 'auto',
+        }}>
+          {sugestoes.map((s, i) => (
+            <button key={i} onMouseDown={() => selecionar(s)}
+              style={{
+                display: 'block', width: '100%', padding: '9px 12px',
+                textAlign: 'left', background: 'none', border: 'none',
+                borderBottom: i < sugestoes.length - 1 ? '1px solid #f1f5f9' : 'none',
+                fontSize: 13, fontWeight: 600, color: '#1e293b', cursor: 'pointer',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = '#eff6ff'}
+              onMouseLeave={e => e.currentTarget.style.background = 'none'}
+            >
+              {s.nome}
+              {s.origem === 'usuario' && (
+                <span style={{ fontSize: 10, fontWeight: 500, color: '#64748b', marginLeft: 6 }}>· usuário do sistema</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

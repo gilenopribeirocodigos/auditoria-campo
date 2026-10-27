@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from 'react'
-import { Field, NavBar, Alert } from '../components/Shared.jsx'
+import { NavBar, Alert, CampoColaboradorEnvolvido } from '../components/Shared.jsx'
 
 export function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura, obrigatorio }) {
   const canvasRef = useRef(null)
@@ -80,7 +80,7 @@ export function PainelAssinatura({ label, nome, onNome, assinatura, onAssinatura
         {signed && <span style={{ fontSize: 11, color: '#16a34a', fontWeight: 700 }}>✓ Assinado</span>}
       </div>
 
-      <Field
+      <CampoColaboradorEnvolvido
         label={`Nome do ${label}`}
         value={nome}
         onChange={onNome}
