@@ -4,7 +4,7 @@ import { isAdmin, temPermissao } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
-import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia, listarColaboradoresOcorrencia, listarReincidencias, tratarReincidencia } from '../lib/ocorrencias.js'
+import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia, listarColaboradoresOcorrencia, listarReincidencias, tratarReincidencia, diasPendenteLabel } from '../lib/ocorrencias.js'
 import { parseDescricaoImportada } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 
@@ -161,20 +161,34 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{grupo.prefixo || '—'}</span>
-            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{grupo.numero_as || '—'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-              background: temPendente ? '#fee2e2' : '#dcfce7', color: temPendente ? '#b91c1c' : '#15803d',
-            }}>
-              {temPendente ? `🟠 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
-            </span>
+          {/* Mesmo molde de cabeçalho de CardOcorrencia/CardReincidencia (Retrabalho/
+              Reincidência) — prefixo + selo na linha 1, número em linha própria,
+              2 linhas de contexto com ícone — só muda a cor (vermelho) e os campos
+              de contexto (Fiscal/Tipo-OS-UC em vez de Encaminhada/Aberta por). */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{grupo.prefixo || '—'}</span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: temPendente ? '#fee2e2' : '#dcfce7', color: temPendente ? '#b91c1c' : '#15803d',
+              }}>
+                {temPendente ? `🔴 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
+              </span>
+              {temPendente && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', whiteSpace: 'nowrap' }}>
+                  {diasPendenteLabel(grupo.itens[0]?.criado_em)}
+                </span>
+              )}
+            </div>
           </div>
-          <p style={{ fontSize: 11, color: '#64748b' }}>
-            {grupo.fiscal} · {TIPO_LABEL[grupo.tipo_auditoria] || grupo.tipo_auditoria || '—'} · OS {grupo.os || '—'} · UC {grupo.uc || '—'}
-            {grupo.auditoria?.data_auditoria && ` · ${grupo.auditoria.data_auditoria}`}
-          </p>
+          <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{grupo.numero_as || '—'}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <p style={{ fontSize: 11.5, color: '#64748b' }}>🧑 Fiscal: <strong style={{ color: '#1e293b' }}>{grupo.fiscal}</strong></p>
+            <p style={{ fontSize: 11.5, color: '#64748b' }}>
+              📋 {TIPO_LABEL[grupo.tipo_auditoria] || grupo.tipo_auditoria || '—'} · OS {grupo.os || '—'} · UC {grupo.uc || '—'}
+              {grupo.auditoria?.data_auditoria && ` · ${grupo.auditoria.data_auditoria}`}
+            </p>
+          </div>
           {!aberto && (
             <p style={{ fontSize: 12, color: '#334155', marginTop: 6 }}>
               {grupo.itens.length} não conformidade(s) — toque para {temPendente ? 'tratar' : 'ver detalhes'}
@@ -601,12 +615,19 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
-              background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
-            }}>
-              {pendente ? '🟣 pendente' : '🟢 tratada'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+              }}>
+                {pendente ? '🟣 pendente' : '🟢 tratada'}
+              </span>
+              {pendente && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#3730a3', whiteSpace: 'nowrap' }}>
+                  {diasPendenteLabel(oc.criado_em)}
+                </span>
+              )}
+            </div>
           </div>
           <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{numeroOcorrencia(oc)}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -1067,12 +1088,19 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{r.prefixo || '—'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
-              background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
-            }}>
-              {pendente ? '🟣 pendente' : '🟢 tratada'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
+              }}>
+                {pendente ? '🟣 pendente' : '🟢 tratada'}
+              </span>
+              {pendente && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', whiteSpace: 'nowrap' }}>
+                  {diasPendenteLabel(r.criado_em)}
+                </span>
+              )}
+            </div>
           </div>
           <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{numeroOcorrencia(r)}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -1251,7 +1279,7 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
             </div>
 
             <Textarea label="5. As vulnerabilidades estruturais encontradas na área, que fogem do alcance da equipe emergencial, foram cadastradas no sistema para programação planejada?" value={vulnerabilidades} onChange={setVulnerabilidades}
-              placeholder="Descreva a vulnerabilidade e o NDS, se houver..." rows={3} />
+              placeholder="Descreva a vulnerabilidade e a NDS (Nota de Serviço), se houver..." rows={3} />
 
             <div style={{ marginBottom: 14 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
