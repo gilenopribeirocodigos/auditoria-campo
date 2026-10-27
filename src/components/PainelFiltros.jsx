@@ -37,6 +37,21 @@ export function fmtData(d) {
   return new Date(d + 'T00:00:00').toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 }
 
+// ─── Núcleo do prefixo (3 letras + "-" + 1 letra + 3 dígitos, ex: "ALG-E001") ──
+// Todo prefixo real de equipe em estrutura_equipes segue esse padrão por baixo
+// de uma decoração opcional: "PI-" na frente (quase sempre presente, mas não
+// 100% das vezes) e um "M" no final (convenção real de ~300 equipes, não é
+// erro de digitação). Confirmado por consulta direta ao banco: nenhum núcleo
+// colide com mais de uma equipe diferente, então usar só o núcleo pra comparar
+// prefixos é seguro — resolve variações de digitação tipo "PI-ALG-E001M" vs
+// "ALG-E001" sem precisar corrigir o dado salvo. Usado só na hora de COMPARAR
+// (filtrar()), nunca pra alterar o que está gravado.
+const REGEX_NUCLEO_PREFIXO = /[A-Z]{3}-[A-Z][0-9]{3}/
+export function nucleoPrefixo(pref) {
+  const m = (pref || '').toUpperCase().match(REGEX_NUCLEO_PREFIXO)
+  return m ? m[0] : ''
+}
+
 // ─── Estilos padronizados (exportados para uso em extras) ───────────────────
 export const FIELD_HEIGHT = 38
 export const LABEL_STYLE = {
@@ -338,7 +353,8 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     supervOps: [],
     supervCampos: [],
     prefixosTodos: [],
-    mapPrefixo: {},    // { prefixo: { regional, op, campo } }
+    mapPrefixo: {},       // { prefixo: { regional, op, campo } }
+    mapPrefixoNucleo: {}, // { nucleo ("ALG-E001"): { regional, op, campo } } — fallback de filtrar()
     mapOpToCampo: {},  // { op: Set<campo> }
     prefixosPermitidos: null,  // null = sem restrição; array = lista de prefixos permitidos
     carregado: false,
@@ -361,6 +377,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
         const campoSet = new Set()
         const prefSet  = new Set()
         const mp       = {}
+        const mpNucleo = {}
         const op2c     = {}
         ;(data || []).forEach(r => {
           const pref = r.prefixo?.trim() || ''
@@ -375,7 +392,10 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
           if (op)    opSet.add(op)
           if (campo) campoSet.add(campo)
           prefSet.add(pref)
-          mp[pref] = { regional, op, campo }
+          const info = { regional, op, campo }
+          mp[pref] = info
+          const nucleo = nucleoPrefixo(pref)
+          if (nucleo) mpNucleo[nucleo] = info
           if (op && campo) {
             if (!op2c[op]) op2c[op] = new Set()
             op2c[op].add(campo)
@@ -387,6 +407,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
           supervCampos:       [...campoSet].sort(),
           prefixosTodos:      [...prefSet].sort(),
           mapPrefixo:         mp,
+          mapPrefixoNucleo:   mpNucleo,
           mapOpToCampo:       op2c,
           prefixosPermitidos,
           carregado:          true,
@@ -559,7 +580,10 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
       if (!temFiltro) return true
 
       // Filtros do painel
-      const info = estrutura.mapPrefixo[pref]
+      // Busca exata primeiro; se não achar (ex.: prefixo digitado com "PI-"
+      // ou "M" a mais/a menos, ver nucleoPrefixo() acima), cai pro núcleo —
+      // evita que erro de digitação faça a pendência sumir do filtro.
+      const info = estrutura.mapPrefixo[pref] || estrutura.mapPrefixoNucleo[nucleoPrefixo(pref)]
       if (selRegional.length > 0 && (!info || !selRegional.includes(info.regional))) return false
       if (selPrefixos.length > 0 && !selPrefixos.includes(pref)) return false
       if (selSupOp.length    > 0 && (!info || !selSupOp.includes(info.op)))       return false
