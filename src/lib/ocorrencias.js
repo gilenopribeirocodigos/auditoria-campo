@@ -54,6 +54,21 @@ export function numeroOcorrencia(oc) {
   return `${prefixoLegado}-LEGADO-${base}`
 }
 
+// Selo "⏳ há N dias" dos cards de Retrabalho/Ocorrência Genérica/
+// Reincidência (Tratamento de Não Conformidades e Registros Operacionais) —
+// só pra quem tá pendente. Conta dias corridos de calendário (meia-noite a
+// meia-noite), não 24h exatas, pra bater com a intuição de "abriu ontem =
+// há 1 dia" independente do horário exato da abertura. Compartilhado pelos
+// dois arquivos pra não duplicar a mesma conta de data em dois lugares.
+export function diasPendenteLabel(dataAbertura) {
+  if (!dataAbertura) return null
+  const meiaNoite = d => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const dias = Math.round((meiaNoite(new Date()) - meiaNoite(new Date(dataAbertura))) / 86400000)
+  if (dias <= 0) return '⏳ hoje'
+  if (dias === 1) return '⏳ há 1 dia'
+  return `⏳ há ${dias} dias`
+}
+
 // ─── Busca lista de fiscais ativos pra direcionamento (usado online) ─────────
 export async function listarFiscaisParaDirecionamento() {
   if (!supabase) return []

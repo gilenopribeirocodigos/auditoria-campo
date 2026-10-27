@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { supabase } from '../lib/supabase.js'
 import { listarRegistros } from '../lib/registros.js'
-import { listarOcorrenciasDoUsuario, numeroOcorrencia, listarColaboradoresOcorrencia } from '../lib/ocorrencias.js'
+import { listarOcorrenciasDoUsuario, numeroOcorrencia, listarColaboradoresOcorrencia, diasPendenteLabel } from '../lib/ocorrencias.js'
 import { getVersaoApp, temPermissao } from '../lib/auth.js'
 import { listarAssinaturasColetadas, listarTokensRegistro, encerrarToken } from '../lib/assinaturas.js'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
@@ -1017,6 +1017,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                             background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
                           }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                          {pendente && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3' }}>{diasPendenteLabel(oc.criado_em)}</span>
+                          )}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {oc.aberto_por}</span>
@@ -1048,6 +1051,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                             background: pendente ? '#fdf3e7' : '#dcfce7', color: pendente ? '#78350f' : '#15803d',
                           }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                          {pendente && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#78350f' }}>{diasPendenteLabel(oc.criado_em)}</span>
+                          )}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {oc.aberto_por}</span>
@@ -1088,6 +1094,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                             fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
                             background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
                           }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                          {pendente && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: '#9a3412' }}>{diasPendenteLabel(r.criado_em)}</span>
+                          )}
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {r.aberto_por}</span>
