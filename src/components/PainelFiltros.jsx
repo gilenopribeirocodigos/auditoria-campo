@@ -357,6 +357,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     mapPrefixoNucleo: {}, // { nucleo ("ALG-E001"): { regional, op, campo } } — fallback de filtrar()
     mapOpToCampo: {},  // { op: Set<campo> }
     prefixosPermitidos: null,  // null = sem restrição; array = lista de prefixos permitidos
+    prefixosPermitidosNucleo: null, // mesma lista, em núcleo — fallback da segregação em filtrar()
     carregado: false,
   })
 
@@ -370,6 +371,15 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
         // ─── 1) Calcula prefixos permitidos pelo usuário logado ───
         const prefixosPermitidos = calcularPrefixosPermitidos(data, usuarioLogado)
         const setPermitidos      = prefixosPermitidos ? new Set(prefixosPermitidos) : null
+        // Mesma lógica de núcleo usada no mapPrefixo (ver nucleoPrefixo acima) —
+        // sem isso, um prefixo digitado com "PI-"/"M" a mais/a menos (ex.:
+        // "PI-MAV-E001M" em vez de "PI-MAV-E001") não batia com a lista exata
+        // de prefixos permitidos e a segregação escondia a pendência inteira
+        // do coordenador de verdade daquela equipe, sem nenhum filtro pra
+        // limpar — bug real reportado pelo Gileno (caso do edmilson.soares).
+        const setPermitidosNucleo = prefixosPermitidos
+          ? new Set(prefixosPermitidos.map(nucleoPrefixo).filter(Boolean))
+          : null
 
         // ─── 2) Processa estrutura aplicando segregação ───
         const regionalSet = new Set()
@@ -410,6 +420,7 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
           mapPrefixoNucleo:   mpNucleo,
           mapOpToCampo:       op2c,
           prefixosPermitidos,
+          prefixosPermitidosNucleo: setPermitidosNucleo ? [...setPermitidosNucleo] : null,
           carregado:          true,
         })
       })
@@ -546,6 +557,9 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
     const setPermitidos = estrutura.prefixosPermitidos
       ? new Set(estrutura.prefixosPermitidos)
       : null
+    const setPermitidosNucleo = estrutura.prefixosPermitidosNucleo
+      ? new Set(estrutura.prefixosPermitidosNucleo)
+      : null
 
     if (!temFiltro && !setPermitidos) return lista
 
@@ -573,8 +587,11 @@ export function useFiltrosOperacionais({ inicializarMes = true, usuarioLogado = 
         return true
       }
 
-      // Segregação por estrutura (sempre aplicada quando há restrição)
-      if (setPermitidos && !setPermitidos.has(pref)) return false
+      // Segregação por estrutura (sempre aplicada quando há restrição) — busca
+      // exata primeiro; se não achar, cai pro núcleo (mesma lógica do filtro
+      // de Regional/Supervisor abaixo), pra um prefixo digitado com "PI-"/"M"
+      // a mais/a menos não esconder a pendência do coordenador de verdade.
+      if (setPermitidos && !setPermitidos.has(pref) && !(setPermitidosNucleo && setPermitidosNucleo.has(nucleoPrefixo(pref)))) return false
 
       // Sem filtros do painel → já passou na segregação, libera
       if (!temFiltro) return true
