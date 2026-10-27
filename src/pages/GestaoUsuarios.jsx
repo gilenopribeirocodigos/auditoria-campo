@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   listarUsuarios, criarUsuario, atualizarUsuario, deletarUsuario, getVersaoApp,
-  listarProcessosUsuario, salvarProcessosUsuario,
+  listarProcessosUsuario, salvarProcessosUsuario, listarTodosProcessosUsuarios,
   listarRegionaisUsuario, salvarRegionaisUsuario,
   resetarSenhaUsuario,
 } from '../lib/auth.js'
@@ -213,6 +213,12 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
   const [processosDisponiveis, setProcessosDisponiveis] = useState([]) // [{ label, key }]
   const [regionaisDisponiveis, setRegionaisDisponiveis] = useState([]) // [{ label, key }]
 
+  // Filtro da lista de usuários por processo — { usuario_id: [processo_chave,...] },
+  // carregado 1x (1 query pra todo mundo, ver listarTodosProcessosUsuarios em
+  // auth.js) em vez de uma chamada por usuário.
+  const [processosPorUsuario, setProcessosPorUsuario] = useState({})
+  const [filtroProcesso,      setFiltroProcesso]      = useState(null) // null = todos
+
   // Processos atribuídos ao usuário atual no modal (granularidade individual)
   const [processosUsuario, setProcessosUsuario] = useState([])
   const [regionaisUsuario, setRegionaisUsuario] = useState([])
@@ -288,7 +294,12 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     }
   }
 
-  useEffect(() => { carregar(); carregarVersaoSistema(); carregarProcessosDisponiveis(); carregarRegionaisDisponiveis() }, [])
+  const carregarProcessosPorUsuario = async () => {
+    try { setProcessosPorUsuario(await listarTodosProcessosUsuarios()) }
+    catch (e) { console.warn('Erro carregando processos por usuário:', e.message) }
+  }
+
+  useEffect(() => { carregar(); carregarVersaoSistema(); carregarProcessosDisponiveis(); carregarRegionaisDisponiveis(); carregarProcessosPorUsuario() }, [])
   useEffect(() => { if (abaAtiva === 'permissoes') carregarPermissoes() }, [abaAtiva])
 
   const abrirNovo   = () => {
@@ -367,7 +378,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
         console.log('✅ Processos salvos com sucesso pro usuário', usuarioSalvo.id)
       }
 
-      await carregar(); fechar()
+      await carregar(); await carregarProcessosPorUsuario(); fechar()
     } catch (e) {
       console.error('❌ Erro ao salvar:', e)
       setErro(e.message || String(e))
@@ -451,10 +462,18 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
     return { bg: '#fef3c7', color: '#b45309', label: `⚠️ v${u.versao_app}`, atualizado: false }
   }
 
-  const ativos   = usuarios.filter(u => u.status === 'ATIVO').length
-  const reservas = usuarios.filter(u => u.status === 'RESERVA').length
+  // Filtro por processo (chips abaixo das abas) — usa a mesma lista
+  // processosDisponiveis dos toggles do modal de edição, cruzada com
+  // processosPorUsuario (ver carregarProcessosPorUsuario). Sem filtro
+  // selecionado, mostra todo mundo igual sempre mostrou.
+  const usuariosFiltrados = filtroProcesso
+    ? usuarios.filter(u => (processosPorUsuario[u.id] || []).includes(filtroProcesso))
+    : usuarios
+
+  const ativos   = usuariosFiltrados.filter(u => u.status === 'ATIVO').length
+  const reservas = usuariosFiltrados.filter(u => u.status === 'RESERVA').length
   // Quantos ativos estão desatualizados
-  const desatualizados = usuarios.filter(u => u.status === 'ATIVO' && u.versao_app && versaoSistema && u.versao_app !== versaoSistema).length
+  const desatualizados = usuariosFiltrados.filter(u => u.status === 'ATIVO' && u.versao_app && versaoSistema && u.versao_app !== versaoSistema).length
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -476,7 +495,7 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               {[
-                { label: 'Total',   val: usuarios.length },
+                { label: 'Total',   val: usuariosFiltrados.length },
                 { label: 'Ativos',  val: ativos          },
                 { label: 'Reserva', val: reservas         },
               ].map(t => (
@@ -511,6 +530,32 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
         {/* ===== ABA USUÁRIOS ===== */}
         {abaAtiva === 'usuarios' && (
           <>
+            {/* Filtro por processo — chips, igual aos toggles do modal de
+                editar usuário (processosDisponiveis). "Todos" limpa o
+                filtro; clicar de novo no processo já selecionado também
+                limpa. Os contadores (Total/Ativos/Reserva) acima já
+                refletem só o grupo filtrado. */}
+            {processosDisponiveis.length > 0 && (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 14 }}>
+                <button onClick={() => setFiltroProcesso(null)} style={{
+                  padding: '7px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                  fontSize: 12, fontWeight: 700,
+                  background: !filtroProcesso ? '#7c3aed' : '#f1f5f9',
+                  color:      !filtroProcesso ? '#fff'    : '#64748b',
+                }}>Todos</button>
+                {processosDisponiveis.map(p => (
+                  <button key={p.key}
+                    onClick={() => setFiltroProcesso(f => f === p.key ? null : p.key)}
+                    style={{
+                      padding: '7px 14px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                      fontSize: 12, fontWeight: 700,
+                      background: filtroProcesso === p.key ? '#7c3aed' : '#f1f5f9',
+                      color:      filtroProcesso === p.key ? '#fff'    : '#64748b',
+                    }}>⚙️ {p.label}</button>
+                ))}
+              </div>
+            )}
+
             {/* Banner de desatualizados */}
             {desatualizados > 0 && (
               <div style={{ background: '#fffbeb', border: '1.5px solid #fcd34d', borderRadius: 12, padding: '12px 16px', marginBottom: 14 }}>
@@ -534,7 +579,12 @@ export default function GestaoUsuarios({ usuarioLogado, onVoltar }) {
               <CarregandoHexagono />
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {usuarios.map(u => {
+                {usuariosFiltrados.length === 0 && (
+                  <p style={{ textAlign: 'center', color: '#94a3b8', padding: '30px 0', fontSize: 13 }}>
+                    Nenhum usuário com esse processo marcado.
+                  </p>
+                )}
+                {usuariosFiltrados.map(u => {
                   const pc = PERFIL_CORES[u.perfil] || { bg: '#f1f5f9', color: '#374151' }
                   const sc = statusCor(u.status)
                   const vs = versaoStatus(u)
