@@ -4,25 +4,11 @@ import { isAdmin, temPermissao } from '../lib/auth.js'
 import { PainelFiltros, useFiltrosOperacionais, LABEL_STYLE, INPUT_STYLE } from '../components/PainelFiltros.jsx'
 import { Textarea, CarregandoHexagono } from '../components/Shared.jsx'
 import { PainelAssinatura } from '../steps/S5Assinatura.jsx'
-import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia, listarColaboradoresOcorrencia, listarReincidencias, tratarReincidencia } from '../lib/ocorrencias.js'
+import { listarOcorrencias, tratarOcorrencia, editarOcorrencia, numeroOcorrencia, listarColaboradoresOcorrencia, listarReincidencias, tratarReincidencia, diasPendenteLabel } from '../lib/ocorrencias.js'
 import { parseDescricaoImportada } from '../lib/importacaoOcorrencias.js'
 import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 
 const TIPO_LABEL = { DESEMPENHO: '📊 Desempenho Operacional', POS_SERVICO: '✅ Pós Serviço' }
-
-// Selo "⏳ há N dias" exibido junto do selo de status nos 3 cards (Não
-// Conformidade/Retrabalho/Reincidência) — só pra quem tá pendente. Conta
-// dias corridos de calendário (meia-noite a meia-noite), não 24h exatas,
-// pra bater com a intuição de "abriu ontem = há 1 dia" independente do
-// horário exato da abertura.
-function diasPendenteLabel(dataAbertura) {
-  if (!dataAbertura) return null
-  const meiaNoite = d => new Date(d.getFullYear(), d.getMonth(), d.getDate())
-  const dias = Math.round((meiaNoite(new Date()) - meiaNoite(new Date(dataAbertura))) / 86400000)
-  if (dias <= 0) return '⏳ hoje'
-  if (dias === 1) return '⏳ há 1 dia'
-  return `⏳ há ${dias} dias`
-}
 
 // Mesmo padrão de marca d'água usado em S4Fotos.jsx/R5Evidencias.jsx —
 // data/hora, equipe e fiscal gravados na própria imagem.
