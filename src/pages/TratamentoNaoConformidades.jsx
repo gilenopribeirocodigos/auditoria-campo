@@ -10,6 +10,20 @@ import { temaMotivoOcorrencia } from '../data/motivosOcorrenciaTema.js'
 
 const TIPO_LABEL = { DESEMPENHO: '📊 Desempenho Operacional', POS_SERVICO: '✅ Pós Serviço' }
 
+// Selo "⏳ há N dias" exibido junto do selo de status nos 3 cards (Não
+// Conformidade/Retrabalho/Reincidência) — só pra quem tá pendente. Conta
+// dias corridos de calendário (meia-noite a meia-noite), não 24h exatas,
+// pra bater com a intuição de "abriu ontem = há 1 dia" independente do
+// horário exato da abertura.
+function diasPendenteLabel(dataAbertura) {
+  if (!dataAbertura) return null
+  const meiaNoite = d => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const dias = Math.round((meiaNoite(new Date()) - meiaNoite(new Date(dataAbertura))) / 86400000)
+  if (dias <= 0) return '⏳ hoje'
+  if (dias === 1) return '⏳ há 1 dia'
+  return `⏳ há ${dias} dias`
+}
+
 // Mesmo padrão de marca d'água usado em S4Fotos.jsx/R5Evidencias.jsx —
 // data/hora, equipe e fiscal gravados na própria imagem.
 function processarFotoEvidencia(file, prefixo, fiscal) {
@@ -167,12 +181,19 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
               de contexto (Fiscal/Tipo-OS-UC em vez de Encaminhada/Aberta por). */}
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{grupo.prefixo || '—'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
-              background: temPendente ? '#fee2e2' : '#dcfce7', color: temPendente ? '#b91c1c' : '#15803d',
-            }}>
-              {temPendente ? `🔴 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: temPendente ? '#fee2e2' : '#dcfce7', color: temPendente ? '#b91c1c' : '#15803d',
+              }}>
+                {temPendente ? `🔴 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
+              </span>
+              {temPendente && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#b91c1c', whiteSpace: 'nowrap' }}>
+                  {diasPendenteLabel(grupo.itens[0]?.criado_em)}
+                </span>
+              )}
+            </div>
           </div>
           <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{grupo.numero_as || '—'}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -608,12 +629,19 @@ function CardOcorrencia({ oc, usuarioLogado, onTratado, onEditado }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{oc.prefixo || '—'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
-              background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
-            }}>
-              {pendente ? '🟣 pendente' : '🟢 tratada'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+              }}>
+                {pendente ? '🟣 pendente' : '🟢 tratada'}
+              </span>
+              {pendente && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#3730a3', whiteSpace: 'nowrap' }}>
+                  {diasPendenteLabel(oc.criado_em)}
+                </span>
+              )}
+            </div>
           </div>
           <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{numeroOcorrencia(oc)}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
@@ -1074,12 +1102,19 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{r.prefixo || '—'}</span>
-            <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
-              background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
-            }}>
-              {pendente ? '🟣 pendente' : '🟢 tratada'}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+              <span style={{
+                fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
+              }}>
+                {pendente ? '🟣 pendente' : '🟢 tratada'}
+              </span>
+              {pendente && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: '#9a3412', whiteSpace: 'nowrap' }}>
+                  {diasPendenteLabel(r.criado_em)}
+                </span>
+              )}
+            </div>
           </div>
           <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{numeroOcorrencia(r)}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
