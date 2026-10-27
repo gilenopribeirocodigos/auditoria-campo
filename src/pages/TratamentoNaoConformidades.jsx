@@ -1279,7 +1279,7 @@ function CardReincidencia({ r, usuarioLogado, onTratado }) {
             </div>
 
             <Textarea label="5. As vulnerabilidades estruturais encontradas na área, que fogem do alcance da equipe emergencial, foram cadastradas no sistema para programação planejada?" value={vulnerabilidades} onChange={setVulnerabilidades}
-              placeholder="Descreva a vulnerabilidade e o NDS, se houver..." rows={3} />
+              placeholder="Descreva a vulnerabilidade e a NDS (Nota de Serviço), se houver..." rows={3} />
 
             <div style={{ marginBottom: 14 }}>
               <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', marginBottom: 8 }}>
