@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { TIPOS_REGISTRO, MODALIDADES } from '../data/registros_config.js'
 
 export default function R2Identificacao({ form, upd, next, prev }) {
@@ -55,6 +55,14 @@ export default function R2Identificacao({ form, upd, next, prev }) {
   // ── GPS é OBRIGATÓRIO — sem ele não avança ─────────────────────────────────
   const gpsOk = form.gpsStatus === 'ok' && form.lat && form.lng
   const podeProsseguir = form.fiscal && form.data && form.hora && gpsOk
+
+  // Tenta capturar o GPS assim que a tela abre, sem esperar o fiscal tocar no
+  // botão — mesmo padrão já usado em AberturaOcorrencia.jsx e S1Identificacao.jsx
+  // (Auditoria). Continua obrigatório pra avançar (gpsOk acima) e o botão de
+  // captura manual continua disponível pra tentar de novo se isso falhar.
+  useEffect(() => {
+    if (!gpsOk) obterGPS()
+  }, [])
 
   return (
     <div style={{ padding: '0 0 80px' }}>
