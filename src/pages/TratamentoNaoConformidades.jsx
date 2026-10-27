@@ -161,20 +161,27 @@ function GrupoNC({ grupo, usuarioLogado, onTratado }) {
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
-            <span style={{ fontSize: 15, fontWeight: 800, color: '#1e293b' }}>{grupo.prefixo || '—'}</span>
-            <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace', color: '#64748b' }}>{grupo.numero_as || '—'}</span>
+          {/* Mesmo molde de cabeçalho de CardOcorrencia/CardReincidencia (Retrabalho/
+              Reincidência) — prefixo + selo na linha 1, número em linha própria,
+              2 linhas de contexto com ícone — só muda a cor (vermelho) e os campos
+              de contexto (Fiscal/Tipo-OS-UC em vez de Encaminhada/Aberta por). */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+            <span style={{ fontSize: 16, fontWeight: 800, color: '#1e293b' }}>{grupo.prefixo || '—'}</span>
             <span style={{
-              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+              fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20, flexShrink: 0,
               background: temPendente ? '#fee2e2' : '#dcfce7', color: temPendente ? '#b91c1c' : '#15803d',
             }}>
-              {temPendente ? `🟠 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
+              {temPendente ? `🔴 ${pendentes.length} pendente(s)` : '🟢 Tratada'}
             </span>
           </div>
-          <p style={{ fontSize: 11, color: '#64748b' }}>
-            {grupo.fiscal} · {TIPO_LABEL[grupo.tipo_auditoria] || grupo.tipo_auditoria || '—'} · OS {grupo.os || '—'} · UC {grupo.uc || '—'}
-            {grupo.auditoria?.data_auditoria && ` · ${grupo.auditoria.data_auditoria}`}
-          </p>
+          <p style={{ fontSize: 10.5, fontFamily: 'monospace', color: '#94a3b8', margin: '0 0 9px' }}>{grupo.numero_as || '—'}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            <p style={{ fontSize: 11.5, color: '#64748b' }}>🧑 Fiscal: <strong style={{ color: '#1e293b' }}>{grupo.fiscal}</strong></p>
+            <p style={{ fontSize: 11.5, color: '#64748b' }}>
+              📋 {TIPO_LABEL[grupo.tipo_auditoria] || grupo.tipo_auditoria || '—'} · OS {grupo.os || '—'} · UC {grupo.uc || '—'}
+              {grupo.auditoria?.data_auditoria && ` · ${grupo.auditoria.data_auditoria}`}
+            </p>
+          </div>
           {!aberto && (
             <p style={{ fontSize: 12, color: '#334155', marginTop: 6 }}>
               {grupo.itens.length} não conformidade(s) — toque para {temPendente ? 'tratar' : 'ver detalhes'}
