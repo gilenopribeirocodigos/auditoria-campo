@@ -1010,16 +1010,23 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 18 }}>🔧</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Tratamento de Retrabalho</span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
-                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
-                          {pendente && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3' }}>{diasPendenteLabel(oc.criado_em)}</span>
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontSize: 18 }}>🔧</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Tratamento de Retrabalho</span>
+                          </div>
+                          {/* Selo + dias pendente sempre juntos numa coluna fixa à direita —
+                              em vez de inline com ícone/título, pra não quebrar o "⏳ há N dias"
+                              pra uma linha separada do selo quando o card aperta (celular). */}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                              background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+                            }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                            {pendente && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', whiteSpace: 'nowrap' }}>{diasPendenteLabel(oc.criado_em)}</span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {oc.aberto_por}</span>
@@ -1044,16 +1051,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#e3c39c' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 18 }}>📦</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#78350f' }}>Abertura de Ocorrência</span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#fdf3e7' : '#dcfce7', color: pendente ? '#78350f' : '#15803d',
-                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
-                          {pendente && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#78350f' }}>{diasPendenteLabel(oc.criado_em)}</span>
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontSize: 18 }}>📦</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#78350f' }}>Abertura de Ocorrência</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                              background: pendente ? '#fdf3e7' : '#dcfce7', color: pendente ? '#78350f' : '#15803d',
+                            }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                            {pendente && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#78350f', whiteSpace: 'nowrap' }}>{diasPendenteLabel(oc.criado_em)}</span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {oc.aberto_por}</span>
@@ -1087,16 +1098,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#fdba74' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 18 }}>🔁</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
-                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
-                          {pendente && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#9a3412' }}>{diasPendenteLabel(r.criado_em)}</span>
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontSize: 18 }}>🔁</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                              background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
+                            }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                            {pendente && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', whiteSpace: 'nowrap' }}>{diasPendenteLabel(r.criado_em)}</span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {r.aberto_por}</span>
