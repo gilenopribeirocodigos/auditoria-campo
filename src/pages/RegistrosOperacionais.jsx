@@ -535,6 +535,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // Status só se aplica a Ocorrências (único tipo com ciclo pendente/tratada
   // — os demais tipos de Registro já nascem concluídos) — single select
   const [statusOcorrenciaSel, setStatusOcorrenciaSel] = useState('')
+  // Busca por número (RT-/RE-/OC-...) — mesmo padrão do campo "Nº AS" em
+  // Tratamento de Não Conformidades, filtro client-side sobre o que já foi
+  // carregado. Só se aplica a Retrabalho/Reincidência/Ocorrência Genérica
+  // (únicos tipos com número próprio); os demais tipos de Registro não têm
+  // número, então somem da lista enquanto a busca estiver preenchida.
+  const [numeroRegistroFiltro, setNumeroRegistroFiltro] = useState('')
 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
@@ -855,6 +861,16 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           <option value="TRATADA">🟢 Tratada</option>
         </select>
       </div>
+      <div>
+        <label style={LABEL_STYLE}>
+          Nº Retrabalho/Reincidência/Ocorrência
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
+            (RT-/RE-/OC-...)
+          </span>
+        </label>
+        <input value={numeroRegistroFiltro} onChange={e => setNumeroRegistroFiltro(e.target.value.toUpperCase())}
+          placeholder="RT-..." style={INPUT_STYLE} />
+      </div>
     </>
   )
 
@@ -868,12 +884,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // registro recém-aberto de um tipo podia aparecer abaixo de registros
   // antigos de outro tipo).
   const timestampRegistro = r => new Date(`${r.data_registro}T${r.hora_registro || '00:00'}`).getTime()
+  const buscaNumero = numeroRegistroFiltro.trim()
   const itensLista = [
     ...ocorrencias.map(oc => ({ kind: 'ocorrencia', item: oc, ts: new Date(oc.criado_em).getTime() })),
     ...reincidencias.map(r => ({ kind: 'reincidencia', item: r, ts: new Date(r.criado_em).getTime() })),
     ...genericas.map(g => ({ kind: 'generica', item: g, ts: new Date(g.criado_em).getTime() })),
     ...registros.map(r => ({ kind: 'registro', item: r, ts: timestampRegistro(r) })),
-  ].sort((a, b) => b.ts - a.ts)
+  ]
+    // Busca por Nº Retrabalho/Reincidência/Ocorrência — só esses 3 tipos têm
+    // número próprio (numeroOcorrencia), os demais tipos de Registro somem
+    // da lista enquanto a busca estiver preenchida.
+    .filter(({ kind, item }) => !buscaNumero || (kind !== 'registro' && numeroOcorrencia(item).includes(buscaNumero)))
+    .sort((a, b) => b.ts - a.ts)
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
