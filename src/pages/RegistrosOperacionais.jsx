@@ -535,6 +535,12 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // Status só se aplica a Ocorrências (único tipo com ciclo pendente/tratada
   // — os demais tipos de Registro já nascem concluídos) — single select
   const [statusOcorrenciaSel, setStatusOcorrenciaSel] = useState('')
+  // Busca por número (RT-/RE-/OC-...) — mesmo padrão do campo "Nº AS" em
+  // Tratamento de Não Conformidades, filtro client-side sobre o que já foi
+  // carregado. Só se aplica a Retrabalho/Reincidência/Ocorrência Genérica
+  // (únicos tipos com número próprio); os demais tipos de Registro não têm
+  // número, então somem da lista enquanto a busca estiver preenchida.
+  const [numeroRegistroFiltro, setNumeroRegistroFiltro] = useState('')
 
   const [registros,     setRegistros]     = useState([])
   const [loading,       setLoading]       = useState(true)
@@ -855,6 +861,16 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
           <option value="TRATADA">🟢 Tratada</option>
         </select>
       </div>
+      <div>
+        <label style={LABEL_STYLE}>
+          Nº Retrabalho/Reincidência/Ocorrência
+          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
+            (RT-/RE-/OC-...)
+          </span>
+        </label>
+        <input value={numeroRegistroFiltro} onChange={e => setNumeroRegistroFiltro(e.target.value.toUpperCase())}
+          placeholder="RT-..." style={INPUT_STYLE} />
+      </div>
     </>
   )
 
@@ -868,12 +884,18 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
   // registro recém-aberto de um tipo podia aparecer abaixo de registros
   // antigos de outro tipo).
   const timestampRegistro = r => new Date(`${r.data_registro}T${r.hora_registro || '00:00'}`).getTime()
+  const buscaNumero = numeroRegistroFiltro.trim()
   const itensLista = [
     ...ocorrencias.map(oc => ({ kind: 'ocorrencia', item: oc, ts: new Date(oc.criado_em).getTime() })),
     ...reincidencias.map(r => ({ kind: 'reincidencia', item: r, ts: new Date(r.criado_em).getTime() })),
     ...genericas.map(g => ({ kind: 'generica', item: g, ts: new Date(g.criado_em).getTime() })),
     ...registros.map(r => ({ kind: 'registro', item: r, ts: timestampRegistro(r) })),
-  ].sort((a, b) => b.ts - a.ts)
+  ]
+    // Busca por Nº Retrabalho/Reincidência/Ocorrência — só esses 3 tipos têm
+    // número próprio (numeroOcorrencia), os demais tipos de Registro somem
+    // da lista enquanto a busca estiver preenchida.
+    .filter(({ kind, item }) => !buscaNumero || (kind !== 'registro' && numeroOcorrencia(item).includes(buscaNumero)))
+    .sort((a, b) => b.ts - a.ts)
 
   return (
     <div style={{ minHeight: '100vh', background: '#f0f4f8' }}>
@@ -1010,16 +1032,23 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#a5b4fc' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 18 }}>🔧</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Tratamento de Retrabalho</span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
-                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
-                          {pendente && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3' }}>{diasPendenteLabel(oc.criado_em)}</span>
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontSize: 18 }}>🔧</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#4338ca' }}>Tratamento de Retrabalho</span>
+                          </div>
+                          {/* Selo + dias pendente sempre juntos numa coluna fixa à direita —
+                              em vez de inline com ícone/título, pra não quebrar o "⏳ há N dias"
+                              pra uma linha separada do selo quando o card aperta (celular). */}
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                              background: pendente ? '#e0e7ff' : '#dcfce7', color: pendente ? '#3730a3' : '#15803d',
+                            }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                            {pendente && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#3730a3', whiteSpace: 'nowrap' }}>{diasPendenteLabel(oc.criado_em)}</span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {oc.aberto_por}</span>
@@ -1044,16 +1073,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#e3c39c' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 18 }}>📦</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#78350f' }}>Abertura de Ocorrência</span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#fdf3e7' : '#dcfce7', color: pendente ? '#78350f' : '#15803d',
-                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
-                          {pendente && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#78350f' }}>{diasPendenteLabel(oc.criado_em)}</span>
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontSize: 18 }}>📦</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#78350f' }}>Abertura de Ocorrência</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                              background: pendente ? '#fdf3e7' : '#dcfce7', color: pendente ? '#78350f' : '#15803d',
+                            }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                            {pendente && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#78350f', whiteSpace: 'nowrap' }}>{diasPendenteLabel(oc.criado_em)}</span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {oc.aberto_por}</span>
@@ -1087,16 +1120,20 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
                     style={{ background: '#fff', borderRadius: 14, border: `1.5px solid ${pendente ? '#fdba74' : '#86efac'}`, padding: '14px 16px', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 6 }}>
-                          <span style={{ fontSize: 18 }}>🔁</span>
-                          <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
-                          <span style={{
-                            fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                            background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
-                          }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
-                          {pendente && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: '#9a3412' }}>{diasPendenteLabel(r.criado_em)}</span>
-                          )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontSize: 18 }}>🔁</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: '#c2410c' }}>Tratamento de Reincidência</span>
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3, flexShrink: 0 }}>
+                            <span style={{
+                              fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, whiteSpace: 'nowrap',
+                              background: pendente ? '#ffedd5' : '#dcfce7', color: pendente ? '#9a3412' : '#15803d',
+                            }}>{pendente ? '🟣 pendente' : '🟢 tratada'}</span>
+                            {pendente && (
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#9a3412', whiteSpace: 'nowrap' }}>{diasPendenteLabel(r.criado_em)}</span>
+                            )}
+                          </div>
                         </div>
                         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.7 }}>
                           <span>👤 {r.aberto_por}</span>

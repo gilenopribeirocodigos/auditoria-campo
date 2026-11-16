@@ -819,7 +819,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
 
         if (idsJaRegistrados.has(String(eletMatch.id))) {
           const registro = frequenciasRegistradas.find(r => String(r.eletricista_id) === String(eletMatch.id))
-          jaJustificados.push({ ...linha, colaborador: eletMatch.colaborador, registro })
+          jaJustificados.push({ ...linha, colaborador: eletMatch.colaborador, prefixo: eletMatch.prefixo, registro })
         } else {
           pendentes.push({ ...linha, colaborador: eletMatch.colaborador, eletMatch })
         }
@@ -1746,9 +1746,25 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                         const label = isPresente ? `PRESENTE · ${viaSiga ? 'SIGA' : 'Manual'}` : 'AUSENTE · Manual'
                         const cor = isPresente ? (viaSiga ? '#6d28d9' : '#15803d') : '#dc2626'
                         const bg = isPresente ? (viaSiga ? '#ede9fe' : '#dcfce7') : '#fee2e2'
+                        // Teresina (THE) x Interior — só pra bater o olho de onde é
+                        // o prefixo, sem precisar decorar o código de cada cidade.
+                        const ehTeresina = /-THE-/i.test(j.prefixo || '')
                         return (
                           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12 }}>
-                            <span><b>{j.colaborador}</b> · Mat: {j.matricula || '—'}</span>
+                            <span>
+                              <b>{j.colaborador}</b> · Mat: {j.matricula || '—'}
+                              {j.prefixo && (
+                                <>
+                                  {' · '}
+                                  <span style={{ fontFamily: 'monospace', color: '#64748b' }}>{j.prefixo}</span>
+                                  {' '}
+                                  <span style={{
+                                    fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 999,
+                                    background: ehTeresina ? '#dbeafe' : '#fef3c7', color: ehTeresina ? '#1e40af' : '#92400e',
+                                  }}>{ehTeresina ? '🏙️ Teresina' : '🌄 Interior'}</span>
+                                </>
+                              )}
+                            </span>
                             <span style={{ fontSize: 9.5, fontWeight: 800, padding: '3px 8px', borderRadius: 999, background: bg, color: cor }}>{label}</span>
                           </div>
                         )

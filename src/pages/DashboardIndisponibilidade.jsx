@@ -1,15 +1,21 @@
 import { useEffect, useRef, useState } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
+import { temPermissao } from '../lib/auth.js'
 import { useFiltrosOperacionais, PainelFiltros } from '../components/PainelFiltros.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
 // Dashboard de Indisponibilidade — VérticeGP
 // ────────────────────────────────────────────────────────────────────────────
-// 4 relatórios (mesmo do sistema original):
+// 5 relatórios (os 4 originais + o extrato):
 //  1. Geral      — totais por motivo no período
 //  2. Supervisor — por supervisor de campo
 //  3. Por Prefixo — equipes com indisponibilidades
 //  4. Disponíveis — eletricistas sem registro no período
+//  5. Extrato    — uma linha por ausência (pra cruzar com o setor médico e,
+//                  quando o motivo mudar depois do lançamento — ex.: falta
+//                  injustificada que vira atestado —, localizar o registro
+//                  certo em `indisponibilidades` pelo ID_REGISTRO da planilha)
 // ════════════════════════════════════════════════════════════════════════════
 
 const COR_MOTIVO = (motivo) => {
@@ -56,6 +62,24 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
   const [dadosSupervisor,  setDadosSupervisor]  = useState(null)
   const [dadosPrefixo,     setDadosPrefixo]     = useState(null)
   const [dadosDisponiveis, setDadosDisponiveis] = useState(null)
+  const [dadosExtrato,     setDadosExtrato]     = useState(null)
+
+  // Edição do motivo direto no Extrato — pra quando o lançamento original
+  // (ex.: falta injustificada, lançada de manhã sem o eletricista ter
+  // avisado) precisa virar outra coisa depois (ex.: ele chega com atestado
+  // médico à tarde). Só quem tem a permissão 'editar_motivo_indisponibilidade'
+  // vê o botão de editar.
+  const podeEditarMotivo = temPermissao(usuarioLogado, 'editar_motivo_indisponibilidade')
+  const [motivosDisponiveis, setMotivosDisponiveis] = useState([])
+  const [editandoId,     setEditandoId]     = useState(null)
+  const [motivoEditando, setMotivoEditando] = useState('')
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+
+  useEffect(() => {
+    if (!podeEditarMotivo) return
+    supabase.from('motivos_indisponibilidade').select('id, descricao').eq('ativo', true).order('descricao')
+      .then(({ data }) => setMotivosDisponiveis(data || []))
+  }, [podeEditarMotivo])
 
   const motivoDescricao = (registro, fallback = 'OUTRO') => (
     registro?.descricao_motivo_indisponibilidade ||
@@ -88,7 +112,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
         .lte('data', fim),
       supabase
         .from('indisponibilidades')
-        .select('id, eletricista_id, prefixo, data, motivo_id, colaborador, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
+        .select('id, eletricista_id, matricula, prefixo, data, motivo_id, colaborador, descricao_motivo_indisponibilidade, motivos_indisponibilidade(descricao)')
         .gte('data', ini)
         .lte('data', fim)
         .order('id', { ascending: true }),
@@ -199,6 +223,33 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
     )
   }
 
+  // Uma linha por ausência — sem agrupar por prefixo/dia como a aba "Por
+  // Prefixo" (que só guarda até 2 registros por chave). Guarda o `id` do
+  // registro em `indisponibilidades` (não mostrado na tela, só na planilha)
+  // pra permitir localizar a linha certa no banco depois, quando o motivo
+  // lançado precisar ser corrigido (ex.: falta injustificada que vira
+  // atestado médico assim que o eletricista apresenta o documento).
+  const montarExtrato = ({ estrutura, indisponiveis }) => {
+    const eletricistasPorId = new Map(
+      estrutura.map(e => [e.id, e]).filter(([id]) => id !== null && id !== undefined)
+    )
+
+    const linhas = indisponiveis.map(i => {
+      const eletricista = eletricistasPorId.get(i.eletricista_id)
+      return {
+        id: i.id,
+        data: i.data,
+        matricula: i.matricula || eletricista?.matricula || '—',
+        eletricista: i.colaborador || eletricista?.colaborador || '—',
+        prefixo: i.prefixo || eletricista?.prefixo || '—',
+        motivo: motivoDescricao(i, '—'),
+      }
+    })
+
+    linhas.sort((a, b) => (b.data || '').localeCompare(a.data || ''))
+    setDadosExtrato(linhas)
+  }
+
   const montarDisponiveis = ({ estrutura, presentes, indisponiveis }) => {
     const comRegistro = new Set([
       ...presentes.map(p => p.eletricista_id),
@@ -237,6 +288,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
       montarSupervisor(base)
       montarPrefixo(base)
       montarDisponiveis(base)
+      montarExtrato(base)
     } catch (e) {
       if (buscaId === ultimaBuscaRef.current) setErro('Erro ao carregar relatório: ' + e.message)
     } finally {
@@ -261,6 +313,59 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
     const timer = setTimeout(() => { aplicarFiltros() }, 150)
     return () => clearTimeout(timer)
   }, [filtroAplicacaoKey])
+
+  const exportarExtratoExcel = () => {
+    if (!dadosExtrato || dadosExtrato.length === 0) return
+    const colunas = ['DATA', 'MATRICULA', 'ELETRICISTA', 'PREFIXO', 'MOTIVO', 'ID_REGISTRO']
+    const dados = dadosExtrato.map(l => ({
+      'DATA':        l.data ? new Date(l.data + 'T12:00:00').toLocaleDateString('pt-BR') : '',
+      'MATRICULA':   l.matricula,
+      'ELETRICISTA': l.eletricista,
+      'PREFIXO':     l.prefixo,
+      'MOTIVO':      l.motivo,
+      'ID_REGISTRO': l.id,
+    }))
+    const ws = XLSX.utils.json_to_sheet(dados, { header: colunas })
+    ws['!cols'] = [{ wch: 12 }, { wch: 14 }, { wch: 34 }, { wch: 14 }, { wch: 22 }, { wch: 12 }]
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Extrato Ausências')
+    const { ini, fim } = filtros.getDatasQuery()
+    XLSX.writeFile(wb, `extrato_ausencias_${ini}_a_${fim}.xlsx`)
+  }
+
+  const iniciarEdicaoMotivo = (linha) => {
+    setEditandoId(linha.id)
+    setMotivoEditando('')
+  }
+
+  const cancelarEdicaoMotivo = () => {
+    setEditandoId(null)
+    setMotivoEditando('')
+  }
+
+  // Grava direto em `indisponibilidades` (mesmos dois campos usados na
+  // criação do registro — ver formIndisp em IndisponibilidadePage.jsx) e
+  // recarrega os 5 relatórios, pra Geral/Por Supervisor/Por Prefixo
+  // refletirem a contagem corrigida também, não só o Extrato.
+  const salvarEdicaoMotivo = async (linha) => {
+    if (!motivoEditando) { alert('Selecione o novo motivo.'); return }
+    const motivoSelecionado = motivosDisponiveis.find(m => String(m.id) === String(motivoEditando))
+    setSalvandoEdicao(true)
+    try {
+      const { error } = await supabase.from('indisponibilidades').update({
+        motivo_id: Number(motivoEditando),
+        descricao_motivo_indisponibilidade: motivoSelecionado?.descricao || null,
+      }).eq('id', linha.id)
+      if (error) throw error
+      setEditandoId(null)
+      setMotivoEditando('')
+      await aplicarFiltros()
+    } catch (e) {
+      alert('Não foi possível salvar: ' + e.message)
+    } finally {
+      setSalvandoEdicao(false)
+    }
+  }
 
   const temDados = dadosGeral !== null
 
@@ -326,6 +431,7 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                 { id: 'supervisor',  label: '👤 Por Supervisor' },
                 { id: 'prefixo',     label: '🚗 Por Prefixo'  },
                 { id: 'disponiveis', label: '📋 Disponíveis'  },
+                { id: 'extrato',     label: '📑 Extrato'      },
               ].map(aba => (
                 <button key={aba.id} onClick={() => setAbaAtiva(aba.id)} style={{
                   padding: '8px 16px', borderRadius: 20, border: 'none', cursor: 'pointer',
@@ -518,6 +624,99 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                         </tbody>
                       </table>
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ══════════════════════════════
+                ABA: EXTRATO
+            ══════════════════════════════ */}
+            {abaAtiva === 'extrato' && dadosExtrato && (
+              <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', overflow: 'hidden' }}>
+                <div style={{
+                  padding: '16px 20px', borderBottom: '1px solid #e2e8f0',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10,
+                }}>
+                  <div>
+                    <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b' }}>
+                      {dadosExtrato.length} ausência(s) no período — uma linha por registro
+                    </p>
+                    <p style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+                      Pra cruzar com o setor médico e corrigir o motivo depois, se mudar.
+                    </p>
+                  </div>
+                  <button onClick={exportarExtratoExcel} disabled={dadosExtrato.length === 0} style={{
+                    background: '#16a34a', color: '#fff', border: 'none', borderRadius: 8,
+                    padding: '10px 16px', fontSize: 12, fontWeight: 700, cursor: dadosExtrato.length === 0 ? 'default' : 'pointer',
+                    opacity: dadosExtrato.length === 0 ? 0.5 : 1, whiteSpace: 'nowrap',
+                  }}>📥 Baixar Excel</button>
+                </div>
+                {dadosExtrato.length === 0 ? (
+                  <div style={{ padding: 30, textAlign: 'center', color: '#94a3b8' }}>
+                    🎉 Nenhuma ausência registrada no período.
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          {['Data', 'Matrícula', 'Eletricista', 'Prefixo', 'Motivo', ...(podeEditarMotivo ? [''] : [])].map(h => (
+                            <th key={h || 'acoes'} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {dadosExtrato.map(l => (
+                          <tr key={l.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                            <td style={{ padding: '10px 14px', color: '#64748b', whiteSpace: 'nowrap' }}>{l.data ? new Date(l.data + 'T12:00:00').toLocaleDateString('pt-BR') : '—'}</td>
+                            <td style={{ padding: '10px 14px', color: '#64748b', fontFamily: 'monospace' }}>{l.matricula}</td>
+                            <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>{l.eletricista}</td>
+                            <td style={{ padding: '10px 14px', color: '#64748b', fontFamily: 'monospace' }}>{l.prefixo}</td>
+                            <td style={{ padding: '10px 14px' }}>
+                              {editandoId === l.id ? (
+                                <select
+                                  value={motivoEditando}
+                                  onChange={e => setMotivoEditando(e.target.value)}
+                                  disabled={salvandoEdicao}
+                                  style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', minWidth: 160 }}
+                                >
+                                  <option value="">Selecione...</option>
+                                  {motivosDisponiveis.map(m => (
+                                    <option key={m.id} value={m.id}>{m.descricao}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span style={{ background: COR_MOTIVO(l.motivo) + '22', color: COR_MOTIVO(l.motivo), padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                                  {l.motivo}
+                                </span>
+                              )}
+                            </td>
+                            {podeEditarMotivo && (
+                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                                {editandoId === l.id ? (
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button onClick={() => salvarEdicaoMotivo(l)} disabled={salvandoEdicao} style={{
+                                      border: 'none', background: '#16a34a', color: '#fff', borderRadius: 6,
+                                      padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                    }}>{salvandoEdicao ? '...' : '✔'}</button>
+                                    <button onClick={cancelarEdicaoMotivo} disabled={salvandoEdicao} style={{
+                                      border: 'none', background: '#e2e8f0', color: '#374151', borderRadius: 6,
+                                      padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                    }}>✕</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => iniciarEdicaoMotivo(l)} style={{
+                                    border: '1px solid #e2e8f0', background: '#fff', color: '#2563eb', borderRadius: 6,
+                                    padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                  }}>✏️ Editar</button>
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 )}
               </div>

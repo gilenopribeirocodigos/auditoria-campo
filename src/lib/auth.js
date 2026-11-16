@@ -288,6 +288,22 @@ export async function listarProcessosUsuario(usuarioId) {
   return (data || []).map(r => r.processo_chave)
 }
 
+// Busca os processos de TODOS os usuários de uma vez (1 query) — usado pelo
+// filtro por processo em GestaoUsuarios.jsx, em vez de uma chamada por
+// usuário. Devolve um mapa { usuario_id: [processo_chave, ...] }.
+export async function listarTodosProcessosUsuarios() {
+  const { data, error } = await supabase
+    .from('usuarios_processos')
+    .select('usuario_id, processo_chave')
+  if (error) throw error
+  const mapa = {}
+  ;(data || []).forEach(r => {
+    if (!mapa[r.usuario_id]) mapa[r.usuario_id] = []
+    mapa[r.usuario_id].push(r.processo_chave)
+  })
+  return mapa
+}
+
 // Salva a lista COMPLETA de processos do usuário (substitui tudo).
 // Estratégia: deleta tudo do usuário, insere a nova lista. Mais simples e seguro.
 export async function salvarProcessosUsuario(usuarioId, processosChaves) {
