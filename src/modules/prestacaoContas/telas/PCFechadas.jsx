@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { CarregandoHexagono } from '../../../components/Shared.jsx'
 import { listarFechamentos, listarPrestacoesDoFechamento } from '../lib/prestacaoContas.js'
 import { gerarExcelConsolidado, baixarFotosConsolidadas } from '../lib/exportacao.js'
+import PCRelatorioFechamento from './PCRelatorioFechamento.jsx'
 
 export default function PCFechadas({ usuarioLogado, verTodas, onVoltar, onHome }) {
   const [carregando, setCarregando] = useState(true)
@@ -12,6 +13,7 @@ export default function PCFechadas({ usuarioLogado, verTodas, onVoltar, onHome }
   const [carregandoDetalhe, setCarregandoDetalhe] = useState(false)
   const [gerandoExcel, setGerandoExcel] = useState(false)
   const [baixandoFotos, setBaixandoFotos] = useState(false)
+  const [mostrarRelatorio, setMostrarRelatorio] = useState(false)
 
   useEffect(() => {
     (async () => {
@@ -118,6 +120,10 @@ export default function PCFechadas({ usuarioLogado, verTodas, onVoltar, onHome }
                             flex: 1, padding: 10, borderRadius: 8, border: 'none', background: '#1e3a5f',
                             color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
                           }}>{baixandoFotos ? '⏳...' : '🗂️ Fotos (.zip)'}</button>
+                          <button onClick={() => setMostrarRelatorio(true)} style={{
+                            flex: 1, padding: 10, borderRadius: 8, border: 'none', background: '#d97706',
+                            color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                          }}>📈 Relatório</button>
                         </div>
                       </>
                     )}
@@ -128,6 +134,14 @@ export default function PCFechadas({ usuarioLogado, verTodas, onVoltar, onHome }
           </div>
         )}
       </main>
+
+      {mostrarRelatorio && (
+        <PCRelatorioFechamento
+          fechamento={fechamentos.find(f => f.id === abertoId)}
+          prestacoes={prestacoesDoAberto}
+          onFechar={() => setMostrarRelatorio(false)}
+        />
+      )}
     </div>
   )
 }
