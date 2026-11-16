@@ -238,11 +238,13 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
       const eletricista = eletricistasPorId.get(i.eletricista_id)
       return {
         id: i.id,
+        eletricista_id: i.eletricista_id,
         data: i.data,
         matricula: i.matricula || eletricista?.matricula || '—',
         eletricista: i.colaborador || eletricista?.colaborador || '—',
         prefixo: i.prefixo || eletricista?.prefixo || '—',
         motivo: motivoDescricao(i, '—'),
+        motivo_id: i.motivo_id || null,
       }
     })
 
@@ -347,16 +349,60 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
   // criação do registro — ver formIndisp em IndisponibilidadePage.jsx) e
   // recarrega os 5 relatórios, pra Geral/Por Supervisor/Por Prefixo
   // refletirem a contagem corrigida também, não só o Extrato.
+  //
+  // `indisponibilidades` não é a única tabela com o motivo: `equipes_dia`
+  // (lida na tela "Registrar Indisponibilidade") guarda seu PRÓPRIO
+  // snapshot (`id_indisponibilidade` + `descricao_motivo_indisponibilidade`),
+  // gravado no momento do carimbo original — sem atualizar as duas, as
+  // telas divergem (uma mostra o motivo corrigido, a outra continua com o
+  // antigo). As duas são casadas por eletricista_id + data, não por um id
+  // em comum. Também grava em `indisponibilidades_historico` (quem, quando,
+  // de qual motivo pra qual) — se a tabela ainda não existir no banco
+  // (migração em sql/2026-11-16_indisponibilidades_historico.sql ainda não
+  // aplicada via Codex), a troca do motivo não é bloqueada por isso.
   const salvarEdicaoMotivo = async (linha) => {
     if (!motivoEditando) { alert('Selecione o novo motivo.'); return }
     const motivoSelecionado = motivosDisponiveis.find(m => String(m.id) === String(motivoEditando))
+    const motivoNovoId = Number(motivoEditando)
+    const motivoNovoDescricao = motivoSelecionado?.descricao || null
+
+    if (!window.confirm(`Confirma trocar o motivo de "${linha.motivo}" para "${motivoNovoDescricao}"?\n\n${linha.eletricista} · ${linha.matricula} · ${new Date(linha.data + 'T12:00:00').toLocaleDateString('pt-BR')}\n\nEssa alteração grava direto no banco de dados.`)) {
+      return
+    }
+
     setSalvandoEdicao(true)
     try {
       const { error } = await supabase.from('indisponibilidades').update({
-        motivo_id: Number(motivoEditando),
-        descricao_motivo_indisponibilidade: motivoSelecionado?.descricao || null,
+        motivo_id: motivoNovoId,
+        descricao_motivo_indisponibilidade: motivoNovoDescricao,
       }).eq('id', linha.id)
       if (error) throw error
+
+      if (linha.eletricista_id) {
+        const { error: erroEquipeDia } = await supabase.from('equipes_dia').update({
+          id_indisponibilidade: motivoNovoId,
+          descricao_motivo_indisponibilidade: motivoNovoDescricao,
+        }).eq('eletricista_id', linha.eletricista_id).eq('data', linha.data)
+        if (erroEquipeDia) console.error('Não foi possível sincronizar equipes_dia:', erroEquipeDia)
+      }
+
+      try {
+        await supabase.from('indisponibilidades_historico').insert({
+          indisponibilidade_id: linha.id,
+          data: linha.data,
+          matricula: linha.matricula,
+          colaborador: linha.eletricista,
+          prefixo: linha.prefixo,
+          motivo_id_anterior: linha.motivo_id,
+          motivo_anterior: linha.motivo,
+          motivo_id_novo: motivoNovoId,
+          motivo_novo: motivoNovoDescricao,
+          alterado_por: usuarioLogado?.login || 'admin',
+        })
+      } catch (erroHistorico) {
+        console.error('Não foi possível gravar a trilha de auditoria:', erroHistorico)
+      }
+
       setEditandoId(null)
       setMotivoEditando('')
       await aplicarFiltros()
