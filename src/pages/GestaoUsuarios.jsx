@@ -94,6 +94,7 @@ const TODAS_PERMISSOES = [
   { id: 'reabrir_frequencia', label: '🔓 Frequência de Pessoal - reabrir registro (Presente/Ausente)' },
   { id: 'frequencia_lote_siga', label: '🤖 Frequência de Pessoal - justificativa em lote via SIGA' },
   { id: 'desfazer_indisponibilidade', label: '🔓 Indisponibilidade Prefixo - desfazer registro' },
+  { id: 'editar_motivo_indisponibilidade', label: '✏️ Dashboard Indisponibilidade - editar motivo (aba Extrato)' },
   { id: 'cadastrar_motivos_registros', label: '📝 Registros Operacionais - cadastrar motivos' },
   { id: 'importar_ocorrencias_lote', label: '📥 Abertura de Ocorrência - importar em lote (planilha)' },
   { id: 'sesmt_acesso', label: '🦺 Ações SESMT - acesso ao módulo' },
