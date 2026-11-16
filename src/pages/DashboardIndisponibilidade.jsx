@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase.js'
+import { temPermissao } from '../lib/auth.js'
 import { useFiltrosOperacionais, PainelFiltros } from '../components/PainelFiltros.jsx'
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -62,6 +63,23 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
   const [dadosPrefixo,     setDadosPrefixo]     = useState(null)
   const [dadosDisponiveis, setDadosDisponiveis] = useState(null)
   const [dadosExtrato,     setDadosExtrato]     = useState(null)
+
+  // Edição do motivo direto no Extrato — pra quando o lançamento original
+  // (ex.: falta injustificada, lançada de manhã sem o eletricista ter
+  // avisado) precisa virar outra coisa depois (ex.: ele chega com atestado
+  // médico à tarde). Só quem tem a permissão 'editar_motivo_indisponibilidade'
+  // vê o botão de editar.
+  const podeEditarMotivo = temPermissao(usuarioLogado, 'editar_motivo_indisponibilidade')
+  const [motivosDisponiveis, setMotivosDisponiveis] = useState([])
+  const [editandoId,     setEditandoId]     = useState(null)
+  const [motivoEditando, setMotivoEditando] = useState('')
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false)
+
+  useEffect(() => {
+    if (!podeEditarMotivo) return
+    supabase.from('motivos_indisponibilidade').select('id, descricao').eq('ativo', true).order('descricao')
+      .then(({ data }) => setMotivosDisponiveis(data || []))
+  }, [podeEditarMotivo])
 
   const motivoDescricao = (registro, fallback = 'OUTRO') => (
     registro?.descricao_motivo_indisponibilidade ||
@@ -313,6 +331,40 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
     XLSX.utils.book_append_sheet(wb, ws, 'Extrato Ausências')
     const { ini, fim } = filtros.getDatasQuery()
     XLSX.writeFile(wb, `extrato_ausencias_${ini}_a_${fim}.xlsx`)
+  }
+
+  const iniciarEdicaoMotivo = (linha) => {
+    setEditandoId(linha.id)
+    setMotivoEditando('')
+  }
+
+  const cancelarEdicaoMotivo = () => {
+    setEditandoId(null)
+    setMotivoEditando('')
+  }
+
+  // Grava direto em `indisponibilidades` (mesmos dois campos usados na
+  // criação do registro — ver formIndisp em IndisponibilidadePage.jsx) e
+  // recarrega os 5 relatórios, pra Geral/Por Supervisor/Por Prefixo
+  // refletirem a contagem corrigida também, não só o Extrato.
+  const salvarEdicaoMotivo = async (linha) => {
+    if (!motivoEditando) { alert('Selecione o novo motivo.'); return }
+    const motivoSelecionado = motivosDisponiveis.find(m => String(m.id) === String(motivoEditando))
+    setSalvandoEdicao(true)
+    try {
+      const { error } = await supabase.from('indisponibilidades').update({
+        motivo_id: Number(motivoEditando),
+        descricao_motivo_indisponibilidade: motivoSelecionado?.descricao || null,
+      }).eq('id', linha.id)
+      if (error) throw error
+      setEditandoId(null)
+      setMotivoEditando('')
+      await aplicarFiltros()
+    } catch (e) {
+      alert('Não foi possível salvar: ' + e.message)
+    } finally {
+      setSalvandoEdicao(false)
+    }
   }
 
   const temDados = dadosGeral !== null
@@ -609,8 +661,8 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                       <thead>
                         <tr style={{ background: '#f8fafc' }}>
-                          {['Data', 'Matrícula', 'Eletricista', 'Prefixo', 'Motivo'].map(h => (
-                            <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
+                          {['Data', 'Matrícula', 'Eletricista', 'Prefixo', 'Motivo', ...(podeEditarMotivo ? [''] : [])].map(h => (
+                            <th key={h || 'acoes'} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, color: '#374151', fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.5, borderBottom: '1px solid #e2e8f0' }}>{h}</th>
                           ))}
                         </tr>
                       </thead>
@@ -622,10 +674,45 @@ export default function DashboardIndisponibilidade({ usuarioLogado, onVoltar }) 
                             <td style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>{l.eletricista}</td>
                             <td style={{ padding: '10px 14px', color: '#64748b', fontFamily: 'monospace' }}>{l.prefixo}</td>
                             <td style={{ padding: '10px 14px' }}>
-                              <span style={{ background: COR_MOTIVO(l.motivo) + '22', color: COR_MOTIVO(l.motivo), padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
-                                {l.motivo}
-                              </span>
+                              {editandoId === l.id ? (
+                                <select
+                                  value={motivoEditando}
+                                  onChange={e => setMotivoEditando(e.target.value)}
+                                  disabled={salvandoEdicao}
+                                  style={{ fontSize: 12, padding: '4px 6px', borderRadius: 6, border: '1px solid #cbd5e1', minWidth: 160 }}
+                                >
+                                  <option value="">Selecione...</option>
+                                  {motivosDisponiveis.map(m => (
+                                    <option key={m.id} value={m.id}>{m.descricao}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span style={{ background: COR_MOTIVO(l.motivo) + '22', color: COR_MOTIVO(l.motivo), padding: '2px 8px', borderRadius: 6, fontSize: 11, fontWeight: 700 }}>
+                                  {l.motivo}
+                                </span>
+                              )}
                             </td>
+                            {podeEditarMotivo && (
+                              <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                                {editandoId === l.id ? (
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button onClick={() => salvarEdicaoMotivo(l)} disabled={salvandoEdicao} style={{
+                                      border: 'none', background: '#16a34a', color: '#fff', borderRadius: 6,
+                                      padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                    }}>{salvandoEdicao ? '...' : '✔'}</button>
+                                    <button onClick={cancelarEdicaoMotivo} disabled={salvandoEdicao} style={{
+                                      border: 'none', background: '#e2e8f0', color: '#374151', borderRadius: 6,
+                                      padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                    }}>✕</button>
+                                  </div>
+                                ) : (
+                                  <button onClick={() => iniciarEdicaoMotivo(l)} style={{
+                                    border: '1px solid #e2e8f0', background: '#fff', color: '#2563eb', borderRadius: 6,
+                                    padding: '4px 8px', fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                                  }}>✏️ Editar</button>
+                                )}
+                              </td>
+                            )}
                           </tr>
                         ))}
                       </tbody>
