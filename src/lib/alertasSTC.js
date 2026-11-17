@@ -64,6 +64,7 @@ export async function listarAlertasTMA(filtros = {}) {
     resumo: { total: 0, pendentes: 0, encerrados: 0 },
     total_resultados: 0,
     fiscais: [],
+    por_fiscal: [],
     alertas: [],
   }
 }

@@ -3,13 +3,16 @@ import * as XLSX from 'xlsx'
 import { listarAlertasTMA } from '../lib/alertasSTC.js'
 import './AlertasTMA.css'
 
+// 2000 cobre bem o volume atual (pouco mais de 1000 alertas no total) com
+// folga pra crescer, sem bater no teto de 5000 da função SQL
+// (stc_painel_alertas_tma, ver sql/2026-11-17_alertas_tma_painel_fiscal_limite.sql).
 const FILTROS_INICIAIS = {
   status: '',
   busca: '',
   fiscal: '',
   dataInicio: '',
   dataFim: '',
-  limite: 500,
+  limite: 2000,
   offset: 0,
 }
 
@@ -68,16 +71,15 @@ function Resumo({ resumo, statusAtivo, onStatus }) {
 
 // Reage à aba de Status ativa (igual TratamentoNaoConformidades.jsx) — some
 // no "TODOS" pra não misturar pendente com encerrado no mesmo resumo.
-function ResumoPorFiscal({ alertas, status, aberto, onToggle }) {
+//
+// A contagem vem pronta do banco (resultado.por_fiscal), já somada sobre TODO
+// o conjunto filtrado por status/busca/período — não só os alertas da página
+// atual. Contar a partir de `alertas` (cortada em p_limite) subestimava os
+// fiscais com registros mais antigos quando o total passava do limite da
+// consulta (ver sql/2026-11-17_alertas_tma_painel_fiscal_limite.sql).
+function ResumoPorFiscal({ porFiscal, status, aberto, onToggle }) {
   if (!status) return null
-  const contagem = new Map()
-  alertas.forEach(a => {
-    const nome = a.fiscal_nome || a.lider || 'Não informado'
-    contagem.set(nome, (contagem.get(nome) || 0) + 1)
-  })
-  const itens = [...contagem.entries()]
-    .map(([fiscal, qtd]) => ({ fiscal, qtd }))
-    .sort((a, b) => b.qtd - a.qtd)
+  const itens = porFiscal || []
   if (itens.length === 0) return null
 
   const classe = status === 'PENDENTE' ? 'pendente' : 'encerrado'
@@ -164,6 +166,7 @@ export default function AlertasTMA({ onVoltar }) {
     resumo: { total: 0, pendentes: 0, encerrados: 0 },
     total_resultados: 0,
     fiscais: [],
+    por_fiscal: [],
     alertas: [],
   })
   const [carregando, setCarregando] = useState(true)
@@ -323,7 +326,7 @@ export default function AlertasTMA({ onVoltar }) {
         </div>
 
         <ResumoPorFiscal
-          alertas={resultado.alertas}
+          porFiscal={resultado.por_fiscal}
           status={filtros.status}
           aberto={resumoFiscalAberto}
           onToggle={() => setResumoFiscalAberto(a => !a)}
