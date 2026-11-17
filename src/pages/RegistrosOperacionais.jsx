@@ -862,14 +862,9 @@ export default function RegistrosOperacionais({ usuarioLogado, onVoltar, onNovo 
         </select>
       </div>
       <div>
-        <label style={LABEL_STYLE}>
-          Nº Retrabalho/Reincidência/Ocorrência
-          <span style={{ fontSize: 9, fontWeight: 700, color: '#64748b', marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>
-            (RT-/RE-/OC-...)
-          </span>
-        </label>
+        <label style={LABEL_STYLE}>Nº RT/RE/OC</label>
         <input value={numeroRegistroFiltro} onChange={e => setNumeroRegistroFiltro(e.target.value.toUpperCase())}
-          placeholder="RT-..." style={INPUT_STYLE} />
+          placeholder="RT-, RE- ou OC-..." style={INPUT_STYLE} />
       </div>
     </>
   )
