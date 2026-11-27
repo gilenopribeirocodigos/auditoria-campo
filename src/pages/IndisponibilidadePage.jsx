@@ -171,6 +171,9 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
   // bloco "Registradas nesta data" pra quem só quer ver quem falta marcar
   // Presente/Ausente, sem precisar rolar a tela passando pelos já registrados.
   const [soPendentes, setSoPendentes] = useState(false)
+  // ── Filtro extra: só ausentes dentro de "Registradas nesta data" — pra
+  // montar uma lista só de quem faltou (ex.: levar pra uma planilha).
+  const [soAusentes, setSoAusentes] = useState(false)
 
   useEffect(() => {
     const handler = e => {
@@ -1127,6 +1130,22 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
     </div>
   ) : null
 
+  const FiltroSoAusentes = abaAtiva === 'frequencia' ? (
+    <div>
+      <label style={LABEL_STYLE}>Registradas nesta data</label>
+      <button type="button" onClick={() => setSoAusentes(v => !v)} style={{
+        ...INPUT_STYLE, display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+        background: soAusentes ? '#fef2f2' : '#fff',
+        borderColor: soAusentes ? '#dc2626' : '#e2e8f0',
+        color: soAusentes ? '#b91c1c' : '#64748b',
+        fontWeight: soAusentes ? 700 : 500,
+      }}>
+        <span style={{ fontSize: 15, lineHeight: 1 }}>{soAusentes ? '☑' : '☐'}</span>
+        Só os ausentes
+      </button>
+    </div>
+  ) : null
+
   // ── Painel de contadores (reativo à aba ativa) ───────────────────────────
   // Frequência: mostra eletricistas | Indisponível: mostra prefixos
   const totalPrefixosIndisp = useMemo(() =>
@@ -1212,7 +1231,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
           titulo="🔍 Filtros do Registro"
           badge="supervisor · prefixo · eletricista"
           mostrarMesPeriodo={false}
-          extras={<>{FiltroEletricista}{FiltroSoPendentes}</>}
+          extras={<>{FiltroEletricista}{FiltroSoPendentes}{FiltroSoAusentes}</>}
         />
 
         {/* ── Painel de contadores ── */}
@@ -1254,11 +1273,18 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
         ══════════════════════════════════════════════ */}
         {abaAtiva === 'frequencia' && (
           <>
-            {!soPendentes && frequenciasRegistradasFiltradas.length > 0 && (
+            {!soPendentes && (() => {
+              const listaRegistradas = soAusentes
+                ? frequenciasRegistradasFiltradas.filter(r => (r.descricao_motivo_indisponibilidade || '').toUpperCase() !== 'PRESENTE')
+                : frequenciasRegistradasFiltradas
+              if (listaRegistradas.length === 0) return null
+              return (
               <div style={{ background: '#fff', borderRadius: 14, border: '1px solid #e2e8f0', padding: '20px', marginTop: 16 }}>
-                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>📋 Registradas nesta data ({frequenciasRegistradasFiltradas.length})</p>
+                <p style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', marginBottom: 14 }}>
+                  📋 {soAusentes ? 'Ausentes' : 'Registradas'} nesta data ({listaRegistradas.length})
+                </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {frequenciasRegistradasFiltradas.map(r => {
+                  {listaRegistradas.map(r => {
                     const descricaoMotivo = r.descricao_motivo_indisponibilidade || '—'
                     const isPresenteHistorico = descricaoMotivo.toUpperCase() === 'PRESENTE'
                     const nomeEletricista = r.colaborador || `Eletricista #${r.eletricista_id}`
@@ -1274,6 +1300,7 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                             <p style={{ fontSize: 13, fontWeight: 800, color: isPresenteHistorico ? '#15803d' : '#b91c1c', margin: 0 }}>{nomeEletricista}</p>
                             <p style={{ fontSize: 11, color: '#64748b', margin: 0 }}>
                               {r.matricula ? `Mat: ${r.matricula} · ` : ''}Prefixo: {r.prefixo || '—'} · {isPresenteHistorico ? 'PRESENTE' : `AUSENTE · ${descricaoMotivo}`}
+                              {r.superv_campo && <span style={{ color: '#94a3b8' }}> · Sup: {r.superv_campo}</span>}
                             </p>
                             {r.observacoes && <p style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>💬 {r.observacoes}</p>}
                           </div>
@@ -1306,7 +1333,8 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                   })}
                 </div>
               </div>
-            )}
+              )
+            })()}
 
             {loading ? (
               <CarregandoHexagono texto="Carregando eletricistas..." />
@@ -1354,7 +1382,12 @@ export default function IndisponibilidadePage({ usuarioLogado, onVoltar }) {
                             </div>
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <p style={{ fontSize: 14, fontWeight: 800, color: '#1e293b' }}>{eletAtual.colaborador}</p>
-                              <p style={{ fontSize: 11, color: '#64748b' }}>Mat: {eletAtual.matricula} · {eletAtual.prefixo || '—'} · {eletAtual.base || elet.base || '—'}</p>
+                              <p style={{ fontSize: 11, color: '#64748b' }}>
+                                Mat: {eletAtual.matricula} · {eletAtual.prefixo || '—'} · {eletAtual.base || elet.base || '—'}
+                                {(eletAtual.superv_campo || elet.superv_campo) && (
+                                  <span style={{ color: '#94a3b8' }}> · Sup: {eletAtual.superv_campo || elet.superv_campo}</span>
+                                )}
+                              </p>
                             </div>
                           </div>
                           <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
